@@ -13,6 +13,9 @@ page_rotation_seconds = 8
 # Set to false to show all departures at once (recommended for full view)
 pagination_enabled = false
 
+# Banner/header background color (hex color code, e.g., #087BC4)
+banner_color = "#087BC4"
+
 # To find the station ID, run one of these commands:
 #   .venv/bin/mvg-config search "Balanstr"         (from project root, after setup)
 #   mvg-config search "Balanstr"                   (if venv is activated)

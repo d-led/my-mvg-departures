@@ -78,6 +78,10 @@ class AppConfig(BaseSettings):
         default="light",
         description="UI theme: 'light', 'dark', or 'auto' (follows system preference)",
     )
+    banner_color: str = Field(
+        default="#087BC4",
+        description="Banner/header background color (hex color code)",
+    )
 
     @field_validator("time_format")
     @classmethod
@@ -133,6 +137,8 @@ class AppConfig(BaseSettings):
                             self.pagination_enabled = display["pagination_enabled"]
                         if "theme" in display:
                             self.theme = display["theme"]
+                        if "banner_color" in display:
+                            self.banner_color = display["banner_color"]
                     
                     stops = toml_data.get("stops", [])
                     if not isinstance(stops, list):

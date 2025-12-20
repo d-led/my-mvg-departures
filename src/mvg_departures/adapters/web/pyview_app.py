@@ -95,6 +95,9 @@ class DeparturesLiveView(LiveView):
         if theme not in ('light', 'dark', 'auto'):
             theme = 'auto'
         
+        # Get banner color from config
+        banner_color = self.config.banner_color
+        
         html_content = """
 <!DOCTYPE html>
 <html lang="en" data-theme=""" + ('"' + theme + '"' if theme != 'auto' else '"auto"') + """>
@@ -270,8 +273,9 @@ class DeparturesLiveView(LiveView):
             opacity: 0.85;
         }
         [data-theme="light"] .direction-header {
-            color: #1f2937;
-            border-bottom-color: rgba(0, 0, 0, 0.25);
+            background-color: """ + banner_color + """;
+            color: #ffffff;
+            border-bottom-color: rgba(255, 255, 255, 0.25);
         }
         [data-theme="dark"] .direction-header {
             color: #f3f4f6;
@@ -656,12 +660,13 @@ class DeparturesLiveView(LiveView):
         if current_stop is not None:
             html_parts.append("</div>")
 
-        # At the bottom, show stops without departures in a compact summary
-        if stops_without_departures:
+        # At the bottom, show stops without departures - each with its own banner
+        for stop_name in sorted(stops_without_departures):
             html_parts.append('<div class="stop-section">')
-            html_parts.append('<div class="direction-group"><div class="direction-header">No departures</div>')
-            for stop_name in sorted(stops_without_departures):
-                html_parts.append(f'<div class="departure-row"><div class="no-departures">{self._escape_html(stop_name)}</div></div>')
+            html_parts.append(
+                f'<div class="direction-group"><div class="direction-header">{self._escape_html(stop_name)}</div>'
+            )
+            html_parts.append('<div class="departure-row"><div class="no-departures">No departures</div></div>')
             html_parts.append('</div>')  # Close direction-group
             html_parts.append("</div>")  # Close stop-section
 
