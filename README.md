@@ -449,13 +449,7 @@ Contributions are welcome! This project follows **trunk-based development**:
 - Feature branches merge directly to `main`
 - `main` is always in a deployable state
 
-See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for detailed contribution guidelines, including:
-
-- Development workflow
-- Branch naming conventions
-- Code quality standards
-- Testing requirements
-- Architecture principles
+See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for detailed contribution guidelines.
 
 ## Acknowledgments
 
