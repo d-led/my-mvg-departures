@@ -824,7 +824,9 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                     <line x1="15" y1="9" x2="9" y2="15" id="api-error-line2" style="display: none;"></line>
                 </svg>
             </div>
-            <div class="status-floating-box-item refresh-countdown" role="img" aria-label="Refresh countdown timer">
+            <div class="status-floating-box-item refresh-countdown" role="img" aria-label="Refresh countdown timer" data-last-update='"""
+            + (str(int(last_update.timestamp() * 1000)) if last_update is not None else "0")
+            + """'>
                 <svg viewBox="0 0 12 12" width="100%" height="100%" aria-hidden="true">
                     <circle cx="6" cy="6" r="5" class="background"></circle>
                     <circle cx="6" cy="6" r="5" class="progress" transform="rotate(-90 6 6)"></circle>
@@ -952,8 +954,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         let reconnectTimeout = null;
         let countdownCircle = null;
         let circumference = 0;
-        let lastCountdownStart = 0;
-        const MIN_COUNTDOWN_RESTART_INTERVAL = 500; // Minimum ms between countdown restarts
+        let lastServerUpdateTime = null; // Track server's last_update to detect real data updates
 
         function initRefreshCountdown() {
             const circle = document.querySelector('.refresh-countdown circle.progress');
@@ -972,15 +973,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 circumference = 2 * Math.PI * radius;
 
                 // Define startCountdown and make it accessible globally
-                startCountdown = function(force = false) {
-                    // Prevent restarting too frequently (causes flashing on initial load)
-                    const now = Date.now();
-                    if (!force && (now - lastCountdownStart) < MIN_COUNTDOWN_RESTART_INTERVAL) {
-                        console.log('Skipping countdown restart - too soon since last restart');
-                        return;
-                    }
-                    lastCountdownStart = now;
-
+                startCountdown = function() {
                     // Re-query the element in case DOM was updated by pyview
                     const circle = document.querySelector('.refresh-countdown circle.progress');
                     if (!circle) {
@@ -1050,10 +1043,9 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 }
             }
 
-            // Always restart countdown when called (for phx:update)
-            // Use force=true on initial load to ensure it starts
+            // On initial load, start the countdown
             if (startCountdown) {
-                startCountdown(true);
+                startCountdown();
             }
         }
 
@@ -1077,10 +1069,11 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         });
 
         window.addEventListener('phx:update', (event) => {
-            console.log('phx:update received - restarting countdown', event);
+            console.log('phx:update received', event);
             // Data was successfully fetched - connection is working
             connectionState = 'connected';
             lastUpdateTime = Date.now();
+
             // Clear reconnection timeout since we're now connected
             if (reconnectTimeout) {
                 clearTimeout(reconnectTimeout);
@@ -1107,26 +1100,41 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 updateDateTime();
             });
 
-            // Restart countdown after DOM update (pyview may have replaced the element)
-            // Use a small delay to ensure DOM patch is complete
+            // Check if we got a new data update by comparing server's last_update timestamp
             setTimeout(() => {
                 // Re-query the countdown circle in case it was replaced by DOM diff
-                const circle = document.querySelector('.refresh-countdown circle.progress');
-                if (!circle) {
+                const countdownEl = document.querySelector('.refresh-countdown');
+                const circle = countdownEl ? countdownEl.querySelector('circle.progress') : null;
+
+                if (!circle || !countdownEl) {
                     console.warn('Countdown circle not found after phx:update, will retry');
                     // Retry initialization
                     initRefreshCountdown();
                     return;
                 }
 
-                // If countdown was already initialized, just restart it
-                // Don't force restart - let the debouncing logic prevent rapid restarts
-                if (countdownInitialized && startCountdown) {
-                    console.log('Restarting countdown after phx:update');
-                    startCountdown(false);
-                } else {
-                    // Initialize if not already done
+                // Get the server's last_update timestamp from the data attribute
+                const serverUpdateTime = countdownEl.getAttribute('data-last-update');
+                const newServerUpdateTime = serverUpdateTime ? parseInt(serverUpdateTime, 10) : null;
+
+                // Only restart countdown if the server's last_update timestamp actually changed
+                // This ensures we only restart on real data updates, not just DOM refreshes
+                if (newServerUpdateTime && newServerUpdateTime !== lastServerUpdateTime) {
+                    lastServerUpdateTime = newServerUpdateTime;
+
+                    if (countdownInitialized && startCountdown) {
+                        console.log('Restarting countdown - new data update received');
+                        startCountdown();
+                    } else {
+                        // Initialize if not already done
+                        initRefreshCountdown();
+                    }
+                } else if (!countdownInitialized) {
+                    // Initialize on first load even if timestamp hasn't changed
                     initRefreshCountdown();
+                    if (newServerUpdateTime) {
+                        lastServerUpdateTime = newServerUpdateTime;
+                    }
                 }
             }, 50); // Small delay to ensure DOM patch is complete
         });
