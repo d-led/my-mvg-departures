@@ -85,9 +85,7 @@ async def _api_poller(
         # Broadcast update via pubsub to all subscribed sockets
         try:
             await pubsub.send_all_on_topic_async(_departures_broadcast_topic, "update")
-            logger.info(
-                f"Broadcasted update via pubsub to topic: {_departures_broadcast_topic}"
-            )
+            logger.info(f"Broadcasted update via pubsub to topic: {_departures_broadcast_topic}")
         except Exception as pubsub_err:
             logger.error(f"Failed to broadcast via pubsub: {pubsub_err}", exc_info=True)
 
