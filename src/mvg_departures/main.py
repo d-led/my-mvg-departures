@@ -35,7 +35,9 @@ def load_stop_configurations(config: AppConfig) -> list[StopConfiguration]:
             continue
 
         station_id = stop_data.get("station_id")
-        station_name = stop_data.get("station_name", station_id)
+        station_name = stop_data.get("station_name", station_id) or ""
+        if not isinstance(station_name, str):
+            station_name = str(station_id) if station_id else ""
         direction_mappings = stop_data.get("direction_mappings", {})
         max_departures = stop_data.get("max_departures_per_stop", config.mvg_api_limit)
         max_departures_per_route = stop_data.get("max_departures_per_route", 2)

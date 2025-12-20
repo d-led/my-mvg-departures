@@ -6,7 +6,7 @@ import sys
 from typing import Any
 
 import aiohttp
-from mvg import MvgApi
+from mvg import MvgApi  # type: ignore[import-untyped]
 
 
 async def search_stations(query: str) -> list[dict[str, Any]]:

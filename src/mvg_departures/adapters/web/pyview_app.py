@@ -4,10 +4,10 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from pyview import ConnectedLiveViewSocket, LiveView, LiveViewSocket, is_connected
-from pyview.events import InfoEvent
+from pyview import ConnectedLiveViewSocket, LiveView, LiveViewSocket, is_connected  # type: ignore[import-untyped]
+from pyview.events import InfoEvent  # type: ignore[import-untyped]
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +45,8 @@ async def _api_poller(
     This runs as a separate background task, completely independent of LiveView instances.
     It polls the API periodically and broadcasts updates to all connected sockets.
     """
-    from pyview.live_socket import pub_sub_hub
-    from pyview.vendor.flet.pubsub import PubSub
+    from pyview.live_socket import pub_sub_hub  # type: ignore[import-untyped]
+    from pyview.vendor.flet.pubsub import PubSub  # type: ignore[import-untyped]
 
     # Create PubSub instance once and reuse it
     pubsub = PubSub(pub_sub_hub, _departures_broadcast_topic)
@@ -137,7 +137,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         # Subscribe to broadcast topic for receiving updates
         if is_connected(socket):
             try:
-                await socket.subscribe(_departures_broadcast_topic)
+                await socket.subscribe(_departures_broadcast_topic)  # type: ignore[attr-defined]
                 logger.info(
                     f"Successfully subscribed socket to broadcast topic: {_departures_broadcast_topic}"
                 )
@@ -182,16 +182,16 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         if payload == "update":
             # Update the existing context object's fields directly
             # Pyview detects field changes and automatically triggers re-render
-            socket.context.direction_groups = _departures_state.direction_groups
-            socket.context.last_update = _departures_state.last_update
-            socket.context.api_status = _departures_state.api_status
+            socket.context.direction_groups = _departures_state.direction_groups  # type: ignore[attr-defined]
+            socket.context.last_update = _departures_state.last_update  # type: ignore[attr-defined]
+            socket.context.api_status = _departures_state.api_status  # type: ignore[attr-defined]
             logger.info(
                 f"Updated context from pubsub message at {datetime.now()}, groups: {len(_departures_state.direction_groups)}"
             )
         else:
             logger.debug(f"Ignoring pubsub message with payload: {payload}")
 
-    async def render(self, assigns: DeparturesState | dict, meta):
+    async def render(self, assigns: DeparturesState | dict, meta: Any) -> str:  # type: ignore[no-untyped-def]
         """Render the HTML template."""
         logger.debug(f"Render called at {datetime.now()}, assigns type: {type(assigns)}")
 
@@ -908,24 +908,38 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             const disconnectedPlug = connectionEl.querySelector('#disconnected-plug');
             const connectingPlug = connectionEl.querySelector('#connecting-plug');
             
-            if (icon) {
-                // Determine state: connecting (yellow), connected (green), or broken (red)
-                if (connectionState === 'connecting') {
-                    icon.className = 'status-icon connecting';
-                    if (connectedPlug) connectedPlug.style.display = 'none';
-                    if (disconnectedPlug) disconnectedPlug.style.display = 'none';
-                    if (connectingPlug) connectingPlug.style.display = '';
-                } else if (connectionState === 'connected') {
-                    icon.className = 'status-icon connected';
-                    if (connectedPlug) connectedPlug.style.display = '';
-                    if (disconnectedPlug) disconnectedPlug.style.display = 'none';
-                    if (connectingPlug) connectingPlug.style.display = 'none';
-                } else { // broken
-                    icon.className = 'status-icon disconnected';
-                    if (connectedPlug) connectedPlug.style.display = 'none';
-                    if (disconnectedPlug) disconnectedPlug.style.display = '';
-                    if (connectingPlug) connectingPlug.style.display = 'none';
-                }
+            if (!icon) {
+                console.warn('status-icon element not found');
+                return;
+            }
+            
+            // Explicitly remove animation to stop any running animations
+            icon.style.animation = 'none';
+            // Force a reflow to ensure animation is stopped
+            void icon.offsetHeight;
+            
+            // Determine state: connecting (yellow), connected (green), or broken (red)
+            if (connectionState === 'connecting') {
+                icon.className = 'status-icon connecting';
+                // Re-enable animation for connecting state
+                icon.style.animation = '';
+                if (connectedPlug) connectedPlug.style.display = 'none';
+                if (disconnectedPlug) disconnectedPlug.style.display = 'none';
+                if (connectingPlug) connectingPlug.style.display = '';
+            } else if (connectionState === 'connected') {
+                icon.className = 'status-icon connected';
+                // Ensure animation is removed for connected state
+                icon.style.animation = 'none';
+                if (connectedPlug) connectedPlug.style.display = '';
+                if (disconnectedPlug) disconnectedPlug.style.display = 'none';
+                if (connectingPlug) connectingPlug.style.display = 'none';
+            } else { // broken
+                icon.className = 'status-icon disconnected';
+                // Ensure animation is removed for broken state
+                icon.style.animation = 'none';
+                if (connectedPlug) connectedPlug.style.display = 'none';
+                if (disconnectedPlug) disconnectedPlug.style.display = '';
+                if (connectingPlug) connectingPlug.style.display = 'none';
             }
         }
         
@@ -937,7 +951,12 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         
         function initRefreshCountdown() {
             countdownCircle = document.querySelector('.refresh-countdown circle.progress');
-            if (!countdownCircle) return;
+            if (!countdownCircle) {
+                console.warn('Countdown circle not found yet, will retry');
+                // Retry after a short delay if element not found
+                setTimeout(initRefreshCountdown, 100);
+                return;
+            }
             
             // Only initialize once
             if (countdownInitialized) {
@@ -956,7 +975,20 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             
             // Define startCountdown and make it accessible globally
             startCountdown = function() {
-                if (!countdownCircle) return;
+                // Re-query the element in case DOM was updated by pyview
+                const circle = document.querySelector('.refresh-countdown circle.progress');
+                if (!circle) {
+                    console.warn('Countdown circle not found, cannot start countdown');
+                    return;
+                }
+                countdownCircle = circle;
+                
+                // Re-initialize circumference if needed
+                if (circumference === 0) {
+                    const radius = 5;
+                    circumference = 2 * Math.PI * radius;
+                    countdownCircle.setAttribute('stroke-dasharray', circumference);
+                }
                 
                 // Clear any existing interval
                 if (countdownInterval) {
@@ -965,15 +997,19 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 
                 countdownElapsed = 0;
                 countdownRunning = true;
+                // Reset the circle to full (offset = 0 means full circle)
+                countdownCircle.setAttribute('stroke-dashoffset', '0');
                 const updateInterval = 100; // Update every 100ms for smooth animation
                 
                 function updateCountdown() {
-                    if (!countdownRunning || !countdownCircle) return;
+                    // Re-query element in case it was replaced
+                    const circle = document.querySelector('.refresh-countdown circle.progress');
+                    if (!countdownRunning || !circle) return;
                     
                     countdownElapsed += updateInterval;
                     const progress = countdownElapsed / (REFRESH_INTERVAL_SECONDS * 1000);
                     const offset = circumference * (1 - progress);
-                    countdownCircle.setAttribute('stroke-dashoffset', offset.toString());
+                    circle.setAttribute('stroke-dashoffset', offset.toString());
                     
                     // When countdown reaches the end, stop and wait for next update
                     if (countdownElapsed >= REFRESH_INTERVAL_SECONDS * 1000) {
@@ -992,6 +1028,9 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 
                 countdownInterval = setInterval(updateCountdown, updateInterval);
             }
+            
+            // Start countdown immediately after initialization
+            startCountdown();
         }
         
         // Set up event listeners once (outside initRefreshCountdown)
@@ -1023,14 +1062,30 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 clearTimeout(reconnectTimeout);
                 reconnectTimeout = null;
             }
-            updateConnectionStatus();
-            // Get API status from event detail if available, default to success
-            const apiStatus = event.detail?.api_status || 'success';
-            updateApiStatus(apiStatus);
-            // Reset and start countdown from beginning
-            if (startCountdown) {
-                startCountdown();
+            
+            // Update connection status after DOM update (pyview may have replaced elements)
+            // Use requestAnimationFrame to ensure DOM is fully updated
+            requestAnimationFrame(() => {
+                updateConnectionStatus();
+                // Get API status from event detail if available, default to success
+                const apiStatus = event.detail?.api_status || 'success';
+                updateApiStatus(apiStatus);
+            });
+            
+            // Handle pagination if enabled
+            if (PAGINATION_ENABLED) {
+                initPagination();
             }
+            
+            // Re-initialize countdown (will restart if already initialized)
+            // Also delay this slightly to ensure DOM is ready
+            requestAnimationFrame(() => {
+                initRefreshCountdown();
+                // Reset and start countdown from beginning
+                if (startCountdown) {
+                    startCountdown();
+                }
+            });
         });
         
         function updateApiStatus(status) {
@@ -1096,7 +1151,11 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             console.log('phx:disconnect received - connection disconnected');
             // On disconnect, show broken state (red)
             connectionState = 'broken';
-            updateConnectionStatus();
+            // Use requestAnimationFrame to ensure DOM is ready
+            requestAnimationFrame(() => {
+                updateConnectionStatus();
+                console.log('Connection status updated to broken (red)');
+            });
             // Start timeout for reconnection
             startReconnectTimeout();
             // Stop countdown on disconnect - will restart when reconnected
@@ -1124,7 +1183,11 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         window.addEventListener('phx:connecting', () => {
             console.log('phx:connecting received - attempting to reconnect');
             connectionState = 'connecting';
-            updateConnectionStatus();
+            // Use requestAnimationFrame to ensure DOM is ready
+            requestAnimationFrame(() => {
+                updateConnectionStatus();
+                console.log('Connection status updated to connecting (yellow, pulsating)');
+            });
             // Start/restart timeout for reconnection
             startReconnectTimeout();
         });
@@ -1138,12 +1201,20 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 clearTimeout(reconnectTimeout);
                 reconnectTimeout = null;
             }
-            updateConnectionStatus();
+            // Use requestAnimationFrame to ensure DOM is ready after pyview updates
+            requestAnimationFrame(() => {
+                updateConnectionStatus();
+                console.log('Connection status updated to connected (green)');
+            });
         });
         
         // Initial state: connecting (will change to connected on first phx:update or phx:open)
-        updateConnectionStatus();
-        updateApiStatus(INITIAL_API_STATUS); // Use initial API status from server
+        // Update connection status immediately on page load
+        // Use requestAnimationFrame to ensure DOM is ready
+        requestAnimationFrame(() => {
+            updateConnectionStatus();
+            updateApiStatus(INITIAL_API_STATUS); // Use initial API status from server
+        });
         
         // Cleanup on unload
         window.addEventListener('beforeunload', () => {
@@ -1155,13 +1226,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             }
         });
         
-        // Auto-refresh handling via LiveView
-        window.addEventListener('phx:update', () => {
-            if (PAGINATION_ENABLED) {
-                initPagination();
-            }
-            initRefreshCountdown(); // This will restart countdown if already initialized
-        });
+        // Note: phx:update handling is done in the main phx:update listener above
         
         function createCountdownCircle(radius = 5) {
             const circumference = 2 * Math.PI * radius;
@@ -1266,11 +1331,8 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             if (PAGINATION_ENABLED) {
                 initPagination();
             }
+            // initRefreshCountdown will start the countdown automatically once initialized
             initRefreshCountdown();
-            // Start countdown after initialization
-            if (startCountdown) {
-                startCountdown();
-            }
         }
         
         if (document.readyState === 'loading') {
@@ -1334,9 +1396,9 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
         # Use pyview's LiveTemplate system properly
         # Create an ibis Template from the HTML string, wrap in LiveTemplate, then return LiveRender
-        from pyview.template.live_template import LiveTemplate, LiveRender
-        from pyview.vendor.ibis import Template as IbisTemplate
-        from pyview.meta import PyViewMeta
+        from pyview.template.live_template import LiveTemplate, LiveRender  # type: ignore[import-untyped]
+        from pyview.vendor.ibis import Template as IbisTemplate  # type: ignore[import-untyped]
+        from pyview.meta import PyViewMeta  # type: ignore[import-untyped]
 
         # Create ibis template from HTML string
         ibis_template = IbisTemplate(html_content, template_id="departures")
@@ -1425,7 +1487,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
     def _render_departure(self, departure: Departure) -> str:
         """Render a single departure as HTML."""
-        time_str = self._format_departure_time(departure)
+        time_str: str = self._format_departure_time(departure)
         cancelled_class = " cancelled" if departure.is_cancelled else ""
         delay_class = " delay" if departure.delay_seconds and departure.delay_seconds > 60 else ""
         realtime_class = " realtime" if departure.is_realtime else ""
@@ -1502,7 +1564,7 @@ class PyViewWebAdapter(DisplayAdapter):
         self.config = config
         self.session = session
         self._update_task: asyncio.Task | None = None
-        self._server = None
+        self._server: Any | None = None  # type: ignore[assignment]
 
     async def display_departures(self, direction_groups: list[tuple[str, list[Departure]]]) -> None:
         """Display grouped departures (not used directly, handled by LiveView)."""
@@ -1512,7 +1574,7 @@ class PyViewWebAdapter(DisplayAdapter):
     async def start(self) -> None:
         """Start the web server."""
         import uvicorn
-        from pyview import PyView
+        from pyview import PyView  # type: ignore[import-untyped]
 
         # Store dependencies in adapter for the LiveView class to access
         # Create a LiveView class that accesses these dependencies
@@ -1586,7 +1648,7 @@ class PyViewWebAdapter(DisplayAdapter):
             """Serve pyview's client JavaScript."""
             try:
                 # Get pyview package path
-                import pyview
+                import pyview  # type: ignore[import-untyped]
 
                 pyview_path = Path(pyview.__file__).parent
                 client_js_path = pyview_path / "static" / "assets" / "app.js"

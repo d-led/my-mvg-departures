@@ -85,14 +85,14 @@ class DepartureGroupingService:
             ungrouped.sort(key=lambda d: d.time)
             # Limit each route within ungrouped to max_departures_per_route
             max_per_route = stop_config.max_departures_per_route or 2
-            route_counts: dict[str, int] = {}
+            ungrouped_route_counts: dict[str, int] = {}
             filtered_ungrouped: list[Departure] = []
             for departure in ungrouped:
                 route_key = departure.line
-                count = route_counts.get(route_key, 0)
+                count = ungrouped_route_counts.get(route_key, 0)
                 if count < max_per_route:
                     filtered_ungrouped.append(departure)
-                    route_counts[route_key] = count + 1
+                    ungrouped_route_counts[route_key] = count + 1
             ungrouped = filtered_ungrouped
             # Also limit ungrouped departures
             max_per_direction = stop_config.max_departures_per_stop or 20
