@@ -389,6 +389,18 @@ class DeparturesLiveView(LiveView):
         [data-theme="dark"] .delay {
             color: #fbbf24;
         }
+        .delay-amount {
+            color: #dc2626;
+            font-size: 2rem;
+            font-weight: 500;
+            margin-left: 0.5rem;
+        }
+        [data-theme="light"] .delay-amount {
+            color: #dc2626;
+        }
+        [data-theme="dark"] .delay-amount {
+            color: #f87171;
+        }
         .realtime {
             color: #059669;
         }
@@ -692,13 +704,19 @@ class DeparturesLiveView(LiveView):
         platform_display = ""
         if departure.platform is not None:
             platform_display = str(departure.platform)
+        
+        # Format delay display
+        delay_display = ""
+        if departure.delay_seconds and departure.delay_seconds > 60:
+            delay_minutes = departure.delay_seconds // 60
+            delay_display = f'<span class="delay-amount">{delay_minutes}m 😞</span>'
 
         return f"""
         <div class="departure-row{cancelled_class}">
             <div class="route-number">{self._escape_html(route_display)}</div>
             <div class="destination">{self._escape_html(departure.destination)}</div>
             <div class="platform">{self._escape_html(platform_display)}</div>
-            <div class="time{delay_class}{realtime_class}">{time_str}</div>
+            <div class="time{delay_class}{realtime_class}">{time_str}{delay_display}</div>
         </div>
         """
     

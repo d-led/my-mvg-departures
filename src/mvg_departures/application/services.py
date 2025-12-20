@@ -132,24 +132,20 @@ class DepartureGroupingService:
                 # This prevents false matches like "N75 Ostbahnhof" matching "59 Giesing Bahnhof"
                 # If route doesn't match, the pattern doesn't match
             else:
-                # Single word - try as route-only or destination-only (fallback)
+                # Single word - try as route-only or destination-only
                 pattern_single = pattern_words[0]
                 
-                # Try matching as route only
+                # Try matching as route only - EXACT match only (no substring matching)
                 route_matches = (
                     pattern_single == route_line
                     or pattern_single == route_full
-                    or route_line.endswith(pattern_single)
-                    or route_full.endswith(pattern_single)
-                    or pattern_single in route_line
-                    or pattern_single in route_full
                 )
                 
                 if route_matches:
-                    # Route matches - match any destination for this route
+                    # Route matches exactly - match any destination for this route
                     return True
                 
-                # Try matching as destination only
+                # Try matching as destination only - use word-boundary matching
                 if self._matches_text(destination_lower, pattern_single):
                     # Destination matches - match any route to this destination
                     return True
@@ -157,15 +153,31 @@ class DepartureGroupingService:
         return False
     
     def _matches_text(self, text: str, pattern: str) -> bool:
-        """Check if text matches pattern (exact match or word-boundary match)."""
+        """Check if text matches pattern (exact match or word-boundary match).
+        
+        For multi-word patterns, requires exact phrase match.
+        For single-word patterns, requires whole-word match.
+        This prevents "Ostbahnhof" from matching "Giesing Bahnhof"
+        """
         if pattern == text:
             return True
-        # Check if pattern matches as whole words (word boundaries)
-        # This prevents "Ostbahnhof" from matching "Giesing Bahnhof"
+        
+        # For multi-word patterns, require exact phrase match
+        if ' ' in pattern:
+            pattern_lower = pattern.lower()
+            text_lower = text.lower()
+            if pattern_lower == text_lower:
+                return True
+            # Check if pattern appears as a phrase (with word boundaries)
+            pattern_escaped = re.escape(pattern_lower)
+            if re.search(r'\b' + pattern_escaped + r'\b', text_lower):
+                return True
+            return False
+        
+        # For single-word patterns, use word-boundary matching
         try:
-            # Use word boundaries to ensure we match whole words, not substrings
-            pattern_escaped = re.escape(pattern)
-            if re.search(r'\b' + pattern_escaped + r'\b', text, re.IGNORECASE):
+            pattern_escaped = re.escape(pattern.lower())
+            if re.search(r'\b' + pattern_escaped + r'\b', text.lower()):
                 return True
         except re.error:
             pass
