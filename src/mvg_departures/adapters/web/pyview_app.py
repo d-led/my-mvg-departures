@@ -950,87 +950,84 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         let circumference = 0;
         
         function initRefreshCountdown() {
-            countdownCircle = document.querySelector('.refresh-countdown circle.progress');
-            if (!countdownCircle) {
+            const circle = document.querySelector('.refresh-countdown circle.progress');
+            if (!circle) {
                 console.warn('Countdown circle not found yet, will retry');
                 // Retry after a short delay if element not found
                 setTimeout(initRefreshCountdown, 100);
                 return;
             }
+            countdownCircle = circle;
             
-            // Only initialize once
-            if (countdownInitialized) {
-                // Just restart the countdown if already initialized
-                if (startCountdown) {
-                    startCountdown();
-                }
-                return;
-            }
-            countdownInitialized = true;
-            
-            const radius = 5; // Smaller radius to match reduced icon size
-            circumference = 2 * Math.PI * radius;
-            countdownCircle.setAttribute('stroke-dasharray', circumference);
-            countdownCircle.setAttribute('stroke-dashoffset', '0');
-            
-            // Define startCountdown and make it accessible globally
-            startCountdown = function() {
-                // Re-query the element in case DOM was updated by pyview
-                const circle = document.querySelector('.refresh-countdown circle.progress');
-                if (!circle) {
-                    console.warn('Countdown circle not found, cannot start countdown');
-                    return;
-                }
-                countdownCircle = circle;
+            // Only initialize circumference and startCountdown function once
+            if (!countdownInitialized) {
+                countdownInitialized = true;
+                const radius = 5; // Smaller radius to match reduced icon size
+                circumference = 2 * Math.PI * radius;
                 
-                // Re-initialize circumference if needed
-                if (circumference === 0) {
-                    const radius = 5;
-                    circumference = 2 * Math.PI * radius;
-                    countdownCircle.setAttribute('stroke-dasharray', circumference);
-                }
-                
-                // Clear any existing interval
-                if (countdownInterval) {
-                    clearInterval(countdownInterval);
-                }
-                
-                countdownElapsed = 0;
-                countdownRunning = true;
-                // Reset the circle to full (offset = 0 means full circle)
-                countdownCircle.setAttribute('stroke-dashoffset', '0');
-                const updateInterval = 100; // Update every 100ms for smooth animation
-                
-                function updateCountdown() {
-                    // Re-query element in case it was replaced
+                // Define startCountdown and make it accessible globally
+                startCountdown = function() {
+                    // Re-query the element in case DOM was updated by pyview
                     const circle = document.querySelector('.refresh-countdown circle.progress');
-                    if (!countdownRunning || !circle) return;
+                    if (!circle) {
+                        console.warn('Countdown circle not found, cannot start countdown');
+                        return;
+                    }
+                    countdownCircle = circle;
                     
-                    countdownElapsed += updateInterval;
-                    const progress = countdownElapsed / (REFRESH_INTERVAL_SECONDS * 1000);
-                    const offset = circumference * (1 - progress);
-                    circle.setAttribute('stroke-dashoffset', offset.toString());
+                    // Ensure circumference is set
+                    if (circumference === 0) {
+                        const radius = 5;
+                        circumference = 2 * Math.PI * radius;
+                    }
+                    circle.setAttribute('stroke-dasharray', circumference);
                     
-                    // When countdown reaches the end, stop and wait for next update
-                    if (countdownElapsed >= REFRESH_INTERVAL_SECONDS * 1000) {
-                        countdownRunning = false;
+                    // Clear any existing interval
+                    if (countdownInterval) {
                         clearInterval(countdownInterval);
                         countdownInterval = null;
-                        // Check if we're overdue for an update
-                        const timeSinceLastUpdate = Date.now() - lastUpdateTime;
-                        if (timeSinceLastUpdate > REFRESH_INTERVAL_SECONDS * 1000 * 1.5) {
-                            console.warn('No update received - server may not be sending updates');
-                            // Don't mark as error immediately, just log warning
-                            // The connection status will show if WebSocket is disconnected
+                    }
+                    
+                    countdownElapsed = 0;
+                    countdownRunning = true;
+                    // Reset the circle to full (offset = 0 means full circle)
+                    circle.setAttribute('stroke-dashoffset', '0');
+                    const updateInterval = 100; // Update every 100ms for smooth animation
+                    
+                    function updateCountdown() {
+                        // Re-query element in case it was replaced during countdown
+                        const circle = document.querySelector('.refresh-countdown circle.progress');
+                        if (!countdownRunning || !circle) return;
+                        
+                        countdownElapsed += updateInterval;
+                        const progress = countdownElapsed / (REFRESH_INTERVAL_SECONDS * 1000);
+                        const offset = circumference * (1 - progress);
+                        circle.setAttribute('stroke-dashoffset', offset.toString());
+                        
+                        // When countdown reaches the end, stop and wait for next update
+                        if (countdownElapsed >= REFRESH_INTERVAL_SECONDS * 1000) {
+                            countdownRunning = false;
+                            clearInterval(countdownInterval);
+                            countdownInterval = null;
+                            // Check if we're overdue for an update
+                            const timeSinceLastUpdate = Date.now() - lastUpdateTime;
+                            if (timeSinceLastUpdate > REFRESH_INTERVAL_SECONDS * 1000 * 1.5) {
+                                console.warn('No update received - server may not be sending updates');
+                                // Don't mark as error immediately, just log warning
+                                // The connection status will show if WebSocket is disconnected
+                            }
                         }
                     }
+                    
+                    countdownInterval = setInterval(updateCountdown, updateInterval);
+                    console.log('Countdown started');
                 }
-                
-                countdownInterval = setInterval(updateCountdown, updateInterval);
             }
             
-            // Start countdown immediately after initialization
-            startCountdown();
+            // Always restart countdown when called (for phx:update)
+            if (startCountdown) {
+                startCountdown();
+            }
         }
         
         // Set up event listeners once (outside initRefreshCountdown)
@@ -1077,15 +1074,27 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 initPagination();
             }
             
-            // Re-initialize countdown (will restart if already initialized)
-            // Also delay this slightly to ensure DOM is ready
-            requestAnimationFrame(() => {
-                initRefreshCountdown();
-                // Reset and start countdown from beginning
-                if (startCountdown) {
-                    startCountdown();
+            // Restart countdown after DOM update (pyview may have replaced the element)
+            // Use a small delay to ensure DOM patch is complete
+            setTimeout(() => {
+                // Re-query the countdown circle in case it was replaced by DOM diff
+                const circle = document.querySelector('.refresh-countdown circle.progress');
+                if (!circle) {
+                    console.warn('Countdown circle not found after phx:update, will retry');
+                    // Retry initialization
+                    initRefreshCountdown();
+                    return;
                 }
-            });
+                
+                // If countdown was already initialized, just restart it
+                if (countdownInitialized && startCountdown) {
+                    console.log('Restarting countdown after phx:update');
+                    startCountdown();
+                } else {
+                    // Initialize if not already done
+                    initRefreshCountdown();
+                }
+            }, 50); // Small delay to ensure DOM patch is complete
         });
         
         function updateApiStatus(status) {
