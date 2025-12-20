@@ -56,19 +56,12 @@ class DepartureGroupingService:
         if ungrouped:
             ungrouped.sort(key=lambda d: d.time)
 
-        # Build result list with all configured directions (including empty ones)
-        # This ensures all configured directions are shown, even if empty
-        all_directions = set(stop_config.direction_mappings.keys())
-        all_directions.update(direction_groups.keys())
-        
-        # Convert to list of tuples, sorted by direction name
+        # Build result list with only directions that have departures
+        # Don't show empty direction groups - if show_ungrouped is false and no matches, 
+        # the stop will be shown as "no departures" at the bottom
         result = []
-        for direction_name in sorted(all_directions):
-            if direction_name in direction_groups:
-                result.append((direction_name, direction_groups[direction_name]))
-            else:
-                # Empty group - show "no departures" message
-                result.append((direction_name, []))
+        for direction_name in sorted(direction_groups.keys()):
+            result.append((direction_name, direction_groups[direction_name]))
 
         # Add ungrouped departures if configured to show them (whitelist mode)
         # Only add "Other" group if show_ungrouped is True AND there are ungrouped departures
@@ -135,25 +128,9 @@ class DepartureGroupingService:
                     dest_part = " ".join(pattern_words[dest_start_idx:])
                     if self._matches_text(destination_lower, dest_part):
                         return True
-                elif not route_matched and len(pattern_words) >= 2:
-                    # Route didn't match, but try matching just the destination part
-                    # This allows patterns like "Bus 54 Ostbahnhof" to match "Bus N44 -> Ostbahnhof"
-                    # Try to find where destination might start
-                    # If pattern starts with transport type, destination is after line number
-                    if pattern_words[0] in transport_type_lower and len(pattern_words) >= 3:
-                        # Pattern like "Bus 54 Ostbahnhof" - destination starts at index 2
-                        dest_part = " ".join(pattern_words[2:])
-                        if self._matches_text(destination_lower, dest_part):
-                            return True
-                    # Or try the last word(s) as destination (fallback)
-                    if len(pattern_words) >= 2:
-                        dest_part = " ".join(pattern_words[-1:])  # Last word
-                        if self._matches_text(destination_lower, dest_part):
-                            return True
-                        if len(pattern_words) >= 3:
-                            dest_part = " ".join(pattern_words[-2:])  # Last two words
-                            if self._matches_text(destination_lower, dest_part):
-                                return True
+                # Don't fall back to destination-only matching when route doesn't match!
+                # This prevents false matches like "N75 Ostbahnhof" matching "59 Giesing Bahnhof"
+                # If route doesn't match, the pattern doesn't match
             else:
                 # Single word - try as route-only or destination-only (fallback)
                 pattern_single = pattern_words[0]
@@ -180,15 +157,17 @@ class DepartureGroupingService:
         return False
     
     def _matches_text(self, text: str, pattern: str) -> bool:
-        """Check if text matches pattern (exact, substring, or regex)."""
+        """Check if text matches pattern (exact match or word-boundary match)."""
         if pattern == text:
             return True
+        # Check if pattern matches as whole words (word boundaries)
+        # This prevents "Ostbahnhof" from matching "Giesing Bahnhof"
         try:
-            if re.search(pattern, text):
+            # Use word boundaries to ensure we match whole words, not substrings
+            pattern_escaped = re.escape(pattern)
+            if re.search(r'\b' + pattern_escaped + r'\b', text, re.IGNORECASE):
                 return True
         except re.error:
-            # If pattern is not valid regex, treat as substring match
-            if pattern in text:
-                return True
+            pass
         return False
 

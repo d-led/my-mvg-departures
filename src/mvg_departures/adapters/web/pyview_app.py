@@ -145,6 +145,7 @@ class DeparturesLiveView(LiveView):
             flex-direction: column;
             height: 100vh;
             width: 100vw;
+            max-width: 100vw;
             margin: 0;
             padding: 0;
             box-sizing: border-box;
@@ -398,10 +399,11 @@ class DeparturesLiveView(LiveView):
             color: #34d399;
         }
         .container {
-            width: 100vw;
+            width: 100vw !important;
+            max-width: 100vw !important;
             height: 100vh;
-            margin: 0;
-            padding: 0;
+            margin: 0 !important;
+            padding: 0 !important;
             flex: 1 1 100%;
             display: flex;
             flex-direction: column;
@@ -445,7 +447,7 @@ class DeparturesLiveView(LiveView):
         }
     </style>
 </head>
-<body class="min-h-screen bg-base-100">
+<body class="min-h-screen bg-base-100" style="width: 100vw; max-width: 100vw; margin: 0; padding: 0;">
     <div class="container">
         <div class="header-section">
             <h1>MVG Departures</h1>
@@ -619,15 +621,18 @@ class DeparturesLiveView(LiveView):
         if not direction_groups:
             return '<div style="text-align: center; padding: 4rem 2rem; opacity: 0.7; font-size: 3rem; font-weight: 500;">No departures available</div>'
 
-        # Separate groups with departures from empty groups
+        # Separate groups with departures from stops that have no departures at all
         groups_with_departures: list[tuple[str, str, list[Departure]]] = []
-        stops_without_departures: set[str] = set()
+        stops_with_departures: set[str] = set()
         
         for stop_name, direction_name, departures in direction_groups:
             if departures:
                 groups_with_departures.append((stop_name, direction_name, departures))
-            else:
-                stops_without_departures.add(stop_name)
+                stops_with_departures.add(stop_name)
+        
+        # Find stops that are configured but have no departures at all
+        configured_stops = {stop_config.station_name for stop_config in self.stop_configs}
+        stops_without_departures = configured_stops - stops_with_departures
 
         html_parts: list[str] = []
         current_stop = None
