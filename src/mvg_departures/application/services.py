@@ -2,6 +2,7 @@
 
 import logging
 import re
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from mvg_departures.domain.models import Departure, StopConfiguration
@@ -80,6 +81,14 @@ class DepartureGroupingService:
             # Then limit each direction group to max_departures_per_stop
             max_per_direction = stop_config.max_departures_per_stop or 20
             direction_groups[direction_name] = direction_groups[direction_name][:max_per_direction]
+            # Filter out departures that are too soon (after limits are applied, so counts aren't affected)
+            if stop_config.departure_leeway_minutes > 0:
+                cutoff_time = datetime.now() + timedelta(
+                    minutes=stop_config.departure_leeway_minutes
+                )
+                direction_groups[direction_name] = [
+                    d for d in direction_groups[direction_name] if d.time >= cutoff_time
+                ]
 
         if ungrouped:
             ungrouped.sort(key=lambda d: d.time)
@@ -97,6 +106,12 @@ class DepartureGroupingService:
             # Also limit ungrouped departures
             max_per_direction = stop_config.max_departures_per_stop or 20
             ungrouped = ungrouped[:max_per_direction]
+            # Filter out departures that are too soon (after limits are applied, so counts aren't affected)
+            if stop_config.departure_leeway_minutes > 0:
+                cutoff_time = datetime.now() + timedelta(
+                    minutes=stop_config.departure_leeway_minutes
+                )
+                ungrouped = [d for d in ungrouped if d.time >= cutoff_time]
 
         # Build result list with only directions that have departures
         # Preserve the order from the config file (direction_mappings)

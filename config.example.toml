@@ -44,6 +44,10 @@ station_id = "de:09162:1110"
 station_name = "Giesing"
 max_departures_per_stop = 12
 max_departures_per_route = 2
+# Leeway in minutes: departures earlier than now + leeway are filtered out
+# This does not affect the counts (max_departures_per_stop, max_departures_per_route)
+# Set to 0 to disable filtering
+departure_leeway_minutes = 0
 # If false, only show departures matching direction_mappings (strict whitelist)
 # If true, show unmatched departures in "Other" group
 show_ungrouped = true
