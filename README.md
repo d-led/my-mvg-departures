@@ -46,6 +46,7 @@ cd my_mvg_departures
 ```
 
 This will:
+
 - Create a virtual environment (`.venv`)
 - Install all dependencies
 - Install the package in editable mode
@@ -283,6 +284,97 @@ sudo service mvg-departures status
 sudo tail -f /var/log/mvg-departures.log
 ```
 
+#### iPad Deployment with Guided Access (Kiosk Mode)
+
+This dashboard is perfect for deployment on an iPad as a permanent departure display. Apple's Guided Access feature allows you to lock the iPad to a single app, creating a kiosk-like experience.
+
+**Prerequisites:**
+
+- iPad (any model with iOS support)
+- The server running and accessible on your network
+- Safari browser (or any modern browser)
+
+**Setup Steps:**
+
+1. **Start the Server:**
+
+   ```bash
+   # On your server/computer, start the application
+   ./scripts/start.sh
+   # Or if running as a service:
+   sudo service mvg-departures start
+   ```
+
+2. **Configure iPad Network:**
+
+   - Connect iPad to the same network as your server
+   - Note the server's IP address (e.g., `192.168.1.100:8000`)
+
+3. **Open Dashboard in Safari:**
+
+   - Open Safari on the iPad
+   - Navigate to `http://YOUR_SERVER_IP:8000` (replace with your server's IP)
+   - Wait for the page to load completely
+   - Tap the Share button (square with arrow)
+   - Select "Add to Home Screen"
+   - Give it a name like "MVG Departures"
+   - Tap "Add"
+
+4. **Enable Guided Access:**
+
+   - Open iPad Settings → Accessibility → Guided Access
+   - Toggle "Guided Access" to ON
+   - Tap "Passcode Settings" → "Set Guided Access Passcode"
+   - Enter a passcode (you'll need this to exit Guided Access)
+   - Optionally enable "Accessibility Shortcut" for quick access
+
+5. **Activate Guided Access:**
+
+   - Open the "MVG Departures" app from the home screen
+   - Triple-click the Home button (or Side button on newer iPads)
+   - If prompted, enter your passcode
+   - Tap "Start" in the top-right corner
+   - The iPad is now locked to this app
+
+6. **Configure Guided Access Options (Optional):**
+
+   - While in Guided Access setup, you can:
+     - Disable touch in certain areas (tap areas to disable)
+     - Disable motion (prevent screen rotation)
+     - Disable buttons (Home button, volume buttons, etc.)
+     - Set time limits (auto-exit after a period)
+
+7. **Exit Guided Access:**
+   - Triple-click the Home/Side button
+   - Enter your Guided Access passcode
+   - Tap "End" in the top-left corner
+
+**Tips for Best Experience:**
+
+- **Keep iPad Charged:** Use a wall charger or dock to keep the iPad powered
+- **Auto-Lock Settings:** Set iPad to never auto-lock (Settings → Display & Brightness → Auto-Lock → Never or another setting if you have physical access to the ipad to wake the screen up)
+- **Screen Brightness:** Adjust to your preference, or enable Auto-Brightness
+- **Network Stability:** Ensure stable Wi-Fi connection for reliable updates
+- **Wall Mount:** Consider a wall mount or stand for permanent installation
+- **Full Screen:** The dashboard is designed to work in full-screen mode
+
+**Troubleshooting:**
+
+- **Dashboard not updating:** Check that the server is running and accessible
+- **Connection issues:** Verify iPad and server are on the same network
+- **Page refresh needed:** Exit and re-enter Guided Access to reload the page
+- **WebSocket errors:** Check server logs for connection issues
+
+**Alternative: Using Shortcuts App for Auto-Launch**
+
+For even more automation, you can use the Shortcuts app to automatically open the dashboard when the iPad wakes:
+
+1. Open Shortcuts app
+2. Create a new automation: "When iPad wakes"
+3. Add action: "Open URLs" → Enter your dashboard URL
+4. Disable "Ask Before Running"
+5. The dashboard will automatically open when the iPad wakes
+
 ## Development
 
 ### Running Tests
@@ -310,6 +402,51 @@ ruff check src tests
 # Type checking
 mypy src
 ```
+
+## Why This Dashboard?
+
+### The Problem with Plain Departure Displays
+
+Traditional departure displays show a simple list of upcoming departures from a single stop. While this works for basic information, it falls short when you need to make strategic decisions about your journey.
+
+**Real-world scenario:** You're at home and need to get to work. You check multiple stops:
+
+- Your local stop (e.g., "Giesing")
+- A transfer stop (e.g., "Marienplatz")
+- Your destination stop
+
+A plain display shows you raw departure times from each stop, but your brain has to:
+
+1. **Remember** departure times from multiple stops
+2. **Calculate** transfer windows and connection possibilities
+3. **Compare** different route options
+4. **Decide** which combination minimizes waiting time
+
+This mental calculation becomes overwhelming when you're dealing with:
+
+- Multiple routes per stop
+- Different directions (some going your way, some not)
+- Transfer connections with tight windows
+- Real-time delays that affect your strategy
+
+### How This Dashboard Helps
+
+**Direction Grouping for Quick Comprehension:**
+Instead of scrolling through a long list of mixed destinations, departures are grouped by direction (e.g., "->Balanstr.", "->Klinikum"). This lets you instantly see:
+
+- Which routes are going your way
+- How many options you have in each direction
+- The timing spread across your preferred routes
+
+**Strategic Limiting:**
+By limiting departures per route and per group, the dashboard shows you the **most relevant information** without cognitive overload:
+
+- **`max_departures_per_route`**: Shows 1-2 departures per route, so you see the next immediate options without being overwhelmed by future departures of the same route
+- **`max_departures_per_stop`**: Limits total departures per direction, focusing on the near-term decisions you need to make
+
+This design philosophy recognizes that **you don't need to see every departure**—you need to see the departures that matter for your immediate decision-making. The limits ensure the information density matches your cognitive capacity for quick strategic planning.
+
+**Result:** Instead of mental arithmetic across multiple stops, you can quickly scan grouped departures, identify your best options, and make confident decisions about when to leave and which route to take.
 
 ## UI Features
 
@@ -350,11 +487,11 @@ class MyDeviceAdapter(DisplayAdapter):
     async def display_departures(self, direction_groups):
         # Render to your device
         pass
-    
+
     async def start(self):
         # Initialize device
         pass
-    
+
     async def stop(self):
         # Cleanup
         pass
@@ -377,6 +514,7 @@ Contributions are welcome! This project follows **trunk-based development**:
 - `main` is always in a deployable state
 
 See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for detailed contribution guidelines, including:
+
 - Development workflow
 - Branch naming conventions
 - Code quality standards
@@ -388,4 +526,3 @@ See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for detailed contribution guide
 - [mvg](https://github.com/mondbaron/mvg) - MVG API library
 - [pyview](https://github.com/ogrodnek/pyview) - Python LiveView implementation
 - [DaisyUI](https://daisyui.com/) - Component library
-
