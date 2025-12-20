@@ -42,7 +42,6 @@ This will:
 - Create a virtual environment (`.venv`)
 - Install all dependencies
 - Install the package in editable mode
-- Make `mvg-config` and `mvg-departures` commands available
 
 ### Manual Setup
 
@@ -75,59 +74,35 @@ pip install -e .
 
 ## Configuration
 
-Configuration follows the [12-factor app](https://12factor.net/config) methodology using environment variables, with TOML files for complex configurations.
-
-**By default, the application uses `config.example.toml`** which includes a pre-configured Giesing stop. You can customize this file or create your own `config.toml`.
-
-### Quick Start
-
-The application works out of the box with the example configuration:
-
-```bash
-# Just start it - uses config.example.toml by default
-./scripts/start.sh
-```
-
-### Configuration Methods
-
-#### Method 1: TOML File (Recommended)
-
-Copy and customize the example configuration:
-
-```bash
-cp config.example.toml config.toml
-# Edit config.toml with your stops
-```
-
-Or set a custom path via environment variable:
+Configuration uses a TOML file for stops and display settings. The preferred way is to set the `CONFIG_FILE` environment variable pointing to your TOML file:
 
 ```bash
 export CONFIG_FILE=/path/to/your/config.toml
 ```
 
-#### Method 2: Environment Variables
+By default, the application uses [`config.example.toml`](config.example.toml) which includes a pre-configured Giesing stop.
 
-Copy `env.example` to `.env` and configure:
+### Quick Start
 
 ```bash
-cp env.example .env
+# Uses config.example.toml by default
+./scripts/start.sh
+
+# Or with custom config
+export CONFIG_FILE=config.toml
+./scripts/start.sh
 ```
 
 ### Environment Variables
 
+- `CONFIG_FILE`: Path to TOML configuration file (default: [`config.example.toml`](config.example.toml))
 - `HOST`: Server host (default: `0.0.0.0`)
 - `PORT`: Server port (default: `8000`)
 - `RELOAD`: Enable auto-reload for development (default: `false`)
 - `TIME_FORMAT`: Display format - `minutes` or `at` (default: `minutes`)
 - `REFRESH_INTERVAL_SECONDS`: Update interval in seconds (default: `30`)
-- `CONFIG_FILE`: Path to TOML configuration file (default: `config.example.toml`)
-- `STOPS_CONFIG`: JSON array of stop configurations (fallback if TOML not available)
 
-### Stop Configuration
-
-Stops can be configured either via TOML file (recommended) or JSON environment variable. The TOML file provides a cleaner structure for complex configurations with multiple stops and direction mappings.
-
-**Example TOML Configuration (config.toml):**
+### TOML Configuration Example
 
 ```toml
 [display]
@@ -147,24 +122,6 @@ max_departures_per_stop = 30
 "->Stadt" = ["Gondrellplatz", "Marienplatz"]
 ```
 
-**Example JSON Configuration (for STOPS_CONFIG env var):**
-
-```json
-[
-  {
-    "station_id": "de:09162:100",
-    "station_name": "Giesing",
-    "direction_mappings": {
-      "->Balanstr.": ["Messestadt", "Messestadt West"],
-      "->Klinikum": ["Klinikum", "Klinikum Großhadern"],
-      "->Tegernseer": ["Ackermannbogen", "Tegernseer"],
-      "->Stadt": ["Gondrellplatz", "Marienplatz"]
-    },
-    "max_departures_per_stop": 30
-  }
-]
-```
-
 **How Direction Mappings Work:**
 
 - **Keys** (e.g., "->Giesing") are user-defined direction names that appear as headers in the UI
@@ -173,64 +130,31 @@ max_departures_per_stop = 30
 - Routes whose destinations don't match any pattern appear in an "Other" group
 - You can group multiple different destinations under one direction name (e.g., all routes going toward Giesing area)
 
-**Finding Station IDs and Configuring Stops:**
+**Finding Station IDs:**
 
-📖 **See [docs/FINDING_STOP_IDS.md](docs/FINDING_STOP_IDS.md) for a complete guide on finding stop IDs.**
-
-Quick start - use the `mvg-config` CLI tool to search for stations, view details, and generate configuration:
+Use the `list_routes.sh` script to list routes for a station:
 
 ```bash
-# Search for stations by name
-mvg-config search "Giesing"
-
-# Show detailed information about a station
-mvg-config info de:09162:100
-
-# List all available routes and destinations for a station (by ID)
-mvg-config routes de:09162:100
-
-# Search for stations by name and show routes for each match
-mvg-config routes "Giesing"
-
-# Generate a TOML config snippet (ready to paste into config.toml)
-mvg-config generate de:09162:100 "Giesing"
-```
-
-The `generate` command creates a starter configuration with suggested direction mappings based on available destinations. You can then customize the direction names and groupings in your TOML file.
-
-**Alternative: Using the helper scripts:**
-
-```bash
-# Find station ID
-python scripts/find_station.py "Giesing" München
-
-# List routes for a station (by name or ID)
+# List routes for a station by name
 ./scripts/list_routes.sh "Giesing"
+
+# Or by station ID
 ./scripts/list_routes.sh de:09162:100
 ```
 
-**Or using the MVG API directly:**
-
-```python
-from mvg import MvgApi
-
-station = MvgApi.station("Giesing, München")
-print(station["id"])  # e.g., "de:09162:100"
-```
+📖 **See [docs/FINDING_STOP_IDS.md](docs/FINDING_STOP_IDS.md) for more details.**
 
 ## Usage
 
 ### Development
 
 ```bash
-# Set environment variables
-export STOPS_CONFIG='[{"station_id": "de:09162:100", "station_name": "Giesing", "direction_mappings": {"->Balanstr.": ["Messestadt"]}}]'
+# Run with default config (config.example.toml)
+./scripts/start.sh
 
-# Run the application
-python -m mvg_departures.main
-
-# Or using the entry point
-mvg-departures
+# Or with custom config
+export CONFIG_FILE=config.toml
+./scripts/start.sh
 ```
 
 Access the web UI at `http://localhost:8000`
@@ -241,16 +165,17 @@ Access the web UI at `http://localhost:8000`
 
 ```bash
 # Build the image
-docker build -t mvg-departures .
+docker build -t mvg-departures-dashboard .
 
 # Run with docker-compose
 docker-compose up -d
 
-# Or run directly
+# Or run directly with custom config
 docker run -d \
   -p 8000:8000 \
-  -e STOPS_CONFIG='[{"station_id": "de:09162:100", "station_name": "Giesing", "direction_mappings": {"->Balanstr.": ["Messestadt"]}}]' \
-  mvg-departures
+  -v /path/to/config.toml:/app/config.toml \
+  -e CONFIG_FILE=/app/config.toml \
+  mvg-departures-dashboard
 ```
 
 #### Init.d Service
@@ -260,10 +185,11 @@ docker run -d \
 sudo ./scripts/install-service.sh
 
 # Configure stops - copy and edit the TOML config file
+# (The install script will show you the exact paths)
 sudo cp /opt/mvg-departures/config.example.toml /opt/mvg-departures/config.toml
 sudo nano /opt/mvg-departures/config.toml
 
-# Or configure via environment variables in .env
+# Set CONFIG_FILE in .env if using a different path
 sudo nano /opt/mvg-departures/.env
 
 # Start the service

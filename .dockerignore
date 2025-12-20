@@ -15,7 +15,6 @@ env
 .git
 .gitignore
 .env
-*.md
 LICENSE
 tests
 .pytest_cache

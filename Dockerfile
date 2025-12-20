@@ -10,16 +10,18 @@ RUN apt-get update && apt-get install -y \
 # Copy dependency files
 COPY pyproject.toml ./
 
-# Create minimal README.md for build (hatchling requires it, but .dockerignore excludes *.md)
-RUN echo "# my-mvg-departures" > README.md
 
 # Install uv for faster dependency management
-RUN pip install --no-cache-dir uv && \
-    uv pip install --system -e .
+RUN pip install --no-cache-dir uv
 
-# Copy application code
+# Copy application code (needed for editable install)
 COPY src/ ./src/
+COPY README.md ./README.md
 
+# Install dependencies in editable mode
+RUN uv pip install --system -e .
+
+# Copy config file
 COPY config.example.toml ./config.example.toml
 
 # Create non-root user
