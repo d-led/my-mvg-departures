@@ -1,0 +1,70 @@
+# Optimized multi-stage build with pre-compiled wheels
+# This version pre-builds all wheels in the builder stage
+# Stage 1: Build stage - compile everything
+FROM python:3.12-slim AS builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN pip install --no-cache-dir uv
+
+# Copy dependency files
+COPY pyproject.toml README.md ./
+
+# Copy application code
+COPY src/ ./src/
+
+# Install the package and all dependencies (non-editable for production)
+# This installs the package properly so it can be found in runtime
+RUN uv pip install --system --no-cache .
+
+# Stage 2: Runtime stage - minimal Python slim
+FROM python:3.12-slim AS runtime
+
+# Install only essential runtime libraries
+# Most Python packages use wheels, but some C extensions need libc
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libc6 \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean \
+    && rm -rf /tmp/* /var/tmp/*
+
+WORKDIR /app
+
+# Copy only the installed packages (not build tools)
+# The package is already installed in site-packages from the builder stage
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy only config file (package code is already in site-packages)
+COPY config.example.toml ./config.example.toml
+
+# Create non-root user with minimal permissions
+RUN groupadd -r -g 1000 appuser && \
+    useradd -r -u 1000 -g appuser -d /app -s /usr/sbin/nologin appuser && \
+    chown -R appuser:appuser /app && \
+    # Remove any unnecessary files
+    find /app -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true && \
+    find /app -name "*.pyc" -delete && \
+    find /app -name "*.pyo" -delete
+
+# Switch to non-root user
+USER appuser:appuser
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/')" || exit 1
+
+# Run the application
+CMD ["python", "-m", "mvg_departures.main"]
+

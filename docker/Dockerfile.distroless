@@ -1,0 +1,61 @@
+# Multi-stage build using Google Distroless for maximum security
+# Distroless images contain only your application and its runtime dependencies
+# No shell, package managers, or other programs that could be exploited
+# Stage 1: Build stage
+FROM python:3.12-slim AS builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv
+RUN pip install --no-cache-dir uv
+
+# Copy dependency files
+COPY pyproject.toml README.md ./
+
+# Copy application code (will be copied to runtime with correct ownership)
+COPY src/ ./src/
+COPY config.example.toml ./
+
+# Install dependencies
+RUN uv pip install --system --no-cache -e .
+
+# Stage 2: Runtime stage - Distroless Python image
+# Note: Distroless doesn't have Python 3.12 yet, using 3.11 as closest
+# For 3.12, you may need to use python:3.12-slim or wait for distroless update
+FROM gcr.io/distroless/python3-debian12:latest AS runtime
+
+WORKDIR /app
+
+# Copy Python environment from builder
+# Distroless uses /usr/local for Python
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy application code with non-root ownership
+# Distroless default non-root user is uid 65532, gid 65532
+# We must set ownership using --chown since distroless has no shell/tools for chown
+COPY --chown=65532:65532 src/ ./src/
+COPY --chown=65532:65532 README.md ./
+COPY --chown=65532:65532 config.example.toml ./config.example.toml
+
+# Explicitly set non-root user (distroless default: uid 65532)
+# This is REQUIRED - distroless does NOT run as non-root by default
+USER 65532:65532
+
+# Expose port
+EXPOSE 8000
+
+# Health check (distroless has minimal tools, so we use Python)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD ["/usr/local/bin/python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+
+# Run the application
+# Distroless requires full path to executable
+CMD ["/usr/local/bin/python3", "-m", "mvg_departures.main"]
+

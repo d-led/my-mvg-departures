@@ -164,10 +164,10 @@ Access the web UI at `http://localhost:8000`
 #### Docker
 
 ```bash
-# Build the image
-docker build -t mvg-departures-dashboard .
+# Build the image (uses optimized Dockerfile for minimal RAM usage)
+docker build -f docker/Dockerfile.optimized -t mvg-departures-dashboard .
 
-# Run with docker-compose
+# Run with docker-compose (uses optimized Dockerfile)
 docker-compose up
 
 # Or run directly with custom config
@@ -177,6 +177,24 @@ docker run -d \
   -e CONFIG_FILE=/app/config.toml \
   mvg-departures-dashboard
 ```
+
+#### Fly.io Deployment
+
+For minimal RAM usage on Fly.io, use the optimized Dockerfile:
+
+```bash
+# Copy example config
+cp fly.toml.example fly.toml
+
+# Deploy (uses docker/Dockerfile.optimized by default)
+fly deploy
+```
+
+The optimized Dockerfile provides:
+- Pre-compiled wheels (faster startup, less memory)
+- Removed Python cache files (smaller image)
+- Minimal runtime dependencies
+- Recommended for production deployments with memory constraints
 
 #### Init.d Service
 

@@ -14,7 +14,9 @@ ENV
 env
 .git
 .gitignore
+.gitattributes
 .env
+.env.*
 LICENSE
 tests
 .pytest_cache
@@ -24,5 +26,27 @@ htmlcov
 .vscode
 *.log
 var
-
-
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+# Documentation
+docs
+*.md
+!README.md
+# CI/CD
+.github
+.gitlab-ci.yml
+# Docker files (don't copy into image)
+docker/
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+# Development files
+scripts
+*.sh
+!scripts/start.sh
+# Config examples (we copy config.example.toml explicitly)
+*.config.toml
+!config.example.toml

@@ -1,0 +1,57 @@
+# Multi-stage build using Red Hat Universal Base Image (UBI)
+# UBI provides enterprise-grade security and is freely redistributable
+# Stage 1: Build stage with UBI
+FROM registry.access.redhat.com/ubi9/python-312:latest AS builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN microdnf install -y --nodocs \
+    gcc \
+    gcc-c++ \
+    && microdnf clean all
+
+# Install uv for faster dependency management
+RUN pip install --no-cache-dir uv
+
+# Copy dependency files
+COPY pyproject.toml README.md ./
+
+# Copy application code
+COPY src/ ./src/
+
+# Install dependencies
+RUN uv pip install --system --no-cache -e .
+
+# Stage 2: Runtime stage - UBI Minimal (smallest UBI image)
+FROM registry.access.redhat.com/ubi9/python-312:latest AS runtime
+
+WORKDIR /app
+
+# Copy Python environment from builder
+COPY --from=builder /opt/app-root/lib/python3.12/site-packages /opt/app-root/lib/python3.12/site-packages
+COPY --from=builder /opt/app-root/bin /opt/app-root/bin
+
+# Copy application code
+COPY src/ ./src/
+COPY README.md ./
+COPY config.example.toml ./config.example.toml
+
+# UBI images already run as non-root user (default: 1001)
+# But we'll ensure proper ownership
+RUN chown -R 1001:0 /app && \
+    chmod -R g+w /app
+
+# Switch to non-root user (UBI default: uid 1001, gid 0)
+USER 1001:0
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/')" || exit 1
+
+# Run the application
+CMD ["python", "-m", "mvg_departures.main"]
+
