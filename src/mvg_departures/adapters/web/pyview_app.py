@@ -138,16 +138,13 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
         # Return only the content that goes inside the body
         # PyView's root template will wrap this in the full HTML structure
-        html_content = (
-            """
+        html_content = """
     <!-- Minimal DaisyUI for theme support only -->
     <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         // Apply theme based on configuration
-        const themeConfig = '"""
-            + theme
-            + """';
+        const themeConfig = '{{ theme }}';
         if (themeConfig === 'light') {
             document.documentElement.setAttribute('data-theme', 'light');
             localStorage.theme = 'light';
@@ -223,9 +220,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         .route-number {
             flex: 0 0 5rem;
             font-weight: 700;
-            font-size: """
-            + self.config.font_size_route_number
-            + """;
+            font-size: {{ font_size_route_number }};
             text-align: left;
             padding: 0 0.75rem 0 0;
             white-space: nowrap;
@@ -244,9 +239,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             white-space: nowrap;
             padding: 0 0.75rem;
             min-width: 0;
-            font-size: """
-            + self.config.font_size_destination
-            + """;
+            font-size: {{ font_size_destination }};
             font-weight: 500;
             text-align: left;
             scrollbar-width: none;
@@ -262,9 +255,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         }
         .platform {
             flex: 0 0 auto;
-            font-size: """
-            + self.config.font_size_platform
-            + """;
+            font-size: {{ font_size_platform }};
             font-weight: 400;
             text-align: left;
             padding: 0 0.75rem;
@@ -282,9 +273,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             flex: 0 0 auto;
             text-align: right;
             font-weight: 600;
-            font-size: """
-            + self.config.font_size_time
-            + """;
+            font-size: {{ font_size_time }};
             padding: 0 0.75rem 0 0.75rem;
             margin-right: 0;
             white-space: nowrap;
@@ -299,9 +288,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         .no-departures {
             width: 100%;
             text-align: center;
-            font-size: """
-            + self.config.font_size_no_departures
-            + """;
+            font-size: {{ font_size_no_departures }};
             color: #9ca3af;
             padding: 2rem 0;
             font-style: italic;
@@ -313,9 +300,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             color: #6b7280;
         }
         .direction-header {
-            font-size: """
-            + self.config.font_size_direction_header
-            + """;
+            font-size: {{ font_size_direction_header }};
             font-weight: 700;
             margin: 0.5rem 0 0.25rem 0;
             padding: 0 0.75rem 0.25rem 0.75rem;
@@ -351,9 +336,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             line-height: 1; /* Match header text line height */
         }
         [data-theme="light"] .direction-header {
-            background-color: """
-            + banner_color
-            + """;
+            background-color: {{ banner_color }};
             color: #ffffff;
             border-bottom-color: rgba(255, 255, 255, 0.25);
         }
@@ -396,9 +379,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             right: 0.5rem;
             padding: 0.6rem 0.8rem;
             border-radius: 0.5rem;
-            font-size: """
-            + self.config.font_size_pagination_indicator
-            + """;
+            font-size: {{ font_size_pagination_indicator }};
             font-weight: 600;
             z-index: 10;
             display: flex;
@@ -406,9 +387,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             gap: 0.75rem;
         }
         .countdown-text {
-            font-size: """
-            + self.config.font_size_countdown_text
-            + """;
+            font-size: {{ font_size_countdown_text }};
             font-weight: 500;
             min-width: 2.5rem;
             text-align: center;
@@ -447,9 +426,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             overflow: visible;
         }
         .stop-header {
-            font-size: """
-            + self.config.font_size_stop_header
-            + """;
+            font-size: {{ font_size_stop_header }};
             font-weight: 700;
             margin: 0.5rem 0.5rem 0.25rem 0.5rem;
             padding: 0;
@@ -476,9 +453,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         }
         .delay-amount {
             color: #dc2626;
-            font-size: """
-            + self.config.font_size_delay_amount
-            + """;
+            font-size: {{ font_size_delay_amount }};
             font-weight: 500;
             margin-left: 0.5rem;
         }
@@ -554,9 +529,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             display: flex;
             align-items: center;
             gap: 0.25rem;
-            font-size: """
-            + self.config.font_size_status_header
-            + """;
+            font-size: {{ font_size_status_header }};
             font-weight: 500;
         }
         #datetime-display {
@@ -779,16 +752,46 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         <div class="header-section">
             <h1>MVG Departures</h1>
             <div class="last-update" aria-live="polite" aria-atomic="true">
-                Last updated: """
-            + self._format_update_time(last_update)
-            + """
+                Last updated: {{ update_time }}
             </div>
         </div>
 
         <div id="departures" role="region" aria-label="Departure information" aria-live="polite" aria-atomic="false">
-            """
-            + self._render_departures(direction_groups)
-            + """
+            {% if not has_departures %}
+            <div role="status" aria-live="polite" style="text-align: center; padding: 4rem 2rem; opacity: 0.7; font-size: {{ font_size_no_departures }}; font-weight: 500;">No departures available</div>
+            {% else %}
+            {% for group in groups_with_departures %}
+            <div class="direction-group">
+                <h2 class="direction-header" role="heading" aria-level="2">
+                    {% if group.is_first_header %}
+                    <span class="direction-header-text">{{ group.header }}</span>
+                    <div class="direction-header-time status-header-item" id="datetime-display" aria-label="Current date and time"></div>
+                    {% else %}
+                    {{ group.header }}
+                    {% endif %}
+                </h2>
+                <ul role="list" aria-label="Departures for {{ group.header }}">
+                    {% for departure in group.departures %}
+                    <li class="departure-row{% if departure.cancelled %} cancelled{% endif %}" role="listitem" aria-label="{{ departure.aria_label }}">
+                        <div class="route-number" aria-hidden="true">{{ departure.line }}</div>
+                        <div class="destination" aria-hidden="true">{{ departure.destination }}</div>
+                        <div class="platform" aria-hidden="true">{% if departure.platform %}{{ departure.platform }}{% endif %}</div>
+                        <div class="time{% if departure.has_delay %} delay{% endif %}{% if departure.is_realtime %} realtime{% endif %}" aria-hidden="true">{{ departure.time_str }}{% if departure.delay_display %}{{ departure.delay_display }}{% endif %}</div>
+                        <span class="sr-only">{{ departure.aria_label }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endfor %}
+            {% for stop_name in stops_without_departures %}
+            <div class="direction-group">
+                <h2 class="direction-header" role="heading" aria-level="2">{{ stop_name }}</h2>
+                <div class="departure-row" role="status" aria-live="polite">
+                    <div class="no-departures">No departures</div>
+                </div>
+            </div>
+            {% endfor %}
+            {% endif %}
         </div>
 
         <!-- Floating status box at bottom center -->
@@ -824,9 +827,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                     <line x1="15" y1="9" x2="9" y2="15" id="api-error-line2" style="display: none;"></line>
                 </svg>
             </div>
-            <div class="status-floating-box-item refresh-countdown" role="img" aria-label="Refresh countdown timer" data-last-update='"""
-            + (str(int(last_update.timestamp() * 1000)) if last_update is not None else "0")
-            + """'>
+            <div class="status-floating-box-item refresh-countdown" role="img" aria-label="Refresh countdown timer" data-last-update='{{ last_update_timestamp }}'>
                 <svg viewBox="0 0 12 12" width="100%" height="100%" aria-hidden="true">
                     <circle cx="6" cy="6" r="5" class="background"></circle>
                     <circle cx="6" cy="6" r="5" class="progress" transform="rotate(-90 6 6)"></circle>
@@ -845,21 +846,11 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
     <script>
         // Pagination configuration
-        const PAGINATION_ENABLED = """
-            + str(self.config.pagination_enabled).lower()
-            + """;
-        const DEPARTURES_PER_PAGE = """
-            + str(self.config.departures_per_page)
-            + """;
-        const PAGE_ROTATION_SECONDS = """
-            + str(self.config.page_rotation_seconds)
-            + """;
-        const REFRESH_INTERVAL_SECONDS = """
-            + str(self.config.refresh_interval_seconds)
-            + """;
-        const INITIAL_API_STATUS = '"""
-            + api_status
-            + """';
+        const PAGINATION_ENABLED = {{ pagination_enabled }};
+        const DEPARTURES_PER_PAGE = {{ departures_per_page }};
+        const PAGE_ROTATION_SECONDS = {{ page_rotation_seconds }};
+        const REFRESH_INTERVAL_SECONDS = {{ refresh_interval_seconds }};
+        const INITIAL_API_STATUS = '{{ api_status }}';
 
         // Date/time display
         function updateDateTime() {
@@ -1469,7 +1460,36 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 </body>
 </html>
         """
-        )
+
+        # Prepare template data
+        template_data = self._prepare_template_data(direction_groups)
+
+        # Merge template data with config values for template
+        template_assigns = {
+            **template_data,
+            "theme": theme,
+            "banner_color": banner_color,
+            "font_size_route_number": self.config.font_size_route_number,
+            "font_size_destination": self.config.font_size_destination,
+            "font_size_platform": self.config.font_size_platform,
+            "font_size_time": self.config.font_size_time,
+            "font_size_no_departures": self.config.font_size_no_departures,
+            "font_size_direction_header": self.config.font_size_direction_header,
+            "font_size_pagination_indicator": self.config.font_size_pagination_indicator,
+            "font_size_countdown_text": self.config.font_size_countdown_text,
+            "font_size_status_header": self.config.font_size_status_header,
+            "font_size_delay_amount": self.config.font_size_delay_amount,
+            "font_size_stop_header": self.config.font_size_stop_header,
+            "pagination_enabled": str(self.config.pagination_enabled).lower(),
+            "departures_per_page": str(self.config.departures_per_page),
+            "page_rotation_seconds": str(self.config.page_rotation_seconds),
+            "refresh_interval_seconds": str(self.config.refresh_interval_seconds),
+            "api_status": api_status,
+            "last_update_timestamp": (
+                str(int(last_update.timestamp() * 1000)) if last_update is not None else "0"
+            ),
+            "update_time": self._format_update_time(last_update),
+        }
 
         # Use pyview's LiveTemplate system properly
         # Create an ibis Template from the HTML string, wrap in LiveTemplate, then return LiveRender
@@ -1481,142 +1501,113 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         # Wrap in LiveTemplate
         live_template = LiveTemplate(ibis_template)
         # Return LiveRender which provides text() and tree() methods
-        return LiveRender(live_template, assigns, meta)  # type: ignore[no-any-return]
+        return LiveRender(live_template, template_assigns, meta)  # type: ignore[no-any-return]
 
-    def _render_departures(self, direction_groups: list[tuple[str, str, list[Departure]]]) -> str:
-        """Render departures grouped by direction, sorted chronologically within each group.
-        Stops without departures are shown at the bottom."""
-        config = self.config
+    def _prepare_template_data(
+        self, direction_groups: list[tuple[str, str, list[Departure]]]
+    ) -> dict[str, Any]:
+        """Prepare data structure for template rendering."""
         stop_configs = self.stop_configs
 
-        if not direction_groups:
-            return f'<div role="status" aria-live="polite" style="text-align: center; padding: 4rem 2rem; opacity: 0.7; font-size: {config.font_size_no_departures_available}; font-weight: 500;">No departures available</div>'
-
-        # Separate groups with departures from stops that have no departures at all
-        groups_with_departures: list[tuple[str, str, list[Departure]]] = []
+        # Separate groups with departures from stops that have no departures
+        groups_with_departures: list[dict[str, Any]] = []
         stops_with_departures: set[str] = set()
+        current_stop: str | None = None
 
         for stop_name, direction_name, departures in direction_groups:
             if departures:
-                groups_with_departures.append((stop_name, direction_name, departures))
+                direction_clean = direction_name.lstrip("->")
+                combined_header = f"{stop_name} → {direction_clean}"
+
+                # Check if this is a new stop
+                is_new_stop = stop_name != current_stop
+                if is_new_stop:
+                    current_stop = stop_name
+
+                # Prepare departures for this group
+                sorted_departures = sorted(departures, key=lambda d: d.time)
+                departure_data = []
+                for departure in sorted_departures:
+                    time_str = self._format_departure_time(departure)
+
+                    # Format platform
+                    platform_display = (
+                        str(departure.platform) if departure.platform is not None else None
+                    )
+                    platform_aria = f", Platform {platform_display}" if platform_display else ""
+
+                    # Format delay
+                    delay_display = None
+                    delay_aria = ""
+                    has_delay = departure.delay_seconds is not None and departure.delay_seconds > 60
+                    if has_delay and departure.delay_seconds is not None:
+                        delay_minutes = departure.delay_seconds // 60
+                        delay_display = f'<span class="delay-amount" aria-hidden="true">{delay_minutes}m 😞</span>'
+                        delay_aria = f", delayed by {delay_minutes} minutes"
+
+                    # Build ARIA label
+                    status_parts = []
+                    if departure.is_cancelled:
+                        status_parts.append("cancelled")
+                    if departure.is_realtime:
+                        status_parts.append("real-time")
+                    status_text = ", ".join(status_parts) if status_parts else "scheduled"
+
+                    aria_label = (
+                        f"Line {departure.line} to {departure.destination}"
+                        f"{platform_aria}"
+                        f", departing in {time_str}"
+                        f"{delay_aria}"
+                        f", {status_text}"
+                    )
+
+                    departure_data.append(
+                        {
+                            "line": departure.line,
+                            "destination": departure.destination,
+                            "platform": platform_display,
+                            "time_str": time_str,
+                            "cancelled": departure.is_cancelled,
+                            "has_delay": has_delay,
+                            "delay_display": delay_display,
+                            "is_realtime": departure.is_realtime,
+                            "aria_label": aria_label,
+                        }
+                    )
+
+                groups_with_departures.append(
+                    {
+                        "stop_name": stop_name,
+                        "header": combined_header,
+                        "departures": departure_data,
+                        "is_new_stop": is_new_stop,
+                    }
+                )
                 stops_with_departures.add(stop_name)
 
-        # Find stops that are configured but have no departures at all
+        # Mark first header and last group
+        if groups_with_departures:
+            groups_with_departures[0]["is_first_header"] = True
+            groups_with_departures[0]["is_first_group"] = True
+            groups_with_departures[-1]["is_last_group"] = True
+            for i in range(1, len(groups_with_departures) - 1):
+                groups_with_departures[i]["is_first_header"] = False
+                groups_with_departures[i]["is_first_group"] = False
+                groups_with_departures[i]["is_last_group"] = False
+            if len(groups_with_departures) > 1:
+                groups_with_departures[-1]["is_first_header"] = False
+                groups_with_departures[-1]["is_first_group"] = False
+
+        # Find stops without departures
         configured_stops = {stop_config.station_name for stop_config in stop_configs}
-        stops_without_departures = configured_stops - stops_with_departures
+        stops_without_departures = sorted(configured_stops - stops_with_departures)
 
-        html_parts: list[str] = []
-        current_stop = None
-        is_first_header = True
-
-        # First, render all groups with departures
-        for stop_name, direction_name, departures in groups_with_departures:
-            # Remove "->" prefix from direction name if present
-            direction_clean = direction_name.lstrip("->")
-
-            # Combine stop name and direction into one header
-            combined_header = f"{stop_name} → {direction_clean}"
-
-            if stop_name != current_stop:
-                if current_stop is not None:
-                    html_parts.append("</ul></div>")  # Close list and stop-section
-                html_parts.append(
-                    f'<div class="stop-section" role="region" aria-label="Departures from {self._escape_html(stop_name)}">'
-                )
-                current_stop = stop_name
-
-            # Status icons are now in floating box, only show time in header
-            if is_first_header:
-                status_html = """
-                <div class="direction-header-time status-header-item" id="datetime-display" aria-label="Current date and time"></div>
-                """
-                html_parts.append(
-                    f'<div class="direction-group"><h2 class="direction-header" role="heading" aria-level="2"><span class="direction-header-text">{self._escape_html(combined_header)}</span>{status_html}</h2><ul role="list" aria-label="Departures for {self._escape_html(combined_header)}">'
-                )
-                is_first_header = False
-            else:
-                html_parts.append(
-                    f'<div class="direction-group"><h2 class="direction-header" role="heading" aria-level="2">{self._escape_html(combined_header)}</h2><ul role="list" aria-label="Departures for {self._escape_html(combined_header)}">'
-                )
-
-            # Sort by arrival time (chronological order within this direction group)
-            sorted_departures = sorted(departures, key=lambda d: d.time)
-            for departure in sorted_departures:
-                html_parts.append(self._render_departure(departure))
-
-            html_parts.append("</ul></div>")  # Close list and direction-group
-
-        if current_stop is not None:
-            html_parts.append("</div>")  # Close stop-section
-
-        # At the bottom, show stops without departures - each with its own banner
-        for stop_name in sorted(stops_without_departures):
-            html_parts.append(
-                f'<div class="stop-section" role="region" aria-label="Departures from {self._escape_html(stop_name)}">'
-            )
-            html_parts.append(
-                f'<div class="direction-group"><h2 class="direction-header" role="heading" aria-level="2">{self._escape_html(stop_name)}</h2>'
-            )
-            html_parts.append(
-                '<div class="departure-row" role="status" aria-live="polite"><div class="no-departures">No departures</div></div>'
-            )
-            html_parts.append("</div>")  # Close direction-group
-            html_parts.append("</div>")  # Close stop-section
-
-        return "".join(html_parts)
-
-    def _render_departure(self, departure: Departure) -> str:
-        """Render a single departure as HTML."""
-        time_str: str = self._format_departure_time(departure)
-        cancelled_class = " cancelled" if departure.is_cancelled else ""
-        delay_class = " delay" if departure.delay_seconds and departure.delay_seconds > 60 else ""
-        realtime_class = " realtime" if departure.is_realtime else ""
-
-        # Format route display: just show line number (no transport type)
-        route_display = departure.line
-
-        # Format platform display
-        platform_display = ""
-        platform_aria = ""
-        if departure.platform is not None:
-            platform_display = str(departure.platform)
-            platform_aria = f", Platform {platform_display}"
-
-        # Format delay display and ARIA text
-        delay_display = ""
-        delay_aria = ""
-        if departure.delay_seconds and departure.delay_seconds > 60:
-            delay_minutes = departure.delay_seconds // 60
-            delay_display = (
-                f'<span class="delay-amount" aria-hidden="true">{delay_minutes}m 😞</span>'
-            )
-            delay_aria = f", delayed by {delay_minutes} minutes"
-
-        # Build ARIA label with all departure information
-        status_parts = []
-        if departure.is_cancelled:
-            status_parts.append("cancelled")
-        if departure.is_realtime:
-            status_parts.append("real-time")
-        status_text = ", ".join(status_parts) if status_parts else "scheduled"
-
-        aria_label = (
-            f"Line {route_display} to {departure.destination}"
-            f"{platform_aria}"
-            f", departing in {time_str}"
-            f"{delay_aria}"
-            f", {status_text}"
-        )
-
-        return f"""
-        <li class="departure-row{cancelled_class}" role="listitem" aria-label="{self._escape_html(aria_label)}">
-            <div class="route-number" aria-hidden="true">{self._escape_html(route_display)}</div>
-            <div class="destination" aria-hidden="true">{self._escape_html(departure.destination)}</div>
-            <div class="platform" aria-hidden="true">{self._escape_html(platform_display)}</div>
-            <div class="time{delay_class}{realtime_class}" aria-hidden="true">{time_str}{delay_display}</div>
-            <span class="sr-only">{self._escape_html(aria_label)}</span>
-        </li>
-        """
+        return {
+            "groups_with_departures": groups_with_departures,
+            "stops_without_departures": stops_without_departures,
+            "has_departures": len(groups_with_departures) > 0,
+            "font_size_no_departures": self.config.font_size_no_departures_available,
+        }
 
     def _format_departure_time(self, departure: Departure) -> str:
         """Format departure time according to configuration."""
@@ -1639,16 +1630,6 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         if not update_time:
             return "Never"
         return update_time.strftime("%H:%M:%S")
-
-    def _escape_html(self, text: str) -> str:
-        """Escape HTML special characters."""
-        return (
-            text.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace('"', "&quot;")
-            .replace("'", "&#x27;")
-        )
 
 
 class PyViewWebAdapter(DisplayAdapter):
