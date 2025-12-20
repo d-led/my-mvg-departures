@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from mvg import MvgApi, TransportType  # type: ignore[import-untyped]
+from mvg import MvgApi, TransportType
 
 from mvg_departures.domain.models import Departure, Station
 from mvg_departures.domain.ports import DepartureRepository, StationRepository

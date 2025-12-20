@@ -163,7 +163,7 @@ jobs:
 
       - name: Build package
         run: |
-          python -m build
+          uv run python -m build
 
       - name: Check built package
         run: |

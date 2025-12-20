@@ -6,7 +6,7 @@ from typing import Any
 try:
     import tomllib  # Python 3.11+
 except ImportError:
-    import tomli as tomllib  # type: ignore[import-untyped,no-redef]  # Fallback for older Python
+    import tomli as tomllib  # type: ignore[no-redef]  # Fallback for older Python
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict

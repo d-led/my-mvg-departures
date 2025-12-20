@@ -6,8 +6,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from pyview import ConnectedLiveViewSocket, LiveView, LiveViewSocket, is_connected  # type: ignore[import-untyped]
-from pyview.events import InfoEvent  # type: ignore[import-untyped]
+from pyview import ConnectedLiveViewSocket, LiveView, LiveViewSocket, is_connected
+from pyview.events import InfoEvent
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +47,8 @@ async def _api_poller(
     This runs as a separate background task, completely independent of LiveView instances.
     It polls the API periodically and broadcasts updates to all connected sockets.
     """
-    from pyview.live_socket import pub_sub_hub  # type: ignore[import-untyped]
-    from pyview.vendor.flet.pubsub import PubSub  # type: ignore[import-untyped]
+    from pyview.live_socket import pub_sub_hub
+    from pyview.vendor.flet.pubsub import PubSub
 
     # Create PubSub instance once and reuse it
     pubsub = PubSub(pub_sub_hub, _departures_broadcast_topic)
@@ -194,7 +194,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         # Subscribe to broadcast topic for receiving updates
         if is_connected(socket):
             try:
-                await socket.subscribe(_departures_broadcast_topic)  # type: ignore[attr-defined]
+                await socket.subscribe(_departures_broadcast_topic)
                 logger.info(
                     f"Successfully subscribed socket to broadcast topic: {_departures_broadcast_topic}"
                 )
@@ -239,16 +239,16 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         if payload == "update":
             # Update the existing context object's fields directly
             # Pyview detects field changes and automatically triggers re-render
-            socket.context.direction_groups = _departures_state.direction_groups  # type: ignore[attr-defined]
-            socket.context.last_update = _departures_state.last_update  # type: ignore[attr-defined]
-            socket.context.api_status = _departures_state.api_status  # type: ignore[attr-defined]
+            socket.context.direction_groups = _departures_state.direction_groups
+            socket.context.last_update = _departures_state.last_update
+            socket.context.api_status = _departures_state.api_status
             logger.info(
                 f"Updated context from pubsub message at {datetime.now()}, groups: {len(_departures_state.direction_groups)}"
             )
         else:
             logger.debug(f"Ignoring pubsub message with payload: {payload}")
 
-    async def render(self, assigns: DeparturesState | dict, meta: Any) -> str:  # type: ignore[no-untyped-def]
+    async def render(self, assigns: DeparturesState | dict, meta: Any) -> str:
         """Render the HTML template."""
         logger.debug(f"Render called at {datetime.now()}, assigns type: {type(assigns)}")
 
@@ -1558,16 +1558,16 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
         # Use pyview's LiveTemplate system properly
         # Create an ibis Template from the HTML string, wrap in LiveTemplate, then return LiveRender
-        from pyview.template.live_template import LiveTemplate, LiveRender  # type: ignore[import-untyped]
-        from pyview.vendor.ibis import Template as IbisTemplate  # type: ignore[import-untyped]
-        from pyview.meta import PyViewMeta  # type: ignore[import-untyped]
+        from pyview.template.live_template import LiveTemplate, LiveRender
+        from pyview.vendor.ibis import Template as IbisTemplate
+        from pyview.meta import PyViewMeta
 
         # Create ibis template from HTML string
         ibis_template = IbisTemplate(html_content, template_id="departures")
         # Wrap in LiveTemplate
         live_template = LiveTemplate(ibis_template)
         # Return LiveRender which provides text() and tree() methods
-        return LiveRender(live_template, assigns, meta)
+        return LiveRender(live_template, assigns, meta)  # type: ignore[no-any-return]
 
     def _render_departures(self, direction_groups: list[tuple[str, str, list[Departure]]]) -> str:
         """Render departures grouped by direction, sorted chronologically within each group.
@@ -1753,7 +1753,7 @@ class PyViewWebAdapter(DisplayAdapter):
         self.config = config
         self.session = session
         self._update_task: asyncio.Task | None = None
-        self._server: Any | None = None  # type: ignore[assignment]
+        self._server: Any | None = None
 
     async def display_departures(self, direction_groups: list[tuple[str, list[Departure]]]) -> None:
         """Display grouped departures (not used directly, handled by LiveView)."""
@@ -1763,14 +1763,14 @@ class PyViewWebAdapter(DisplayAdapter):
     async def start(self) -> None:
         """Start the web server."""
         import uvicorn
-        from pyview import PyView  # type: ignore[import-untyped]
+        from pyview import PyView
 
         # Store dependencies in adapter for the LiveView class to access
         # Create a LiveView class that accesses these dependencies
         adapter = self
 
         class ConfiguredDeparturesLiveView(DeparturesLiveView):
-            def __init__(self):
+            def __init__(self) -> None:
                 super().__init__(
                     adapter.grouping_service,
                     adapter.stop_configs,
@@ -1786,7 +1786,7 @@ class PyViewWebAdapter(DisplayAdapter):
         # Start the API poller immediately when server starts
         # This runs independently of client connections - API calls happen regardless
         # Do initial API call immediately before starting the server
-        async def start_api_poller():
+        async def start_api_poller() -> None:
             global _api_poller_task
             if _api_poller_task is None or _api_poller_task.done():
                 # Do initial fetch immediately (before starting periodic polling)
@@ -1833,11 +1833,11 @@ class PyViewWebAdapter(DisplayAdapter):
         from pathlib import Path
         import importlib.resources
 
-        async def static_app_js(request):
+        async def static_app_js(request: Any) -> Any:
             """Serve pyview's client JavaScript."""
             try:
                 # Get pyview package path
-                import pyview  # type: ignore[import-untyped]
+                import pyview
 
                 pyview_path = Path(pyview.__file__).parent
                 client_js_path = pyview_path / "static" / "assets" / "app.js"
