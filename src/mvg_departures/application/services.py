@@ -62,12 +62,34 @@ class DepartureGroupingService:
         # This ensures "<1m" (0-59 seconds) sorts before "1m" (60-119 seconds), etc.
         for direction_name in direction_groups:
             direction_groups[direction_name].sort(key=lambda d: d.time)
-            # Limit each direction group to max_departures_per_stop
+            # Limit each route within the direction group to max_departures_per_route
+            max_per_route = stop_config.max_departures_per_route or 2
+            route_counts: dict[str, int] = {}
+            filtered_departures: list[Departure] = []
+            for departure in direction_groups[direction_name]:
+                route_key = departure.line
+                count = route_counts.get(route_key, 0)
+                if count < max_per_route:
+                    filtered_departures.append(departure)
+                    route_counts[route_key] = count + 1
+            direction_groups[direction_name] = filtered_departures
+            # Then limit each direction group to max_departures_per_stop
             max_per_direction = stop_config.max_departures_per_stop or 20
             direction_groups[direction_name] = direction_groups[direction_name][:max_per_direction]
         
         if ungrouped:
             ungrouped.sort(key=lambda d: d.time)
+            # Limit each route within ungrouped to max_departures_per_route
+            max_per_route = stop_config.max_departures_per_route or 2
+            route_counts: dict[str, int] = {}
+            filtered_ungrouped: list[Departure] = []
+            for departure in ungrouped:
+                route_key = departure.line
+                count = route_counts.get(route_key, 0)
+                if count < max_per_route:
+                    filtered_ungrouped.append(departure)
+                    route_counts[route_key] = count + 1
+            ungrouped = filtered_ungrouped
             # Also limit ungrouped departures
             max_per_direction = stop_config.max_departures_per_stop or 20
             ungrouped = ungrouped[:max_per_direction]

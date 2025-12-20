@@ -38,6 +38,7 @@ def load_stop_configurations(config: AppConfig) -> list[StopConfiguration]:
         station_name = stop_data.get("station_name", station_id)
         direction_mappings = stop_data.get("direction_mappings", {})
         max_departures = stop_data.get("max_departures_per_stop", config.mvg_api_limit)
+        max_departures_per_route = stop_data.get("max_departures_per_route", 2)
         show_ungrouped = stop_data.get("show_ungrouped", True)  # Default to showing ungrouped
 
         if not station_id:
@@ -48,6 +49,7 @@ def load_stop_configurations(config: AppConfig) -> list[StopConfiguration]:
             station_name=station_name,
             direction_mappings=direction_mappings,
             max_departures_per_stop=max_departures,
+            max_departures_per_route=max_departures_per_route,
             show_ungrouped=show_ungrouped,
         )
         stop_configs.append(stop_config)

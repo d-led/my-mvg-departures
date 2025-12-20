@@ -43,6 +43,7 @@ font_size_status_header = "1.875rem"
 station_id = "de:09162:1110"
 station_name = "Giesing"
 max_departures_per_stop = 12
+max_departures_per_route = 2
 # If false, only show departures matching direction_mappings (strict whitelist)
 # If true, show unmatched departures in "Other" group
 show_ungrouped = true
@@ -82,6 +83,7 @@ show_ungrouped = true
 station_id = "de:09162:1056"
 station_name = "Balanstr."
 max_departures_per_stop = 4
+max_departures_per_route = 2
 show_ungrouped = false
 
 [stops.direction_mappings]

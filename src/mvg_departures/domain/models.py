@@ -51,5 +51,6 @@ class StopConfiguration:
     direction_mappings: dict[str, list[str]]  # direction_name -> list of patterns (whitelist)
     # Patterns can be: destination ("Messestadt"), route ("U2", "Bus 59"), or route+destination ("U2 Messestadt")
     max_departures_per_stop: int = 20  # Maximum departures to display per direction group (not total)
+    max_departures_per_route: int = 2  # Maximum departures to display per route (line) within each direction group
     show_ungrouped: bool = True  # If False, only show departures matching direction_mappings (strict whitelist)
 
