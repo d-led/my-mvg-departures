@@ -1,0 +1,68 @@
+# MVG Departures Configuration File
+# This TOML file provides detailed configuration for stops and display settings.
+# Set CONFIG_FILE environment variable to point to this file.
+
+[display]
+# Number of departures to show per page within a route group
+departures_per_page = 5
+
+# Seconds to display each page before rotating
+page_rotation_seconds = 8
+
+# Enable pagination/animation
+# Set to false to show all departures at once (recommended for full view)
+pagination_enabled = false
+
+# To find the station ID, run one of these commands:
+#   .venv/bin/mvg-config search "Balanstr"         (from project root, after setup)
+#   mvg-config search "Balanstr"                   (if venv is activated)
+
+# Stops configuration
+[[stops]]
+station_id = "de:09162:1110"
+station_name = "Giesing"
+max_departures_per_stop = 12
+# If false, only show departures matching direction_mappings (strict whitelist)
+# If true, show unmatched departures in "Other" group
+show_ungrouped = true
+
+[stops.direction_mappings]
+# Patterns match: "line destination" or "transport_type line destination"
+# Examples: "139 Messestadt West" or "Bus 139 Messestadt West"
+
+# Group destinations heading toward Balanstraße (east)
+"->Balanstr." = [
+    "139 Messestadt West",
+    "139 Neuperlach Zentrum",
+]
+
+# Group destinations heading toward Klinikum (south)
+"->Klinikum" = [
+    "139 Klinikum Harlaching",
+]
+
+# Group destinations heading toward Tegernseer Landstraße (north)
+"->Tegernseer" = [
+    "54 Lorettoplatz",
+]
+
+# Group destinations heading toward Ostbahnhof
+"->Ostbahnhof" = [
+    "54 Münchner Freiheit",
+]
+
+# Group destinations heading toward city center (west/north)
+"->Stadt" = [
+    "18 Gondrellplatz",
+]
+
+# Second stop: Balanstraße
+[[stops]]
+station_id = "de:09162:1056"
+station_name = "Balanstr."
+max_departures_per_stop = 4
+show_ungrouped = false
+
+[stops.direction_mappings]
+# Group destinations heading toward Giesing
+"->Giesing" = ["139 Klinikum Harlaching", "59 Giesing Bahnhof"]
