@@ -166,6 +166,8 @@ class AppConfig(BaseSettings):
                     self.theme = display["theme"]
                 if "banner_color" in display:
                     self.banner_color = display["banner_color"]
+                if "refresh_interval_seconds" in display:
+                    self.refresh_interval_seconds = display["refresh_interval_seconds"]
                 # Font sizes
                 if "font_size_route_number" in display:
                     self.font_size_route_number = display["font_size_route_number"]

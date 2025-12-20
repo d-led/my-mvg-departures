@@ -457,6 +457,32 @@ class DeparturesLiveView(LiveView):
             padding: 0;
             margin: 0;
         }
+        .refresh-countdown {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            width: 2.5rem;
+            height: 2.5rem;
+            z-index: 1000;
+            pointer-events: none;
+        }
+        .refresh-countdown circle {
+            fill: none;
+            stroke-width: 3;
+            transition: stroke-dashoffset 0.1s linear;
+        }
+        [data-theme="light"] .refresh-countdown circle {
+            stroke: rgba(0, 0, 0, 0.3);
+        }
+        [data-theme="light"] .refresh-countdown circle.progress {
+            stroke: rgba(0, 0, 0, 0.6);
+        }
+        [data-theme="dark"] .refresh-countdown circle {
+            stroke: rgba(255, 255, 255, 0.3);
+        }
+        [data-theme="dark"] .refresh-countdown circle.progress {
+            stroke: rgba(255, 255, 255, 0.6);
+        }
     </style>
 </head>
 <body class="min-h-screen bg-base-100" style="width: 100vw; max-width: 100vw; margin: 0; padding: 0;">
@@ -471,6 +497,13 @@ class DeparturesLiveView(LiveView):
         <div id="departures">
             """ + self._render_departures(direction_groups) + """
         </div>
+        
+        <div class="refresh-countdown">
+            <svg viewBox="0 0 36 36" width="100%" height="100%">
+                <circle cx="18" cy="18" r="15" class="background"></circle>
+                <circle cx="18" cy="18" r="15" class="progress" transform="rotate(-90 18 18)"></circle>
+            </svg>
+        </div>
     </div>
 
     <script>
@@ -478,12 +511,52 @@ class DeparturesLiveView(LiveView):
         const PAGINATION_ENABLED = """ + str(self.config.pagination_enabled).lower() + """;
         const DEPARTURES_PER_PAGE = """ + str(self.config.departures_per_page) + """;
         const PAGE_ROTATION_SECONDS = """ + str(self.config.page_rotation_seconds) + """;
+        const REFRESH_INTERVAL_SECONDS = """ + str(self.config.refresh_interval_seconds) + """;
+        
+        // Refresh countdown circle
+        function initRefreshCountdown() {
+            const countdownCircle = document.querySelector('.refresh-countdown circle.progress');
+            if (!countdownCircle) return;
+            
+            const radius = 15;
+            const circumference = 2 * Math.PI * radius;
+            countdownCircle.setAttribute('stroke-dasharray', circumference);
+            countdownCircle.setAttribute('stroke-dashoffset', '0');
+            
+            let elapsed = 0;
+            const updateInterval = 100; // Update every 100ms for smooth animation
+            
+            function updateCountdown() {
+                elapsed += updateInterval;
+                const progress = elapsed / (REFRESH_INTERVAL_SECONDS * 1000);
+                const offset = circumference * (1 - progress);
+                countdownCircle.setAttribute('stroke-dashoffset', offset.toString());
+                
+                if (elapsed >= REFRESH_INTERVAL_SECONDS * 1000) {
+                    elapsed = 0;
+                }
+            }
+            
+            const countdownInterval = setInterval(updateCountdown, updateInterval);
+            
+            // Reset on LiveView update
+            window.addEventListener('phx:update', () => {
+                elapsed = 0;
+                countdownCircle.setAttribute('stroke-dashoffset', '0');
+            });
+            
+            // Cleanup on unload
+            window.addEventListener('beforeunload', () => {
+                clearInterval(countdownInterval);
+            });
+        }
         
         // Auto-refresh handling via LiveView
         window.addEventListener('phx:update', () => {
             if (PAGINATION_ENABLED) {
                 initPagination();
             }
+            initRefreshCountdown();
         });
         
         function createCountdownCircle(radius = 5) {
@@ -586,9 +659,15 @@ class DeparturesLiveView(LiveView):
         
         // Initialize on load
         if (PAGINATION_ENABLED && document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initPagination);
+            document.addEventListener('DOMContentLoaded', () => {
+                initPagination();
+                initRefreshCountdown();
+            });
         } else if (PAGINATION_ENABLED) {
             initPagination();
+            initRefreshCountdown();
+        } else {
+            initRefreshCountdown();
         }
         
         // Cleanup intervals on page unload/disconnect

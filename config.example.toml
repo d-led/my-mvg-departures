@@ -13,6 +13,9 @@ page_rotation_seconds = 8
 # Set to false to show all departures at once (recommended for full view)
 pagination_enabled = false
 
+# Interval between departure updates in seconds
+refresh_interval_seconds = 20
+
 # Banner/header background color (hex color code, e.g., #087BC4)
 banner_color = "#087BC4"
 
