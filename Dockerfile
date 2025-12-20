@@ -8,7 +8,10 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy dependency files
-COPY pyproject.toml README.md ./
+COPY pyproject.toml ./
+
+# Create minimal README.md for build (hatchling requires it, but .dockerignore excludes *.md)
+RUN echo "# my-mvg-departures" > README.md
 
 # Install uv for faster dependency management
 RUN pip install --no-cache-dir uv && \
