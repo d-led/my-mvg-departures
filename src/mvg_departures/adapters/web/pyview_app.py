@@ -1640,14 +1640,6 @@ class PyViewWebAdapter(DisplayAdapter):
         app = PyView()
         app.add_live_view("/", ConfiguredDeparturesLiveView)
 
-        # Start the API poller immediately when server starts
-        # This runs independently of client connections - API calls happen regardless
-        await self.state_manager.start_api_poller(
-            self.grouping_service,
-            self.stop_configs,
-            self.config,
-        )
-
         # Serve pyview's client JavaScript and static assets
         from pathlib import Path
 
@@ -1683,11 +1675,29 @@ class PyViewWebAdapter(DisplayAdapter):
                     status_code=500,
                 )
 
-        # Add route to serve pyview's client JavaScript
+        # Add route to serve pyview's client JavaScript (before wrapping with middleware)
         app.routes.append(Route("/static/assets/app.js", static_app_js))
 
-        config = uvicorn.Config(
+        # Add rate limiting middleware
+        # PyView is built on Starlette, so we wrap it with middleware
+        from .rate_limit_middleware import RateLimitMiddleware
+
+        # Wrap the app with rate limiting middleware
+        wrapped_app = RateLimitMiddleware(
             app,
+            requests_per_minute=self.config.rate_limit_per_minute,
+        )
+
+        # Start the API poller immediately when server starts
+        # This runs independently of client connections - API calls happen regardless
+        await self.state_manager.start_api_poller(
+            self.grouping_service,
+            self.stop_configs,
+            self.config,
+        )
+
+        config = uvicorn.Config(
+            wrapped_app,
             host=self.config.host,
             port=self.config.port,
             log_level="info",

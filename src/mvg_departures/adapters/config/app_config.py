@@ -121,6 +121,12 @@ class AppConfig(BaseSettings):
         description="Font size for status header (date/time, connection status, error indicator) - default is 0.75 of direction_header",
     )
 
+    # Rate limiting configuration
+    rate_limit_per_minute: int = Field(
+        default=100,
+        description="Maximum number of requests allowed per IP address per minute",
+    )
+
     @field_validator("time_format")
     @classmethod
     def validate_time_format(cls, v: str) -> str:
