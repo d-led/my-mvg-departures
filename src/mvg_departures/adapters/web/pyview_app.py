@@ -55,40 +55,41 @@ async def _api_poller(
 
     async def _fetch_and_broadcast() -> None:
         """Fetch departures and broadcast update to all connected sockets."""
-        try:
-            # Fetch departures from API
-            all_groups: list[tuple[str, str, list[Departure]]] = []
+        # Fetch departures from API - handle errors per stop
+        all_groups: list[tuple[str, str, list[Departure]]] = []
+        has_errors = False
 
-            for stop_config in stop_configs:
+        for stop_config in stop_configs:
+            try:
                 groups = await grouping_service.get_grouped_departures(stop_config)
                 for direction_name, departures in groups:
                     all_groups.append((stop_config.station_name, direction_name, departures))
-
-            # Update shared state
-            _departures_state.direction_groups = all_groups
-            _departures_state.last_update = datetime.now()
-            _departures_state.api_status = "success"
-
-            logger.debug(f"API poller updated departures at {datetime.now()}")
-
-            # Broadcast update via pubsub to all subscribed sockets
-            try:
-                await pubsub.send_all_on_topic_async(_departures_broadcast_topic, "update")
-                logger.info(
-                    f"Broadcasted update via pubsub to topic: {_departures_broadcast_topic}"
+            except Exception as e:
+                logger.error(
+                    f"API poller failed to fetch departures for {stop_config.station_name}: {e}",
+                    exc_info=True,
                 )
-            except Exception as pubsub_err:
-                logger.error(f"Failed to broadcast via pubsub: {pubsub_err}", exc_info=True)
+                has_errors = True
+                # Continue with other stops even if one fails
 
-        except Exception as e:
-            logger.error(f"API poller failed to update departures: {e}", exc_info=True)
-            _departures_state.api_status = "error"
+        # Update shared state (even if some stops failed, use what we got)
+        _departures_state.direction_groups = all_groups
+        _departures_state.last_update = datetime.now()
+        _departures_state.api_status = "error" if has_errors else "success"
 
-            # Still broadcast the error status via pubsub
-            try:
-                await pubsub.send_all_on_topic_async(_departures_broadcast_topic, "update")
-            except Exception as pubsub_error:
-                logger.error(f"Failed to broadcast error status via pubsub: {pubsub_error}")
+        logger.debug(
+            f"API poller updated departures at {datetime.now()}, "
+            f"groups: {len(all_groups)}, errors: {has_errors}"
+        )
+
+        # Broadcast update via pubsub to all subscribed sockets
+        try:
+            await pubsub.send_all_on_topic_async(_departures_broadcast_topic, "update")
+            logger.info(
+                f"Broadcasted update via pubsub to topic: {_departures_broadcast_topic}"
+            )
+        except Exception as pubsub_err:
+            logger.error(f"Failed to broadcast via pubsub: {pubsub_err}", exc_info=True)
 
     # Do initial update immediately
     await _fetch_and_broadcast()
@@ -1073,6 +1074,12 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             if (PAGINATION_ENABLED) {
                 initPagination();
             }
+            
+            // Immediately update datetime display (before delay)
+            // This ensures it's visible right away, even if pyview replaced it
+            requestAnimationFrame(() => {
+                updateDateTime();
+            });
             
             // Restart countdown after DOM update (pyview may have replaced the element)
             // Use a small delay to ensure DOM patch is complete
