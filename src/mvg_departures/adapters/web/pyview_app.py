@@ -278,20 +278,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             margin-right: 0;
             white-space: nowrap;
             min-width: fit-content;
-            position: relative;
-        }
-        .time-format {
             transition: opacity 0.3s ease-in-out;
-        }
-        .time-format.hidden {
-            opacity: 0;
-            position: absolute;
-            left: 0;
-            right: 0;
-            pointer-events: none;
-        }
-        .time-format.visible {
-            opacity: 1;
         }
         [data-theme="light"] .time {
             color: #111827;
@@ -790,10 +777,8 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                         <div class="route-number" aria-hidden="true">{{ departure.line }}</div>
                         <div class="destination" aria-hidden="true">{{ departure.destination }}</div>
                         <div class="platform" aria-hidden="true">{% if departure.platform %}{{ departure.platform }}{% endif %}</div>
-                        <div class="time{% if departure.has_delay %} delay{% endif %}{% if departure.is_realtime %} realtime{% endif %}" aria-hidden="true">
-                            <span class="time-format visible" data-format="relative">{{ departure.time_str_relative }}</span>
-                            <span class="time-format hidden" data-format="absolute">{{ departure.time_str_absolute }}</span>
-                            {% if departure.delay_display %}{{ departure.delay_display }}{% endif %}
+                        <div class="time{% if departure.has_delay %} delay{% endif %}{% if departure.is_realtime %} realtime{% endif %}" aria-hidden="true" data-time-relative="{{ departure.time_str_relative }}" data-time-absolute="{{ departure.time_str_absolute }}">
+                            {{ departure.time_str_relative }}{% if departure.delay_display %}{{ departure.delay_display }}{% endif %}
                         </div>
                         <span class="sr-only">{{ departure.aria_label }}</span>
                     </li>
@@ -868,7 +853,6 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         const DEPARTURES_PER_PAGE = {{ departures_per_page }};
         const PAGE_ROTATION_SECONDS = {{ page_rotation_seconds }};
         const REFRESH_INTERVAL_SECONDS = {{ refresh_interval_seconds }};
-        const TIME_FORMAT_TOGGLE_SECONDS = {{ time_format_toggle_seconds }};
         const INITIAL_API_STATUS = '{{ api_status }}';
 
         // Date/time display
@@ -896,66 +880,86 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         updateDateTime();
         setInterval(updateDateTime, 1000);
 
-        // Time format toggle
+        // Time format toggle - animate text content change
         let timeFormatToggleInterval = null;
         let currentTimeFormat = 'relative';
+        const TIME_FORMAT_TOGGLE_SECONDS = {{ time_format_toggle_seconds }};
 
         function toggleTimeFormat() {
             if (TIME_FORMAT_TOGGLE_SECONDS <= 0) {
                 // If toggle is disabled (0), show only relative format
-                document.querySelectorAll('.time-format[data-format="relative"]').forEach(el => {
-                    el.classList.remove('hidden');
-                    el.classList.add('visible');
-                });
-                document.querySelectorAll('.time-format[data-format="absolute"]').forEach(el => {
-                    el.classList.remove('visible');
-                    el.classList.add('hidden');
+                document.querySelectorAll('.time').forEach(el => {
+                    const relative = el.getAttribute('data-time-relative');
+                    if (relative) {
+                        // Fade out, change text, fade in
+                        el.style.opacity = '0';
+                        setTimeout(() => {
+                            const delayDisplay = el.querySelector('.delay-amount');
+                            const delayHTML = delayDisplay ? delayDisplay.outerHTML : '';
+                            el.innerHTML = relative + delayHTML;
+                            el.style.opacity = '1';
+                        }, 150);
+                    }
                 });
                 return;
             }
 
-            const relativeElements = document.querySelectorAll('.time-format[data-format="relative"]');
-            const absoluteElements = document.querySelectorAll('.time-format[data-format="absolute"]');
+            const timeElements = document.querySelectorAll('.time');
 
-            if (currentTimeFormat === 'relative') {
-                // Fade out relative, fade in absolute
-                relativeElements.forEach(el => {
-                    el.classList.remove('visible');
-                    el.classList.add('hidden');
-                });
-                absoluteElements.forEach(el => {
-                    el.classList.remove('hidden');
-                    el.classList.add('visible');
-                });
-                currentTimeFormat = 'absolute';
-            } else {
-                // Fade out absolute, fade in relative
-                absoluteElements.forEach(el => {
-                    el.classList.remove('visible');
-                    el.classList.add('hidden');
-                });
-                relativeElements.forEach(el => {
-                    el.classList.remove('hidden');
-                    el.classList.add('visible');
-                });
-                currentTimeFormat = 'relative';
-            }
+            timeElements.forEach(el => {
+                const relative = el.getAttribute('data-time-relative');
+                const absolute = el.getAttribute('data-time-absolute');
+                if (!relative || !absolute) return;
+
+                // Fade out
+                el.style.opacity = '0';
+
+                setTimeout(() => {
+                    // Preserve delay display if present
+                    const delayDisplay = el.querySelector('.delay-amount');
+                    const delayHTML = delayDisplay ? delayDisplay.outerHTML : '';
+
+                    // Change text content
+                    if (currentTimeFormat === 'relative') {
+                        // Switch to absolute
+                        el.innerHTML = absolute + delayHTML;
+                    } else {
+                        // Switch to relative
+                        el.innerHTML = relative + delayHTML;
+                    }
+                    // Fade in
+                    el.style.opacity = '1';
+                }, 150);
+            });
+
+            currentTimeFormat = currentTimeFormat === 'relative' ? 'absolute' : 'relative';
         }
 
         function initTimeFormatToggle() {
             // Clear any existing interval
             if (timeFormatToggleInterval) {
                 clearInterval(timeFormatToggleInterval);
+                timeFormatToggleInterval = null;
             }
+
+            // Ensure all time elements start with relative format and full opacity
+            document.querySelectorAll('.time').forEach(el => {
+                const relative = el.getAttribute('data-time-relative');
+                if (relative) {
+                    // Preserve existing delay display if present
+                    const delayDisplay = el.querySelector('.delay-amount');
+                    const delayHTML = delayDisplay ? delayDisplay.outerHTML : '';
+                    el.innerHTML = relative + delayHTML;
+                }
+                el.style.opacity = '1';
+            });
 
             if (TIME_FORMAT_TOGGLE_SECONDS > 0) {
                 // Start with relative format
                 currentTimeFormat = 'relative';
+
                 // Toggle every TIME_FORMAT_TOGGLE_SECONDS
                 timeFormatToggleInterval = setInterval(toggleTimeFormat, TIME_FORMAT_TOGGLE_SECONDS * 1000);
-            } else {
-                // Show only relative format if toggle is disabled
-                toggleTimeFormat();
             }
         }
 
