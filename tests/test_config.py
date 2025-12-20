@@ -1,7 +1,7 @@
 """Tests for configuration adapter."""
 
-import json
-import os
+from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 import pytest
 
@@ -39,28 +39,43 @@ def test_config_validates_time_format(monkeypatch: pytest.MonkeyPatch) -> None:
         AppConfig()
 
 
-def test_config_validates_stops_config_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Given invalid JSON in stops config, when loading config, then validation error is raised."""
-    monkeypatch.setenv("STOPS_CONFIG", "invalid json")
+def test_config_parses_stops_config_from_toml() -> None:
+    """Given valid TOML config file, when loading config, then it can be parsed."""
+    toml_content = """
+[[stops]]
+station_id = "de:09162:70"
+station_name = "Universität"
 
-    with pytest.raises(ValueError, match="stops_config must be valid JSON"):
-        AppConfig()
+[stops.direction_mappings]
+"->Giesing" = ["Giesing"]
+"""
+    with NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+        f.write(toml_content)
+        temp_path = f.name
+
+    try:
+        config = AppConfig(config_file=temp_path)
+        parsed = config.get_stops_config()
+        assert len(parsed) == 1
+        assert parsed[0]["station_id"] == "de:09162:70"
+        assert parsed[0]["station_name"] == "Universität"
+    finally:
+        Path(temp_path).unlink()
 
 
-def test_config_parses_stops_config() -> None:
-    """Given valid stops config JSON, when loading config, then it can be parsed."""
-    stops_data = [
-        {
-            "station_id": "de:09162:70",
-            "station_name": "Universität",
-            "direction_mappings": {"->Giesing": ["Giesing"]},
-        }
-    ]
-    config = AppConfig(stops_config=json.dumps(stops_data))
+def test_config_raises_error_when_file_not_found() -> None:
+    """Given non-existent config file, when loading config, then FileNotFoundError is raised."""
+    config = AppConfig(config_file="nonexistent.toml")
+    
+    with pytest.raises(FileNotFoundError, match="Configuration file not found"):
+        config.get_stops_config()
 
-    parsed = config.get_stops_config()
-    assert len(parsed) == 1
-    assert parsed[0]["station_id"] == "de:09162:70"
-    assert parsed[0]["station_name"] == "Universität"
+
+def test_config_raises_error_when_config_file_not_set() -> None:
+    """Given config_file is None, when loading config, then ValueError is raised."""
+    config = AppConfig(config_file=None)
+    
+    with pytest.raises(ValueError, match="config_file must be set"):
+        config.get_stops_config()
 
 

@@ -31,13 +31,21 @@ jobs:
         with:
           version: "latest"
 
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
+
       - name: Install dependencies
         run: |
-          uv pip install -e ".[dev]"
+          uv pip install --cache-dir ~/.cache/uv -e ".[dev]"
 
       - name: Run tests with coverage
         run: |
-          uv run pytest --cov=mvg_departures --cov-report=xml --cov-report=term-missing
+          uv run pytest --cov=mvg_departures --cov-report=xml --cov-report=term-missing -x
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -63,9 +71,17 @@ jobs:
         with:
           version: "latest"
 
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
+
       - name: Install dependencies
         run: |
-          uv pip install -e ".[dev]"
+          uv pip install --cache-dir ~/.cache/uv -e ".[dev]"
 
       - name: Check code formatting with Black
         run: |
@@ -92,9 +108,17 @@ jobs:
         with:
           version: "latest"
 
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
+
       - name: Install dependencies
         run: |
-          uv pip install -e ".[dev]"
+          uv pip install --cache-dir ~/.cache/uv -e ".[dev]"
 
       - name: Type check with mypy
         run: |

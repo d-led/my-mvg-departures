@@ -16,6 +16,20 @@ pagination_enabled = false
 # Banner/header background color (hex color code, e.g., #087BC4)
 banner_color = "#087BC4"
 
+# Font sizes (in rem units)
+# Adjust these to customize the appearance of different text elements
+font_size_route_number = "4rem"
+font_size_destination = "3.5rem"
+font_size_platform = "2.5rem"
+font_size_time = "4rem"
+font_size_stop_header = "3rem"
+font_size_direction_header = "2.5rem"
+font_size_pagination_indicator = "2rem"
+font_size_countdown_text = "1.8rem"
+font_size_delay_amount = "2rem"
+font_size_no_departures = "2.5rem"
+font_size_no_departures_available = "3rem"
+
 # To find the station ID, run one of these commands:
 #   .venv/bin/mvg-config search "Balanstr"         (from project root, after setup)
 #   mvg-config search "Balanstr"                   (if venv is activated)

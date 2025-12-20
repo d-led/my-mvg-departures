@@ -186,7 +186,7 @@ class DeparturesLiveView(LiveView):
         .route-number {
             flex: 0 0 5rem;
             font-weight: 700;
-            font-size: 4rem;
+            font-size: """ + self.config.font_size_route_number + """;
             text-align: left;
             padding: 0 0.75rem 0 0;
             white-space: nowrap;
@@ -205,7 +205,7 @@ class DeparturesLiveView(LiveView):
             white-space: nowrap;
             padding: 0 0.75rem;
             min-width: 0;
-            font-size: 3.5rem;
+            font-size: """ + self.config.font_size_destination + """;
             font-weight: 500;
             text-align: left;
             scrollbar-width: none;
@@ -221,7 +221,7 @@ class DeparturesLiveView(LiveView):
         }
         .platform {
             flex: 0 0 auto;
-            font-size: 2.5rem;
+            font-size: """ + self.config.font_size_platform + """;
             font-weight: 400;
             text-align: left;
             padding: 0 0.75rem;
@@ -239,7 +239,7 @@ class DeparturesLiveView(LiveView):
             flex: 0 0 auto;
             text-align: right;
             font-weight: 600;
-            font-size: 4rem;
+            font-size: """ + self.config.font_size_time + """;
             padding: 0 0.75rem 0 0.75rem;
             margin-right: 0;
             white-space: nowrap;
@@ -254,7 +254,7 @@ class DeparturesLiveView(LiveView):
         .no-departures {
             width: 100%;
             text-align: center;
-            font-size: 2.5rem;
+            font-size: """ + self.config.font_size_no_departures + """;
             color: #9ca3af;
             padding: 2rem 0;
             font-style: italic;
@@ -266,7 +266,7 @@ class DeparturesLiveView(LiveView):
             color: #6b7280;
         }
         .direction-header {
-            font-size: 2.5rem;
+            font-size: """ + self.config.font_size_direction_header + """;
             font-weight: 700;
             margin: 0.5rem 0 0.25rem 0;
             padding: 0 0.75rem 0.25rem 0.75rem;
@@ -317,7 +317,7 @@ class DeparturesLiveView(LiveView):
             right: 0.5rem;
             padding: 0.6rem 0.8rem;
             border-radius: 0.5rem;
-            font-size: 2rem;
+            font-size: """ + self.config.font_size_pagination_indicator + """;
             font-weight: 600;
             z-index: 10;
             display: flex;
@@ -325,7 +325,7 @@ class DeparturesLiveView(LiveView):
             gap: 0.75rem;
         }
         .countdown-text {
-            font-size: 1.8rem;
+            font-size: """ + self.config.font_size_countdown_text + """;
             font-weight: 500;
             min-width: 2.5rem;
             text-align: center;
@@ -364,7 +364,7 @@ class DeparturesLiveView(LiveView):
             overflow: visible;
         }
         .stop-header {
-            font-size: 3rem;
+            font-size: """ + self.config.font_size_stop_header + """;
             font-weight: 700;
             margin: 0.5rem 0.5rem 0.25rem 0.5rem;
             padding: 0;
@@ -391,7 +391,7 @@ class DeparturesLiveView(LiveView):
         }
         .delay-amount {
             color: #dc2626;
-            font-size: 2rem;
+            font-size: """ + self.config.font_size_delay_amount + """;
             font-weight: 500;
             margin-left: 0.5rem;
         }
@@ -631,7 +631,7 @@ class DeparturesLiveView(LiveView):
         """Render departures grouped by direction, sorted chronologically within each group.
         Stops without departures are shown at the bottom."""
         if not direction_groups:
-            return '<div style="text-align: center; padding: 4rem 2rem; opacity: 0.7; font-size: 3rem; font-weight: 500;">No departures available</div>'
+            return f'<div style="text-align: center; padding: 4rem 2rem; opacity: 0.7; font-size: {self.config.font_size_no_departures_available}; font-weight: 500;">No departures available</div>'
 
         # Separate groups with departures from stops that have no departures at all
         groups_with_departures: list[tuple[str, str, list[Departure]]] = []
