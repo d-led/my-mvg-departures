@@ -1606,7 +1606,9 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             if stop_name != current_stop:
                 if current_stop is not None:
                     html_parts.append("</ul></div>")  # Close list and stop-section
-                html_parts.append(f'<div class="stop-section" role="region" aria-label="Departures from {self._escape_html(stop_name)}">')
+                html_parts.append(
+                    f'<div class="stop-section" role="region" aria-label="Departures from {self._escape_html(stop_name)}">'
+                )
                 current_stop = stop_name
 
             # Status icons are now in floating box, only show time in header
@@ -1635,7 +1637,9 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
         # At the bottom, show stops without departures - each with its own banner
         for stop_name in sorted(stops_without_departures):
-            html_parts.append(f'<div class="stop-section" role="region" aria-label="Departures from {self._escape_html(stop_name)}">')
+            html_parts.append(
+                f'<div class="stop-section" role="region" aria-label="Departures from {self._escape_html(stop_name)}">'
+            )
             html_parts.append(
                 f'<div class="direction-group"><h2 class="direction-header" role="heading" aria-level="2">{self._escape_html(stop_name)}</h2>'
             )
@@ -1669,7 +1673,9 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         delay_aria = ""
         if departure.delay_seconds and departure.delay_seconds > 60:
             delay_minutes = departure.delay_seconds // 60
-            delay_display = f'<span class="delay-amount" aria-hidden="true">{delay_minutes}m 😞</span>'
+            delay_display = (
+                f'<span class="delay-amount" aria-hidden="true">{delay_minutes}m 😞</span>'
+            )
             delay_aria = f", delayed by {delay_minutes} minutes"
 
         # Build ARIA label with all departure information
@@ -1679,7 +1685,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         if departure.is_realtime:
             status_parts.append("real-time")
         status_text = ", ".join(status_parts) if status_parts else "scheduled"
-        
+
         aria_label = (
             f"Line {route_display} to {departure.destination}"
             f"{platform_aria}"
