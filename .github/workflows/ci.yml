@@ -39,6 +39,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-uv-
 
+      - name: Create virtual environment
+        run: |
+          uv venv
+
       - name: Install dependencies
         run: |
           uv pip install --cache-dir ~/.cache/uv -e ".[dev]"
@@ -79,6 +83,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-uv-
 
+      - name: Create virtual environment
+        run: |
+          uv venv
+
       - name: Install dependencies
         run: |
           uv pip install --cache-dir ~/.cache/uv -e ".[dev]"
@@ -116,6 +124,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-uv-
 
+      - name: Create virtual environment
+        run: |
+          uv venv
+
       - name: Install dependencies
         run: |
           uv pip install --cache-dir ~/.cache/uv -e ".[dev]"
@@ -140,6 +152,10 @@ jobs:
         uses: astral-sh/setup-uv@v4
         with:
           version: "latest"
+
+      - name: Create virtual environment
+        run: |
+          uv venv
 
       - name: Install build dependencies
         run: |
