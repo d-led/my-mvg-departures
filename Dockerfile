@@ -20,6 +20,8 @@ RUN pip install --no-cache-dir uv && \
 # Copy application code
 COPY src/ ./src/
 
+COPY config.example.toml ./config.example.toml
+
 # Create non-root user
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser

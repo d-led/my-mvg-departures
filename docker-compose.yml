@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   mvg-departures:
     build: .
@@ -10,7 +8,6 @@ services:
       - PORT=8000
       - REFRESH_INTERVAL_SECONDS=15
       - TIME_FORMAT=minutes
-      - STOPS_CONFIG=[{"station_id": "de:09162:100", "station_name": "Giesing", "direction_mappings": {"->Balanstr.": ["Messestadt"], "->Klinikum": ["Klinikum"], "->Tegernseer": ["Ackermannbogen"], "->Stadt": ["Gondrellplatz"]}, "max_departures_per_stop": 30}]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
