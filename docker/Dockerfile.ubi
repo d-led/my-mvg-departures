@@ -37,6 +37,9 @@ COPY src/ ./src/
 COPY README.md ./
 COPY config.example.toml ./config.example.toml
 
+# Copy static assets
+COPY static/ ./static/
+
 # UBI images already run as non-root user (default: 1001)
 # But we'll ensure proper ownership
 RUN chown -R 1001:0 /app && \

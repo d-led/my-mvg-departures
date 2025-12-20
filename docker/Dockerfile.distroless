@@ -44,6 +44,9 @@ COPY --chown=65532:65532 src/ ./src/
 COPY --chown=65532:65532 README.md ./
 COPY --chown=65532:65532 config.example.toml ./config.example.toml
 
+# Copy static assets
+COPY --chown=65532:65532 static/ ./static/
+
 # Explicitly set non-root user (distroless default: uid 65532)
 # This is REQUIRED - distroless does NOT run as non-root by default
 USER 65532:65532

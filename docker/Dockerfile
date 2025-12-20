@@ -46,6 +46,9 @@ COPY src/ ./src/
 COPY README.md ./
 COPY config.example.toml ./config.example.toml
 
+# Copy static assets
+COPY static/ ./static/
+
 # Create non-root user with specific UID/GID for better security
 # Use numeric IDs to avoid dependency on /etc/passwd
 RUN groupadd -r -g 1000 appuser && \

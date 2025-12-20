@@ -631,6 +631,34 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             border-radius: 0.4rem;
             z-index: 1000;
         }
+        /* GitHub icon link inside status bar */
+        .status-floating-box-github {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 1em;
+            height: 1em;
+            min-width: 1em;
+            min-height: 1em;
+            flex-shrink: 0;
+            text-decoration: none;
+            transition: opacity 0.2s;
+            margin-left: auto; /* Push to the right */
+        }
+        .status-floating-box-github:hover {
+            opacity: 0.8;
+        }
+        .status-floating-box-github svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        [data-theme="light"] .status-floating-box-github svg {
+            color: #000000;
+        }
+        [data-theme="dark"] .status-floating-box-github svg {
+            color: #ffffff;
+        }
         [data-theme="light"] .status-floating-box {
             background-color: rgba(128, 128, 128, 0.2);
         }
@@ -763,7 +791,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             + """
         </div>
 
-        <!-- Floating status box at bottom right -->
+        <!-- Floating status box at bottom center -->
         <div class="status-floating-box" role="status" aria-label="Connection and API status">
             <div class="status-floating-box-item" id="connection-status" role="img" aria-label="Connection status: connecting">
                 <svg class="status-icon connecting" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="connection-icon" aria-hidden="true">
@@ -803,6 +831,13 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 </svg>
                 <span class="sr-only" id="refresh-countdown-sr">Refresh countdown</span>
             </div>
+            <!-- GitHub icon on the right side of status bar -->
+            <a href="https://github.com/d-led/my-mvg-departures" target="_blank" rel="noopener noreferrer" class="status-floating-box-github status-floating-box-item" aria-label="View repository on GitHub">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                    <path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.46-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/>
+                </svg>
+                <span class="sr-only">View repository on GitHub</span>
+            </a>
         </div>
     </div>
 
@@ -917,6 +952,8 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         let reconnectTimeout = null;
         let countdownCircle = null;
         let circumference = 0;
+        let lastCountdownStart = 0;
+        const MIN_COUNTDOWN_RESTART_INTERVAL = 500; // Minimum ms between countdown restarts
 
         function initRefreshCountdown() {
             const circle = document.querySelector('.refresh-countdown circle.progress');
@@ -935,7 +972,15 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 circumference = 2 * Math.PI * radius;
 
                 // Define startCountdown and make it accessible globally
-                startCountdown = function() {
+                startCountdown = function(force = false) {
+                    // Prevent restarting too frequently (causes flashing on initial load)
+                    const now = Date.now();
+                    if (!force && (now - lastCountdownStart) < MIN_COUNTDOWN_RESTART_INTERVAL) {
+                        console.log('Skipping countdown restart - too soon since last restart');
+                        return;
+                    }
+                    lastCountdownStart = now;
+
                     // Re-query the element in case DOM was updated by pyview
                     const circle = document.querySelector('.refresh-countdown circle.progress');
                     if (!circle) {
@@ -1006,8 +1051,9 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             }
 
             // Always restart countdown when called (for phx:update)
+            // Use force=true on initial load to ensure it starts
             if (startCountdown) {
-                startCountdown();
+                startCountdown(true);
             }
         }
 
@@ -1074,9 +1120,10 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 }
 
                 // If countdown was already initialized, just restart it
+                // Don't force restart - let the debouncing logic prevent rapid restarts
                 if (countdownInitialized && startCountdown) {
                     console.log('Restarting countdown after phx:update');
-                    startCountdown();
+                    startCountdown(false);
                 } else {
                     // Initialize if not already done
                     initRefreshCountdown();
@@ -1675,8 +1722,44 @@ class PyViewWebAdapter(DisplayAdapter):
                     status_code=500,
                 )
 
+        async def static_github_icon(_request: Any) -> Any:
+            """Serve GitHub octicon SVG."""
+            try:
+                # Try multiple possible locations for the static file
+                # 1. Relative to working directory (Docker: /app/static/)
+                # 2. Relative to source file (development: project_root/static/)
+                possible_paths = [
+                    Path.cwd() / "static" / "assets" / "github-mark.svg",
+                    Path(__file__).parent.parent.parent.parent.parent
+                    / "static"
+                    / "assets"
+                    / "github-mark.svg",
+                ]
+
+                for github_icon_path in possible_paths:
+                    if github_icon_path.exists():
+                        return FileResponse(str(github_icon_path), media_type="image/svg+xml")
+
+                logger.error(
+                    f"Could not find GitHub icon at any of: {[str(p) for p in possible_paths]}"
+                )
+                return Response(
+                    content="<!-- GitHub icon not found -->",
+                    media_type="image/svg+xml",
+                    status_code=404,
+                )
+            except Exception as e:
+                logger.error(f"Error serving GitHub icon: {e}", exc_info=True)
+                return Response(
+                    content="<!-- Error loading icon -->",
+                    media_type="image/svg+xml",
+                    status_code=500,
+                )
+
         # Add route to serve pyview's client JavaScript (before wrapping with middleware)
         app.routes.append(Route("/static/assets/app.js", static_app_js))
+        # Add route to serve GitHub icon
+        app.routes.append(Route("/static/assets/github-mark.svg", static_github_icon))
 
         # Add rate limiting middleware
         # PyView is built on Starlette, so we wrap it with middleware

@@ -46,6 +46,9 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Copy only config file (package code is already in site-packages)
 COPY config.example.toml ./config.example.toml
 
+# Copy static assets
+COPY static/ ./static/
+
 # Create non-root user with minimal permissions
 RUN groupadd -r -g 1000 appuser && \
     useradd -r -u 1000 -g appuser -d /app -s /usr/sbin/nologin appuser && \
