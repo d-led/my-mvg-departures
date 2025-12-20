@@ -22,9 +22,16 @@ class DepartureGroupingService:
     async def get_grouped_departures(
         self, stop_config: StopConfiguration
     ) -> list[tuple[str, list[Departure]]]:
-        """Get departures for a stop, grouped by configured directions."""
+        """Get departures for a stop, grouped by configured directions.
+        
+        Fetches a reasonable number of departures from the API, then groups them
+        by direction and limits each direction group to max_departures_per_stop.
+        """
+        # Fetch more departures than needed to ensure we have enough for all directions
+        # Use a higher limit (50) to get a good sample, then limit per direction
+        fetch_limit = 50
         departures = await self._departure_repository.get_departures(
-            stop_config.station_id, limit=stop_config.max_departures_per_stop or 20
+            stop_config.station_id, limit=fetch_limit
         )
 
         # Group departures by direction first
@@ -55,9 +62,15 @@ class DepartureGroupingService:
         # This ensures "<1m" (0-59 seconds) sorts before "1m" (60-119 seconds), etc.
         for direction_name in direction_groups:
             direction_groups[direction_name].sort(key=lambda d: d.time)
+            # Limit each direction group to max_departures_per_stop
+            max_per_direction = stop_config.max_departures_per_stop or 20
+            direction_groups[direction_name] = direction_groups[direction_name][:max_per_direction]
         
         if ungrouped:
             ungrouped.sort(key=lambda d: d.time)
+            # Also limit ungrouped departures
+            max_per_direction = stop_config.max_departures_per_stop or 20
+            ungrouped = ungrouped[:max_per_direction]
 
         # Build result list with only directions that have departures
         # Preserve the order from the config file (direction_mappings)
