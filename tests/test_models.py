@@ -61,5 +61,3 @@ def test_stop_configuration_creation() -> None:
     assert config.station_name == "Universität"
     assert "->Giesing" in config.direction_mappings
     assert len(config.direction_mappings["->Giesing"]) == 2
-
-

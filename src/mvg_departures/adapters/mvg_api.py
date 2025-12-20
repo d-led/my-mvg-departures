@@ -40,9 +40,7 @@ class MvgStationRepository(StationRepository):
         # In a real implementation, we might cache station info
         try:
             # Try to get a single departure to validate the station exists
-            departures = await MvgApi.departures_async(
-                station_id, limit=1, session=self._session
-            )
+            departures = await MvgApi.departures_async(station_id, limit=1, session=self._session)
             if not departures:
                 return None
             # We don't have full station info from departures, so we'll need
@@ -58,9 +56,7 @@ class MvgStationRepository(StationRepository):
         except Exception:
             return None
 
-    async def find_nearby_station(
-        self, latitude: float, longitude: float
-    ) -> Station | None:
+    async def find_nearby_station(self, latitude: float, longitude: float) -> Station | None:
         """Find the nearest station to given coordinates."""
         result = await MvgApi.nearby_async(latitude, longitude, session=self._session)
         if not result:
@@ -98,9 +94,7 @@ class MvgDepartureRepository(DepartureRepository):
                 "Bus": TransportType.BUS,
                 "Tram": TransportType.TRAM,
             }
-            mvg_transport_types = [
-                type_map[t] for t in transport_types if t in type_map
-            ]
+            mvg_transport_types = [type_map[t] for t in transport_types if t in type_map]
 
         results = await MvgApi.departures_async(
             station_id,
@@ -128,5 +122,3 @@ class MvgDepartureRepository(DepartureRepository):
             departures.append(departure)
 
         return departures
-
-

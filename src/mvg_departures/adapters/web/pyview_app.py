@@ -2,11 +2,12 @@
 
 import asyncio
 import logging
-import sys
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from pyview import LiveView
+from pyview import ConnectedLiveViewSocket, LiveView, LiveViewSocket, is_connected
+from pyview.events import InfoEvent
 
 logger = logging.getLogger(__name__)
 
@@ -19,13 +20,18 @@ if TYPE_CHECKING:
     from aiohttp import ClientSession
 
 
-# Shared state and topic for departures (separate from LiveView)
-_departures_state: dict = {
-    "direction_groups": [],
-    "last_update": None,
-    "api_status": "unknown",
-}
-_departures_broadcast_topic: str = "departures:updates"
+@dataclass
+class DeparturesState:
+    """State for the departures LiveView."""
+
+    direction_groups: list[tuple[str, str, list[Departure]]] = field(default_factory=list)
+    last_update: datetime | None = None
+    api_status: str = "unknown"
+
+
+# Shared state and connected sockets for broadcasting
+_departures_state = DeparturesState()
+_connected_sockets: set[LiveViewSocket[DeparturesState]] = set()
 _api_poller_task: asyncio.Task | None = None
 
 
@@ -34,76 +40,73 @@ async def _api_poller(
     stop_configs: list[StopConfiguration],
     config: AppConfig,
 ) -> None:
-    """Independent API poller that updates shared state and publishes via pubsub.
-    
+    """Independent API poller that updates shared state and broadcasts to connected sockets.
+
     This runs as a separate background task, completely independent of LiveView instances.
-    It polls the API periodically and publishes updates to all subscribers via pubsub.
+    It polls the API periodically and broadcasts updates to all connected sockets.
     """
     from pyview.live_socket import pub_sub_hub
     from pyview.vendor.flet.pubsub import PubSub
-    
+
+    # Create PubSub instance once and reuse it
+    pubsub = PubSub(pub_sub_hub, _departures_broadcast_topic)
+
     logger.info("API poller started (independent of client connections)")
-    
-    async def _fetch_and_publish() -> None:
-        """Fetch departures and publish update via pubsub."""
+
+    async def _fetch_and_broadcast() -> None:
+        """Fetch departures and broadcast update to all connected sockets."""
         try:
             # Fetch departures from API
             all_groups: list[tuple[str, str, list[Departure]]] = []
-            
+
             for stop_config in stop_configs:
                 groups = await grouping_service.get_grouped_departures(stop_config)
                 for direction_name, departures in groups:
-                    all_groups.append(
-                        (stop_config.station_name, direction_name, departures)
-                    )
-            
+                    all_groups.append((stop_config.station_name, direction_name, departures))
+
             # Update shared state
-            _departures_state["direction_groups"] = all_groups
-            _departures_state["last_update"] = datetime.now()
-            _departures_state["api_status"] = "success"
-            
+            _departures_state.direction_groups = all_groups
+            _departures_state.last_update = datetime.now()
+            _departures_state.api_status = "success"
+
             logger.debug(f"API poller updated departures at {datetime.now()}")
-            
-            # Publish update via pubsub to all subscribers
-            pubsub = PubSub(pub_sub_hub, _departures_broadcast_topic)
-            update_message = {
-                "type": "update",
-                "timestamp": datetime.now().isoformat(),
-                "api_status": "success",
-            }
-            await pubsub.send_all_on_topic_async(_departures_broadcast_topic, update_message)
-            logger.info(f"Published update via pubsub to topic: {_departures_broadcast_topic}")
-            
+
+            # Broadcast update via pubsub to all subscribed sockets
+            try:
+                await pubsub.send_all_on_topic_async(_departures_broadcast_topic, "update")
+                logger.info(
+                    f"Broadcasted update via pubsub to topic: {_departures_broadcast_topic}"
+                )
+            except Exception as pubsub_err:
+                logger.error(f"Failed to broadcast via pubsub: {pubsub_err}", exc_info=True)
+
         except Exception as e:
             logger.error(f"API poller failed to update departures: {e}", exc_info=True)
-            _departures_state["api_status"] = "error"
-            
-            # Still publish the error status
+            _departures_state.api_status = "error"
+
+            # Still broadcast the error status via pubsub
             try:
-                pubsub = PubSub(pub_sub_hub, _departures_broadcast_topic)
-                update_message = {
-                    "type": "update",
-                    "timestamp": datetime.now().isoformat(),
-                    "api_status": "error",
-                }
-                await pubsub.send_all_on_topic_async(_departures_broadcast_topic, update_message)
+                await pubsub.send_all_on_topic_async(_departures_broadcast_topic, "update")
             except Exception as pubsub_error:
-                logger.error(f"Failed to publish error status via pubsub: {pubsub_error}")
-    
+                logger.error(f"Failed to broadcast error status via pubsub: {pubsub_error}")
+
     # Do initial update immediately
-    await _fetch_and_publish()
-    
+    await _fetch_and_broadcast()
+
     # Then poll periodically
     try:
         while True:
             await asyncio.sleep(config.refresh_interval_seconds)
-            await _fetch_and_publish()
+            await _fetch_and_broadcast()
     except asyncio.CancelledError:
         logger.info("API poller cancelled")
         raise
 
 
-class DeparturesLiveView(LiveView):
+_departures_broadcast_topic: str = "departures:updates"  # Keep for handle_info compatibility
+
+
+class DeparturesLiveView(LiveView[DeparturesState]):
     """LiveView for displaying MVG departures."""
 
     def __init__(
@@ -118,101 +121,116 @@ class DeparturesLiveView(LiveView):
         self.stop_configs = stop_configs
         self.config = config
 
-    async def mount(self, socket: object, _session: dict) -> None:
-        """Mount the LiveView and subscribe to updates."""
+    async def mount(self, socket: LiveViewSocket[DeparturesState], _session: dict) -> None:
+        """Mount the LiveView and register socket for updates."""
+        # Initialize context with current shared state
+        socket.context = DeparturesState(
+            direction_groups=_departures_state.direction_groups,
+            last_update=_departures_state.last_update,
+            api_status=_departures_state.api_status,
+        )
+
+        # Register socket for broadcasts
+        _connected_sockets.add(socket)
+        logger.info(f"Registered socket, total connected: {len(_connected_sockets)}")
+
         # Subscribe to broadcast topic for receiving updates
-        # The socket's subscribe method uses _topic_callback_internal which calls send_info
-        if hasattr(socket, 'connected') and socket.connected and hasattr(socket, 'subscribe'):
+        if is_connected(socket):
             try:
-                # Use socket's subscribe method which sets up the callback properly
                 await socket.subscribe(_departures_broadcast_topic)
-                logger.debug(f"Subscribed socket to broadcast topic: {_departures_broadcast_topic}")
+                logger.info(
+                    f"Successfully subscribed socket to broadcast topic: {_departures_broadcast_topic}"
+                )
             except Exception as e:
-                logger.warning(f"Failed to subscribe socket to broadcast topic: {e}")
-        
-        # Set context on socket (required by pyview)
-        # Use shared state - the API poller keeps it updated independently
-        # Set context on socket (required by pyview)
-        # Use shared state - the API poller keeps it updated independently
-        socket.context = {
-            "direction_groups": _departures_state["direction_groups"],
-            "last_update": _departures_state["last_update"],
-            "api_status": _departures_state["api_status"],
-        }
-
-    async def unmount(self, socket: object) -> None:
-        """Handle socket disconnection."""
-        # Unsubscribe from broadcast topic
-        if hasattr(socket, 'pub_sub'):
-            try:
-                await socket.pub_sub.unsubscribe_topic_async(_departures_broadcast_topic)
-                logger.debug(f"Unsubscribed socket from broadcast topic: {_departures_broadcast_topic}")
-            except Exception as e:
-                logger.warning(f"Failed to unsubscribe socket from broadcast topic: {e}")
-
-    async def handle_info(self, event, socket: object) -> None:
-        """Handle update messages from pubsub."""
-        from pyview.events import InfoEvent
-        
-        # Extract message from InfoEvent (from pubsub) or use event directly if it's already a dict
-        if isinstance(event, InfoEvent):
-            # InfoEvent has name (topic) and payload (message)
-            message = event.payload
-            topic = event.name
-            # Only process if it's from our broadcast topic
-            if topic != _departures_broadcast_topic:
-                return
-        elif isinstance(event, dict):
-            message = event
+                logger.error(
+                    f"Failed to subscribe to topic {_departures_broadcast_topic}: {e}",
+                    exc_info=True,
+                )
         else:
-            # Unknown format, try to use as-is
-            message = event
-        
-        # Check if this is an update message
-        if isinstance(message, dict) and message.get("type") == "update":
-            try:
-                # Update socket context with latest data from shared state
-                # (We don't serialize Departure objects in pubsub, just read from shared state)
-                logger.debug("Handled update message from pubsub, updating context from shared state")
-                
-                # Read from shared state (more efficient than serializing in pubsub message)
-                socket.context = {
-                    "direction_groups": _departures_state["direction_groups"],
-                    "last_update": _departures_state["last_update"],
-                    "api_status": _departures_state["api_status"],
-                }
-                # Note: The actual diff and send is handled by socket.send_info() which calls
-                # this method, then renders, calculates diff, and sends to client
-            except Exception as e:
-                logger.error(f"Failed to handle update message: {e}", exc_info=True)
+            logger.warning("Socket not connected during mount, will receive updates when connected")
 
+    async def unmount(self, socket: LiveViewSocket[DeparturesState]) -> None:
+        """Unmount the LiveView and unregister socket."""
+        _connected_sockets.discard(socket)
+        logger.info(f"Unregistered socket, total connected: {len(_connected_sockets)}")
 
-    async def render(self, assigns: dict, meta):
+    async def handle_info(
+        self, event: str | InfoEvent, socket: LiveViewSocket[DeparturesState]
+    ) -> None:
+        """Handle update messages from pubsub."""
+
+        # Extract payload from event - type-safe extraction
+        payload: str
+        if isinstance(event, InfoEvent):
+            payload = event.payload
+            topic = event.name
+            logger.debug(f"Received InfoEvent from topic '{topic}' with payload: {payload}")
+        elif isinstance(event, str):
+            # Direct payload (string)
+            payload = event
+            logger.debug(f"Received direct payload: {payload}")
+        else:
+            # Unknown event type - log error and return
+            logger.error(
+                f"Unexpected event type in handle_info: {type(event)}, "
+                f"expected str or InfoEvent, got: {event}"
+            )
+            return
+
+        # When we receive an update message, read from shared state
+        # (We don't serialize Departure objects in pubsub, just read from shared state)
+        if payload == "update":
+            # Update the existing context object's fields directly
+            # Pyview detects field changes and automatically triggers re-render
+            socket.context.direction_groups = _departures_state.direction_groups
+            socket.context.last_update = _departures_state.last_update
+            socket.context.api_status = _departures_state.api_status
+            logger.info(
+                f"Updated context from pubsub message at {datetime.now()}, groups: {len(_departures_state.direction_groups)}"
+            )
+        else:
+            logger.debug(f"Ignoring pubsub message with payload: {payload}")
+
+    async def render(self, assigns: DeparturesState | dict, meta):
         """Render the HTML template."""
-        from pyview.template.live_template import LiveRender, LiveTemplate
-        
-        # Use shared state if assigns don't have it (fallback)
-        direction_groups = assigns.get("direction_groups", _departures_state["direction_groups"])
-        last_update = assigns.get("last_update", _departures_state["last_update"])
-        api_status = assigns.get("api_status", _departures_state["api_status"])
+        logger.debug(f"Render called at {datetime.now()}, assigns type: {type(assigns)}")
+
+        # Get state from assigns (which is socket.context, a DeparturesState object)
+        if isinstance(assigns, DeparturesState):
+            state = assigns
+        elif isinstance(assigns, dict):
+            # Fallback: if it's a dict, try to get context or use shared state
+            state = assigns.get("context", _departures_state)
+            if not isinstance(state, DeparturesState):
+                state = _departures_state
+        else:
+            # Fallback to shared state
+            state = _departures_state
+
+        direction_groups = state.direction_groups
+        last_update = state.last_update
+        api_status = state.api_status
 
         # Determine theme
         theme = self.config.theme.lower()
-        if theme not in ('light', 'dark', 'auto'):
-            theme = 'auto'
-        
+        if theme not in ("light", "dark", "auto"):
+            theme = "auto"
+
         # Get banner color from config
         banner_color = self.config.banner_color
-        
+
         # Return only the content that goes inside the body
         # PyView's root template will wrap this in the full HTML structure
-        html_content = """
+        html_content = (
+            """
     <!-- Minimal DaisyUI for theme support only -->
     <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         // Apply theme based on configuration
-        const themeConfig = '""" + theme + """';
+        const themeConfig = '"""
+            + theme
+            + """';
         if (themeConfig === 'light') {
             document.documentElement.setAttribute('data-theme', 'light');
             localStorage.theme = 'light';
@@ -288,7 +306,9 @@ class DeparturesLiveView(LiveView):
         .route-number {
             flex: 0 0 5rem;
             font-weight: 700;
-            font-size: """ + self.config.font_size_route_number + """;
+            font-size: """
+            + self.config.font_size_route_number
+            + """;
             text-align: left;
             padding: 0 0.75rem 0 0;
             white-space: nowrap;
@@ -307,7 +327,9 @@ class DeparturesLiveView(LiveView):
             white-space: nowrap;
             padding: 0 0.75rem;
             min-width: 0;
-            font-size: """ + self.config.font_size_destination + """;
+            font-size: """
+            + self.config.font_size_destination
+            + """;
             font-weight: 500;
             text-align: left;
             scrollbar-width: none;
@@ -323,7 +345,9 @@ class DeparturesLiveView(LiveView):
         }
         .platform {
             flex: 0 0 auto;
-            font-size: """ + self.config.font_size_platform + """;
+            font-size: """
+            + self.config.font_size_platform
+            + """;
             font-weight: 400;
             text-align: left;
             padding: 0 0.75rem;
@@ -341,7 +365,9 @@ class DeparturesLiveView(LiveView):
             flex: 0 0 auto;
             text-align: right;
             font-weight: 600;
-            font-size: """ + self.config.font_size_time + """;
+            font-size: """
+            + self.config.font_size_time
+            + """;
             padding: 0 0.75rem 0 0.75rem;
             margin-right: 0;
             white-space: nowrap;
@@ -356,7 +382,9 @@ class DeparturesLiveView(LiveView):
         .no-departures {
             width: 100%;
             text-align: center;
-            font-size: """ + self.config.font_size_no_departures + """;
+            font-size: """
+            + self.config.font_size_no_departures
+            + """;
             color: #9ca3af;
             padding: 2rem 0;
             font-style: italic;
@@ -368,7 +396,9 @@ class DeparturesLiveView(LiveView):
             color: #6b7280;
         }
         .direction-header {
-            font-size: """ + self.config.font_size_direction_header + """;
+            font-size: """
+            + self.config.font_size_direction_header
+            + """;
             font-weight: 700;
             margin: 0.5rem 0 0.25rem 0;
             padding: 0 0.75rem 0.25rem 0.75rem;
@@ -400,7 +430,9 @@ class DeparturesLiveView(LiveView):
             line-height: 1; /* Match header text line height */
         }
         [data-theme="light"] .direction-header {
-            background-color: """ + banner_color + """;
+            background-color: """
+            + banner_color
+            + """;
             color: #ffffff;
             border-bottom-color: rgba(255, 255, 255, 0.25);
         }
@@ -443,7 +475,9 @@ class DeparturesLiveView(LiveView):
             right: 0.5rem;
             padding: 0.6rem 0.8rem;
             border-radius: 0.5rem;
-            font-size: """ + self.config.font_size_pagination_indicator + """;
+            font-size: """
+            + self.config.font_size_pagination_indicator
+            + """;
             font-weight: 600;
             z-index: 10;
             display: flex;
@@ -451,7 +485,9 @@ class DeparturesLiveView(LiveView):
             gap: 0.75rem;
         }
         .countdown-text {
-            font-size: """ + self.config.font_size_countdown_text + """;
+            font-size: """
+            + self.config.font_size_countdown_text
+            + """;
             font-weight: 500;
             min-width: 2.5rem;
             text-align: center;
@@ -490,7 +526,9 @@ class DeparturesLiveView(LiveView):
             overflow: visible;
         }
         .stop-header {
-            font-size: """ + self.config.font_size_stop_header + """;
+            font-size: """
+            + self.config.font_size_stop_header
+            + """;
             font-weight: 700;
             margin: 0.5rem 0.5rem 0.25rem 0.5rem;
             padding: 0;
@@ -517,7 +555,9 @@ class DeparturesLiveView(LiveView):
         }
         .delay-amount {
             color: #dc2626;
-            font-size: """ + self.config.font_size_delay_amount + """;
+            font-size: """
+            + self.config.font_size_delay_amount
+            + """;
             font-weight: 500;
             margin-left: 0.5rem;
         }
@@ -593,7 +633,9 @@ class DeparturesLiveView(LiveView):
             display: flex;
             align-items: center;
             gap: 0.25rem;
-            font-size: """ + self.config.font_size_status_header + """;
+            font-size: """
+            + self.config.font_size_status_header
+            + """;
             font-weight: 500;
         }
         #datetime-display {
@@ -653,11 +695,12 @@ class DeparturesLiveView(LiveView):
         [data-theme="dark"] .status-icon.error {
             color: #f3f4f6;
         }
-        /* Floating status box at bottom right */
+        /* Floating status box at center bottom */
         .status-floating-box {
             position: fixed;
             bottom: 1rem;
-            right: 1rem;
+            left: 50%;
+            transform: translateX(-50%);
             display: flex;
             align-items: center;
             gap: 0.4rem;
@@ -677,22 +720,22 @@ class DeparturesLiveView(LiveView):
             display: flex;
             align-items: center;
             justify-content: center;
-        }
-        /* All status icons same size - 0.7em for better visibility */
-        .status-icon, .api-status-icon, .refresh-countdown {
-            width: 0.7em;
-            height: 0.7em;
-            display: inline-block;
+            width: 1em;
+            height: 1em;
+            min-width: 1em;
+            min-height: 1em;
             flex-shrink: 0;
         }
-        .status-icon svg, .api-status-icon svg {
+        /* All status icons same size - 1em */
+        .status-icon, .api-status-icon {
             width: 100%;
             height: 100%;
             display: block;
         }
-        .refresh-countdown {
-            width: 0.7em;
-            height: 0.7em;
+        .refresh-countdown svg {
+            width: 100%;
+            height: 100%;
+            display: block;
         }
         .refresh-countdown circle {
             fill: none;
@@ -749,12 +792,16 @@ class DeparturesLiveView(LiveView):
         <div class="header-section">
             <h1>MVG Departures</h1>
             <div class="last-update">
-                Last updated: """ + self._format_update_time(last_update) + """
+                Last updated: """
+            + self._format_update_time(last_update)
+            + """
             </div>
         </div>
 
         <div id="departures">
-            """ + self._render_departures(direction_groups) + """
+            """
+            + self._render_departures(direction_groups)
+            + """
         </div>
         
         <!-- Floating status box at bottom right -->
@@ -801,11 +848,21 @@ class DeparturesLiveView(LiveView):
 
     <script>
         // Pagination configuration
-        const PAGINATION_ENABLED = """ + str(self.config.pagination_enabled).lower() + """;
-        const DEPARTURES_PER_PAGE = """ + str(self.config.departures_per_page) + """;
-        const PAGE_ROTATION_SECONDS = """ + str(self.config.page_rotation_seconds) + """;
-        const REFRESH_INTERVAL_SECONDS = """ + str(self.config.refresh_interval_seconds) + """;
-        const INITIAL_API_STATUS = '""" + api_status + """';
+        const PAGINATION_ENABLED = """
+            + str(self.config.pagination_enabled).lower()
+            + """;
+        const DEPARTURES_PER_PAGE = """
+            + str(self.config.departures_per_page)
+            + """;
+        const PAGE_ROTATION_SECONDS = """
+            + str(self.config.page_rotation_seconds)
+            + """;
+        const REFRESH_INTERVAL_SECONDS = """
+            + str(self.config.refresh_interval_seconds)
+            + """;
+        const INITIAL_API_STATUS = '"""
+            + api_status
+            + """';
         
         // Date/time display
         function updateDateTime() {
@@ -831,13 +888,13 @@ class DeparturesLiveView(LiveView):
         setInterval(updateDateTime, 1000);
         
         // Connection status monitoring
-        let isConnected = false; // Start as false (connecting)
-        let isConnecting = true; // Start as connecting
-        let hasError = false;
+        // States: connecting (yellow), connected (green), broken (red)
+        let connectionState = 'connecting'; // Start as connecting (yellow)
         let countdownInterval = null;
         let countdownElapsed = 0;
         let countdownRunning = false;
         let lastUpdateTime = Date.now();
+        let startCountdown = null; // Will be set by initRefreshCountdown
         
         function updateConnectionStatus() {
             const connectionEl = document.getElementById('connection-status');
@@ -852,18 +909,18 @@ class DeparturesLiveView(LiveView):
             const connectingPlug = connectionEl.querySelector('#connecting-plug');
             
             if (icon) {
-                // Determine state: connecting (yellow), connected (green), or disconnected (red)
-                if (isConnecting) {
+                // Determine state: connecting (yellow), connected (green), or broken (red)
+                if (connectionState === 'connecting') {
                     icon.className = 'status-icon connecting';
                     if (connectedPlug) connectedPlug.style.display = 'none';
                     if (disconnectedPlug) disconnectedPlug.style.display = 'none';
                     if (connectingPlug) connectingPlug.style.display = '';
-                } else if (isConnected && !hasError) {
+                } else if (connectionState === 'connected') {
                     icon.className = 'status-icon connected';
                     if (connectedPlug) connectedPlug.style.display = '';
                     if (disconnectedPlug) disconnectedPlug.style.display = 'none';
                     if (connectingPlug) connectingPlug.style.display = 'none';
-                } else {
+                } else { // broken
                     icon.className = 'status-icon disconnected';
                     if (connectedPlug) connectedPlug.style.display = 'none';
                     if (disconnectedPlug) disconnectedPlug.style.display = '';
@@ -873,19 +930,34 @@ class DeparturesLiveView(LiveView):
         }
         
         // Refresh countdown circle - synchronized with server updates
+        let countdownInitialized = false;
+        let reconnectTimeout = null;
+        let countdownCircle = null;
+        let circumference = 0;
+        
         function initRefreshCountdown() {
-            const countdownCircle = document.querySelector('.refresh-countdown circle.progress');
+            countdownCircle = document.querySelector('.refresh-countdown circle.progress');
             if (!countdownCircle) return;
             
-            // Reconnection timeout tracking
-            let reconnectTimeout = null;
+            // Only initialize once
+            if (countdownInitialized) {
+                // Just restart the countdown if already initialized
+                if (startCountdown) {
+                    startCountdown();
+                }
+                return;
+            }
+            countdownInitialized = true;
             
             const radius = 5; // Smaller radius to match reduced icon size
-            const circumference = 2 * Math.PI * radius;
+            circumference = 2 * Math.PI * radius;
             countdownCircle.setAttribute('stroke-dasharray', circumference);
             countdownCircle.setAttribute('stroke-dashoffset', '0');
             
-            function startCountdown() {
+            // Define startCountdown and make it accessible globally
+            startCountdown = function() {
+                if (!countdownCircle) return;
+                
                 // Clear any existing interval
                 if (countdownInterval) {
                     clearInterval(countdownInterval);
@@ -896,7 +968,7 @@ class DeparturesLiveView(LiveView):
                 const updateInterval = 100; // Update every 100ms for smooth animation
                 
                 function updateCountdown() {
-                    if (!countdownRunning) return;
+                    if (!countdownRunning || !countdownCircle) return;
                     
                     countdownElapsed += updateInterval;
                     const progress = countdownElapsed / (REFRESH_INTERVAL_SECONDS * 1000);
@@ -920,48 +992,48 @@ class DeparturesLiveView(LiveView):
                 
                 countdownInterval = setInterval(updateCountdown, updateInterval);
             }
-            
-            // Monitor for errors and connection issues
-            window.addEventListener('phx:error', (event) => {
-                console.error('phx:error received:', event);
-                hasError = true;
-                isConnected = false;
-                isConnecting = false;
-                // Clear reconnection timeout on error
-                if (reconnectTimeout) {
-                    clearTimeout(reconnectTimeout);
-                    reconnectTimeout = null;
-                }
-                updateConnectionStatus();
-                updateApiStatus('error');
-                // Stop countdown on error
-                if (countdownInterval) {
-                    clearInterval(countdownInterval);
-                    countdownInterval = null;
-                    countdownRunning = false;
-                }
-            });
-            
-            window.addEventListener('phx:update', (event) => {
-                console.log('phx:update received - restarting countdown', event);
-                // Data was successfully fetched - reset everything
-                hasError = false;
-                isConnected = true;
-                isConnecting = false;
-                lastUpdateTime = Date.now();
-                // Clear reconnection timeout since we're now connected
-                if (reconnectTimeout) {
-                    clearTimeout(reconnectTimeout);
-                    reconnectTimeout = null;
-                }
-                updateConnectionStatus();
-                // Get API status from event detail if available, default to success
-                const apiStatus = event.detail?.api_status || 'success';
-                updateApiStatus(apiStatus);
-                startCountdown(); // Reset and start countdown from beginning
-            });
-            
-            function updateApiStatus(status) {
+        }
+        
+        // Set up event listeners once (outside initRefreshCountdown)
+        window.addEventListener('phx:error', (event) => {
+            console.error('phx:error received:', event);
+            connectionState = 'broken';
+            // Clear reconnection timeout on error
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+                reconnectTimeout = null;
+            }
+            updateConnectionStatus();
+            updateApiStatus('error');
+            // Stop countdown on error
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+                countdownRunning = false;
+            }
+        });
+        
+        window.addEventListener('phx:update', (event) => {
+            console.log('phx:update received - restarting countdown', event);
+            // Data was successfully fetched - connection is working
+            connectionState = 'connected';
+            lastUpdateTime = Date.now();
+            // Clear reconnection timeout since we're now connected
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+                reconnectTimeout = null;
+            }
+            updateConnectionStatus();
+            // Get API status from event detail if available, default to success
+            const apiStatus = event.detail?.api_status || 'success';
+            updateApiStatus(apiStatus);
+            // Reset and start countdown from beginning
+            if (startCountdown) {
+                startCountdown();
+            }
+        });
+        
+        function updateApiStatus(status) {
                 const apiStatusIcon = document.getElementById('api-status-icon');
                 if (!apiStatusIcon) {
                     console.warn('api-status-icon not found');
@@ -1004,74 +1076,91 @@ class DeparturesLiveView(LiveView):
                 }
             }
             
-            // Handle reconnection timeout - if we've been connecting for too long, show error
+            // Handle reconnection timeout - if we've been connecting for too long, show broken
             function startReconnectTimeout() {
                 // Clear any existing timeout
                 if (reconnectTimeout) {
                     clearTimeout(reconnectTimeout);
                 }
-                // If we're connecting for more than 10 seconds, show as error
+                // If we're connecting for more than 10 seconds, show as broken
                 reconnectTimeout = setTimeout(() => {
-                    if (isConnecting && !isConnected) {
-                        console.warn('Reconnection timeout - showing error state');
-                        hasError = true;
-                        isConnecting = false;
+                    if (connectionState === 'connecting') {
+                        console.warn('Reconnection timeout - showing broken state');
+                        connectionState = 'broken';
                         updateConnectionStatus();
                     }
                 }, 10000); // 10 second timeout
             }
-            
-            window.addEventListener('phx:disconnect', () => {
-                console.log('phx:disconnect received - will attempt to reconnect');
-                // On disconnect, pyview will automatically try to reconnect
-                // So we set connecting state (not error state)
-                hasError = false;
-                isConnected = false;
-                isConnecting = true; // Will reconnect automatically
-                updateConnectionStatus();
-                // Start timeout for reconnection
-                startReconnectTimeout();
-                // Stop countdown on disconnect - will restart when reconnected
-                if (countdownInterval) {
-                    clearInterval(countdownInterval);
-                    countdownInterval = null;
-                    countdownRunning = false;
-                }
-            });
-            
-            // Detect connecting state (when WebSocket is connecting/reconnecting)
-            window.addEventListener('phx:connecting', () => {
-                console.log('phx:connecting received - attempting to reconnect');
-                isConnecting = true;
-                isConnected = false;
-                hasError = false;
-                updateConnectionStatus();
-                // Start/restart timeout for reconnection
-                startReconnectTimeout();
-            });
-            
-        // Initial state: connecting (will change to connected on first phx:update)
+        
+        window.addEventListener('phx:disconnect', () => {
+            console.log('phx:disconnect received - connection disconnected');
+            // On disconnect, show broken state (red)
+            connectionState = 'broken';
+            updateConnectionStatus();
+            // Start timeout for reconnection
+            startReconnectTimeout();
+            // Stop countdown on disconnect - will restart when reconnected
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+                countdownRunning = false;
+            }
+        });
+        
+        // Handle permanent connection close
+        window.addEventListener('phx:close', () => {
+            console.log('phx:close received - connection permanently closed');
+            connectionState = 'broken';
+            updateConnectionStatus();
+            // Stop countdown
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+                countdownRunning = false;
+            }
+        });
+        
+        // Detect connecting state (when WebSocket is connecting/reconnecting)
+        window.addEventListener('phx:connecting', () => {
+            console.log('phx:connecting received - attempting to reconnect');
+            connectionState = 'connecting';
+            updateConnectionStatus();
+            // Start/restart timeout for reconnection
+            startReconnectTimeout();
+        });
+        
+        // Detect when WebSocket opens (connected)
+        window.addEventListener('phx:open', () => {
+            console.log('phx:open received - WebSocket connected');
+            connectionState = 'connected';
+            // Clear reconnection timeout since we're now connected
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+                reconnectTimeout = null;
+            }
+            updateConnectionStatus();
+        });
+        
+        // Initial state: connecting (will change to connected on first phx:update or phx:open)
         updateConnectionStatus();
         updateApiStatus(INITIAL_API_STATUS); // Use initial API status from server
-        // Don't start countdown until first successful update
-            
-            // Cleanup on unload
-            window.addEventListener('beforeunload', () => {
-                if (countdownInterval) {
-                    clearInterval(countdownInterval);
-                }
-                if (reconnectTimeout) {
-                    clearTimeout(reconnectTimeout);
-                }
-            });
-        }
+        
+        // Cleanup on unload
+        window.addEventListener('beforeunload', () => {
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+            }
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+            }
+        });
         
         // Auto-refresh handling via LiveView
         window.addEventListener('phx:update', () => {
             if (PAGINATION_ENABLED) {
                 initPagination();
             }
-            initRefreshCountdown();
+            initRefreshCountdown(); // This will restart countdown if already initialized
         });
         
         function createCountdownCircle(radius = 5) {
@@ -1173,16 +1262,21 @@ class DeparturesLiveView(LiveView):
         }
         
         // Initialize on load
-        if (PAGINATION_ENABLED && document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', () => {
+        function initializeAll() {
+            if (PAGINATION_ENABLED) {
                 initPagination();
-                initRefreshCountdown();
-            });
-        } else if (PAGINATION_ENABLED) {
-            initPagination();
+            }
             initRefreshCountdown();
+            // Start countdown after initialization
+            if (startCountdown) {
+                startCountdown();
+            }
+        }
+        
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeAll);
         } else {
-            initRefreshCountdown();
+            initializeAll();
         }
         
         // Cleanup intervals on page unload/disconnect
@@ -1228,65 +1322,47 @@ class DeparturesLiveView(LiveView):
         };
         script.onload = function() {
             console.log('app.js loaded successfully');
-            // Check LiveSocket after a short delay
-            setTimeout(function() {
-                if (window.liveSocket) {
-                    console.log('LiveSocket initialized, socket:', window.liveSocket.socket);
-                    const isConnected = window.liveSocket.socket?.isConnected();
-                    console.log('WebSocket connected:', isConnected);
-                    if (!isConnected) {
-                        console.warn('WebSocket not connected - checking connection state...');
-                        // Try to manually connect if not connected
-                        if (window.liveSocket.socket && !isConnected) {
-                            console.log('Attempting to connect WebSocket...');
-                            window.liveSocket.socket.connect();
-                        }
-                    }
-                } else {
-                    console.error('LiveSocket not found - client JS may have failed to initialize');
-                }
-            }, 200);
+            // Connection status will be updated via phx:open/phx:close events
+            // No need to check directly - observe events instead
         };
         document.body.appendChild(script);
     </script>
 </body>
 </html>
         """
-        
-        # Wrap the HTML string in a LiveRender object that pyview expects
-        from pyview.template.live_template import LiveRender
-        
-        # Create a simple object with text() and tree() methods that LiveRender expects
-        class SimpleTemplate:
-            def text(self, assigns, meta):
-                return html_content
-            
-            def tree(self, assigns, meta):
-                # Return a simple tree structure for pyview
-                return {"html": html_content}
-        
-        return LiveRender(SimpleTemplate(), assigns, meta)
+        )
 
-    def _render_departures(
-        self, direction_groups: list[tuple[str, str, list[Departure]]]
-    ) -> str:
+        # Use pyview's LiveTemplate system properly
+        # Create an ibis Template from the HTML string, wrap in LiveTemplate, then return LiveRender
+        from pyview.template.live_template import LiveTemplate, LiveRender
+        from pyview.vendor.ibis import Template as IbisTemplate
+        from pyview.meta import PyViewMeta
+
+        # Create ibis template from HTML string
+        ibis_template = IbisTemplate(html_content, template_id="departures")
+        # Wrap in LiveTemplate
+        live_template = LiveTemplate(ibis_template)
+        # Return LiveRender which provides text() and tree() methods
+        return LiveRender(live_template, assigns, meta)
+
+    def _render_departures(self, direction_groups: list[tuple[str, str, list[Departure]]]) -> str:
         """Render departures grouped by direction, sorted chronologically within each group.
         Stops without departures are shown at the bottom."""
         config = self.config
         stop_configs = self.stop_configs
-        
+
         if not direction_groups:
             return f'<div style="text-align: center; padding: 4rem 2rem; opacity: 0.7; font-size: {config.font_size_no_departures_available}; font-weight: 500;">No departures available</div>'
 
         # Separate groups with departures from stops that have no departures at all
         groups_with_departures: list[tuple[str, str, list[Departure]]] = []
         stops_with_departures: set[str] = set()
-        
+
         for stop_name, direction_name, departures in direction_groups:
             if departures:
                 groups_with_departures.append((stop_name, direction_name, departures))
                 stops_with_departures.add(stop_name)
-        
+
         # Find stops that are configured but have no departures at all
         configured_stops = {stop_config.station_name for stop_config in stop_configs}
         stops_without_departures = configured_stops - stops_with_departures
@@ -1299,10 +1375,10 @@ class DeparturesLiveView(LiveView):
         for stop_name, direction_name, departures in groups_with_departures:
             # Remove "->" prefix from direction name if present
             direction_clean = direction_name.lstrip("->")
-            
+
             # Combine stop name and direction into one header
             combined_header = f"{stop_name} → {direction_clean}"
-            
+
             if stop_name != current_stop:
                 if current_stop is not None:
                     html_parts.append("</div>")
@@ -1327,8 +1403,8 @@ class DeparturesLiveView(LiveView):
             sorted_departures = sorted(departures, key=lambda d: d.time)
             for departure in sorted_departures:
                 html_parts.append(self._render_departure(departure))
-            
-            html_parts.append('</div>')  # Close direction-group
+
+            html_parts.append("</div>")  # Close direction-group
 
         if current_stop is not None:
             html_parts.append("</div>")
@@ -1339,12 +1415,13 @@ class DeparturesLiveView(LiveView):
             html_parts.append(
                 f'<div class="direction-group"><div class="direction-header">{self._escape_html(stop_name)}</div>'
             )
-            html_parts.append('<div class="departure-row"><div class="no-departures">No departures</div></div>')
-            html_parts.append('</div>')  # Close direction-group
+            html_parts.append(
+                '<div class="departure-row"><div class="no-departures">No departures</div></div>'
+            )
+            html_parts.append("</div>")  # Close direction-group
             html_parts.append("</div>")  # Close stop-section
 
         return "".join(html_parts)
-
 
     def _render_departure(self, departure: Departure) -> str:
         """Render a single departure as HTML."""
@@ -1352,15 +1429,15 @@ class DeparturesLiveView(LiveView):
         cancelled_class = " cancelled" if departure.is_cancelled else ""
         delay_class = " delay" if departure.delay_seconds and departure.delay_seconds > 60 else ""
         realtime_class = " realtime" if departure.is_realtime else ""
-        
+
         # Format route display: just show line number (no transport type)
         route_display = departure.line
-        
+
         # Format platform display
         platform_display = ""
         if departure.platform is not None:
             platform_display = str(departure.platform)
-        
+
         # Format delay display
         delay_display = ""
         if departure.delay_seconds and departure.delay_seconds > 60:
@@ -1375,7 +1452,7 @@ class DeparturesLiveView(LiveView):
             <div class="time{delay_class}{realtime_class}">{time_str}{delay_display}</div>
         </div>
         """
-    
+
     def _format_departure_time(self, departure: Departure) -> str:
         """Format departure time according to configuration."""
         now = datetime.now()
@@ -1427,9 +1504,7 @@ class PyViewWebAdapter(DisplayAdapter):
         self._update_task: asyncio.Task | None = None
         self._server = None
 
-    async def display_departures(
-        self, direction_groups: list[tuple[str, list[Departure]]]
-    ) -> None:
+    async def display_departures(self, direction_groups: list[tuple[str, list[Departure]]]) -> None:
         """Display grouped departures (not used directly, handled by LiveView)."""
         # This is handled by the LiveView's periodic updates
         pass
@@ -1442,7 +1517,7 @@ class PyViewWebAdapter(DisplayAdapter):
         # Store dependencies in adapter for the LiveView class to access
         # Create a LiveView class that accesses these dependencies
         adapter = self
-        
+
         class ConfiguredDeparturesLiveView(DeparturesLiveView):
             def __init__(self):
                 super().__init__(
@@ -1453,10 +1528,10 @@ class PyViewWebAdapter(DisplayAdapter):
 
         app = PyView()
         app.add_live_view("/", ConfiguredDeparturesLiveView)
-        
+
         # Store app instance for broadcasting updates
         DeparturesLiveView._app_instance = app
-        
+
         # Start the API poller immediately when server starts
         # This runs independently of client connections - API calls happen regardless
         # Do initial API call immediately before starting the server
@@ -1468,23 +1543,25 @@ class PyViewWebAdapter(DisplayAdapter):
                 try:
                     # Fetch departures from API immediately
                     all_groups: list[tuple[str, str, list[Departure]]] = []
-                    
+
                     for stop_config in self.stop_configs:
                         groups = await self.grouping_service.get_grouped_departures(stop_config)
                         for direction_name, departures in groups:
                             all_groups.append(
                                 (stop_config.station_name, direction_name, departures)
                             )
-                    
+
                     # Update shared state immediately
-                    _departures_state["direction_groups"] = all_groups
-                    _departures_state["last_update"] = datetime.now()
-                    _departures_state["api_status"] = "success"
-                    logger.info(f"Initial API call completed at {datetime.now()}, found {len(all_groups)} direction groups")
+                    _departures_state.direction_groups = all_groups
+                    _departures_state.last_update = datetime.now()
+                    _departures_state.api_status = "success"
+                    logger.info(
+                        f"Initial API call completed at {datetime.now()}, found {len(all_groups)} direction groups"
+                    )
                 except Exception as e:
                     logger.error(f"Initial API call failed: {e}", exc_info=True)
-                    _departures_state["api_status"] = "error"
-                
+                    _departures_state.api_status = "error"
+
                 # Now start the periodic polling task
                 _api_poller_task = asyncio.create_task(
                     _api_poller(
@@ -1494,25 +1571,26 @@ class PyViewWebAdapter(DisplayAdapter):
                     )
                 )
                 logger.info("Started API poller (independent of client connections)")
-        
+
         # Start the API poller - runs regardless of client connections
         # Create the task but don't await it - let it run in background
         asyncio.create_task(start_api_poller())
-        
+
         # Serve pyview's client JavaScript and static assets
         from starlette.responses import Response, FileResponse
         from starlette.routing import Route
         from pathlib import Path
         import importlib.resources
-        
+
         async def static_app_js(request):
             """Serve pyview's client JavaScript."""
             try:
                 # Get pyview package path
                 import pyview
+
                 pyview_path = Path(pyview.__file__).parent
                 client_js_path = pyview_path / "static" / "assets" / "app.js"
-                
+
                 if client_js_path.exists():
                     return FileResponse(str(client_js_path), media_type="application/javascript")
                 else:
@@ -1521,12 +1599,22 @@ class PyViewWebAdapter(DisplayAdapter):
                     if alt_path.exists():
                         return FileResponse(str(alt_path), media_type="application/javascript")
                     else:
-                        logger.error(f"Could not find pyview client JS at {client_js_path} or {alt_path}")
-                        return Response(content="// PyView client not found", media_type="application/javascript", status_code=404)
+                        logger.error(
+                            f"Could not find pyview client JS at {client_js_path} or {alt_path}"
+                        )
+                        return Response(
+                            content="// PyView client not found",
+                            media_type="application/javascript",
+                            status_code=404,
+                        )
             except Exception as e:
                 logger.error(f"Error serving pyview client JS: {e}", exc_info=True)
-                return Response(content="// Error loading client", media_type="application/javascript", status_code=500)
-        
+                return Response(
+                    content="// Error loading client",
+                    media_type="application/javascript",
+                    status_code=500,
+                )
+
         # Add route to serve pyview's client JavaScript
         app.routes.append(Route("/static/assets/app.js", static_app_js))
 
@@ -1551,7 +1639,6 @@ class PyViewWebAdapter(DisplayAdapter):
             except asyncio.CancelledError:
                 pass
             logger.info("Stopped API poller")
-        
+
         if self._server:
             self._server.should_exit = True
-

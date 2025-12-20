@@ -23,7 +23,7 @@ class DepartureGroupingService:
         self, stop_config: StopConfiguration
     ) -> list[tuple[str, list[Departure]]]:
         """Get departures for a stop, grouped by configured directions.
-        
+
         Fetches a reasonable number of departures from the API, then groups them
         by direction and limits each direction group to max_departures_per_stop.
         """
@@ -41,8 +41,10 @@ class DepartureGroupingService:
         # Log what we're trying to match
         if not stop_config.direction_mappings:
             logger.warning(f"No direction_mappings configured for {stop_config.station_name}")
-        logger.debug(f"Processing {len(departures)} departures for {stop_config.station_name} with {len(stop_config.direction_mappings)} direction mappings")
-        
+        logger.debug(
+            f"Processing {len(departures)} departures for {stop_config.station_name} with {len(stop_config.direction_mappings)} direction mappings"
+        )
+
         for departure in departures:
             matched = False
             for direction_name, patterns in stop_config.direction_mappings.items():
@@ -56,7 +58,9 @@ class DepartureGroupingService:
             if not matched:
                 ungrouped.append(departure)
                 # Log unmatched departures
-                logger.debug(f"Unmatched departure for {stop_config.station_name}: {departure.transport_type} {departure.line} -> {departure.destination}")
+                logger.debug(
+                    f"Unmatched departure for {stop_config.station_name}: {departure.transport_type} {departure.line} -> {departure.destination}"
+                )
 
         # Sort departures within each group by time (datetime objects, not display strings)
         # This ensures "<1m" (0-59 seconds) sorts before "1m" (60-119 seconds), etc.
@@ -76,7 +80,7 @@ class DepartureGroupingService:
             # Then limit each direction group to max_departures_per_stop
             max_per_direction = stop_config.max_departures_per_stop or 20
             direction_groups[direction_name] = direction_groups[direction_name][:max_per_direction]
-        
+
         if ungrouped:
             ungrouped.sort(key=lambda d: d.time)
             # Limit each route within ungrouped to max_departures_per_route
@@ -96,7 +100,7 @@ class DepartureGroupingService:
 
         # Build result list with only directions that have departures
         # Preserve the order from the config file (direction_mappings)
-        # Don't show empty direction groups - if show_ungrouped is false and no matches, 
+        # Don't show empty direction groups - if show_ungrouped is false and no matches,
         # the stop will be shown as "no departures" at the bottom
         result = []
         # Iterate through direction_mappings in config order
@@ -111,16 +115,14 @@ class DepartureGroupingService:
 
         return result
 
-    def _matches_departure(
-        self, departure: Departure, patterns: list[str]
-    ) -> bool:
+    def _matches_departure(self, departure: Departure, patterns: list[str]) -> bool:
         """Check if a departure matches any of the given patterns.
-        
+
         Matching is done per route+destination combination:
         - Route + destination: "U2 Messestadt" (matches U2 going to Messestadt specifically)
         - Route + destination: "Bus 59 Giesing" (matches Bus 59 going to Giesing specifically)
         - Transport type + route + destination: "S-Bahn S5 Aying" (matches S-Bahn S5 going to Aying)
-        
+
         Patterns can also be:
         - Route only: "U2" (matches any destination for U2 route)
         - Destination only: "Messestadt" (matches any route going to Messestadt)
@@ -128,17 +130,17 @@ class DepartureGroupingService:
         destination_lower = departure.destination.lower()
         line_lower = departure.line.lower()
         transport_type_lower = departure.transport_type.lower()
-        
+
         # Create route identifiers for matching
         route_line = line_lower  # e.g., "u2", "59"
         route_full = f"{transport_type_lower} {line_lower}"  # e.g., "u-bahn u2", "bus 59"
-        
+
         for pattern in patterns:
             pattern_lower = pattern.lower().strip()
-            
+
             # Split pattern into words to handle different formats
             pattern_words = pattern_lower.split()
-            
+
             if len(pattern_words) >= 2:
                 # Pattern has multiple parts - try to match as route + destination
                 # Need to identify where route ends and destination begins
@@ -147,12 +149,12 @@ class DepartureGroupingService:
                 # 2. "Bus 59 Giesing" -> route="bus 59", dest="giesing"
                 # 3. "139 Messestadt West" -> route="139", dest="messestadt west"
                 # 4. "Bus 54 Lorettoplatz" -> route="bus 54", dest="lorettoplatz"
-                
+
                 # Try to match route from the beginning
                 # Check if first word matches line number
                 route_matched = False
                 dest_start_idx = 1
-                
+
                 # Case 1: First word is the line number (e.g., "139 Messestadt West")
                 if pattern_words[0] == route_line:
                     route_matched = True
@@ -160,10 +162,12 @@ class DepartureGroupingService:
                 # Case 2: First two words are transport type + line (e.g., "Bus 54 Lorettoplatz")
                 elif len(pattern_words) >= 2:
                     first_two = " ".join(pattern_words[0:2])
-                    if first_two == route_full or (pattern_words[1] == route_line and pattern_words[0] in transport_type_lower):
+                    if first_two == route_full or (
+                        pattern_words[1] == route_line and pattern_words[0] in transport_type_lower
+                    ):
                         route_matched = True
                         dest_start_idx = 2
-                
+
                 if route_matched and dest_start_idx < len(pattern_words):
                     # Destination is everything after the route
                     dest_part = " ".join(pattern_words[dest_start_idx:])
@@ -175,52 +179,48 @@ class DepartureGroupingService:
             else:
                 # Single word - try as route-only or destination-only
                 pattern_single = pattern_words[0]
-                
+
                 # Try matching as route only - EXACT match only (no substring matching)
-                route_matches = (
-                    pattern_single == route_line
-                    or pattern_single == route_full
-                )
-                
+                route_matches = pattern_single == route_line or pattern_single == route_full
+
                 if route_matches:
                     # Route matches exactly - match any destination for this route
                     return True
-                
+
                 # Try matching as destination only - use word-boundary matching
                 if self._matches_text(destination_lower, pattern_single):
                     # Destination matches - match any route to this destination
                     return True
-        
+
         return False
-    
+
     def _matches_text(self, text: str, pattern: str) -> bool:
         """Check if text matches pattern (exact match or word-boundary match).
-        
+
         For multi-word patterns, requires exact phrase match.
         For single-word patterns, requires whole-word match.
         This prevents "Ostbahnhof" from matching "Giesing Bahnhof"
         """
         if pattern == text:
             return True
-        
+
         # For multi-word patterns, require exact phrase match
-        if ' ' in pattern:
+        if " " in pattern:
             pattern_lower = pattern.lower()
             text_lower = text.lower()
             if pattern_lower == text_lower:
                 return True
             # Check if pattern appears as a phrase (with word boundaries)
             pattern_escaped = re.escape(pattern_lower)
-            if re.search(r'\b' + pattern_escaped + r'\b', text_lower):
+            if re.search(r"\b" + pattern_escaped + r"\b", text_lower):
                 return True
             return False
-        
+
         # For single-word patterns, use word-boundary matching
         try:
             pattern_escaped = re.escape(pattern.lower())
-            if re.search(r'\b' + pattern_escaped + r'\b', text.lower()):
+            if re.search(r"\b" + pattern_escaped + r"\b", text.lower()):
                 return True
         except re.error:
             pass
         return False
-

@@ -10,8 +10,8 @@ import aiohttp
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S',
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
     stream=sys.stderr,
 )
 
@@ -93,9 +93,7 @@ async def main() -> None:
         grouping_service = DepartureGroupingService(departure_repo)
 
         # Initialize display adapter
-        display_adapter = PyViewWebAdapter(
-            grouping_service, stop_configs, config, session=session
-        )
+        display_adapter = PyViewWebAdapter(grouping_service, stop_configs, config, session=session)
 
         try:
             await display_adapter.start()
@@ -106,4 +104,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-

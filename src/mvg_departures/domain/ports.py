@@ -20,9 +20,7 @@ class StationRepository(Protocol):
         ...
 
     @abstractmethod
-    async def find_nearby_station(
-        self, latitude: float, longitude: float
-    ) -> Station | None:
+    async def find_nearby_station(self, latitude: float, longitude: float) -> Station | None:
         """Find the nearest station to given coordinates."""
         ...
 
@@ -46,9 +44,7 @@ class DisplayAdapter(ABC):
     """Port for displaying departure information to users."""
 
     @abstractmethod
-    async def display_departures(
-        self, direction_groups: list[tuple[str, list[Departure]]]
-    ) -> None:
+    async def display_departures(self, direction_groups: list[tuple[str, list[Departure]]]) -> None:
         """Display grouped departures."""
         ...
 
@@ -61,5 +57,3 @@ class DisplayAdapter(ABC):
     async def stop(self) -> None:
         """Stop the display adapter."""
         ...
-
-

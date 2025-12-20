@@ -66,7 +66,7 @@ station_name = "Universität"
 def test_config_raises_error_when_file_not_found() -> None:
     """Given non-existent config file, when loading config, then FileNotFoundError is raised."""
     config = AppConfig(config_file="nonexistent.toml")
-    
+
     with pytest.raises(FileNotFoundError, match="Configuration file not found"):
         config.get_stops_config()
 
@@ -74,8 +74,6 @@ def test_config_raises_error_when_file_not_found() -> None:
 def test_config_raises_error_when_config_file_not_set() -> None:
     """Given config_file is None, when loading config, then ValueError is raised."""
     config = AppConfig(config_file=None)
-    
+
     with pytest.raises(ValueError, match="config_file must be set"):
         config.get_stops_config()
-
-

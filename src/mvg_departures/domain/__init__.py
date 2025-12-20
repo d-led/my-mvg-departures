@@ -21,5 +21,3 @@ __all__ = [
     "StationRepository",
     "StopConfiguration",
 ]
-
-

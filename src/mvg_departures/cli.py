@@ -13,7 +13,7 @@ async def search_stations(query: str) -> list[dict[str, Any]]:
     """Search for stations by name."""
     async with aiohttp.ClientSession() as session:
         results = []
-        
+
         # Try direct search first
         try:
             result = await MvgApi.station_async(query, session=session)
@@ -21,18 +21,16 @@ async def search_stations(query: str) -> list[dict[str, Any]]:
                 results.append(result)
         except Exception:
             pass
-        
+
         # Try with "München" appended if not already there
         if "München" not in query and "Munich" not in query:
             try:
-                result = await MvgApi.station_async(
-                    f"{query}, München", session=session
-                )
+                result = await MvgApi.station_async(f"{query}, München", session=session)
                 if result and result not in results:
                     results.append(result)
             except Exception:
                 pass
-        
+
         # Try to get all stations and filter (if API supports it)
         try:
             if hasattr(MvgApi, "stations_async"):
@@ -40,7 +38,8 @@ async def search_stations(query: str) -> list[dict[str, Any]]:
                 if all_stations:
                     query_lower = query.lower()
                     matches = [
-                        s for s in all_stations
+                        s
+                        for s in all_stations
                         if query_lower in s.get("name", "").lower()
                         or query_lower in s.get("place", "").lower()
                     ]
@@ -51,7 +50,7 @@ async def search_stations(query: str) -> list[dict[str, Any]]:
                             results.append(match)
         except Exception:
             pass
-        
+
         return results
 
 
@@ -61,22 +60,20 @@ async def get_station_details(station_id: str, limit: int = 100) -> dict[str, An
         try:
             # Get departures to infer station info and available routes
             # Use a higher limit to capture all destinations for routes
-            departures = await MvgApi.departures_async(
-                station_id, limit=limit, session=session
-            )
+            departures = await MvgApi.departures_async(station_id, limit=limit, session=session)
             if not departures:
                 return None
-            
+
             # Extract unique routes and destinations
             routes: dict[str, set[str]] = {}  # transport_type + line -> set of destinations
             route_details: dict[str, dict[str, Any]] = {}  # route_key -> details
-            
+
             for dep in departures:
                 line = dep.get("line", "")
                 destination = dep.get("destination", "")
                 transport_type = dep.get("type", "")
                 icon = dep.get("icon", "")
-                
+
                 route_key = f"{transport_type} {line}"
                 if route_key not in routes:
                     routes[route_key] = set()
@@ -86,7 +83,7 @@ async def get_station_details(station_id: str, limit: int = 100) -> dict[str, An
                         "icon": icon,
                     }
                 routes[route_key].add(destination)
-            
+
             # Try to get station name from first departure or use ID
             station_name = station_id
             try:
@@ -95,7 +92,7 @@ async def get_station_details(station_id: str, limit: int = 100) -> dict[str, An
                 pass
             except Exception:
                 pass
-            
+
             return {
                 "station": {
                     "id": station_id,
@@ -120,22 +117,20 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
     """List all available routes and destinations for a station."""
     details = await get_station_details(station_id)
     if not details:
-        print(
-            f"Station {station_id} not found or has no departures.", file=sys.stderr
-        )
+        print(f"Station {station_id} not found or has no departures.", file=sys.stderr)
         sys.exit(1)
-    
+
     station = details.get("station", {})
     routes = details.get("routes", {})
-    
+
     print(f"\nStation: {station.get('name', station_id)} ({station_id})")
     print(f"Place: {station.get('place', 'München')}")
     print(f"\nAvailable Routes ({len(routes)}):")
     print("=" * 70)
-    
+
     # Collect patterns for config, grouped by route
     config_patterns_by_route: dict[str, list[tuple[str, str, str]]] = {}
-    
+
     for route_key, route_data in sorted(routes.items()):
         if isinstance(route_data, dict):
             destinations = route_data.get("destinations", [])
@@ -148,15 +143,17 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
             transport_type = route_key.split()[0] if route_key.split() else ""
             line = route_key.split()[-1] if route_key.split() else route_key
             route_display = route_key
-        
+
         # Show route with destination count
         dest_count = len(destinations)
-        multi_dest_note = f" ({dest_count} destination{'s' if dest_count > 1 else ''})" if dest_count > 1 else ""
+        multi_dest_note = (
+            f" ({dest_count} destination{'s' if dest_count > 1 else ''})" if dest_count > 1 else ""
+        )
         print(f"\n{route_display}{multi_dest_note}:")
-        
+
         # Collect patterns for this route
         route_patterns = []
-        
+
         for dest in destinations:
             print(f"  → {dest}")
             # Generate pattern for config
@@ -164,12 +161,12 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
                 pattern = f"{line} {dest}"
                 full_pattern = f"{transport_type} {line} {dest}"
                 route_patterns.append((pattern, full_pattern, dest))
-        
+
         if route_patterns:
             config_patterns_by_route[route_key] = route_patterns
-    
+
     print(f"\nTotal departures found: {details.get('total_departures_found', 0)}")
-    
+
     if show_patterns and config_patterns_by_route:
         print("\n" + "=" * 70)
         print("Config patterns (copy these into your direction_mappings):")
@@ -181,15 +178,17 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
             route_display = route_key.replace(" ", " ")
             print(f"\n# {route_display}:")
             for pattern, full_pattern, dest in patterns:
-                print(f'  "{pattern}"  # Matches: {route_key.split()[-1] if route_key.split() else ""} -> {dest}')
-        
+                print(
+                    f'  "{pattern}"  # Matches: {route_key.split()[-1] if route_key.split() else ""} -> {dest}'
+                )
+
         print("\n# Alternative format (transport type + line + destination):")
         for route_key, patterns in sorted(config_patterns_by_route.items()):
             route_display = route_key.replace(" ", " ")
             print(f"\n# {route_display}:")
             for pattern, full_pattern, dest in patterns:
                 print(f'  "{full_pattern}"  # Matches: {route_key} -> {dest}')
-        
+
         # Also show a flat list for easy copy-paste
         print("\n# Flat list (line + destination format) - ready to paste:")
         all_patterns = []
@@ -197,7 +196,7 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
             all_patterns.extend([p[0] for p in patterns])
         pattern_str = ", ".join(f'"{p}"' for p in all_patterns)
         print(f"  [{pattern_str}]")
-        
+
         # Show destination-only patterns as well
         print("\n# Destination-only patterns (matches any route to that destination):")
         unique_destinations = set()
@@ -212,39 +211,39 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
 async def search_and_list_routes(query: str, show_patterns: bool = True) -> None:
     """Search for stations by name and list routes for each match."""
     results = await search_stations(query)
-    
+
     if not results:
         print(f"No stations found for '{query}'", file=sys.stderr)
         sys.exit(1)
-    
+
     print(f"\nFound {len(results)} station(s) matching '{query}':\n")
     print("=" * 70)
-    
+
     for i, station in enumerate(results, 1):
         station_id = station.get("id", "")
         station_name = station.get("name", "Unknown")
         station_place = station.get("place", "Unknown")
-        
+
         print(f"\n[{i}/{len(results)}] {station_name} ({station_place})")
         print(f"ID: {station_id}")
         print("-" * 70)
-        
+
         # Get routes for this station (use higher limit to get all destinations)
         details = await get_station_details(station_id, limit=100)
         if not details:
             print("  No routes found or station has no departures.")
             continue
-        
+
         routes = details.get("routes", {})
         if not routes:
             print("  No routes found.")
             continue
-        
+
         print(f"  Available Routes ({len(routes)}):")
-        
+
         # Collect patterns for config, grouped by route
         config_patterns_by_route: dict[str, list[tuple[str, str, str]]] = {}
-        
+
         for route_key, route_data in sorted(routes.items()):
             if isinstance(route_data, dict):
                 destinations = route_data.get("destinations", [])
@@ -256,15 +255,19 @@ async def search_and_list_routes(query: str, show_patterns: bool = True) -> None
                 transport_type = route_key.split()[0] if route_key.split() else ""
                 line = route_key.split()[-1] if route_key.split() else route_key
                 route_display = route_key
-            
+
             # Show route with destination count
             dest_count = len(destinations)
-            multi_dest_note = f" ({dest_count} destination{'s' if dest_count > 1 else ''})" if dest_count > 1 else ""
+            multi_dest_note = (
+                f" ({dest_count} destination{'s' if dest_count > 1 else ''})"
+                if dest_count > 1
+                else ""
+            )
             print(f"\n  {route_display}{multi_dest_note}:")
-            
+
             # Collect patterns for this route
             route_patterns = []
-            
+
             for dest in destinations:
                 print(f"    → {dest}")
                 # Generate pattern for config
@@ -272,15 +275,17 @@ async def search_and_list_routes(query: str, show_patterns: bool = True) -> None
                     pattern = f"{line} {dest}"
                     full_pattern = f"{transport_type} {line} {dest}"
                     route_patterns.append((pattern, full_pattern, dest))
-            
+
             if route_patterns:
                 config_patterns_by_route[route_key] = route_patterns
-        
+
         if show_patterns and config_patterns_by_route:
             print("\n  " + "-" * 68)
             print("  Config patterns (copy into your direction_mappings):")
             print("  " + "-" * 68)
-            print("\n  # Format: Patterns match 'line destination' or 'transport_type line destination'")
+            print(
+                "\n  # Format: Patterns match 'line destination' or 'transport_type line destination'"
+            )
             print("  # Examples: '139 Messestadt West' or 'Bus 139 Messestadt West'")
             print("\n  # Grouped by route (recommended format: line + destination):")
             for route_key, patterns in sorted(config_patterns_by_route.items()):
@@ -289,14 +294,14 @@ async def search_and_list_routes(query: str, show_patterns: bool = True) -> None
                 for pattern, full_pattern, dest in patterns:
                     route_line = route_key.split()[-1] if route_key.split() else ""
                     print(f'    "{pattern}"  # Matches: {route_line} -> {dest}')
-            
+
             print("\n  # Flat list (line + destination format) - ready to paste:")
             all_patterns = []
             for patterns in config_patterns_by_route.values():
                 all_patterns.extend([p[0] for p in patterns])
             pattern_str = ", ".join(f'"{p}"' for p in all_patterns)
             print(f"    [{pattern_str}]")
-            
+
             # Show destination-only patterns
             print("\n  # Destination-only patterns (matches any route to that destination):")
             unique_destinations = set()
@@ -306,7 +311,7 @@ async def search_and_list_routes(query: str, show_patterns: bool = True) -> None
             dest_patterns = sorted(unique_destinations)
             dest_pattern_str = ", ".join(f'"{d}"' for d in dest_patterns)
             print(f"    [{dest_pattern_str}]")
-        
+
         if i < len(results):
             print()
 
@@ -317,25 +322,25 @@ async def show_station_info(station_id: str, format_json: bool = False) -> None:
     if not details:
         print(f"Station {station_id} not found or has no departures.", file=sys.stderr)
         sys.exit(1)
-    
+
     if format_json:
         print(json.dumps(details, indent=2, ensure_ascii=False))
     else:
         station = details.get("station", {})
         routes = details.get("routes", {})
-        
+
         print(f"\nStation Information:")
         print(f"  ID: {station.get('id', 'Unknown')}")
         print(f"  Name: {station.get('name', 'Unknown')}")
         print(f"  Place: {station.get('place', 'München')}")
         print(f"\nRoutes: {len(routes)}")
         for route, destinations in sorted(routes.items()):
-            print(f"  {route}: {', '.join(destinations[:3])}{'...' if len(destinations) > 3 else ''}")
+            print(
+                f"  {route}: {', '.join(destinations[:3])}{'...' if len(destinations) > 3 else ''}"
+            )
 
 
-def generate_config_snippet(
-    station_id: str, station_name: str, routes: dict[str, Any]
-) -> str:
+def generate_config_snippet(station_id: str, station_name: str, routes: dict[str, Any]) -> str:
     """Generate a TOML config snippet for a station."""
     # Extract all destinations from routes
     all_destinations = set()
@@ -345,7 +350,7 @@ def generate_config_snippet(
             all_destinations.update(destinations)
         elif isinstance(route_data, list):
             all_destinations.update(route_data)
-    
+
     # Create a simple config snippet
     snippet = f"""[[stops]]
 station_id = "{station_id}"
@@ -356,7 +361,7 @@ max_departures_per_stop = 30
 # Configure your direction mappings here
 # Example based on available destinations:
 """
-    
+
     # Suggest some direction mappings based on common destination patterns
     destinations_list = sorted(all_destinations)
     if destinations_list:
@@ -370,17 +375,15 @@ max_departures_per_stop = 30
             ],
             1,
         ):
-            snippet += (
-                f'"->Direction{i}" = {json.dumps(chunk, ensure_ascii=False)}\n'
-            )
-    
+            snippet += f'"->Direction{i}" = {json.dumps(chunk, ensure_ascii=False)}\n'
+
     return snippet
 
 
 async def main() -> None:
     """Main CLI entry point."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(
         description="MVG Departures Configuration Helper",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -402,23 +405,19 @@ Examples:
   mvg-config generate de:09162:100 "Giesing"
         """,
     )
-    
+
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
-    
+
     # Search command
     search_parser = subparsers.add_parser("search", help="Search for stations")
     search_parser.add_argument("query", help="Station name to search for")
-    search_parser.add_argument(
-        "--json", action="store_true", help="Output as JSON"
-    )
-    
+    search_parser.add_argument("--json", action="store_true", help="Output as JSON")
+
     # Info command
     info_parser = subparsers.add_parser("info", help="Show station information")
     info_parser.add_argument("station_id", help="Station ID (e.g., de:09162:100)")
-    info_parser.add_argument(
-        "--json", action="store_true", help="Output as JSON"
-    )
-    
+    info_parser.add_argument("--json", action="store_true", help="Output as JSON")
+
     # Routes command
     routes_parser = subparsers.add_parser(
         "routes", help="List routes for a station (by ID or search query)"
@@ -432,20 +431,18 @@ Examples:
         action="store_true",
         help="Don't show config patterns",
     )
-    
+
     # Generate command
-    generate_parser = subparsers.add_parser(
-        "generate", help="Generate config snippet"
-    )
+    generate_parser = subparsers.add_parser("generate", help="Generate config snippet")
     generate_parser.add_argument("station_id", help="Station ID")
     generate_parser.add_argument("station_name", help="Station name")
-    
+
     args = parser.parse_args()
-    
+
     if not args.command:
         parser.print_help()
         sys.exit(1)
-    
+
     try:
         if args.command == "search":
             results = await search_stations(args.query)
@@ -457,15 +454,13 @@ Examples:
                     sys.exit(1)
                 print(f"\nFound {len(results)} station(s):\n")
                 for station in results:
-                    print(
-                        f"  {station.get('name', 'Unknown')} ({station.get('place', 'Unknown')})"
-                    )
+                    print(f"  {station.get('name', 'Unknown')} ({station.get('place', 'Unknown')})")
                     print(f"    ID: {station.get('id', 'Unknown')}")
                     print()
-        
+
         elif args.command == "info":
             await show_station_info(args.station_id, format_json=args.json)
-        
+
         elif args.command == "routes":
             # Check if query looks like a station ID (contains ':')
             if ":" in args.query:
@@ -474,18 +469,16 @@ Examples:
             else:
                 # Treat as search query
                 await search_and_list_routes(args.query, show_patterns=not args.no_patterns)
-        
+
         elif args.command == "generate":
             details = await get_station_details(args.station_id)
             if not details:
                 print(f"Station {args.station_id} not found.", file=sys.stderr)
                 sys.exit(1)
             routes = details.get("routes", {})
-            snippet = generate_config_snippet(
-                args.station_id, args.station_name, routes
-            )
+            snippet = generate_config_snippet(args.station_id, args.station_name, routes)
             print(snippet)
-    
+
     except KeyboardInterrupt:
         print("\nInterrupted.", file=sys.stderr)
         sys.exit(1)
@@ -501,4 +494,3 @@ def cli_main() -> None:
 
 if __name__ == "__main__":
     cli_main()
-

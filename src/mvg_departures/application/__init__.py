@@ -3,5 +3,3 @@
 from mvg_departures.application.services import DepartureGroupingService
 
 __all__ = ["DepartureGroupingService"]
-
-

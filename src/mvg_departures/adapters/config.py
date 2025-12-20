@@ -28,9 +28,7 @@ class AppConfig(BaseSettings):
     reload: bool = Field(default=False, description="Enable auto-reload for development")
 
     # MVG API configuration
-    mvg_api_timeout: int = Field(
-        default=10, description="Timeout for MVG API requests in seconds"
-    )
+    mvg_api_timeout: int = Field(default=10, description="Timeout for MVG API requests in seconds")
     mvg_api_limit: int = Field(
         default=20, description="Maximum number of departures to fetch per station"
     )
@@ -39,9 +37,7 @@ class AppConfig(BaseSettings):
     )
 
     # Display configuration
-    time_format: str = Field(
-        default="minutes", description="Time format: 'minutes' or 'at'"
-    )
+    time_format: str = Field(default="minutes", description="Time format: 'minutes' or 'at'")
     refresh_interval_seconds: int = Field(
         default=30, description="Interval between departure updates in seconds"
     )
@@ -52,7 +48,7 @@ class AppConfig(BaseSettings):
         default="config.example.toml",
         description="Path to TOML configuration file for stop mappings and display settings",
     )
-    
+
     # Display pagination/animation
     pagination_enabled: bool = Field(
         default=True,
@@ -74,7 +70,7 @@ class AppConfig(BaseSettings):
         default="#087BC4",
         description="Banner/header background color (hex color code)",
     )
-    
+
     # Font size configuration (in rem units)
     font_size_route_number: str = Field(
         default="4rem",
@@ -143,20 +139,20 @@ class AppConfig(BaseSettings):
 
     def get_stops_config(self) -> list[dict[str, Any]]:
         """Parse and return stops configuration as a list of dicts from TOML file.
-        
+
         Loads configuration from the TOML file specified in config_file.
         Defaults to config.example.toml if available.
         """
         if not self.config_file:
             raise ValueError("config_file must be set to load stops configuration")
-        
+
         config_path = Path(self.config_file)
         if not config_path.exists():
             raise FileNotFoundError(f"Configuration file not found: {config_path}")
-        
+
         with open(config_path, "rb") as f:
             toml_data = tomllib.load(f)
-            
+
             # Update display settings from TOML if present
             if "display" in toml_data:
                 display = toml_data["display"]
@@ -194,14 +190,15 @@ class AppConfig(BaseSettings):
                 if "font_size_no_departures" in display:
                     self.font_size_no_departures = display["font_size_no_departures"]
                 if "font_size_no_departures_available" in display:
-                    self.font_size_no_departures_available = display["font_size_no_departures_available"]
+                    self.font_size_no_departures_available = display[
+                        "font_size_no_departures_available"
+                    ]
                 if "font_size_status_header" in display:
                     self.font_size_status_header = display["font_size_status_header"]
-            
+
             stops = toml_data.get("stops", [])
             if not isinstance(stops, list):
                 raise ValueError("TOML config 'stops' must be a list")
             # Filter out stops with placeholder IDs
             stops = [s for s in stops if s.get("station_id", "").find("XXX") == -1]
             return stops
-

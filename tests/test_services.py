@@ -906,5 +906,3 @@ async def test_empty_direction_mappings_shows_all_as_ungrouped() -> None:
     assert len(groups) == 1
     assert groups[0][0] == "Other"
     assert len(groups[0][1]) == 1
-
-
