@@ -26,6 +26,7 @@ mvg-config search "Station Name"
 ```
 
 **Example:**
+
 ```bash
 $ mvg-config search "Giesing"
 
@@ -44,6 +45,7 @@ mvg-config info de:09162:100
 ```
 
 **Example output:**
+
 ```
 Station Information:
   ID: de:09162:100
@@ -66,6 +68,7 @@ mvg-config routes de:09162:100
 ```
 
 **Example output:**
+
 ```
 Station: Giesing (de:09162:100)
 Place: München
@@ -101,6 +104,7 @@ mvg-config generate de:09162:100 "Chiemgaustraße"
 ```
 
 **Example output:**
+
 ```toml
 [[stops]]
 station_id = "de:09162:100"
@@ -117,6 +121,7 @@ max_departures_per_stop = 30
 ```
 
 You can redirect this to a file:
+
 ```bash
 mvg-config generate de:09162:100 "Giesing" >> config.toml
 ```
@@ -130,6 +135,7 @@ python scripts/find_station.py "Station Name" München
 ```
 
 **Example:**
+
 ```bash
 $ python scripts/find_station.py "Giesing" München
 
@@ -165,6 +171,7 @@ if station:
 ```
 
 **Async version:**
+
 ```python
 import asyncio
 from mvg import MvgApi
@@ -191,6 +198,7 @@ if station:
 ```
 
 **Async version:**
+
 ```python
 import asyncio
 from mvg import MvgApi
@@ -212,6 +220,7 @@ Station IDs follow the format: `de:09162:XXX`
 - `XXX`: Unique station identifier (numeric)
 
 **Examples:**
+
 - `de:09162:70` - Universität station
 - `de:09162:100` - Giesing station
 - `de:09162:123` - Another station
@@ -219,20 +228,26 @@ Station IDs follow the format: `de:09162:XXX`
 ## Tips for Finding Stations
 
 ### 1. Use Partial Names
+
 The search is flexible and matches partial station names:
+
 ```bash
 mvg-config search "Gies"
 # Will find "Giesing"
 ```
 
 ### 2. Include Place Name
+
 For better results, include "München" or "Munich":
+
 ```bash
 mvg-config search "Universität München"
 ```
 
 ### 3. Check Multiple Results
+
 If you get multiple results, use `mvg-config info` or `mvg-config routes` to verify:
+
 ```bash
 # Search might return multiple matches
 mvg-config search "Giesing"
@@ -242,7 +257,9 @@ mvg-config routes de:09162:XXX
 ```
 
 ### 4. Verify with Routes
+
 After finding a station ID, verify it's correct by checking its routes:
+
 ```bash
 mvg-config routes de:09162:100
 ```
@@ -256,7 +273,7 @@ This helps ensure you have the right station, especially if there are multiple s
 If a station is not found:
 
 1. **Check spelling**: Station names are case-sensitive and may include special characters (ä, ö, ü, ß)
-2. **Try different variations**: 
+2. **Try different variations**:
    - "Giesing" vs "Giesing Bahnhof"
    - "Universität" vs "Universitaet"
 3. **Use partial search**: Try just part of the name
@@ -322,4 +339,3 @@ $ nano my_stop.toml
 - **MVG Website**: https://www.mvg.de - Official MVG website with station maps
 - **MVG API Library**: https://github.com/mondbaron/mvg - Python library documentation
 - **Project README**: See main README.md for configuration examples
-
