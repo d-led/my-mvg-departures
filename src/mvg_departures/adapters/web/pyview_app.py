@@ -466,6 +466,10 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             align-items: center;
             gap: 0.5rem;
         }
+        h2.direction-header {
+            margin: 0.5rem 0 0.25rem 0;
+            padding: 0 0.75rem 0.25rem 0.75rem;
+        }
         .direction-header-text {
             flex: 1;
             min-width: 0;
@@ -842,29 +846,67 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         [data-theme="dark"] .api-status-icon.api-unknown {
             color: rgba(255, 255, 255, 0.3);
         }
+        /* Screen reader only class */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
+        }
+        /* Skip link for keyboard navigation */
+        .skip-link {
+            position: absolute;
+            top: -40px;
+            left: 0;
+            background: #000;
+            color: #fff;
+            padding: 8px;
+            text-decoration: none;
+            z-index: 100;
+        }
+        .skip-link:focus {
+            top: 0;
+        }
+        /* Ensure list items maintain departure-row styling */
+        .departure-row {
+            list-style: none;
+        }
     </style>
 </head>
 <body class="min-h-screen bg-base-100" style="width: 100vw; max-width: 100vw; margin: 0; padding: 0;">
-    <div class="container" data-phx-main>
+    <!-- Skip to main content link for keyboard navigation -->
+    <a href="#departures" class="skip-link">Skip to main content</a>
+    
+    <!-- ARIA live region for status announcements -->
+    <div id="aria-live-status" aria-live="polite" aria-atomic="true" class="sr-only"></div>
+    <!-- ARIA live region for departure updates -->
+    <div id="aria-live-departures" aria-live="polite" aria-atomic="false" class="sr-only"></div>
+    
+    <div class="container" data-phx-main role="main" aria-label="MVG Departures Dashboard">
         <div class="header-section">
             <h1>MVG Departures</h1>
-            <div class="last-update">
+            <div class="last-update" aria-live="polite" aria-atomic="true">
                 Last updated: """
             + self._format_update_time(last_update)
             + """
             </div>
         </div>
 
-        <div id="departures">
+        <div id="departures" role="region" aria-label="Departure information" aria-live="polite" aria-atomic="false">
             """
             + self._render_departures(direction_groups)
             + """
         </div>
         
         <!-- Floating status box at bottom right -->
-        <div class="status-floating-box">
-            <div class="status-floating-box-item" id="connection-status">
-                <svg class="status-icon connecting" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="connection-icon">
+        <div class="status-floating-box" role="status" aria-label="Connection and API status">
+            <div class="status-floating-box-item" id="connection-status" role="img" aria-label="Connection status: connecting">
+                <svg class="status-icon connecting" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="connection-icon" aria-hidden="true">
                     <!-- Connected: show plug normally -->
                     <g id="connected-plug" style="display: none;">
                         <rect x="8" y="6" width="8" height="10" rx="1"></rect>
@@ -886,19 +928,20 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                     </g>
                 </svg>
             </div>
-            <div class="status-floating-box-item" id="api-status-container">
-                <svg class="api-status-icon api-unknown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" id="api-status-icon">
+            <div class="status-floating-box-item" id="api-status-container" role="img" aria-label="API status: unknown">
+                <svg class="api-status-icon api-unknown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" id="api-status-icon" aria-hidden="true">
                     <circle cx="12" cy="12" r="10" id="api-status-circle"></circle>
                     <path d="M9 12l2 2 4-4" id="api-success-path" style="display: none;"></path>
                     <line x1="9" y1="9" x2="15" y2="15" id="api-error-line1" style="display: none;"></line>
                     <line x1="15" y1="9" x2="9" y2="15" id="api-error-line2" style="display: none;"></line>
                 </svg>
             </div>
-            <div class="status-floating-box-item refresh-countdown">
-                <svg viewBox="0 0 12 12" width="100%" height="100%">
+            <div class="status-floating-box-item refresh-countdown" role="img" aria-label="Refresh countdown timer">
+                <svg viewBox="0 0 12 12" width="100%" height="100%" aria-hidden="true">
                     <circle cx="6" cy="6" r="5" class="background"></circle>
                     <circle cx="6" cy="6" r="5" class="progress" transform="rotate(-90 6 6)"></circle>
                 </svg>
+                <span class="sr-only" id="refresh-countdown-sr">Refresh countdown</span>
             </div>
         </div>
     </div>
@@ -936,8 +979,10 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             
             const dateStr = year + '-' + month + '-' + day;
             const timeStr = hours + ':' + minutes + ':' + seconds;
+            const fullDateTime = dateStr + ' ' + timeStr;
             
-            datetimeEl.textContent = dateStr + ' ' + timeStr;
+            datetimeEl.textContent = fullDateTime;
+            datetimeEl.setAttribute('aria-label', 'Current date and time: ' + fullDateTime);
         }
         
         // Update date/time every second
@@ -964,6 +1009,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             const connectedPlug = connectionEl.querySelector('#connected-plug');
             const disconnectedPlug = connectionEl.querySelector('#disconnected-plug');
             const connectingPlug = connectionEl.querySelector('#connecting-plug');
+            const liveRegion = document.getElementById('aria-live-status');
             
             if (!icon) {
                 console.warn('status-icon element not found');
@@ -978,25 +1024,31 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             // Determine state: connecting (yellow), connected (green), or broken (red)
             if (connectionState === 'connecting') {
                 icon.className = 'status-icon connecting';
+                connectionEl.setAttribute('aria-label', 'Connection status: connecting');
                 // Re-enable animation for connecting state
                 icon.style.animation = '';
                 if (connectedPlug) connectedPlug.style.display = 'none';
                 if (disconnectedPlug) disconnectedPlug.style.display = 'none';
                 if (connectingPlug) connectingPlug.style.display = '';
+                if (liveRegion) liveRegion.textContent = 'Connection status: connecting';
             } else if (connectionState === 'connected') {
                 icon.className = 'status-icon connected';
+                connectionEl.setAttribute('aria-label', 'Connection status: connected');
                 // Ensure animation is removed for connected state
                 icon.style.animation = 'none';
                 if (connectedPlug) connectedPlug.style.display = '';
                 if (disconnectedPlug) disconnectedPlug.style.display = 'none';
                 if (connectingPlug) connectingPlug.style.display = 'none';
+                if (liveRegion) liveRegion.textContent = 'Connection status: connected';
             } else { // broken
                 icon.className = 'status-icon disconnected';
+                connectionEl.setAttribute('aria-label', 'Connection status: disconnected');
                 // Ensure animation is removed for broken state
                 icon.style.animation = 'none';
                 if (connectedPlug) connectedPlug.style.display = 'none';
                 if (disconnectedPlug) disconnectedPlug.style.display = '';
                 if (connectingPlug) connectingPlug.style.display = 'none';
+                if (liveRegion) liveRegion.textContent = 'Connection status: disconnected';
             }
         }
         
@@ -1061,11 +1113,23 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                         const offset = circumference * (1 - progress);
                         circle.setAttribute('stroke-dashoffset', offset.toString());
                         
+                        // Update screen reader text with remaining time
+                        const remainingSeconds = Math.ceil((REFRESH_INTERVAL_SECONDS * 1000 - countdownElapsed) / 1000);
+                        const srText = document.getElementById('refresh-countdown-sr');
+                        if (srText && remainingSeconds > 0) {
+                            srText.textContent = `Refresh countdown: ${remainingSeconds} seconds remaining`;
+                        }
+                        
                         // When countdown reaches the end, stop and wait for next update
                         if (countdownElapsed >= REFRESH_INTERVAL_SECONDS * 1000) {
                             countdownRunning = false;
                             clearInterval(countdownInterval);
                             countdownInterval = null;
+                            // Update screen reader text
+                            const srTextFinal = document.getElementById('refresh-countdown-sr');
+                            if (srTextFinal) {
+                                srTextFinal.textContent = 'Refresh countdown: updating';
+                            }
                             // Check if we're overdue for an update
                             const timeSinceLastUpdate = Date.now() - lastUpdateTime;
                             if (timeSinceLastUpdate > REFRESH_INTERVAL_SECONDS * 1000 * 1.5) {
@@ -1162,6 +1226,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         
         function updateApiStatus(status) {
                 const apiStatusIcon = document.getElementById('api-status-icon');
+                const apiStatusContainer = document.getElementById('api-status-container');
                 if (!apiStatusIcon) {
                     console.warn('api-status-icon not found');
                     return;
@@ -1171,6 +1236,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 const successPath = document.getElementById('api-success-path');
                 const errorLine1 = document.getElementById('api-error-line1');
                 const errorLine2 = document.getElementById('api-error-line2');
+                const liveRegion = document.getElementById('aria-live-status');
                 
                 // Remove existing status classes
                 apiStatusIcon.classList.remove('api-success', 'api-error', 'api-unknown');
@@ -1178,6 +1244,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 // Add new status class and show/hide appropriate elements
                 if (status === 'success') {
                     apiStatusIcon.classList.add('api-success');
+                    if (apiStatusContainer) apiStatusContainer.setAttribute('aria-label', 'API status: success');
                     if (statusCircle) statusCircle.style.display = 'none'; // Hide circle, show checkmark
                     if (successPath) {
                         successPath.style.display = '';
@@ -1188,18 +1255,23 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                     }
                     if (errorLine1) errorLine1.style.display = 'none';
                     if (errorLine2) errorLine2.style.display = 'none';
+                    if (liveRegion) liveRegion.textContent = 'API status: success';
                 } else if (status === 'error') {
                     apiStatusIcon.classList.add('api-error');
+                    if (apiStatusContainer) apiStatusContainer.setAttribute('aria-label', 'API status: error');
                     if (statusCircle) statusCircle.style.display = 'none'; // Hide circle, show X
                     if (successPath) successPath.style.display = 'none';
                     if (errorLine1) errorLine1.style.display = '';
                     if (errorLine2) errorLine2.style.display = '';
+                    if (liveRegion) liveRegion.textContent = 'API status: error';
                 } else {
                     apiStatusIcon.classList.add('api-unknown');
+                    if (apiStatusContainer) apiStatusContainer.setAttribute('aria-label', 'API status: unknown');
                     if (statusCircle) statusCircle.style.display = ''; // Show circle for unknown
                     if (successPath) successPath.style.display = 'none';
                     if (errorLine1) errorLine1.style.display = 'none';
                     if (errorLine2) errorLine2.style.display = 'none';
+                    if (liveRegion) liveRegion.textContent = 'API status: unknown';
                 }
             }
             
@@ -1332,15 +1404,27 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 // Create pagination indicator
                 const indicator = document.createElement('div');
                 indicator.className = 'pagination-indicator';
+                indicator.setAttribute('role', 'status');
+                indicator.setAttribute('aria-live', 'polite');
+                indicator.setAttribute('aria-label', `Pagination: page ${currentPage + 1} of ${totalPages}`);
                 const { svg, circle, circumference } = createCountdownCircle(5);
+                svg.setAttribute('aria-hidden', 'true');
                 indicator.appendChild(svg);
                 const pageText = document.createElement('span');
                 pageText.textContent = `${currentPage + 1}/${totalPages}`;
+                pageText.setAttribute('aria-hidden', 'true');
                 indicator.appendChild(pageText);
                 const countdownText = document.createElement('span');
                 countdownText.className = 'countdown-text';
                 countdownText.textContent = `${PAGE_ROTATION_SECONDS}s`;
+                countdownText.setAttribute('aria-hidden', 'true');
                 indicator.appendChild(countdownText);
+                // Add screen reader text
+                const srText = document.createElement('span');
+                srText.className = 'sr-only';
+                srText.id = `pagination-sr-${Date.now()}`;
+                srText.textContent = `Page ${currentPage + 1} of ${totalPages}`;
+                indicator.appendChild(srText);
                 group.appendChild(indicator);
                 
                 // Create pages
@@ -1385,6 +1469,12 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                     pageText.textContent = `${currentPage + 1}/${totalPages}`;
                     countdownText.textContent = `${PAGE_ROTATION_SECONDS}s`;
                     elapsed = 0; // Reset countdown
+                    // Update ARIA labels
+                    indicator.setAttribute('aria-label', `Pagination: page ${currentPage + 1} of ${totalPages}`);
+                    const srText = indicator.querySelector('.sr-only');
+                    if (srText) {
+                        srText.textContent = `Page ${currentPage + 1} of ${totalPages}`;
+                    }
                 }, PAGE_ROTATION_SECONDS * 1000);
                 
                 // Store intervals for cleanup
@@ -1486,7 +1576,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         stop_configs = self.stop_configs
 
         if not direction_groups:
-            return f'<div style="text-align: center; padding: 4rem 2rem; opacity: 0.7; font-size: {config.font_size_no_departures_available}; font-weight: 500;">No departures available</div>'
+            return f'<div role="status" aria-live="polite" style="text-align: center; padding: 4rem 2rem; opacity: 0.7; font-size: {config.font_size_no_departures_available}; font-weight: 500;">No departures available</div>'
 
         # Separate groups with departures from stops that have no departures at all
         groups_with_departures: list[tuple[str, str, list[Departure]]] = []
@@ -1515,22 +1605,22 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
             if stop_name != current_stop:
                 if current_stop is not None:
-                    html_parts.append("</div>")
-                html_parts.append(f'<div class="stop-section">')
+                    html_parts.append("</ul></div>")  # Close list and stop-section
+                html_parts.append(f'<div class="stop-section" role="region" aria-label="Departures from {self._escape_html(stop_name)}">')
                 current_stop = stop_name
 
             # Status icons are now in floating box, only show time in header
             if is_first_header:
                 status_html = """
-                <div class="direction-header-time status-header-item" id="datetime-display"></div>
+                <div class="direction-header-time status-header-item" id="datetime-display" aria-label="Current date and time"></div>
                 """
                 html_parts.append(
-                    f'<div class="direction-group"><div class="direction-header"><span class="direction-header-text">{self._escape_html(combined_header)}</span>{status_html}</div>'
+                    f'<div class="direction-group"><h2 class="direction-header" role="heading" aria-level="2"><span class="direction-header-text">{self._escape_html(combined_header)}</span>{status_html}</h2><ul role="list" aria-label="Departures for {self._escape_html(combined_header)}">'
                 )
                 is_first_header = False
             else:
                 html_parts.append(
-                    f'<div class="direction-group"><div class="direction-header">{self._escape_html(combined_header)}</div>'
+                    f'<div class="direction-group"><h2 class="direction-header" role="heading" aria-level="2">{self._escape_html(combined_header)}</h2><ul role="list" aria-label="Departures for {self._escape_html(combined_header)}">'
                 )
 
             # Sort by arrival time (chronological order within this direction group)
@@ -1538,19 +1628,19 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             for departure in sorted_departures:
                 html_parts.append(self._render_departure(departure))
 
-            html_parts.append("</div>")  # Close direction-group
+            html_parts.append("</ul></div>")  # Close list and direction-group
 
         if current_stop is not None:
-            html_parts.append("</div>")
+            html_parts.append("</div>")  # Close stop-section
 
         # At the bottom, show stops without departures - each with its own banner
         for stop_name in sorted(stops_without_departures):
-            html_parts.append('<div class="stop-section">')
+            html_parts.append(f'<div class="stop-section" role="region" aria-label="Departures from {self._escape_html(stop_name)}">')
             html_parts.append(
-                f'<div class="direction-group"><div class="direction-header">{self._escape_html(stop_name)}</div>'
+                f'<div class="direction-group"><h2 class="direction-header" role="heading" aria-level="2">{self._escape_html(stop_name)}</h2>'
             )
             html_parts.append(
-                '<div class="departure-row"><div class="no-departures">No departures</div></div>'
+                '<div class="departure-row" role="status" aria-live="polite"><div class="no-departures">No departures</div></div>'
             )
             html_parts.append("</div>")  # Close direction-group
             html_parts.append("</div>")  # Close stop-section
@@ -1569,22 +1659,43 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
         # Format platform display
         platform_display = ""
+        platform_aria = ""
         if departure.platform is not None:
             platform_display = str(departure.platform)
+            platform_aria = f", Platform {platform_display}"
 
-        # Format delay display
+        # Format delay display and ARIA text
         delay_display = ""
+        delay_aria = ""
         if departure.delay_seconds and departure.delay_seconds > 60:
             delay_minutes = departure.delay_seconds // 60
-            delay_display = f'<span class="delay-amount">{delay_minutes}m 😞</span>'
+            delay_display = f'<span class="delay-amount" aria-hidden="true">{delay_minutes}m 😞</span>'
+            delay_aria = f", delayed by {delay_minutes} minutes"
+
+        # Build ARIA label with all departure information
+        status_parts = []
+        if departure.is_cancelled:
+            status_parts.append("cancelled")
+        if departure.is_realtime:
+            status_parts.append("real-time")
+        status_text = ", ".join(status_parts) if status_parts else "scheduled"
+        
+        aria_label = (
+            f"Line {route_display} to {departure.destination}"
+            f"{platform_aria}"
+            f", departing in {time_str}"
+            f"{delay_aria}"
+            f", {status_text}"
+        )
 
         return f"""
-        <div class="departure-row{cancelled_class}">
-            <div class="route-number">{self._escape_html(route_display)}</div>
-            <div class="destination">{self._escape_html(departure.destination)}</div>
-            <div class="platform">{self._escape_html(platform_display)}</div>
-            <div class="time{delay_class}{realtime_class}">{time_str}{delay_display}</div>
-        </div>
+        <li class="departure-row{cancelled_class}" role="listitem" aria-label="{self._escape_html(aria_label)}">
+            <div class="route-number" aria-hidden="true">{self._escape_html(route_display)}</div>
+            <div class="destination" aria-hidden="true">{self._escape_html(departure.destination)}</div>
+            <div class="platform" aria-hidden="true">{self._escape_html(platform_display)}</div>
+            <div class="time{delay_class}{realtime_class}" aria-hidden="true">{time_str}{delay_display}</div>
+            <span class="sr-only">{self._escape_html(aria_label)}</span>
+        </li>
         """
 
     def _format_departure_time(self, departure: Departure) -> str:
