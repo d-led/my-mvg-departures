@@ -120,6 +120,10 @@ class AppConfig(BaseSettings):
         default="3rem",
         description="Font size for main 'No departures available' message",
     )
+    font_size_status_header: str = Field(
+        default="1.875rem",
+        description="Font size for status header (date/time, connection status, error indicator) - default is 0.75 of direction_header",
+    )
 
     @field_validator("time_format")
     @classmethod
@@ -191,6 +195,8 @@ class AppConfig(BaseSettings):
                     self.font_size_no_departures = display["font_size_no_departures"]
                 if "font_size_no_departures_available" in display:
                     self.font_size_no_departures_available = display["font_size_no_departures_available"]
+                if "font_size_status_header" in display:
+                    self.font_size_status_header = display["font_size_status_header"]
             
             stops = toml_data.get("stops", [])
             if not isinstance(stops, list):

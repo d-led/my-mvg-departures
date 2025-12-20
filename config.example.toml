@@ -32,6 +32,7 @@ font_size_countdown_text = "1.8rem"
 font_size_delay_amount = "2rem"
 font_size_no_departures = "2.5rem"
 font_size_no_departures_available = "3rem"
+font_size_status_header = "1.875rem"
 
 # To find the station ID, run one of these commands:
 #   .venv/bin/mvg-config search "Balanstr"         (from project root, after setup)

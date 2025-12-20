@@ -272,6 +272,12 @@ class DeparturesLiveView(LiveView):
             padding: 0 0.75rem 0.25rem 0.75rem;
             border-bottom: 2px solid rgba(0, 0, 0, 0.2);
             opacity: 0.85;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .direction-header-text {
+            flex: 1;
         }
         [data-theme="light"] .direction-header {
             background-color: """ + banner_color + """;
@@ -457,14 +463,73 @@ class DeparturesLiveView(LiveView):
             padding: 0;
             margin: 0;
         }
+        .status-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            pointer-events: none;
+        }
+        .status-header-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: """ + self.config.font_size_status_header + """;
+            font-weight: 500;
+        }
+        #datetime-display {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 0.01em;
+            vertical-align: baseline;
+        }
+        [data-theme="light"] .status-header-item {
+            color: #ffffff;
+        }
+        [data-theme="dark"] .status-header-item {
+            color: #f3f4f6;
+        }
+        .status-icon {
+            width: """ + self.config.font_size_status_header + """;
+            height: """ + self.config.font_size_status_header + """;
+            display: inline-block;
+            flex-shrink: 0;
+            vertical-align: middle;
+        }
+        .status-icon svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        .status-icon.connected {
+            color: #059669;
+        }
+        [data-theme="light"] .status-icon.connected {
+            color: #047857;
+        }
+        [data-theme="dark"] .status-icon.connected {
+            color: #34d399;
+        }
+        .status-icon.disconnected {
+            color: #ffffff;
+        }
+        [data-theme="light"] .status-icon.disconnected {
+            color: #ffffff;
+        }
+        [data-theme="dark"] .status-icon.disconnected {
+            color: #f3f4f6;
+        }
+        .status-icon.error {
+            color: #ffffff;
+        }
+        [data-theme="light"] .status-icon.error {
+            color: #ffffff;
+        }
+        [data-theme="dark"] .status-icon.error {
+            color: #f3f4f6;
+        }
         .refresh-countdown {
-            position: fixed;
-            top: 1rem;
-            right: 1rem;
             width: 2.5rem;
             height: 2.5rem;
-            z-index: 1000;
-            pointer-events: none;
         }
         .refresh-countdown circle {
             fill: none;
@@ -472,16 +537,16 @@ class DeparturesLiveView(LiveView):
             transition: stroke-dashoffset 0.1s linear;
         }
         [data-theme="light"] .refresh-countdown circle {
-            stroke: rgba(0, 0, 0, 0.3);
+            stroke: rgba(255, 255, 255, 0.3);
         }
         [data-theme="light"] .refresh-countdown circle.progress {
-            stroke: rgba(0, 0, 0, 0.6);
+            stroke: rgba(255, 255, 255, 0.8);
         }
         [data-theme="dark"] .refresh-countdown circle {
             stroke: rgba(255, 255, 255, 0.3);
         }
         [data-theme="dark"] .refresh-countdown circle.progress {
-            stroke: rgba(255, 255, 255, 0.6);
+            stroke: rgba(255, 255, 255, 0.8);
         }
     </style>
 </head>
@@ -497,13 +562,6 @@ class DeparturesLiveView(LiveView):
         <div id="departures">
             """ + self._render_departures(direction_groups) + """
         </div>
-        
-        <div class="refresh-countdown">
-            <svg viewBox="0 0 36 36" width="100%" height="100%">
-                <circle cx="18" cy="18" r="15" class="background"></circle>
-                <circle cx="18" cy="18" r="15" class="progress" transform="rotate(-90 18 18)"></circle>
-            </svg>
-        </div>
     </div>
 
     <script>
@@ -512,6 +570,105 @@ class DeparturesLiveView(LiveView):
         const DEPARTURES_PER_PAGE = """ + str(self.config.departures_per_page) + """;
         const PAGE_ROTATION_SECONDS = """ + str(self.config.page_rotation_seconds) + """;
         const REFRESH_INTERVAL_SECONDS = """ + str(self.config.refresh_interval_seconds) + """;
+        
+        // Date/time display
+        function updateDateTime() {
+            const datetimeEl = document.getElementById('datetime-display');
+            if (!datetimeEl) return;
+            
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            
+            const dateStr = year + '-' + month + '-' + day;
+            const timeStr = hours + ':' + minutes + ':' + seconds;
+            
+            datetimeEl.textContent = dateStr + ' ' + timeStr;
+        }
+        
+        // Update date/time every second
+        updateDateTime();
+        setInterval(updateDateTime, 1000);
+        
+        // Connection status monitoring
+        let lastUpdateTime = Date.now();
+        let isConnected = true;
+        let hasError = false;
+        
+        function updateConnectionStatus() {
+            const connectionEl = document.getElementById('connection-status');
+            const errorEl = document.getElementById('error-status');
+            if (!connectionEl || !errorEl) return;
+            
+            const timeSinceUpdate = Date.now() - lastUpdateTime;
+            // Check if we're still connected (within 2x refresh interval)
+            const stillConnected = timeSinceUpdate < (REFRESH_INTERVAL_SECONDS * 1000 * 2);
+            
+            // Update connection status based on last fetch result
+            connectionEl.style.display = 'flex';
+            const icon = connectionEl.querySelector('.status-icon');
+            const connectedPath = connectionEl.querySelector('#connected-path');
+            const disconnectedLine1 = connectionEl.querySelector('#disconnected-line1');
+            const disconnectedLine2 = connectionEl.querySelector('#disconnected-line2');
+            
+            if (icon) {
+                // Green checkmark = successfully fetched data, Red X = failed/disconnected
+                icon.className = 'status-icon ' + (isConnected && !hasError ? 'connected' : 'disconnected');
+            }
+            
+            if (isConnected && !hasError) {
+                // Show green checkmark
+                if (connectedPath) connectedPath.style.display = '';
+                if (disconnectedLine1) disconnectedLine1.style.display = 'none';
+                if (disconnectedLine2) disconnectedLine2.style.display = 'none';
+            } else {
+                // Show red X
+                if (connectedPath) connectedPath.style.display = 'none';
+                if (disconnectedLine1) disconnectedLine1.style.display = '';
+                if (disconnectedLine2) disconnectedLine2.style.display = '';
+            }
+            
+            // If we haven't received updates for too long, mark as disconnected
+            if (!stillConnected && isConnected) {
+                isConnected = false;
+            }
+            
+            // Show/hide error status
+            if (hasError) {
+                errorEl.style.display = 'flex';
+            } else {
+                errorEl.style.display = 'none';
+            }
+        }
+        
+        // Monitor for errors and connection issues
+        window.addEventListener('phx:error', (event) => {
+            hasError = true;
+            isConnected = false;
+            updateConnectionStatus();
+        });
+        
+        window.addEventListener('phx:update', () => {
+            // Data was successfully fetched
+            lastUpdateTime = Date.now();
+            hasError = false;
+            isConnected = true;
+            updateConnectionStatus();
+        });
+        
+        window.addEventListener('phx:disconnect', () => {
+            hasError = true;
+            isConnected = false;
+            updateConnectionStatus();
+        });
+        
+        // Check connection status periodically
+        setInterval(updateConnectionStatus, 1000);
+        updateConnectionStatus();
         
         // Refresh countdown circle
         function initRefreshCountdown() {
@@ -727,6 +884,7 @@ class DeparturesLiveView(LiveView):
 
         html_parts: list[str] = []
         current_stop = None
+        is_first_header = True
 
         # First, render all groups with departures
         for stop_name, direction_name, departures in groups_with_departures:
@@ -742,9 +900,42 @@ class DeparturesLiveView(LiveView):
                 html_parts.append(f'<div class="stop-section">')
                 current_stop = stop_name
 
-            html_parts.append(
-                f'<div class="direction-group"><div class="direction-header">{self._escape_html(combined_header)}</div>'
-            )
+            # Add status header to first direction header only
+            if is_first_header:
+                status_html = """
+                <div class="status-header">
+                    <div class="status-header-item" id="datetime-display"></div>
+                    <div class="status-header-item" id="connection-status" style="display: none;">
+                        <svg class="status-icon connected" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" id="connection-icon">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M9 12l2 2 4-4" id="connected-path"></path>
+                            <line x1="9" y1="9" x2="15" y2="15" id="disconnected-line1" style="display: none;"></line>
+                            <line x1="15" y1="9" x2="9" y2="15" id="disconnected-line2" style="display: none;"></line>
+                        </svg>
+                    </div>
+                    <div class="status-header-item" id="error-status" style="display: none;">
+                        <svg class="status-icon error" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                        </svg>
+                    </div>
+                    <div class="refresh-countdown">
+                        <svg viewBox="0 0 36 36" width="100%" height="100%">
+                            <circle cx="18" cy="18" r="15" class="background"></circle>
+                            <circle cx="18" cy="18" r="15" class="progress" transform="rotate(-90 18 18)"></circle>
+                        </svg>
+                    </div>
+                </div>
+                """
+                html_parts.append(
+                    f'<div class="direction-group"><div class="direction-header"><span class="direction-header-text">{self._escape_html(combined_header)}</span>{status_html}</div>'
+                )
+                is_first_header = False
+            else:
+                html_parts.append(
+                    f'<div class="direction-group"><div class="direction-header">{self._escape_html(combined_header)}</div>'
+                )
 
             # Sort by arrival time (chronological order within this direction group)
             sorted_departures = sorted(departures, key=lambda d: d.time)
