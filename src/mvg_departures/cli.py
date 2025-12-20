@@ -86,12 +86,8 @@ async def get_station_details(station_id: str, limit: int = 100) -> dict[str, An
 
             # Try to get station name from first departure or use ID
             station_name = station_id
-            try:
-                # The MVG API might not return station name in departures
-                # We'll use the station_id as fallback
-                pass
-            except Exception:
-                pass
+            # The MVG API might not return station name in departures
+            # We'll use the station_id as fallback
 
             return {
                 "station": {
@@ -177,7 +173,7 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
         for route_key, patterns in sorted(config_patterns_by_route.items()):
             route_display = route_key.replace(" ", " ")
             print(f"\n# {route_display}:")
-            for pattern, full_pattern, dest in patterns:
+            for pattern, _full_pattern, dest in patterns:
                 print(
                     f'  "{pattern}"  # Matches: {route_key.split()[-1] if route_key.split() else ""} -> {dest}'
                 )
@@ -186,7 +182,7 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
         for route_key, patterns in sorted(config_patterns_by_route.items()):
             route_display = route_key.replace(" ", " ")
             print(f"\n# {route_display}:")
-            for pattern, full_pattern, dest in patterns:
+            for _pattern, full_pattern, dest in patterns:
                 print(f'  "{full_pattern}"  # Matches: {route_key} -> {dest}')
 
         # Also show a flat list for easy copy-paste
@@ -201,7 +197,7 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
         print("\n# Destination-only patterns (matches any route to that destination):")
         unique_destinations = set()
         for patterns in config_patterns_by_route.values():
-            for pattern, full_pattern, dest in patterns:
+            for _pattern, _full_pattern, dest in patterns:
                 unique_destinations.add(dest)
         dest_patterns = sorted(unique_destinations)
         dest_pattern_str = ", ".join(f'"{d}"' for d in dest_patterns)
@@ -291,7 +287,7 @@ async def search_and_list_routes(query: str, show_patterns: bool = True) -> None
             for route_key, patterns in sorted(config_patterns_by_route.items()):
                 route_display = route_key.replace(" ", " ")
                 print(f"\n  # {route_display}:")
-                for pattern, full_pattern, dest in patterns:
+                for pattern, _full_pattern, dest in patterns:
                     route_line = route_key.split()[-1] if route_key.split() else ""
                     print(f'    "{pattern}"  # Matches: {route_line} -> {dest}')
 
@@ -306,7 +302,7 @@ async def search_and_list_routes(query: str, show_patterns: bool = True) -> None
             print("\n  # Destination-only patterns (matches any route to that destination):")
             unique_destinations = set()
             for patterns in config_patterns_by_route.values():
-                for pattern, full_pattern, dest in patterns:
+                for _pattern, _full_pattern, dest in patterns:
                     unique_destinations.add(dest)
             dest_patterns = sorted(unique_destinations)
             dest_pattern_str = ", ".join(f'"{d}"' for d in dest_patterns)
@@ -329,7 +325,7 @@ async def show_station_info(station_id: str, format_json: bool = False) -> None:
         station = details.get("station", {})
         routes = details.get("routes", {})
 
-        print(f"\nStation Information:")
+        print("\nStation Information:")
         print(f"  ID: {station.get('id', 'Unknown')}")
         print(f"  Name: {station.get('name', 'Unknown')}")
         print(f"  Place: {station.get('place', 'München')}")
@@ -391,16 +387,16 @@ async def main() -> None:
 Examples:
   # Search for stations
   mvg-config search "Giesing"
-  
+
   # Show station details
   mvg-config info de:09162:100
-  
+
   # List all routes for a station (by ID)
   mvg-config routes de:09162:100
-  
+
   # Search for stations and show routes (by name)
   mvg-config routes "Giesing"
-  
+
   # Generate config snippet
   mvg-config generate de:09162:100 "Giesing"
         """,

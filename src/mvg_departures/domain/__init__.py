@@ -14,9 +14,9 @@ from mvg_departures.domain.ports import (
 
 __all__ = [
     "Departure",
+    "DepartureRepository",
     "DirectionGroup",
     "DisplayAdapter",
-    "DepartureRepository",
     "Station",
     "StationRepository",
     "StopConfiguration",

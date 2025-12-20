@@ -168,7 +168,7 @@ Access the web UI at `http://localhost:8000`
 docker build -t mvg-departures-dashboard .
 
 # Run with docker-compose
-docker-compose up -d
+docker-compose up
 
 # Or run directly with custom config
 docker run -d \

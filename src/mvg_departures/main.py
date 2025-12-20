@@ -3,9 +3,16 @@
 import asyncio
 import logging
 import sys
-from typing import Any
 
 import aiohttp
+
+from mvg_departures.adapters.config import AppConfig
+from mvg_departures.adapters.mvg_api import (
+    MvgDepartureRepository,
+)
+from mvg_departures.adapters.web import PyViewWebAdapter
+from mvg_departures.application.services import DepartureGroupingService
+from mvg_departures.domain.models import StopConfiguration
 
 # Configure logging
 logging.basicConfig(
@@ -14,15 +21,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
     stream=sys.stderr,
 )
-
-from mvg_departures.adapters.config import AppConfig
-from mvg_departures.adapters.mvg_api import (
-    MvgDepartureRepository,
-    MvgStationRepository,
-)
-from mvg_departures.adapters.web import PyViewWebAdapter
-from mvg_departures.application.services import DepartureGroupingService
-from mvg_departures.domain.models import StopConfiguration
 
 
 def load_stop_configurations(config: AppConfig) -> list[StopConfiguration]:
@@ -91,7 +89,6 @@ async def main() -> None:
     async with aiohttp.ClientSession() as session:
         # Initialize repositories
         departure_repo = MvgDepartureRepository(session=session)
-        station_repo = MvgStationRepository(session=session)
 
         # Initialize services
         grouping_service = DepartureGroupingService(departure_repo)

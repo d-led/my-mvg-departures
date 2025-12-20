@@ -2,7 +2,7 @@
 
 import logging
 import re
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from mvg_departures.domain.models import Departure, StopConfiguration
@@ -83,7 +83,7 @@ class DepartureGroupingService:
             direction_groups[direction_name] = direction_groups[direction_name][:max_per_direction]
             # Filter out departures that are too soon (after limits are applied, so counts aren't affected)
             if stop_config.departure_leeway_minutes > 0:
-                cutoff_time = datetime.now() + timedelta(
+                cutoff_time = datetime.now(UTC) + timedelta(
                     minutes=stop_config.departure_leeway_minutes
                 )
                 direction_groups[direction_name] = [
@@ -108,7 +108,7 @@ class DepartureGroupingService:
             ungrouped = ungrouped[:max_per_direction]
             # Filter out departures that are too soon (after limits are applied, so counts aren't affected)
             if stop_config.departure_leeway_minutes > 0:
-                cutoff_time = datetime.now() + timedelta(
+                cutoff_time = datetime.now(UTC) + timedelta(
                     minutes=stop_config.departure_leeway_minutes
                 )
                 ungrouped = [d for d in ungrouped if d.time >= cutoff_time]
@@ -119,7 +119,7 @@ class DepartureGroupingService:
         # the stop will be shown as "no departures" at the bottom
         result = []
         # Iterate through direction_mappings in config order
-        for direction_name in stop_config.direction_mappings.keys():
+        for direction_name in stop_config.direction_mappings:
             if direction_name in direction_groups:
                 result.append((direction_name, direction_groups[direction_name]))
 
@@ -196,7 +196,7 @@ class DepartureGroupingService:
                 pattern_single = pattern_words[0]
 
                 # Try matching as route only - EXACT match only (no substring matching)
-                route_matches = pattern_single == route_line or pattern_single == route_full
+                route_matches = pattern_single in (route_line, route_full)
 
                 if route_matches:
                     # Route matches exactly - match any destination for this route
@@ -227,9 +227,7 @@ class DepartureGroupingService:
                 return True
             # Check if pattern appears as a phrase (with word boundaries)
             pattern_escaped = re.escape(pattern_lower)
-            if re.search(r"\b" + pattern_escaped + r"\b", text_lower):
-                return True
-            return False
+            return bool(re.search(r"\b" + pattern_escaped + r"\b", text_lower))
 
         # For single-word patterns, use word-boundary matching
         try:

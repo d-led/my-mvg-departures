@@ -1,6 +1,6 @@
 """MVG API adapter implementing repository ports."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from mvg import MvgApi, TransportType
@@ -107,8 +107,8 @@ class MvgDepartureRepository(DepartureRepository):
         departures = []
         for result in results:
             departure = Departure(
-                time=datetime.fromtimestamp(result["time"]),
-                planned_time=datetime.fromtimestamp(result["planned"]),
+                time=datetime.fromtimestamp(result["time"], tz=UTC),
+                planned_time=datetime.fromtimestamp(result["planned"], tz=UTC),
                 delay_seconds=result.get("delay", 0),
                 platform=result.get("platform"),
                 is_realtime=result.get("realtime", False),

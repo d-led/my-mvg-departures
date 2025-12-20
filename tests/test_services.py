@@ -1,6 +1,6 @@
 """Tests for application services."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -17,10 +17,10 @@ class MockDepartureRepository:
 
     async def get_departures(
         self,
-        station_id: str,
-        limit: int = 10,
-        offset_minutes: int = 0,
-        transport_types: list[str] | None = None,
+        station_id: str,  # noqa: ARG002
+        limit: int = 10,  # noqa: ARG002
+        offset_minutes: int = 0,  # noqa: ARG002
+        transport_types: list[str] | None = None,  # noqa: ARG002
     ) -> list[Departure]:
         """Return the configured departures."""
         return self.departures
@@ -29,7 +29,7 @@ class MockDepartureRepository:
 @pytest.fixture
 def sample_departures() -> list[Departure]:
     """Create sample departures for testing."""
-    now = datetime.now()
+    now = datetime.now(UTC)
     return [
         Departure(
             time=now + timedelta(minutes=5),
@@ -122,7 +122,7 @@ async def test_group_departures_matches_exact_destination(
     stop_config: StopConfiguration,
 ) -> None:
     """Given a departure with exact destination match, when grouped, then it matches the direction."""
-    now = datetime.now()
+    now = datetime.now(UTC)
     departure = Departure(
         time=now + timedelta(minutes=5),
         planned_time=now + timedelta(minutes=5),
@@ -153,7 +153,7 @@ async def test_group_departures_handles_ungrouped(
     stop_config: StopConfiguration,
 ) -> None:
     """Given a departure that doesn't match any direction, when grouped, then it appears in 'Other' group."""
-    now = datetime.now()
+    now = datetime.now(UTC)
     departure = Departure(
         time=now + timedelta(minutes=5),
         planned_time=now + timedelta(minutes=5),
@@ -184,7 +184,7 @@ async def test_group_departures_matches_pattern(
     stop_config: StopConfiguration,
 ) -> None:
     """Given a departure matching a pattern, when grouped, then it matches the direction."""
-    now = datetime.now()
+    now = datetime.now(UTC)
     departure = Departure(
         time=now + timedelta(minutes=5),
         planned_time=now + timedelta(minutes=5),
@@ -212,7 +212,7 @@ async def test_group_departures_matches_pattern(
 @pytest.mark.asyncio
 async def test_max_departures_per_route_filters_by_route() -> None:
     """Given multiple departures of the same route, when grouped, then only max_departures_per_route are shown."""
-    now = datetime.now()
+    now = datetime.now(UTC)
     # Create 5 departures of the same route "18" going to the same destination
     departures = [
         Departure(
@@ -257,7 +257,7 @@ async def test_max_departures_per_route_filters_by_route() -> None:
 @pytest.mark.asyncio
 async def test_max_departures_per_route_applies_to_multiple_routes() -> None:
     """Given multiple routes in the same direction, when grouped, then each route is limited separately."""
-    now = datetime.now()
+    now = datetime.now(UTC)
     # Create departures: 3 of route "18" and 3 of route "139"
     departures = []
     for i in range(1, 4):
@@ -321,7 +321,7 @@ async def test_max_departures_per_route_applies_to_multiple_routes() -> None:
 @pytest.mark.asyncio
 async def test_max_departures_per_stop_limits_direction() -> None:
     """Given many departures in a direction, when grouped, then only max_departures_per_stop are shown."""
-    now = datetime.now()
+    now = datetime.now(UTC)
     # Create 10 departures of different routes
     departures = [
         Departure(
@@ -363,7 +363,7 @@ async def test_max_departures_per_stop_limits_direction() -> None:
 @pytest.mark.asyncio
 async def test_max_departures_per_route_then_per_stop() -> None:
     """Given many departures, when grouped, then route filtering happens before direction limiting."""
-    now = datetime.now()
+    now = datetime.now(UTC)
     # Create 5 departures of route "18" and 5 of route "139"
     departures = []
     for route, base_min in [("18", 1), ("139", 6)]:
@@ -408,7 +408,7 @@ async def test_max_departures_per_route_then_per_stop() -> None:
 @pytest.mark.asyncio
 async def test_pattern_matching_route_and_destination() -> None:
     """Given a pattern like 'U2 Messestadt', when matching, then it matches only that route to that destination."""
-    now = datetime.now()
+    now = datetime.now(UTC)
     departures = [
         Departure(
             time=now + timedelta(minutes=5),
@@ -476,7 +476,7 @@ async def test_pattern_matching_route_and_destination() -> None:
 @pytest.mark.asyncio
 async def test_pattern_matching_route_only() -> None:
     """Given a pattern like 'U2', when matching, then it matches any destination for that route."""
-    now = datetime.now()
+    now = datetime.now(UTC)
     departures = [
         Departure(
             time=now + timedelta(minutes=5),
@@ -543,7 +543,7 @@ async def test_pattern_matching_route_only() -> None:
 @pytest.mark.asyncio
 async def test_pattern_matching_destination_only() -> None:
     """Given a pattern like 'Messestadt', when matching, then it matches any route to that destination."""
-    now = datetime.now()
+    now = datetime.now(UTC)
     departures = [
         Departure(
             time=now + timedelta(minutes=5),
@@ -610,7 +610,7 @@ async def test_pattern_matching_destination_only() -> None:
 @pytest.mark.asyncio
 async def test_pattern_matching_bus_with_transport_type() -> None:
     """Given a pattern like 'Bus 59 Giesing', when matching, then it matches correctly."""
-    now = datetime.now()
+    now = datetime.now(UTC)
     departures = [
         Departure(
             time=now + timedelta(minutes=5),
@@ -664,7 +664,7 @@ async def test_pattern_matching_bus_with_transport_type() -> None:
 @pytest.mark.asyncio
 async def test_direction_order_preserved() -> None:
     """Given multiple directions, when grouped, then directions appear in config order."""
-    now = datetime.now()
+    now = datetime.now(UTC)
     departures = [
         Departure(
             time=now + timedelta(minutes=5),
@@ -721,7 +721,7 @@ async def test_direction_order_preserved() -> None:
 @pytest.mark.asyncio
 async def test_show_ungrouped_false_hides_other() -> None:
     """Given show_ungrouped=False, when grouped, then unmatched departures are not shown."""
-    now = datetime.now()
+    now = datetime.now(UTC)
     departures = [
         Departure(
             time=now + timedelta(minutes=5),
@@ -774,7 +774,7 @@ async def test_show_ungrouped_false_hides_other() -> None:
 @pytest.mark.asyncio
 async def test_show_ungrouped_true_shows_other() -> None:
     """Given show_ungrouped=True, when grouped, then unmatched departures appear in 'Other'."""
-    now = datetime.now()
+    now = datetime.now(UTC)
     departures = [
         Departure(
             time=now + timedelta(minutes=5),
@@ -829,7 +829,7 @@ async def test_show_ungrouped_true_shows_other() -> None:
 @pytest.mark.asyncio
 async def test_ungrouped_also_filtered_by_route() -> None:
     """Given ungrouped departures, when filtered, then max_departures_per_route applies."""
-    now = datetime.now()
+    now = datetime.now(UTC)
     # Create 5 ungrouped departures of the same route
     departures = [
         Departure(
@@ -871,7 +871,7 @@ async def test_ungrouped_also_filtered_by_route() -> None:
 @pytest.mark.asyncio
 async def test_empty_direction_mappings_shows_all_as_ungrouped() -> None:
     """Given empty direction_mappings, when grouped, then all departures appear in Other."""
-    now = datetime.now()
+    now = datetime.now(UTC)
     departures = [
         Departure(
             time=now + timedelta(minutes=5),

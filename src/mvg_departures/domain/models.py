@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -23,7 +22,7 @@ class Departure:
     time: datetime
     planned_time: datetime
     delay_seconds: int | None
-    platform: Optional[int]
+    platform: int | None
     is_realtime: bool
     line: str
     destination: str

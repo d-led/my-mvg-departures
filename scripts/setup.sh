@@ -52,6 +52,28 @@ else
     UV="${VENV_PATH}/Scripts/uv.exe"
 fi
 
+# Install uv if not available
+if [ ! -f "$UV" ] && (! command -v uv >/dev/null 2>&1 || ! uv --version >/dev/null 2>&1); then
+    echo "Installing uv..." >&2
+    # Install uv into the virtual environment using pip
+    "$PYTHON" -m pip install uv >/dev/null 2>&1
+    echo "uv installed in virtual environment." >&2
+    echo "" >&2
+elif [ -f "$UV" ]; then
+    echo "uv found in virtual environment." >&2
+    echo "" >&2
+elif command -v uv >/dev/null 2>&1 && uv --version >/dev/null 2>&1; then
+    echo "Using system uv..." >&2
+    echo "" >&2
+else
+    # Last resort: install uv system-wide
+    echo "Installing uv system-wide..." >&2
+    curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1
+    export PATH="$HOME/.cargo/bin:$PATH"
+    echo "uv installed." >&2
+    echo "" >&2
+fi
+
 # Upgrade pip
 echo "Upgrading pip..." >&2
 "$PYTHON" -m pip install --upgrade pip >/dev/null 2>&1

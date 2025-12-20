@@ -1,20 +1,21 @@
 """PyView web adapter for displaying departures."""
 
 import asyncio
+import contextlib
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from pyview import ConnectedLiveViewSocket, LiveView, LiveViewSocket, is_connected
+from pyview import LiveView, LiveViewSocket, is_connected
 from pyview.events import InfoEvent
-
-logger = logging.getLogger(__name__)
 
 from mvg_departures.adapters.config import AppConfig
 from mvg_departures.application.services import DepartureGroupingService
 from mvg_departures.domain.models import Departure, StopConfiguration
 from mvg_departures.domain.ports import DisplayAdapter
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from aiohttp import ClientSession
@@ -132,11 +133,11 @@ async def _api_poller(
 
         # Update shared state (even if some stops failed, use what we got)
         _departures_state.direction_groups = all_groups
-        _departures_state.last_update = datetime.now()
+        _departures_state.last_update = datetime.now(UTC)
         _departures_state.api_status = "error" if has_errors else "success"
 
         logger.debug(
-            f"API poller updated departures at {datetime.now()}, "
+            f"API poller updated departures at {datetime.now(UTC)}, "
             f"groups: {len(all_groups)}, errors: {has_errors}"
         )
 
@@ -243,14 +244,14 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             socket.context.last_update = _departures_state.last_update
             socket.context.api_status = _departures_state.api_status
             logger.info(
-                f"Updated context from pubsub message at {datetime.now()}, groups: {len(_departures_state.direction_groups)}"
+                f"Updated context from pubsub message at {datetime.now(UTC)}, groups: {len(_departures_state.direction_groups)}"
             )
         else:
             logger.debug(f"Ignoring pubsub message with payload: {payload}")
 
     async def render(self, assigns: DeparturesState | dict, meta: Any) -> str:
         """Render the HTML template."""
-        logger.debug(f"Render called at {datetime.now()}, assigns type: {type(assigns)}")
+        logger.debug(f"Render called at {datetime.now(UTC)}, assigns type: {type(assigns)}")
 
         # Get state from assigns (which is socket.context, a DeparturesState object)
         if isinstance(assigns, DeparturesState):
@@ -881,12 +882,12 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 <body class="min-h-screen bg-base-100" style="width: 100vw; max-width: 100vw; margin: 0; padding: 0;">
     <!-- Skip to main content link for keyboard navigation -->
     <a href="#departures" class="skip-link">Skip to main content</a>
-    
+
     <!-- ARIA live region for status announcements -->
     <div id="aria-live-status" aria-live="polite" aria-atomic="true" class="sr-only"></div>
     <!-- ARIA live region for departure updates -->
     <div id="aria-live-departures" aria-live="polite" aria-atomic="false" class="sr-only"></div>
-    
+
     <div class="container" data-phx-main role="main" aria-label="MVG Departures Dashboard">
         <div class="header-section">
             <h1>MVG Departures</h1>
@@ -902,7 +903,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             + self._render_departures(direction_groups)
             + """
         </div>
-        
+
         <!-- Floating status box at bottom right -->
         <div class="status-floating-box" role="status" aria-label="Connection and API status">
             <div class="status-floating-box-item" id="connection-status" role="img" aria-label="Connection status: connecting">
@@ -963,12 +964,12 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         const INITIAL_API_STATUS = '"""
             + api_status
             + """';
-        
+
         // Date/time display
         function updateDateTime() {
             const datetimeEl = document.getElementById('datetime-display');
             if (!datetimeEl) return;
-            
+
             const now = new Date();
             const year = now.getFullYear();
             const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -976,19 +977,19 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             const hours = String(now.getHours()).padStart(2, '0');
             const minutes = String(now.getMinutes()).padStart(2, '0');
             const seconds = String(now.getSeconds()).padStart(2, '0');
-            
+
             const dateStr = year + '-' + month + '-' + day;
             const timeStr = hours + ':' + minutes + ':' + seconds;
             const fullDateTime = dateStr + ' ' + timeStr;
-            
+
             datetimeEl.textContent = fullDateTime;
             datetimeEl.setAttribute('aria-label', 'Current date and time: ' + fullDateTime);
         }
-        
+
         // Update date/time every second
         updateDateTime();
         setInterval(updateDateTime, 1000);
-        
+
         // Connection status monitoring
         // States: connecting (yellow), connected (green), broken (red)
         let connectionState = 'connecting'; // Start as connecting (yellow)
@@ -997,30 +998,30 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         let countdownRunning = false;
         let lastUpdateTime = Date.now();
         let startCountdown = null; // Will be set by initRefreshCountdown
-        
+
         function updateConnectionStatus() {
             const connectionEl = document.getElementById('connection-status');
             if (!connectionEl) {
                 console.warn('connection-status element not found');
                 return;
             }
-            
+
             const icon = connectionEl.querySelector('.status-icon');
             const connectedPlug = connectionEl.querySelector('#connected-plug');
             const disconnectedPlug = connectionEl.querySelector('#disconnected-plug');
             const connectingPlug = connectionEl.querySelector('#connecting-plug');
             const liveRegion = document.getElementById('aria-live-status');
-            
+
             if (!icon) {
                 console.warn('status-icon element not found');
                 return;
             }
-            
+
             // Explicitly remove animation to stop any running animations
             icon.style.animation = 'none';
             // Force a reflow to ensure animation is stopped
             void icon.offsetHeight;
-            
+
             // Determine state: connecting (yellow), connected (green), or broken (red)
             if (connectionState === 'connecting') {
                 icon.className = 'status-icon connecting';
@@ -1051,13 +1052,13 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 if (liveRegion) liveRegion.textContent = 'Connection status: disconnected';
             }
         }
-        
+
         // Refresh countdown circle - synchronized with server updates
         let countdownInitialized = false;
         let reconnectTimeout = null;
         let countdownCircle = null;
         let circumference = 0;
-        
+
         function initRefreshCountdown() {
             const circle = document.querySelector('.refresh-countdown circle.progress');
             if (!circle) {
@@ -1067,13 +1068,13 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 return;
             }
             countdownCircle = circle;
-            
+
             // Only initialize circumference and startCountdown function once
             if (!countdownInitialized) {
                 countdownInitialized = true;
                 const radius = 5; // Smaller radius to match reduced icon size
                 circumference = 2 * Math.PI * radius;
-                
+
                 // Define startCountdown and make it accessible globally
                 startCountdown = function() {
                     // Re-query the element in case DOM was updated by pyview
@@ -1083,43 +1084,43 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                         return;
                     }
                     countdownCircle = circle;
-                    
+
                     // Ensure circumference is set
                     if (circumference === 0) {
                         const radius = 5;
                         circumference = 2 * Math.PI * radius;
                     }
                     circle.setAttribute('stroke-dasharray', circumference);
-                    
+
                     // Clear any existing interval
                     if (countdownInterval) {
                         clearInterval(countdownInterval);
                         countdownInterval = null;
                     }
-                    
+
                     countdownElapsed = 0;
                     countdownRunning = true;
                     // Reset the circle to full (offset = 0 means full circle)
                     circle.setAttribute('stroke-dashoffset', '0');
                     const updateInterval = 100; // Update every 100ms for smooth animation
-                    
+
                     function updateCountdown() {
                         // Re-query element in case it was replaced during countdown
                         const circle = document.querySelector('.refresh-countdown circle.progress');
                         if (!countdownRunning || !circle) return;
-                        
+
                         countdownElapsed += updateInterval;
                         const progress = countdownElapsed / (REFRESH_INTERVAL_SECONDS * 1000);
                         const offset = circumference * (1 - progress);
                         circle.setAttribute('stroke-dashoffset', offset.toString());
-                        
+
                         // Update screen reader text with remaining time
                         const remainingSeconds = Math.ceil((REFRESH_INTERVAL_SECONDS * 1000 - countdownElapsed) / 1000);
                         const srText = document.getElementById('refresh-countdown-sr');
                         if (srText && remainingSeconds > 0) {
                             srText.textContent = `Refresh countdown: ${remainingSeconds} seconds remaining`;
                         }
-                        
+
                         // When countdown reaches the end, stop and wait for next update
                         if (countdownElapsed >= REFRESH_INTERVAL_SECONDS * 1000) {
                             countdownRunning = false;
@@ -1139,18 +1140,18 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                             }
                         }
                     }
-                    
+
                     countdownInterval = setInterval(updateCountdown, updateInterval);
                     console.log('Countdown started');
                 }
             }
-            
+
             // Always restart countdown when called (for phx:update)
             if (startCountdown) {
                 startCountdown();
             }
         }
-        
+
         // Set up event listeners once (outside initRefreshCountdown)
         window.addEventListener('phx:error', (event) => {
             console.error('phx:error received:', event);
@@ -1169,7 +1170,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 countdownRunning = false;
             }
         });
-        
+
         window.addEventListener('phx:update', (event) => {
             console.log('phx:update received - restarting countdown', event);
             // Data was successfully fetched - connection is working
@@ -1180,7 +1181,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 clearTimeout(reconnectTimeout);
                 reconnectTimeout = null;
             }
-            
+
             // Update connection status after DOM update (pyview may have replaced elements)
             // Use requestAnimationFrame to ensure DOM is fully updated
             requestAnimationFrame(() => {
@@ -1189,18 +1190,18 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 const apiStatus = event.detail?.api_status || 'success';
                 updateApiStatus(apiStatus);
             });
-            
+
             // Handle pagination if enabled
             if (PAGINATION_ENABLED) {
                 initPagination();
             }
-            
+
             // Immediately update datetime display (before delay)
             // This ensures it's visible right away, even if pyview replaced it
             requestAnimationFrame(() => {
                 updateDateTime();
             });
-            
+
             // Restart countdown after DOM update (pyview may have replaced the element)
             // Use a small delay to ensure DOM patch is complete
             setTimeout(() => {
@@ -1212,7 +1213,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                     initRefreshCountdown();
                     return;
                 }
-                
+
                 // If countdown was already initialized, just restart it
                 if (countdownInitialized && startCountdown) {
                     console.log('Restarting countdown after phx:update');
@@ -1223,7 +1224,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 }
             }, 50); // Small delay to ensure DOM patch is complete
         });
-        
+
         function updateApiStatus(status) {
                 const apiStatusIcon = document.getElementById('api-status-icon');
                 const apiStatusContainer = document.getElementById('api-status-container');
@@ -1231,16 +1232,16 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                     console.warn('api-status-icon not found');
                     return;
                 }
-                
+
                 const statusCircle = document.getElementById('api-status-circle');
                 const successPath = document.getElementById('api-success-path');
                 const errorLine1 = document.getElementById('api-error-line1');
                 const errorLine2 = document.getElementById('api-error-line2');
                 const liveRegion = document.getElementById('aria-live-status');
-                
+
                 // Remove existing status classes
                 apiStatusIcon.classList.remove('api-success', 'api-error', 'api-unknown');
-                
+
                 // Add new status class and show/hide appropriate elements
                 if (status === 'success') {
                     apiStatusIcon.classList.add('api-success');
@@ -1274,7 +1275,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                     if (liveRegion) liveRegion.textContent = 'API status: unknown';
                 }
             }
-            
+
             // Handle reconnection timeout - if we've been connecting for too long, show broken
             function startReconnectTimeout() {
                 // Clear any existing timeout
@@ -1290,7 +1291,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                     }
                 }, 10000); // 10 second timeout
             }
-        
+
         window.addEventListener('phx:disconnect', () => {
             console.log('phx:disconnect received - connection disconnected');
             // On disconnect, show broken state (red)
@@ -1309,7 +1310,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 countdownRunning = false;
             }
         });
-        
+
         // Handle permanent connection close
         window.addEventListener('phx:close', () => {
             console.log('phx:close received - connection permanently closed');
@@ -1322,7 +1323,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 countdownRunning = false;
             }
         });
-        
+
         // Detect connecting state (when WebSocket is connecting/reconnecting)
         window.addEventListener('phx:connecting', () => {
             console.log('phx:connecting received - attempting to reconnect');
@@ -1335,7 +1336,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             // Start/restart timeout for reconnection
             startReconnectTimeout();
         });
-        
+
         // Detect when WebSocket opens (connected)
         window.addEventListener('phx:open', () => {
             console.log('phx:open received - WebSocket connected');
@@ -1351,7 +1352,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 console.log('Connection status updated to connected (green)');
             });
         });
-        
+
         // Initial state: connecting (will change to connected on first phx:update or phx:open)
         // Update connection status immediately on page load
         // Use requestAnimationFrame to ensure DOM is ready
@@ -1359,7 +1360,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             updateConnectionStatus();
             updateApiStatus(INITIAL_API_STATUS); // Use initial API status from server
         });
-        
+
         // Cleanup on unload
         window.addEventListener('beforeunload', () => {
             if (countdownInterval) {
@@ -1369,9 +1370,9 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 clearTimeout(reconnectTimeout);
             }
         });
-        
+
         // Note: phx:update handling is done in the main phx:update listener above
-        
+
         function createCountdownCircle(radius = 5) {
             const circumference = 2 * Math.PI * radius;
             const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -1385,22 +1386,22 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             svg.appendChild(circle);
             return { svg, circle, circumference };
         }
-        
+
         function updateCountdown(circle, circumference, elapsed, total) {
             const progress = elapsed / total;
             const offset = circumference * (1 - progress);
             circle.setAttribute('stroke-dashoffset', offset.toString());
         }
-        
+
         function initPagination() {
             // Paginate departures within route groups
             document.querySelectorAll('.route-group').forEach(group => {
                 const departures = group.querySelectorAll('.departure-row');
                 if (departures.length <= DEPARTURES_PER_PAGE) return;
-                
+
                 let currentPage = 0;
                 const totalPages = Math.ceil(departures.length / DEPARTURES_PER_PAGE);
-                
+
                 // Create pagination indicator
                 const indicator = document.createElement('div');
                 indicator.className = 'pagination-indicator';
@@ -1426,7 +1427,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 srText.textContent = `Page ${currentPage + 1} of ${totalPages}`;
                 indicator.appendChild(srText);
                 group.appendChild(indicator);
-                
+
                 // Create pages
                 for (let i = 0; i < totalPages; i++) {
                     const page = document.createElement('div');
@@ -1438,10 +1439,10 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                     }
                     group.appendChild(page);
                 }
-                
+
                 // Hide original departures
                 departures.forEach(d => d.style.display = 'none');
-                
+
                 // Countdown timer
                 let elapsed = 0;
                 const updateInterval = 100; // Update every 100ms for smooth animation
@@ -1454,7 +1455,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                         elapsed = 0;
                     }
                 }, updateInterval);
-                
+
                 // Rotate pages
                 const pageInterval = setInterval(() => {
                     const pages = group.querySelectorAll('.pagination-page');
@@ -1476,18 +1477,18 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                         srText.textContent = `Page ${currentPage + 1} of ${totalPages}`;
                     }
                 }, PAGE_ROTATION_SECONDS * 1000);
-                
+
                 // Store intervals for cleanup
                 if (!window._paginationIntervals) {
                     window._paginationIntervals = [];
                 }
                 window._paginationIntervals.push(pageInterval, countdownInterval);
             });
-            
+
             // Direction groups: no pagination, just scroll
             // Users can scroll vertically to see all direction groups
         }
-        
+
         // Initialize on load
         function initializeAll() {
             if (PAGINATION_ENABLED) {
@@ -1496,13 +1497,13 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             // initRefreshCountdown will start the countdown automatically once initialized
             initRefreshCountdown();
         }
-        
+
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initializeAll);
         } else {
             initializeAll();
         }
-        
+
         // Cleanup intervals on page unload/disconnect
         window.addEventListener('beforeunload', () => {
             if (window._paginationIntervals) {
@@ -1510,7 +1511,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 window._paginationIntervals = [];
             }
         });
-        
+
         // Also cleanup on LiveView disconnect
         window.addEventListener('phx:disconnect', () => {
             if (window._paginationIntervals) {
@@ -1529,7 +1530,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         } else {
             console.log('CSRF token found:', csrfMeta.getAttribute('content'));
         }
-        
+
         // Verify data-phx-main exists
         const phxMain = document.querySelector('[data-phx-main]');
         if (!phxMain) {
@@ -1537,7 +1538,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         } else {
             console.log('data-phx-main element found');
         }
-        
+
         // Load pyview client JS
         const script = document.createElement('script');
         script.src = '/static/assets/app.js';
@@ -1558,9 +1559,8 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
         # Use pyview's LiveTemplate system properly
         # Create an ibis Template from the HTML string, wrap in LiveTemplate, then return LiveRender
-        from pyview.template.live_template import LiveTemplate, LiveRender
+        from pyview.template.live_template import LiveRender, LiveTemplate
         from pyview.vendor.ibis import Template as IbisTemplate
-        from pyview.meta import PyViewMeta
 
         # Create ibis template from HTML string
         ibis_template = IbisTemplate(html_content, template_id="departures")
@@ -1706,7 +1706,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
     def _format_departure_time(self, departure: Departure) -> str:
         """Format departure time according to configuration."""
-        now = datetime.now()
+        now = datetime.now(UTC)
         time_until = departure.time
 
         if self.config.time_format == "minutes":
@@ -1717,8 +1717,8 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             if minutes == 0:
                 return "<1m"
             return f"{minutes}m"
-        else:  # "at" format
-            return time_until.strftime("%H:%M")
+        # "at" format
+        return time_until.strftime("%H:%M")
 
     def _format_update_time(self, update_time: datetime | None) -> str:
         """Format last update time."""
@@ -1758,7 +1758,6 @@ class PyViewWebAdapter(DisplayAdapter):
     async def display_departures(self, direction_groups: list[tuple[str, list[Departure]]]) -> None:
         """Display grouped departures (not used directly, handled by LiveView)."""
         # This is handled by the LiveView's periodic updates
-        pass
 
     async def start(self) -> None:
         """Start the web server."""
@@ -1804,10 +1803,10 @@ class PyViewWebAdapter(DisplayAdapter):
 
                     # Update shared state immediately
                     _departures_state.direction_groups = all_groups
-                    _departures_state.last_update = datetime.now()
+                    _departures_state.last_update = datetime.now(UTC)
                     _departures_state.api_status = "success"
                     logger.info(
-                        f"Initial API call completed at {datetime.now()}, found {len(all_groups)} direction groups"
+                        f"Initial API call completed at {datetime.now(UTC)}, found {len(all_groups)} direction groups"
                     )
                 except Exception as e:
                     logger.error(f"Initial API call failed: {e}", exc_info=True)
@@ -1825,15 +1824,17 @@ class PyViewWebAdapter(DisplayAdapter):
 
         # Start the API poller - runs regardless of client connections
         # Create the task but don't await it - let it run in background
-        asyncio.create_task(start_api_poller())
+        # Store in global variable to prevent garbage collection
+        global _api_poller_task
+        _api_poller_task = asyncio.create_task(start_api_poller())
 
         # Serve pyview's client JavaScript and static assets
-        from starlette.responses import Response, FileResponse
-        from starlette.routing import Route
         from pathlib import Path
-        import importlib.resources
 
-        async def static_app_js(request: Any) -> Any:
+        from starlette.responses import FileResponse, Response
+        from starlette.routing import Route
+
+        async def static_app_js(_request: Any) -> Any:
             """Serve pyview's client JavaScript."""
             try:
                 # Get pyview package path
@@ -1844,20 +1845,16 @@ class PyViewWebAdapter(DisplayAdapter):
 
                 if client_js_path.exists():
                     return FileResponse(str(client_js_path), media_type="application/javascript")
-                else:
-                    # Fallback: try alternative path
-                    alt_path = pyview_path / "assets" / "js" / "app.js"
-                    if alt_path.exists():
-                        return FileResponse(str(alt_path), media_type="application/javascript")
-                    else:
-                        logger.error(
-                            f"Could not find pyview client JS at {client_js_path} or {alt_path}"
-                        )
-                        return Response(
-                            content="// PyView client not found",
-                            media_type="application/javascript",
-                            status_code=404,
-                        )
+                # Fallback: try alternative path
+                alt_path = pyview_path / "assets" / "js" / "app.js"
+                if alt_path.exists():
+                    return FileResponse(str(alt_path), media_type="application/javascript")
+                logger.error(f"Could not find pyview client JS at {client_js_path} or {alt_path}")
+                return Response(
+                    content="// PyView client not found",
+                    media_type="application/javascript",
+                    status_code=404,
+                )
             except Exception as e:
                 logger.error(f"Error serving pyview client JS: {e}", exc_info=True)
                 return Response(
@@ -1885,10 +1882,8 @@ class PyViewWebAdapter(DisplayAdapter):
         global _api_poller_task
         if _api_poller_task and not _api_poller_task.done():
             _api_poller_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await _api_poller_task
-            except asyncio.CancelledError:
-                pass
             logger.info("Stopped API poller")
 
         if self._server:

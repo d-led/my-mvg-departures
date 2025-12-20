@@ -1,6 +1,6 @@
 """Tests for domain models."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from mvg_departures.domain.models import Departure, Station, StopConfiguration
 
@@ -24,7 +24,7 @@ def test_station_creation() -> None:
 
 def test_departure_creation() -> None:
     """Given departure data, when creating a Departure, then all fields are set correctly."""
-    now = datetime.now()
+    now = datetime.now(UTC)
     departure = Departure(
         time=now,
         planned_time=now,

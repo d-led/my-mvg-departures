@@ -200,5 +200,4 @@ class AppConfig(BaseSettings):
             if not isinstance(stops, list):
                 raise ValueError("TOML config 'stops' must be a list")
             # Filter out stops with placeholder IDs
-            stops = [s for s in stops if s.get("station_id", "").find("XXX") == -1]
-            return stops
+            return [s for s in stops if s.get("station_id", "").find("XXX") == -1]
