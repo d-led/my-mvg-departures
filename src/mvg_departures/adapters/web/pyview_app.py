@@ -161,7 +161,7 @@ class DeparturesLiveView(LiveView):
         .departure-row {
             display: flex;
             align-items: center;
-            padding: 0.75rem 0;
+            padding: 0.75rem 0 0.75rem 0.75rem;
             border-bottom: 1px solid rgba(0, 0, 0, 0.08);
             min-height: 4.5rem;
             width: 100%;
