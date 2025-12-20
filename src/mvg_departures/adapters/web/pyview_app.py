@@ -33,6 +33,8 @@ class DeparturesState:
 _departures_state = DeparturesState()
 _connected_sockets: set[LiveViewSocket[DeparturesState]] = set()
 _api_poller_task: asyncio.Task | None = None
+# Cache for stale departures per stop (station_name -> list of direction groups)
+_cached_departures: dict[str, list[tuple[str, list[Departure]]]] = {}
 
 
 async def _api_poller(
@@ -53,6 +55,32 @@ async def _api_poller(
 
     logger.info("API poller started (independent of client connections)")
 
+    def extract_error_details(error: Exception) -> tuple[int | None, str]:
+        """Extract HTTP status code and error reason from exception."""
+        import re
+
+        error_str = str(error)
+        # Try to extract HTTP status code from error message
+        # Format: "Bad API call: Got response (502) from ..."
+        status_match = re.search(r"\((\d+)\)", error_str)
+        status_code = int(status_match.group(1)) if status_match else None
+
+        # Determine error reason
+        if status_code == 429:
+            reason = "Rate limit exceeded"
+        elif status_code == 502:
+            reason = "Bad gateway (server error)"
+        elif status_code == 503:
+            reason = "Service unavailable"
+        elif status_code == 504:
+            reason = "Gateway timeout"
+        elif status_code is not None:
+            reason = f"HTTP {status_code}"
+        else:
+            reason = "Unknown error"
+
+        return status_code, reason
+
     async def _fetch_and_broadcast() -> None:
         """Fetch departures and broadcast update to all connected sockets."""
         # Fetch departures from API - handle errors per stop
@@ -62,14 +90,44 @@ async def _api_poller(
         for stop_config in stop_configs:
             try:
                 groups = await grouping_service.get_grouped_departures(stop_config)
+                # Convert to format with station_name
+                stop_groups: list[tuple[str, list[Departure]]] = []
                 for direction_name, departures in groups:
+                    stop_groups.append((direction_name, departures))
                     all_groups.append((stop_config.station_name, direction_name, departures))
+                # Cache successful fetch
+                _cached_departures[stop_config.station_name] = stop_groups
+                logger.debug(f"Successfully fetched departures for {stop_config.station_name}")
             except Exception as e:
+                status_code, reason = extract_error_details(e)
                 logger.error(
-                    f"API poller failed to fetch departures for {stop_config.station_name}: {e}",
-                    exc_info=True,
+                    f"API poller failed to fetch departures for {stop_config.station_name}: "
+                    f"{reason} (status: {status_code}, error: {e})"
                 )
                 has_errors = True
+                if status_code == 429:
+                    logger.warning(
+                        f"Rate limit (429) detected for {stop_config.station_name} - "
+                        "consider adding delays between API calls"
+                    )
+
+                # Use cached data if available, mark as stale
+                if stop_config.station_name in _cached_departures:
+                    cached_groups = _cached_departures[stop_config.station_name]
+                    logger.info(
+                        f"Using cached departures for {stop_config.station_name} "
+                        f"({len(cached_groups)} direction groups) due to {reason}"
+                    )
+                    # Mark departures as stale (non-realtime)
+                    from dataclasses import replace
+
+                    for direction_name, cached_departures in cached_groups:
+                        stale_departures = [
+                            replace(dep, is_realtime=False) for dep in cached_departures
+                        ]
+                        all_groups.append(
+                            (stop_config.station_name, direction_name, stale_departures)
+                        )
                 # Continue with other stops even if one fails
 
         # Update shared state (even if some stops failed, use what we got)
