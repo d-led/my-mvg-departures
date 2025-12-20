@@ -1,10 +1,19 @@
 """Main entry point for the MVG departures application."""
 
 import asyncio
+import logging
 import sys
 from typing import Any
 
 import aiohttp
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    stream=sys.stderr,
+)
 
 from mvg_departures.adapters.config import AppConfig
 from mvg_departures.adapters.mvg_api import (

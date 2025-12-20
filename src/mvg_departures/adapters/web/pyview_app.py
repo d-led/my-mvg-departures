@@ -1,10 +1,14 @@
 """PyView web adapter for displaying departures."""
 
 import asyncio
+import logging
+import sys
 from datetime import datetime
 from typing import TYPE_CHECKING
 
 from pyview import LiveView
+
+logger = logging.getLogger(__name__)
 
 from mvg_departures.adapters.config import AppConfig
 from mvg_departures.application.services import DepartureGroupingService
@@ -47,23 +51,32 @@ class DeparturesLiveView(LiveView):
     async def handle_info(self, message: dict, socket: object) -> None:
         """Handle periodic update messages."""
         if message.get("type") == "update":
-            await self._update_departures()
-            # Trigger re-render by updating socket state
-            await self.push_event(socket, "update", {})
+            try:
+                await self._update_departures()
+                logger.debug("Handled update message, triggering re-render")
+                # Trigger re-render by updating socket state
+                await self.push_event(socket, "update", {})
+            except Exception as e:
+                logger.error(f"Failed to handle update message: {e}", exc_info=True)
 
     async def _periodic_updates(self) -> None:
         """Send periodic update messages to all connected sockets."""
         try:
             while True:
                 await asyncio.sleep(self.config.refresh_interval_seconds)
-                # Update departures and notify all sockets
-                await self._update_departures()
-                # Broadcast update to all connected sockets
-                if hasattr(self, "broadcast"):
-                    await self.broadcast({"type": "update"})
-                else:
-                    # Fallback: update will happen on next socket interaction
-                    pass
+                try:
+                    # Update departures and notify all sockets
+                    await self._update_departures()
+                    logger.debug(f"Updated departures at {datetime.now()}")
+                    # Broadcast update to all connected sockets
+                    if hasattr(self, "broadcast"):
+                        await self.broadcast({"type": "update"})
+                        logger.debug("Broadcasted update message")
+                    else:
+                        # Fallback: update will happen on next socket interaction
+                        logger.warning("broadcast method not available, updates may be delayed")
+                except Exception as e:
+                    logger.error(f"Failed to update departures: {e}", exc_info=True)
         except asyncio.CancelledError:
             pass
 
@@ -595,18 +608,16 @@ class DeparturesLiveView(LiveView):
         setInterval(updateDateTime, 1000);
         
         // Connection status monitoring
-        let lastUpdateTime = Date.now();
         let isConnected = true;
         let hasError = false;
+        let countdownInterval = null;
+        let countdownElapsed = 0;
+        let countdownRunning = false;
         
         function updateConnectionStatus() {
             const connectionEl = document.getElementById('connection-status');
             const errorEl = document.getElementById('error-status');
             if (!connectionEl || !errorEl) return;
-            
-            const timeSinceUpdate = Date.now() - lastUpdateTime;
-            // Check if we're still connected (within 2x refresh interval)
-            const stillConnected = timeSinceUpdate < (REFRESH_INTERVAL_SECONDS * 1000 * 2);
             
             // Update connection status based on last fetch result
             connectionEl.style.display = 'flex';
@@ -632,11 +643,6 @@ class DeparturesLiveView(LiveView):
                 if (disconnectedLine2) disconnectedLine2.style.display = '';
             }
             
-            // If we haven't received updates for too long, mark as disconnected
-            if (!stillConnected && isConnected) {
-                isConnected = false;
-            }
-            
             // Show/hide error status
             if (hasError) {
                 errorEl.style.display = 'flex';
@@ -645,32 +651,7 @@ class DeparturesLiveView(LiveView):
             }
         }
         
-        // Monitor for errors and connection issues
-        window.addEventListener('phx:error', (event) => {
-            hasError = true;
-            isConnected = false;
-            updateConnectionStatus();
-        });
-        
-        window.addEventListener('phx:update', () => {
-            // Data was successfully fetched
-            lastUpdateTime = Date.now();
-            hasError = false;
-            isConnected = true;
-            updateConnectionStatus();
-        });
-        
-        window.addEventListener('phx:disconnect', () => {
-            hasError = true;
-            isConnected = false;
-            updateConnectionStatus();
-        });
-        
-        // Check connection status periodically
-        setInterval(updateConnectionStatus, 1000);
-        updateConnectionStatus();
-        
-        // Refresh countdown circle
+        // Refresh countdown circle - synchronized with server updates
         function initRefreshCountdown() {
             const countdownCircle = document.querySelector('.refresh-countdown circle.progress');
             if (!countdownCircle) return;
@@ -680,31 +661,88 @@ class DeparturesLiveView(LiveView):
             countdownCircle.setAttribute('stroke-dasharray', circumference);
             countdownCircle.setAttribute('stroke-dashoffset', '0');
             
-            let elapsed = 0;
-            const updateInterval = 100; // Update every 100ms for smooth animation
-            
-            function updateCountdown() {
-                elapsed += updateInterval;
-                const progress = elapsed / (REFRESH_INTERVAL_SECONDS * 1000);
-                const offset = circumference * (1 - progress);
-                countdownCircle.setAttribute('stroke-dashoffset', offset.toString());
-                
-                if (elapsed >= REFRESH_INTERVAL_SECONDS * 1000) {
-                    elapsed = 0;
+            function startCountdown() {
+                // Clear any existing interval
+                if (countdownInterval) {
+                    clearInterval(countdownInterval);
                 }
+                
+                countdownElapsed = 0;
+                countdownRunning = true;
+                const updateInterval = 100; // Update every 100ms for smooth animation
+                
+                function updateCountdown() {
+                    if (!countdownRunning) return;
+                    
+                    countdownElapsed += updateInterval;
+                    const progress = countdownElapsed / (REFRESH_INTERVAL_SECONDS * 1000);
+                    const offset = circumference * (1 - progress);
+                    countdownCircle.setAttribute('stroke-dashoffset', offset.toString());
+                    
+                    // Stop countdown when it reaches the end
+                    if (countdownElapsed >= REFRESH_INTERVAL_SECONDS * 1000) {
+                        console.warn('Countdown reached 100% - waiting for server update. If stuck, server may not be sending updates.');
+                        countdownRunning = false;
+                        clearInterval(countdownInterval);
+                        countdownInterval = null;
+                        // If countdown completes but no update received, mark as potential issue
+                        const timeSinceLastUpdate = Date.now() - lastUpdateTime;
+                        if (timeSinceLastUpdate > REFRESH_INTERVAL_SECONDS * 1000 * 1.5) {
+                            console.error('No update received after countdown completed - possible server issue');
+                            hasError = true;
+                            isConnected = false;
+                            updateConnectionStatus();
+                        }
+                    }
+                }
+                
+                countdownInterval = setInterval(updateCountdown, updateInterval);
             }
             
-            const countdownInterval = setInterval(updateCountdown, updateInterval);
-            
-            // Reset on LiveView update
-            window.addEventListener('phx:update', () => {
-                elapsed = 0;
-                countdownCircle.setAttribute('stroke-dashoffset', '0');
+            // Monitor for errors and connection issues
+            window.addEventListener('phx:error', (event) => {
+                console.error('phx:error received:', event);
+                hasError = true;
+                isConnected = false;
+                updateConnectionStatus();
+                // Stop countdown on error
+                if (countdownInterval) {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                    countdownRunning = false;
+                }
             });
+            
+            window.addEventListener('phx:update', () => {
+                console.log('phx:update received - restarting countdown');
+                // Data was successfully fetched - reset everything
+                hasError = false;
+                isConnected = true;
+                updateConnectionStatus();
+                startCountdown(); // Reset and start countdown from beginning
+            });
+            
+            window.addEventListener('phx:disconnect', () => {
+                hasError = true;
+                isConnected = false;
+                updateConnectionStatus();
+                // Stop countdown on disconnect
+                if (countdownInterval) {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                    countdownRunning = false;
+                }
+            });
+            
+            // Start initial countdown
+            startCountdown();
+            updateConnectionStatus();
             
             // Cleanup on unload
             window.addEventListener('beforeunload', () => {
-                clearInterval(countdownInterval);
+                if (countdownInterval) {
+                    clearInterval(countdownInterval);
+                }
             });
         }
         

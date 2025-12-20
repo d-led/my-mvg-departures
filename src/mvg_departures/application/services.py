@@ -1,9 +1,12 @@
 """Application services (use cases) for departure management."""
 
+import logging
 import re
 from typing import TYPE_CHECKING
 
 from mvg_departures.domain.models import Departure, StopConfiguration
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from mvg_departures.domain.ports import DepartureRepository
@@ -28,10 +31,10 @@ class DepartureGroupingService:
         direction_groups: dict[str, list[Departure]] = {}
         ungrouped: list[Departure] = []
 
-        # Debug: log what we're trying to match
-        import sys
+        # Log what we're trying to match
         if not stop_config.direction_mappings:
-            print(f"WARNING: No direction_mappings configured for {stop_config.station_name}", file=sys.stderr)
+            logger.warning(f"No direction_mappings configured for {stop_config.station_name}")
+        logger.debug(f"Processing {len(departures)} departures for {stop_config.station_name} with {len(stop_config.direction_mappings)} direction mappings")
         
         for departure in departures:
             matched = False
@@ -45,8 +48,8 @@ class DepartureGroupingService:
 
             if not matched:
                 ungrouped.append(departure)
-                # Debug: log unmatched departures
-                #print(f"DEBUG: Unmatched departure: {departure.transport_type} {departure.line} -> {departure.destination}", file=sys.stderr)
+                # Log unmatched departures
+                logger.debug(f"Unmatched departure for {stop_config.station_name}: {departure.transport_type} {departure.line} -> {departure.destination}")
 
         # Sort departures within each group by time (datetime objects, not display strings)
         # This ensures "<1m" (0-59 seconds) sorts before "1m" (60-119 seconds), etc.
@@ -57,11 +60,14 @@ class DepartureGroupingService:
             ungrouped.sort(key=lambda d: d.time)
 
         # Build result list with only directions that have departures
+        # Preserve the order from the config file (direction_mappings)
         # Don't show empty direction groups - if show_ungrouped is false and no matches, 
         # the stop will be shown as "no departures" at the bottom
         result = []
-        for direction_name in sorted(direction_groups.keys()):
-            result.append((direction_name, direction_groups[direction_name]))
+        # Iterate through direction_mappings in config order
+        for direction_name in stop_config.direction_mappings.keys():
+            if direction_name in direction_groups:
+                result.append((direction_name, direction_groups[direction_name]))
 
         # Add ungrouped departures if configured to show them (whitelist mode)
         # Only add "Other" group if show_ungrouped is True AND there are ungrouped departures
