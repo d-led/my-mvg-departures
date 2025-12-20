@@ -44,14 +44,31 @@ echo "Copying application files..."
 cp -r "${PROJECT_ROOT}/src" "$APP_DIR/"
 cp "${PROJECT_ROOT}/pyproject.toml" "$APP_DIR/"
 
+# Copy README.md (required by pyproject.toml)
+if [ -f "${PROJECT_ROOT}/README.md" ]; then
+    cp "${PROJECT_ROOT}/README.md" "$APP_DIR/"
+    echo "Copied README.md"
+else
+    echo "Warning: README.md not found, package installation may fail"
+fi
+
 # Copy my.config.toml as config.toml
 if [ -f "${PROJECT_ROOT}/my.config.toml" ]; then
     cp "${PROJECT_ROOT}/my.config.toml" "${APP_DIR}/config.toml"
     echo "Copied my.config.toml to ${APP_DIR}/config.toml"
 else
-    echo "Warning: my.config.toml not found, using config.example.toml if available"
-    if [ -f "${PROJECT_ROOT}/config.example.toml" ]; then
+    echo "Warning: my.config.toml not found in ${PROJECT_ROOT}"
+    echo "Looking for config files..."
+    # Try to find it in common locations
+    if [ -f "${PROJECT_ROOT}/../my.config.toml" ]; then
+        cp "${PROJECT_ROOT}/../my.config.toml" "${APP_DIR}/config.toml"
+        echo "Found and copied my.config.toml from parent directory"
+    elif [ -f "${PROJECT_ROOT}/config.example.toml" ]; then
         cp "${PROJECT_ROOT}/config.example.toml" "${APP_DIR}/config.toml"
+        echo "Using config.example.toml as fallback"
+    else
+        echo "Error: No config file found. Please ensure my.config.toml exists in the project root."
+        exit 1
     fi
 fi
 
