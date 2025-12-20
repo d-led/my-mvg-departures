@@ -47,6 +47,3 @@ docker-compose*.yml
 scripts
 *.sh
 !scripts/start.sh
-# Config examples (we copy config.example.toml explicitly)
-*.config.toml
-!config.example.toml
