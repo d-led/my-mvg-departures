@@ -132,6 +132,8 @@ class DeparturesLiveView(LiveView):
         
         # Set context on socket (required by pyview)
         # Use shared state - the API poller keeps it updated independently
+        # Set context on socket (required by pyview)
+        # Use shared state - the API poller keeps it updated independently
         socket.context = {
             "direction_groups": _departures_state["direction_groups"],
             "last_update": _departures_state["last_update"],
@@ -391,8 +393,11 @@ class DeparturesLiveView(LiveView):
         }
         .direction-header-time {
             flex-shrink: 0;
-            margin-left: 0;
+            margin-left: auto; /* Push to right */
             white-space: nowrap;
+            display: flex;
+            align-items: center; /* Vertical alignment */
+            line-height: 1; /* Match header text line height */
         }
         [data-theme="light"] .direction-header {
             background-color: """ + banner_color + """;
@@ -596,10 +601,6 @@ class DeparturesLiveView(LiveView):
             font-variant-numeric: tabular-nums;
             letter-spacing: 0.01em;
             vertical-align: baseline;
-        }
-        .direction-header-time {
-            margin-left: 0.5rem;
-            white-space: nowrap;
         }
         [data-theme="light"] .status-header-item {
             color: #ffffff;
