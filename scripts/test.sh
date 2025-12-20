@@ -49,6 +49,13 @@ run_check() {
     fi
 }
 
+echo "=========================================="
+echo "Formatting..."
+echo "=========================================="
+echo ""
+
+"$SCRIPT_DIR/reformat.sh"
+
 # Run all CI checks
 echo "=========================================="
 echo "Running CI checks..."
