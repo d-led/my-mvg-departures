@@ -1,4 +1,4 @@
-# MVG Departures
+# My MVG Departures - a Customizable Departures Dashboard for Munich
 
 A server-side rendered live dashboard for Munich public transport (MVG) departures. Featuring a responsive and live web UI. Usable on various screen sizes.
 
