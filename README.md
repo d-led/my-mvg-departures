@@ -17,15 +17,7 @@ A server-side rendered live dashboard for Munich public transport (MVG) departur
 - **12-Factor App**: Configuration via environment variables
 - **Multiple Deployment Options**: Docker container or init.d service
 
-## Architecture
-
-This application follows the **ports-and-adapters** (hexagonal) architecture pattern:
-
-- **Domain Layer**: Core business models and interfaces (ports)
-- **Application Layer**: Use cases and business logic
-- **Adapters Layer**: External system integrations (MVG API, Web UI, Config)
-
-This design allows for easy extension with new output devices (e.g., e-ink displays, LED matrices) without changing core logic.
+![DIY dashboard](./docs/img/diy_setup.jpg)
 
 ## Requirements
 
