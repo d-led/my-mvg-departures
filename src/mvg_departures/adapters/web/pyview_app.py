@@ -30,138 +30,173 @@ class DeparturesState:
     api_status: str = "unknown"
 
 
-# Shared state and connected sockets for broadcasting
-_departures_state = DeparturesState()
-_connected_sockets: set[LiveViewSocket[DeparturesState]] = set()
-_api_poller_task: asyncio.Task | None = None
-# Cache for stale departures per stop (station_name -> list of direction groups)
-_cached_departures: dict[str, list[tuple[str, list[Departure]]]] = {}
+class DeparturesStateManager:
+    """Manages shared state for departures LiveView and API polling."""
 
+    def __init__(self) -> None:
+        """Initialize the state manager."""
+        self.departures_state = DeparturesState()
+        self.connected_sockets: set[LiveViewSocket[DeparturesState]] = set()
+        self.api_poller_task: asyncio.Task | None = None
+        self.cached_departures: dict[str, list[tuple[str, list[Departure]]]] = {}
+        self.broadcast_topic: str = "departures:updates"
 
-async def _api_poller(
-    grouping_service: DepartureGroupingService,
-    stop_configs: list[StopConfiguration],
-    config: AppConfig,
-) -> None:
-    """Independent API poller that updates shared state and broadcasts to connected sockets.
+    async def start_api_poller(
+        self,
+        grouping_service: DepartureGroupingService,
+        stop_configs: list[StopConfiguration],
+        config: AppConfig,
+    ) -> None:
+        """Start the API poller task."""
+        if self.api_poller_task is not None and not self.api_poller_task.done():
+            logger.warning("API poller already running")
+            return
 
-    This runs as a separate background task, completely independent of LiveView instances.
-    It polls the API periodically and broadcasts updates to all connected sockets.
-    """
-    from pyview.live_socket import pub_sub_hub
-    from pyview.vendor.flet.pubsub import PubSub
-
-    # Create PubSub instance once and reuse it
-    pubsub = PubSub(pub_sub_hub, _departures_broadcast_topic)
-
-    logger.info("API poller started (independent of client connections)")
-
-    def extract_error_details(error: Exception) -> tuple[int | None, str]:
-        """Extract HTTP status code and error reason from exception."""
-        import re
-
-        error_str = str(error)
-        # Try to extract HTTP status code from error message
-        # Format: "Bad API call: Got response (502) from ..."
-        status_match = re.search(r"\((\d+)\)", error_str)
-        status_code = int(status_match.group(1)) if status_match else None
-
-        # Determine error reason
-        if status_code == 429:
-            reason = "Rate limit exceeded"
-        elif status_code == 502:
-            reason = "Bad gateway (server error)"
-        elif status_code == 503:
-            reason = "Service unavailable"
-        elif status_code == 504:
-            reason = "Gateway timeout"
-        elif status_code is not None:
-            reason = f"HTTP {status_code}"
-        else:
-            reason = "Unknown error"
-
-        return status_code, reason
-
-    async def _fetch_and_broadcast() -> None:
-        """Fetch departures and broadcast update to all connected sockets."""
-        # Fetch departures from API - handle errors per stop
-        all_groups: list[tuple[str, str, list[Departure]]] = []
-        has_errors = False
-
-        for stop_config in stop_configs:
-            try:
-                groups = await grouping_service.get_grouped_departures(stop_config)
-                # Convert to format with station_name
-                stop_groups: list[tuple[str, list[Departure]]] = []
-                for direction_name, departures in groups:
-                    stop_groups.append((direction_name, departures))
-                    all_groups.append((stop_config.station_name, direction_name, departures))
-                # Cache successful fetch
-                _cached_departures[stop_config.station_name] = stop_groups
-                logger.debug(f"Successfully fetched departures for {stop_config.station_name}")
-            except Exception as e:
-                status_code, reason = extract_error_details(e)
-                logger.error(
-                    f"API poller failed to fetch departures for {stop_config.station_name}: "
-                    f"{reason} (status: {status_code}, error: {e})"
-                )
-                has_errors = True
-                if status_code == 429:
-                    logger.warning(
-                        f"Rate limit (429) detected for {stop_config.station_name} - "
-                        "consider adding delays between API calls"
-                    )
-
-                # Use cached data if available, mark as stale
-                if stop_config.station_name in _cached_departures:
-                    cached_groups = _cached_departures[stop_config.station_name]
-                    logger.info(
-                        f"Using cached departures for {stop_config.station_name} "
-                        f"({len(cached_groups)} direction groups) due to {reason}"
-                    )
-                    # Mark departures as stale (non-realtime)
-                    from dataclasses import replace
-
-                    for direction_name, cached_departures in cached_groups:
-                        stale_departures = [
-                            replace(dep, is_realtime=False) for dep in cached_departures
-                        ]
-                        all_groups.append(
-                            (stop_config.station_name, direction_name, stale_departures)
-                        )
-                # Continue with other stops even if one fails
-
-        # Update shared state (even if some stops failed, use what we got)
-        _departures_state.direction_groups = all_groups
-        _departures_state.last_update = datetime.now(UTC)
-        _departures_state.api_status = "error" if has_errors else "success"
-
-        logger.debug(
-            f"API poller updated departures at {datetime.now(UTC)}, "
-            f"groups: {len(all_groups)}, errors: {has_errors}"
+        self.api_poller_task = asyncio.create_task(
+            self._api_poller(grouping_service, stop_configs, config)
         )
+        logger.info("Started API poller task")
 
-        # Broadcast update via pubsub to all subscribed sockets
+    async def stop_api_poller(self) -> None:
+        """Stop the API poller task."""
+        if self.api_poller_task and not self.api_poller_task.done():
+            self.api_poller_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self.api_poller_task
+            logger.info("Stopped API poller")
+
+    async def _api_poller(
+        self,
+        grouping_service: DepartureGroupingService,
+        stop_configs: list[StopConfiguration],
+        config: AppConfig,
+    ) -> None:
+        """Independent API poller that updates shared state and broadcasts to connected sockets.
+
+        This runs as a separate background task, completely independent of LiveView instances.
+        It polls the API periodically and broadcasts updates to all connected sockets.
+        """
+        from pyview.live_socket import pub_sub_hub
+        from pyview.vendor.flet.pubsub import PubSub
+
+        # Create PubSub instance once and reuse it
+        pubsub = PubSub(pub_sub_hub, self.broadcast_topic)
+
+        logger.info("API poller started (independent of client connections)")
+
+        def extract_error_details(error: Exception) -> tuple[int | None, str]:
+            """Extract HTTP status code and error reason from exception."""
+            import re
+
+            error_str = str(error)
+            # Try to extract HTTP status code from error message
+            # Format: "Bad API call: Got response (502) from ..."
+            status_match = re.search(r"\((\d+)\)", error_str)
+            status_code = int(status_match.group(1)) if status_match else None
+
+            # Determine error reason
+            if status_code == 429:
+                reason = "Rate limit exceeded"
+            elif status_code == 502:
+                reason = "Bad gateway (server error)"
+            elif status_code == 503:
+                reason = "Service unavailable"
+            elif status_code == 504:
+                reason = "Gateway timeout"
+            elif status_code is not None:
+                reason = f"HTTP {status_code}"
+            else:
+                reason = "Unknown error"
+
+            return status_code, reason
+
+        async def _fetch_and_broadcast() -> None:
+            """Fetch departures and broadcast update to all connected sockets."""
+            # Fetch departures from API - handle errors per stop
+            all_groups: list[tuple[str, str, list[Departure]]] = []
+            has_errors = False
+
+            for stop_config in stop_configs:
+                try:
+                    groups = await grouping_service.get_grouped_departures(stop_config)
+                    # Convert to format with station_name
+                    stop_groups: list[tuple[str, list[Departure]]] = []
+                    for direction_name, departures in groups:
+                        stop_groups.append((direction_name, departures))
+                        all_groups.append((stop_config.station_name, direction_name, departures))
+                    # Cache successful fetch
+                    self.cached_departures[stop_config.station_name] = stop_groups
+                    logger.debug(f"Successfully fetched departures for {stop_config.station_name}")
+                except Exception as e:
+                    status_code, reason = extract_error_details(e)
+                    logger.error(
+                        f"API poller failed to fetch departures for {stop_config.station_name}: "
+                        f"{reason} (status: {status_code}, error: {e})"
+                    )
+                    has_errors = True
+                    if status_code == 429:
+                        logger.warning(
+                            f"Rate limit (429) detected for {stop_config.station_name} - "
+                            "consider adding delays between API calls"
+                        )
+
+                    # Use cached data if available, mark as stale
+                    if stop_config.station_name in self.cached_departures:
+                        cached_groups = self.cached_departures[stop_config.station_name]
+                        logger.info(
+                            f"Using cached departures for {stop_config.station_name} "
+                            f"({len(cached_groups)} direction groups) due to {reason}"
+                        )
+                        # Mark departures as stale (non-realtime)
+                        from dataclasses import replace
+
+                        for direction_name, cached_departures in cached_groups:
+                            stale_departures = [
+                                replace(dep, is_realtime=False) for dep in cached_departures
+                            ]
+                            all_groups.append(
+                                (stop_config.station_name, direction_name, stale_departures)
+                            )
+                    # Continue with other stops even if one fails
+
+            # Update shared state (even if some stops failed, use what we got)
+            self.departures_state.direction_groups = all_groups
+            self.departures_state.last_update = datetime.now(UTC)
+            self.departures_state.api_status = "error" if has_errors else "success"
+
+            logger.debug(
+                f"API poller updated departures at {datetime.now(UTC)}, "
+                f"groups: {len(all_groups)}, errors: {has_errors}"
+            )
+
+            # Broadcast update via pubsub to all subscribed sockets
+            try:
+                await pubsub.send_all_on_topic_async(self.broadcast_topic, "update")
+                logger.info(f"Broadcasted update via pubsub to topic: {self.broadcast_topic}")
+            except Exception as pubsub_err:
+                logger.error(f"Failed to broadcast via pubsub: {pubsub_err}", exc_info=True)
+
+        # Do initial update immediately
+        await _fetch_and_broadcast()
+
+        # Then poll periodically
         try:
-            await pubsub.send_all_on_topic_async(_departures_broadcast_topic, "update")
-            logger.info(f"Broadcasted update via pubsub to topic: {_departures_broadcast_topic}")
-        except Exception as pubsub_err:
-            logger.error(f"Failed to broadcast via pubsub: {pubsub_err}", exc_info=True)
+            while True:
+                await asyncio.sleep(config.refresh_interval_seconds)
+                await _fetch_and_broadcast()
+        except asyncio.CancelledError:
+            logger.info("API poller cancelled")
+            raise
 
-    # Do initial update immediately
-    await _fetch_and_broadcast()
+    def register_socket(self, socket: LiveViewSocket[DeparturesState]) -> None:
+        """Register a socket for updates."""
+        self.connected_sockets.add(socket)
+        logger.info(f"Registered socket, total connected: {len(self.connected_sockets)}")
 
-    # Then poll periodically
-    try:
-        while True:
-            await asyncio.sleep(config.refresh_interval_seconds)
-            await _fetch_and_broadcast()
-    except asyncio.CancelledError:
-        logger.info("API poller cancelled")
-        raise
-
-
-_departures_broadcast_topic: str = "departures:updates"  # Keep for handle_info compatibility
+    def unregister_socket(self, socket: LiveViewSocket[DeparturesState]) -> None:
+        """Unregister a socket."""
+        self.connected_sockets.discard(socket)
+        logger.info(f"Unregistered socket, total connected: {len(self.connected_sockets)}")
 
 
 class DeparturesLiveView(LiveView[DeparturesState]):
@@ -169,12 +204,14 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
     def __init__(
         self,
+        state_manager: DeparturesStateManager,
         grouping_service: DepartureGroupingService,
         stop_configs: list[StopConfiguration],
         config: AppConfig,
     ) -> None:
         """Initialize the LiveView."""
         super().__init__()
+        self.state_manager = state_manager
         self.grouping_service = grouping_service
         self.stop_configs = stop_configs
         self.config = config
@@ -183,25 +220,24 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         """Mount the LiveView and register socket for updates."""
         # Initialize context with current shared state
         socket.context = DeparturesState(
-            direction_groups=_departures_state.direction_groups,
-            last_update=_departures_state.last_update,
-            api_status=_departures_state.api_status,
+            direction_groups=self.state_manager.departures_state.direction_groups,
+            last_update=self.state_manager.departures_state.last_update,
+            api_status=self.state_manager.departures_state.api_status,
         )
 
         # Register socket for broadcasts
-        _connected_sockets.add(socket)
-        logger.info(f"Registered socket, total connected: {len(_connected_sockets)}")
+        self.state_manager.register_socket(socket)
 
         # Subscribe to broadcast topic for receiving updates
         if is_connected(socket):
             try:
-                await socket.subscribe(_departures_broadcast_topic)
+                await socket.subscribe(self.state_manager.broadcast_topic)
                 logger.info(
-                    f"Successfully subscribed socket to broadcast topic: {_departures_broadcast_topic}"
+                    f"Successfully subscribed socket to broadcast topic: {self.state_manager.broadcast_topic}"
                 )
             except Exception as e:
                 logger.error(
-                    f"Failed to subscribe to topic {_departures_broadcast_topic}: {e}",
+                    f"Failed to subscribe to topic {self.state_manager.broadcast_topic}: {e}",
                     exc_info=True,
                 )
         else:
@@ -209,8 +245,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
     async def unmount(self, socket: LiveViewSocket[DeparturesState]) -> None:
         """Unmount the LiveView and unregister socket."""
-        _connected_sockets.discard(socket)
-        logger.info(f"Unregistered socket, total connected: {len(_connected_sockets)}")
+        self.state_manager.unregister_socket(socket)
 
     async def handle_info(
         self, event: str | InfoEvent, socket: LiveViewSocket[DeparturesState]
@@ -240,11 +275,11 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         if payload == "update":
             # Update the existing context object's fields directly
             # Pyview detects field changes and automatically triggers re-render
-            socket.context.direction_groups = _departures_state.direction_groups
-            socket.context.last_update = _departures_state.last_update
-            socket.context.api_status = _departures_state.api_status
+            socket.context.direction_groups = self.state_manager.departures_state.direction_groups
+            socket.context.last_update = self.state_manager.departures_state.last_update
+            socket.context.api_status = self.state_manager.departures_state.api_status
             logger.info(
-                f"Updated context from pubsub message at {datetime.now(UTC)}, groups: {len(_departures_state.direction_groups)}"
+                f"Updated context from pubsub message at {datetime.now(UTC)}, groups: {len(self.state_manager.departures_state.direction_groups)}"
             )
         else:
             logger.debug(f"Ignoring pubsub message with payload: {payload}")
@@ -258,12 +293,12 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             state = assigns
         elif isinstance(assigns, dict):
             # Fallback: if it's a dict, try to get context or use shared state
-            state = assigns.get("context", _departures_state)
+            state = assigns.get("context", self.state_manager.departures_state)
             if not isinstance(state, DeparturesState):
-                state = _departures_state
+                state = self.state_manager.departures_state
         else:
             # Fallback to shared state
-            state = _departures_state
+            state = self.state_manager.departures_state
 
         direction_groups = state.direction_groups
         last_update = state.last_update
@@ -1754,6 +1789,7 @@ class PyViewWebAdapter(DisplayAdapter):
         self.session = session
         self._update_task: asyncio.Task | None = None
         self._server: Any | None = None
+        self.state_manager = DeparturesStateManager()
 
     async def display_departures(self, direction_groups: list[tuple[str, list[Departure]]]) -> None:
         """Display grouped departures (not used directly, handled by LiveView)."""
@@ -1771,6 +1807,7 @@ class PyViewWebAdapter(DisplayAdapter):
         class ConfiguredDeparturesLiveView(DeparturesLiveView):
             def __init__(self) -> None:
                 super().__init__(
+                    adapter.state_manager,
                     adapter.grouping_service,
                     adapter.stop_configs,
                     adapter.config,
@@ -1779,54 +1816,13 @@ class PyViewWebAdapter(DisplayAdapter):
         app = PyView()
         app.add_live_view("/", ConfiguredDeparturesLiveView)
 
-        # Store app instance for broadcasting updates
-        DeparturesLiveView._app_instance = app
-
         # Start the API poller immediately when server starts
         # This runs independently of client connections - API calls happen regardless
-        # Do initial API call immediately before starting the server
-        async def start_api_poller() -> None:
-            global _api_poller_task
-            if _api_poller_task is None or _api_poller_task.done():
-                # Do initial fetch immediately (before starting periodic polling)
-                logger.info("Making initial API call on server startup...")
-                try:
-                    # Fetch departures from API immediately
-                    all_groups: list[tuple[str, str, list[Departure]]] = []
-
-                    for stop_config in self.stop_configs:
-                        groups = await self.grouping_service.get_grouped_departures(stop_config)
-                        for direction_name, departures in groups:
-                            all_groups.append(
-                                (stop_config.station_name, direction_name, departures)
-                            )
-
-                    # Update shared state immediately
-                    _departures_state.direction_groups = all_groups
-                    _departures_state.last_update = datetime.now(UTC)
-                    _departures_state.api_status = "success"
-                    logger.info(
-                        f"Initial API call completed at {datetime.now(UTC)}, found {len(all_groups)} direction groups"
-                    )
-                except Exception as e:
-                    logger.error(f"Initial API call failed: {e}", exc_info=True)
-                    _departures_state.api_status = "error"
-
-                # Now start the periodic polling task
-                _api_poller_task = asyncio.create_task(
-                    _api_poller(
-                        self.grouping_service,
-                        self.stop_configs,
-                        self.config,
-                    )
-                )
-                logger.info("Started API poller (independent of client connections)")
-
-        # Start the API poller - runs regardless of client connections
-        # Create the task but don't await it - let it run in background
-        # Store in global variable to prevent garbage collection
-        global _api_poller_task
-        _api_poller_task = asyncio.create_task(start_api_poller())
+        await self.state_manager.start_api_poller(
+            self.grouping_service,
+            self.stop_configs,
+            self.config,
+        )
 
         # Serve pyview's client JavaScript and static assets
         from pathlib import Path
@@ -1878,13 +1874,8 @@ class PyViewWebAdapter(DisplayAdapter):
 
     async def stop(self) -> None:
         """Stop the web server."""
-        # Cancel the API poller task
-        global _api_poller_task
-        if _api_poller_task and not _api_poller_task.done():
-            _api_poller_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await _api_poller_task
-            logger.info("Stopped API poller")
+        # Stop the API poller task
+        await self.state_manager.stop_api_poller()
 
         if self._server:
             self._server.should_exit = True
