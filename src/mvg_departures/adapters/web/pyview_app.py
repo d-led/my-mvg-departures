@@ -278,6 +278,20 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             margin-right: 0;
             white-space: nowrap;
             min-width: fit-content;
+            position: relative;
+        }
+        .time-format {
+            transition: opacity 0.3s ease-in-out;
+        }
+        .time-format.hidden {
+            opacity: 0;
+            position: absolute;
+            left: 0;
+            right: 0;
+            pointer-events: none;
+        }
+        .time-format.visible {
+            opacity: 1;
         }
         [data-theme="light"] .time {
             color: #111827;
@@ -776,7 +790,11 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                         <div class="route-number" aria-hidden="true">{{ departure.line }}</div>
                         <div class="destination" aria-hidden="true">{{ departure.destination }}</div>
                         <div class="platform" aria-hidden="true">{% if departure.platform %}{{ departure.platform }}{% endif %}</div>
-                        <div class="time{% if departure.has_delay %} delay{% endif %}{% if departure.is_realtime %} realtime{% endif %}" aria-hidden="true">{{ departure.time_str }}{% if departure.delay_display %}{{ departure.delay_display }}{% endif %}</div>
+                        <div class="time{% if departure.has_delay %} delay{% endif %}{% if departure.is_realtime %} realtime{% endif %}" aria-hidden="true">
+                            <span class="time-format visible" data-format="relative">{{ departure.time_str_relative }}</span>
+                            <span class="time-format hidden" data-format="absolute">{{ departure.time_str_absolute }}</span>
+                            {% if departure.delay_display %}{{ departure.delay_display }}{% endif %}
+                        </div>
                         <span class="sr-only">{{ departure.aria_label }}</span>
                     </li>
                     {% endfor %}
@@ -850,6 +868,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         const DEPARTURES_PER_PAGE = {{ departures_per_page }};
         const PAGE_ROTATION_SECONDS = {{ page_rotation_seconds }};
         const REFRESH_INTERVAL_SECONDS = {{ refresh_interval_seconds }};
+        const TIME_FORMAT_TOGGLE_SECONDS = {{ time_format_toggle_seconds }};
         const INITIAL_API_STATUS = '{{ api_status }}';
 
         // Date/time display
@@ -876,6 +895,69 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         // Update date/time every second
         updateDateTime();
         setInterval(updateDateTime, 1000);
+
+        // Time format toggle
+        let timeFormatToggleInterval = null;
+        let currentTimeFormat = 'relative';
+
+        function toggleTimeFormat() {
+            if (TIME_FORMAT_TOGGLE_SECONDS <= 0) {
+                // If toggle is disabled (0), show only relative format
+                document.querySelectorAll('.time-format[data-format="relative"]').forEach(el => {
+                    el.classList.remove('hidden');
+                    el.classList.add('visible');
+                });
+                document.querySelectorAll('.time-format[data-format="absolute"]').forEach(el => {
+                    el.classList.remove('visible');
+                    el.classList.add('hidden');
+                });
+                return;
+            }
+
+            const relativeElements = document.querySelectorAll('.time-format[data-format="relative"]');
+            const absoluteElements = document.querySelectorAll('.time-format[data-format="absolute"]');
+
+            if (currentTimeFormat === 'relative') {
+                // Fade out relative, fade in absolute
+                relativeElements.forEach(el => {
+                    el.classList.remove('visible');
+                    el.classList.add('hidden');
+                });
+                absoluteElements.forEach(el => {
+                    el.classList.remove('hidden');
+                    el.classList.add('visible');
+                });
+                currentTimeFormat = 'absolute';
+            } else {
+                // Fade out absolute, fade in relative
+                absoluteElements.forEach(el => {
+                    el.classList.remove('visible');
+                    el.classList.add('hidden');
+                });
+                relativeElements.forEach(el => {
+                    el.classList.remove('hidden');
+                    el.classList.add('visible');
+                });
+                currentTimeFormat = 'relative';
+            }
+        }
+
+        function initTimeFormatToggle() {
+            // Clear any existing interval
+            if (timeFormatToggleInterval) {
+                clearInterval(timeFormatToggleInterval);
+            }
+
+            if (TIME_FORMAT_TOGGLE_SECONDS > 0) {
+                // Start with relative format
+                currentTimeFormat = 'relative';
+                // Toggle every TIME_FORMAT_TOGGLE_SECONDS
+                timeFormatToggleInterval = setInterval(toggleTimeFormat, TIME_FORMAT_TOGGLE_SECONDS * 1000);
+            } else {
+                // Show only relative format if toggle is disabled
+                toggleTimeFormat();
+            }
+        }
 
         // Connection status monitoring
         // States: connecting (yellow), connected (green), broken (red)
@@ -1085,6 +1167,11 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 initPagination();
             }
 
+            // Re-initialize time format toggle after DOM update
+            requestAnimationFrame(() => {
+                initTimeFormatToggle();
+            });
+
             // Immediately update datetime display (before delay)
             // This ensures it's visible right away, even if pyview replaced it
             requestAnimationFrame(() => {
@@ -1274,6 +1361,9 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             if (reconnectTimeout) {
                 clearTimeout(reconnectTimeout);
             }
+            if (timeFormatToggleInterval) {
+                clearInterval(timeFormatToggleInterval);
+            }
         });
 
         // Note: phx:update handling is done in the main phx:update listener above
@@ -1401,6 +1491,8 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             }
             // initRefreshCountdown will start the countdown automatically once initialized
             initRefreshCountdown();
+            // Initialize time format toggle
+            initTimeFormatToggle();
         }
 
         if (document.readyState === 'loading') {
@@ -1484,6 +1576,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             "departures_per_page": str(self.config.departures_per_page),
             "page_rotation_seconds": str(self.config.page_rotation_seconds),
             "refresh_interval_seconds": str(self.config.refresh_interval_seconds),
+            "time_format_toggle_seconds": str(self.config.time_format_toggle_seconds),
             "api_status": api_status,
             "last_update_timestamp": (
                 str(int(last_update.timestamp() * 1000)) if last_update is not None else "0"
@@ -1529,6 +1622,8 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 departure_data = []
                 for departure in sorted_departures:
                     time_str = self._format_departure_time(departure)
+                    time_str_relative = self._format_departure_time_relative(departure)
+                    time_str_absolute = self._format_departure_time_absolute(departure)
 
                     # Format platform
                     platform_display = (
@@ -1567,6 +1662,8 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                             "destination": departure.destination,
                             "platform": platform_display,
                             "time_str": time_str,
+                            "time_str_relative": time_str_relative,
+                            "time_str_absolute": time_str_absolute,
                             "cancelled": departure.is_cancelled,
                             "has_delay": has_delay,
                             "delay_display": delay_display,
@@ -1624,6 +1721,22 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             return f"{minutes}m"
         # "at" format
         return time_until.strftime("%H:%M")
+
+    def _format_departure_time_relative(self, departure: Departure) -> str:
+        """Format departure time as relative (e.g., '5m', '<1m', 'now')."""
+        now = datetime.now(UTC)
+        time_until = departure.time
+        delta = time_until - now
+        minutes = int(delta.total_seconds() / 60)
+        if minutes < 0:
+            return "now"
+        if minutes == 0:
+            return "<1m"
+        return f"{minutes}m"
+
+    def _format_departure_time_absolute(self, departure: Departure) -> str:
+        """Format departure time as absolute (HH:mm format)."""
+        return departure.time.strftime("%H:%M")
 
     def _format_update_time(self, update_time: datetime | None) -> str:
         """Format last update time."""

@@ -9,6 +9,9 @@ departures_per_page = 5
 # Seconds to display each page before rotating
 page_rotation_seconds = 8
 
+# Seconds to toggle relative and absolute time (0 for relative time only)
+time_format_toggle_seconds = 5
+
 # Enable pagination/animation
 # Set to false to show all departures at once (recommended for full view)
 pagination_enabled = false

@@ -62,6 +62,10 @@ class AppConfig(BaseSettings):
         default=8,
         description="Seconds to display each page before rotating",
     )
+    time_format_toggle_seconds: int = Field(
+        default=3,
+        description="Seconds to toggle between relative and absolute time (0 for relative time only)",
+    )
     theme: str = Field(
         default="light",
         description="UI theme: 'light', 'dark', or 'auto' (follows system preference)",
@@ -174,6 +178,8 @@ class AppConfig(BaseSettings):
                     self.banner_color = display["banner_color"]
                 if "refresh_interval_seconds" in display:
                     self.refresh_interval_seconds = display["refresh_interval_seconds"]
+                if "time_format_toggle_seconds" in display:
+                    self.time_format_toggle_seconds = display["time_format_toggle_seconds"]
                 # Font sizes
                 if "font_size_route_number" in display:
                     self.font_size_route_number = display["font_size_route_number"]
