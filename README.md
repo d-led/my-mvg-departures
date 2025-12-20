@@ -1,7 +1,5 @@
 # MVG Departures
 
-[![CI](https://github.com/YOUR_USERNAME/my_mvg_departures/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_USERNAME/my_mvg_departures/actions/workflows/ci.yml)
-
 A server-side rendered live dashboard for Munich public transport (MVG) departures. Featuring a responsive and live web UI. Usable on various screen sizes.
 
 ![Giesing departures screenshot](./docs/img/giesing-screenshot.png)
