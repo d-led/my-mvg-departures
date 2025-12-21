@@ -101,9 +101,7 @@ class State:
         pubsub = PubSub(pub_sub_hub, self.broadcast_topic)
 
         if shared_cache is not None:
-            logger.info(
-                "API poller started with shared cache (independent of client connections)"
-            )
+            logger.info("API poller started with shared cache (independent of client connections)")
         else:
             logger.info("API poller started (independent of client connections)")
 
@@ -154,7 +152,11 @@ class State:
                                 cached_groups = self.cached_departures[stop_config.station_name]
                                 for direction_name, cached_departures in cached_groups:
                                     all_groups.append(
-                                        (stop_config.station_name, direction_name, cached_departures)
+                                        (
+                                            stop_config.station_name,
+                                            direction_name,
+                                            cached_departures,
+                                        )
                                     )
                             continue
 
@@ -168,9 +170,7 @@ class State:
                     stop_groups: list[tuple[str, list[Departure]]] = []
                     for direction_name, departures in groups:
                         stop_groups.append((direction_name, departures))
-                        all_groups.append(
-                            (stop_config.station_name, direction_name, departures)
-                        )
+                        all_groups.append((stop_config.station_name, direction_name, departures))
                     # Cache successful processing
                     self.cached_departures[stop_config.station_name] = stop_groups
                     logger.debug(

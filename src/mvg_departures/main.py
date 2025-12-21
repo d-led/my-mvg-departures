@@ -55,9 +55,7 @@ async def main() -> None:
     # Validate that all routes have at least one stop
     for route_config in route_configs:
         if not route_config.stop_configs:
-            logger.error(
-                f"Route at path '{route_config.path}' has no stops configured."
-            )
+            logger.error(f"Route at path '{route_config.path}' has no stops configured.")
             sys.exit(1)
 
     # Create aiohttp session for efficient HTTP connections

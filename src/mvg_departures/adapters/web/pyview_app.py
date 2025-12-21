@@ -964,7 +964,6 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                     void document.body.offsetHeight;
                 }
             });
-            
             // Also reset zoom on focus (when app comes to foreground)
             window.addEventListener('focus', function() {
                 const viewport = document.querySelector('meta[name="viewport"]');
@@ -973,7 +972,6 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 }
                 void document.body.offsetHeight;
             });
-            
             // Prevent double-tap zoom on iOS
             let lastTouchEnd = 0;
             document.addEventListener('touchend', function(event) {
@@ -2173,12 +2171,10 @@ class PyViewWebAdapter(DisplayAdapter):
             fetch_limit = 50  # Same as in DepartureGroupingService
             sleep_ms = self.config.sleep_ms_between_calls
             station_list = list(unique_station_ids)
-            
+
             for i, station_id in enumerate(station_list):
                 try:
-                    departures = await departure_repo.get_departures(
-                        station_id, limit=fetch_limit
-                    )
+                    departures = await departure_repo.get_departures(station_id, limit=fetch_limit)
                     self._shared_departure_cache[station_id] = departures
                     logger.debug(
                         f"Fetched {len(departures)} raw departures for station {station_id}"
@@ -2191,7 +2187,7 @@ class PyViewWebAdapter(DisplayAdapter):
                     # Keep cached data if available, otherwise set empty list
                     if station_id not in self._shared_departure_cache:
                         self._shared_departure_cache[station_id] = []
-                
+
                 # Add delay between calls (except after the last one)
                 if sleep_ms > 0 and i < len(station_list) - 1:
                     await asyncio.sleep(sleep_ms / 1000.0)
