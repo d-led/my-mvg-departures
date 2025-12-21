@@ -22,8 +22,12 @@ async def test_broadcast_join_when_connected() -> None:
             "mvg_departures.adapters.web.broadcasters.presence_broadcaster.is_connected",
             return_value=True,
         ),
-        patch("pyview.vendor.flet.pubsub.PubSub") as mock_pubsub_class,
-        patch("pyview.live_socket.pub_sub_hub") as mock_hub,
+        patch(
+            "mvg_departures.adapters.web.broadcasters.presence_broadcaster.PubSub"
+        ) as mock_pubsub_class,
+        patch(
+            "mvg_departures.adapters.web.broadcasters.presence_broadcaster.pub_sub_hub"
+        ) as mock_hub,
     ):
         mock_dashboard_pubsub = MagicMock()
         mock_dashboard_pubsub.send_all_on_topic_async = AsyncMock()
@@ -81,8 +85,12 @@ async def test_broadcast_join_when_not_connected() -> None:
             "mvg_departures.adapters.web.broadcasters.presence_broadcaster.is_connected",
             return_value=False,
         ),
-        patch("pyview.vendor.flet.pubsub.PubSub") as mock_pubsub_class,
-        patch("pyview.live_socket.pub_sub_hub") as mock_hub,
+        patch(
+            "mvg_departures.adapters.web.broadcasters.presence_broadcaster.PubSub"
+        ) as mock_pubsub_class,
+        patch(
+            "mvg_departures.adapters.web.broadcasters.presence_broadcaster.pub_sub_hub"
+        ) as mock_hub,
     ):
         mock_dashboard_pubsub = MagicMock()
         mock_dashboard_pubsub.send_all_on_topic_async = AsyncMock()
@@ -124,8 +132,12 @@ async def test_broadcast_leave_when_connected() -> None:
             "mvg_departures.adapters.web.broadcasters.presence_broadcaster.is_connected",
             return_value=True,
         ),
-        patch("pyview.vendor.flet.pubsub.PubSub") as mock_pubsub_class,
-        patch("pyview.live_socket.pub_sub_hub") as mock_hub,
+        patch(
+            "mvg_departures.adapters.web.broadcasters.presence_broadcaster.PubSub"
+        ) as mock_pubsub_class,
+        patch(
+            "mvg_departures.adapters.web.broadcasters.presence_broadcaster.pub_sub_hub"
+        ) as mock_hub,
     ):
         mock_dashboard_pubsub = MagicMock()
         mock_dashboard_pubsub.send_all_on_topic_async = AsyncMock()
@@ -177,8 +189,12 @@ async def test_broadcast_leave_when_not_connected() -> None:
             "mvg_departures.adapters.web.broadcasters.presence_broadcaster.is_connected",
             return_value=False,
         ),
-        patch("pyview.vendor.flet.pubsub.PubSub") as mock_pubsub_class,
-        patch("pyview.live_socket.pub_sub_hub") as mock_hub,
+        patch(
+            "mvg_departures.adapters.web.broadcasters.presence_broadcaster.PubSub"
+        ) as mock_pubsub_class,
+        patch(
+            "mvg_departures.adapters.web.broadcasters.presence_broadcaster.pub_sub_hub"
+        ) as mock_hub,
     ):
         mock_dashboard_pubsub = MagicMock()
         mock_dashboard_pubsub.send_all_on_topic_async = AsyncMock()
@@ -217,8 +233,12 @@ async def test_broadcast_join_normalizes_route_path() -> None:
             "mvg_departures.adapters.web.broadcasters.presence_broadcaster.is_connected",
             return_value=True,
         ),
-        patch("pyview.vendor.flet.pubsub.PubSub") as mock_pubsub_class,
-        patch("pyview.live_socket.pub_sub_hub") as mock_hub,
+        patch(
+            "mvg_departures.adapters.web.broadcasters.presence_broadcaster.PubSub"
+        ) as mock_pubsub_class,
+        patch(
+            "mvg_departures.adapters.web.broadcasters.presence_broadcaster.pub_sub_hub"
+        ) as mock_hub,
     ):
         mock_pubsub = MagicMock()
         mock_pubsub.send_all_on_topic_async = AsyncMock()
@@ -250,8 +270,12 @@ async def test_broadcast_join_handles_root_path() -> None:
             "mvg_departures.adapters.web.broadcasters.presence_broadcaster.is_connected",
             return_value=True,
         ),
-        patch("pyview.vendor.flet.pubsub.PubSub") as mock_pubsub_class,
-        patch("pyview.live_socket.pub_sub_hub") as mock_hub,
+        patch(
+            "mvg_departures.adapters.web.broadcasters.presence_broadcaster.PubSub"
+        ) as mock_pubsub_class,
+        patch(
+            "mvg_departures.adapters.web.broadcasters.presence_broadcaster.pub_sub_hub"
+        ) as mock_hub,
     ):
         mock_pubsub = MagicMock()
         mock_pubsub.send_all_on_topic_async = AsyncMock()
@@ -276,8 +300,12 @@ async def test_broadcast_join_without_socket() -> None:
     broadcaster = PresenceBroadcaster()
 
     with (
-        patch("pyview.vendor.flet.pubsub.PubSub") as mock_pubsub_class,
-        patch("pyview.live_socket.pub_sub_hub") as mock_hub,
+        patch(
+            "mvg_departures.adapters.web.broadcasters.presence_broadcaster.PubSub"
+        ) as mock_pubsub_class,
+        patch(
+            "mvg_departures.adapters.web.broadcasters.presence_broadcaster.pub_sub_hub"
+        ) as mock_hub,
     ):
         mock_dashboard_pubsub = MagicMock()
         mock_dashboard_pubsub.send_all_on_topic_async = AsyncMock()
@@ -309,8 +337,12 @@ async def test_broadcast_leave_without_socket() -> None:
     broadcaster = PresenceBroadcaster()
 
     with (
-        patch("pyview.vendor.flet.pubsub.PubSub") as mock_pubsub_class,
-        patch("pyview.live_socket.pub_sub_hub") as mock_hub,
+        patch(
+            "mvg_departures.adapters.web.broadcasters.presence_broadcaster.PubSub"
+        ) as mock_pubsub_class,
+        patch(
+            "mvg_departures.adapters.web.broadcasters.presence_broadcaster.pub_sub_hub"
+        ) as mock_hub,
     ):
         mock_dashboard_pubsub = MagicMock()
         mock_dashboard_pubsub.send_all_on_topic_async = AsyncMock()

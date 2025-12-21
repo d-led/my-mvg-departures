@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
@@ -168,8 +169,6 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
         # Create or get stable session ID for this connection
         # This persists across reconnections, unlike socket object ID
-        import uuid
-
         if "_presence_session_id" not in _session:
             _session["_presence_session_id"] = str(uuid.uuid4())
             logger.debug(f"Created new presence session ID: {_session['_presence_session_id']}")

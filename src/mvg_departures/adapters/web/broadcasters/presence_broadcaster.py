@@ -6,6 +6,8 @@ import logging
 from typing import TYPE_CHECKING
 
 from pyview import is_connected
+from pyview.live_socket import pub_sub_hub
+from pyview.vendor.flet.pubsub import PubSub
 
 from mvg_departures.domain.contracts.presence_broadcaster import PresenceBroadcasterProtocol
 
@@ -31,9 +33,6 @@ class PresenceBroadcaster(PresenceBroadcasterProtocol):
         Always broadcasts to all subscribers, regardless of socket connection state.
         The socket is only used for subscribing the joining user to topics if provided and connected.
         """
-        from pyview.live_socket import pub_sub_hub
-        from pyview.vendor.flet.pubsub import PubSub
-
         normalized_path = route_path.strip("/").replace("/", ":") or "root"
         dashboard_topic = f"presence:{normalized_path}"
         global_topic = "presence:global"
@@ -87,9 +86,6 @@ class PresenceBroadcaster(PresenceBroadcasterProtocol):
         Always broadcasts to all subscribers, regardless of socket connection state.
         The socket parameter is not used but kept for API compatibility.
         """
-        from pyview.live_socket import pub_sub_hub
-        from pyview.vendor.flet.pubsub import PubSub
-
         normalized_path = route_path.strip("/").replace("/", ":") or "root"
         dashboard_topic = f"presence:{normalized_path}"
         global_topic = "presence:global"
