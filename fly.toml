@@ -6,6 +6,9 @@
 app = 'giesing-departures'
 primary_region = 'fra'
 
+[env]
+  TIMEZONE = 'Europe/Berlin'
+
 [build]
   dockerfile = 'docker/Dockerfile.optimized'
 

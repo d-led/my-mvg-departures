@@ -3,6 +3,7 @@
 import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
 if TYPE_CHECKING:
     import asyncio
@@ -1712,8 +1713,10 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
     def _format_departure_time(self, departure: Departure) -> str:
         """Format departure time according to configuration."""
-        now = datetime.now(UTC)
-        time_until = departure.time
+        # Convert to configured timezone
+        server_timezone = ZoneInfo(self.config.timezone)
+        now = datetime.now(UTC).astimezone(server_timezone)
+        time_until = departure.time.astimezone(server_timezone)
 
         if self.config.time_format == "minutes":
             delta = time_until - now
@@ -1728,8 +1731,10 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
     def _format_departure_time_relative(self, departure: Departure) -> str:
         """Format departure time as relative (e.g., '5m', '<1m', 'now')."""
-        now = datetime.now(UTC)
-        time_until = departure.time
+        # Convert to configured timezone
+        server_timezone = ZoneInfo(self.config.timezone)
+        now = datetime.now(UTC).astimezone(server_timezone)
+        time_until = departure.time.astimezone(server_timezone)
         delta = time_until - now
         minutes = int(delta.total_seconds() / 60)
         if minutes < 0:
@@ -1740,7 +1745,10 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
     def _format_departure_time_absolute(self, departure: Departure) -> str:
         """Format departure time as absolute (HH:mm format)."""
-        return departure.time.strftime("%H:%M")
+        # Convert to configured timezone
+        server_timezone = ZoneInfo(self.config.timezone)
+        time_until = departure.time.astimezone(server_timezone)
+        return time_until.strftime("%H:%M")
 
     def _format_update_time(self, update_time: datetime | None) -> str:
         """Format last update time."""

@@ -41,6 +41,10 @@ class AppConfig(BaseSettings):
     refresh_interval_seconds: int = Field(
         default=30, description="Interval between departure updates in seconds"
     )
+    timezone: str = Field(
+        default="Europe/Berlin",
+        description="Timezone for displaying server time (IANA timezone name, e.g., 'Europe/Berlin')",
+    )
 
     # TOML config file path
     # If not set, will try config.example.toml in project root as fallback
