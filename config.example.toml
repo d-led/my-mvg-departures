@@ -41,6 +41,12 @@ font_size_status_header = "1.875rem"
 #   .venv/bin/mvg-config search "Balanstr"         (from project root, after setup)
 #   mvg-config search "Balanstr"                   (if venv is activated)
 
+# API configuration
+# Sleep time in milliseconds between API calls to avoid rate limiting
+# Set to 0 to disable delays (not recommended for production)
+[api]
+sleep_ms_between_calls = 500
+
 # Stops configuration
 [[stops]]
 station_id = "de:09162:1110"

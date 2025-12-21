@@ -35,6 +35,10 @@ class AppConfig(BaseSettings):
     mvg_api_offset_minutes: int = Field(
         default=0, description="Offset in minutes for departure queries"
     )
+    sleep_ms_between_calls: int = Field(
+        default=0,
+        description="Sleep time in milliseconds between API calls to avoid rate limiting",
+    )
 
     # Display configuration
     time_format: str = Field(default="minutes", description="Time format: 'minutes' or 'at'")
@@ -207,6 +211,12 @@ class AppConfig(BaseSettings):
                     ]
                 if "font_size_status_header" in display:
                     self.font_size_status_header = display["font_size_status_header"]
+
+            # Update API settings from TOML if present
+            # Support both [api] and [client] sections for backward compatibility
+            api_config = toml_data.get("api") or toml_data.get("client", {})
+            if "sleep_ms_between_calls" in api_config:
+                self.sleep_ms_between_calls = api_config["sleep_ms_between_calls"]
 
             return toml_data
 

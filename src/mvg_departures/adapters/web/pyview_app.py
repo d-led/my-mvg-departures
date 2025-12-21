@@ -2171,7 +2171,10 @@ class PyViewWebAdapter(DisplayAdapter):
         async def _fetch_all_stations() -> None:
             """Fetch raw departures for all unique stations."""
             fetch_limit = 50  # Same as in DepartureGroupingService
-            for station_id in unique_station_ids:
+            sleep_ms = self.config.sleep_ms_between_calls
+            station_list = list(unique_station_ids)
+            
+            for i, station_id in enumerate(station_list):
                 try:
                     departures = await departure_repo.get_departures(
                         station_id, limit=fetch_limit
@@ -2188,6 +2191,10 @@ class PyViewWebAdapter(DisplayAdapter):
                     # Keep cached data if available, otherwise set empty list
                     if station_id not in self._shared_departure_cache:
                         self._shared_departure_cache[station_id] = []
+                
+                # Add delay between calls (except after the last one)
+                if sleep_ms > 0 and i < len(station_list) - 1:
+                    await asyncio.sleep(sleep_ms / 1000.0)
 
         # Do initial fetch immediately
         await _fetch_all_stations()
