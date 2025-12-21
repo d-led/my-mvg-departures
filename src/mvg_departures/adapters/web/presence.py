@@ -19,26 +19,58 @@ class PresenceTracker:
         # Track all users globally (set of user IDs)
         self._all_users: set[str] = set()
 
-    def _get_user_id(self, socket: "LiveViewSocket") -> str:
-        """Get a unique user ID from socket (anonymous, using socket object ID)."""
-        # Use the socket object's ID as the unique identifier
+    def _get_user_id(self, socket: "LiveViewSocket", session: dict | None = None) -> str:
+        """Get a unique user ID from socket (anonymous, using session ID or socket object ID).
+
+        Args:
+            socket: The socket connection.
+            session: Optional session dict that may contain a stable session ID.
+
+        Returns:
+            A unique user identifier.
+        """
+        # Try to use session ID if available (more stable across reconnections)
+        if session is not None:
+            # Check for our custom presence session ID first (most reliable)
+            presence_session_id = session.get("_presence_session_id")
+            if presence_session_id:
+                return f"user_{presence_session_id}"
+            # Fallback to other common session ID keys
+            session_id = (
+                session.get("session_id") or session.get("id") or session.get("_session_id")
+            )
+            if session_id:
+                return f"user_{session_id}"
+
+        # Fallback to socket object ID (changes on reconnection, but better than nothing)
         return f"user_{id(socket)}"
 
-    def get_user_id(self, socket: "LiveViewSocket") -> str:
-        """Get a unique user ID from socket (public method)."""
-        return self._get_user_id(socket)
+    def get_user_id(self, socket: "LiveViewSocket", session: dict | None = None) -> str:
+        """Get a unique user ID from socket (public method).
 
-    def join_dashboard(self, route_path: str, socket: "LiveViewSocket") -> tuple[str, int, int]:
+        Args:
+            socket: The socket connection.
+            session: Optional session dict that may contain a stable session ID.
+
+        Returns:
+            A unique user identifier.
+        """
+        return self._get_user_id(socket, session)
+
+    def join_dashboard(
+        self, route_path: str, socket: "LiveViewSocket", session: dict | None = None
+    ) -> tuple[str, int, int]:
         """Register a user joining a dashboard.
 
         Args:
             route_path: The route path of the dashboard.
             socket: The socket connection.
+            session: Optional session dict that may contain a stable session ID.
 
         Returns:
             Tuple of (user_id, local_count, total_count) - the user ID and updated counts.
         """
-        user_id = self._get_user_id(socket)
+        user_id = self._get_user_id(socket, session)
         normalized_path = route_path.strip("/").replace("/", ":") or "root"
 
         # Add to dashboard-specific set
@@ -61,18 +93,19 @@ class PresenceTracker:
         return user_id, local_count, total_count
 
     def leave_dashboard(
-        self, route_path: str, socket: "LiveViewSocket"
+        self, route_path: str, socket: "LiveViewSocket", session: dict | None = None
     ) -> tuple[str | None, int, int]:
         """Register a user leaving a dashboard.
 
         Args:
             route_path: The route path of the dashboard.
             socket: The socket connection.
+            session: Optional session dict that may contain a stable session ID.
 
         Returns:
             Tuple of (user_id, local_count, total_count) - the user ID (or None if not found) and updated counts.
         """
-        user_id = self._get_user_id(socket)
+        user_id = self._get_user_id(socket, session)
         normalized_path = route_path.strip("/").replace("/", ":") or "root"
 
         # Remove from dashboard-specific set
@@ -116,31 +149,33 @@ class PresenceTracker:
         """
         return len(self._all_users)
 
-    def is_user_tracked(self, socket: "LiveViewSocket") -> bool:
+    def is_user_tracked(self, socket: "LiveViewSocket", session: dict | None = None) -> bool:
         """Check if a socket is tracked in presence.
 
         Args:
             socket: The socket connection.
+            session: Optional session dict that may contain a stable session ID.
 
         Returns:
             True if the socket is tracked, False otherwise.
         """
-        user_id = self._get_user_id(socket)
+        user_id = self._get_user_id(socket, session)
         return user_id in self._all_users
 
     def ensure_dashboard_membership(
-        self, route_path: str, socket: "LiveViewSocket"
+        self, route_path: str, socket: "LiveViewSocket", session: dict | None = None
     ) -> tuple[int, int]:
         """Ensure a socket is tracked in presence and belongs to the specified dashboard.
 
         Args:
             route_path: The route path of the dashboard.
             socket: The socket connection.
+            session: Optional session dict that may contain a stable session ID.
 
         Returns:
             Tuple of (local_count, total_count) - the updated counts.
         """
-        user_id = self._get_user_id(socket)
+        user_id = self._get_user_id(socket, session)
         normalized_path = route_path.strip("/").replace("/", ":") or "root"
 
         # Ensure in global set

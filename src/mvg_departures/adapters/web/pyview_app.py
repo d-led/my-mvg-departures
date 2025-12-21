@@ -52,20 +52,31 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         presence_tracker = get_presence_tracker()
         route_path = self.state_manager.route_path
 
+        # Create or get stable session ID for this connection
+        # This persists across reconnections, unlike socket object ID
+        import uuid
+
+        if "_presence_session_id" not in _session:
+            _session["_presence_session_id"] = str(uuid.uuid4())
+            logger.debug(f"Created new presence session ID: {_session['_presence_session_id']}")
+
         # Register socket first so we can use it for cleanup
         self.state_manager.register_socket(socket)
 
         # Join presence tracking - always track, even if not connected yet
         # (socket will connect later and we'll update counts then)
         # Use get_or_create pattern: if already in presence, don't duplicate
-        if not presence_tracker.is_user_tracked(socket):
-            user_id, local_count, total_count = presence_tracker.join_dashboard(route_path, socket)
+        # Use session dict to get stable user ID (persists across reconnections)
+        if not presence_tracker.is_user_tracked(socket, _session):
+            user_id, local_count, total_count = presence_tracker.join_dashboard(
+                route_path, socket, _session
+            )
         else:
             # Already in presence, just ensure it's in the right dashboard
             local_count, total_count = presence_tracker.ensure_dashboard_membership(
-                route_path, socket
+                route_path, socket, _session
             )
-            user_id = presence_tracker.get_user_id(socket)
+            user_id = presence_tracker.get_user_id(socket, _session)
             logger.debug(f"User {user_id} already in presence, ensured dashboard membership")
 
         logger.info(
@@ -125,6 +136,11 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             presence_total=self.state_manager.departures_state.presence_total,
         )
 
+        # Store session ID in socket for later use in unmount/disconnect
+        # This allows us to use the same stable ID even if session dict is not available
+        if not hasattr(socket, "_presence_session_id"):
+            socket._presence_session_id = _session.get("_presence_session_id")
+
         # Socket already registered above for cleanup purposes
 
         # Subscribe to broadcast topic for receiving updates
@@ -147,8 +163,16 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         presence_tracker = get_presence_tracker()
         route_path = self.state_manager.route_path
 
+        # Get session ID from socket if stored during mount
+        # Create a minimal session dict with the stored ID
+        session = None
+        if hasattr(socket, "_presence_session_id") and socket._presence_session_id:
+            session = {"_presence_session_id": socket._presence_session_id}
+
         # Leave presence tracking - always remove, even if not connected
-        user_id, local_count, total_count = presence_tracker.leave_dashboard(route_path, socket)
+        user_id, local_count, total_count = presence_tracker.leave_dashboard(
+            route_path, socket, session
+        )
 
         logger.info(
             f"Presence: user {user_id} left dashboard {route_path}. "
@@ -201,8 +225,16 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         presence_tracker = get_presence_tracker()
         route_path = self.state_manager.route_path
 
+        # Get session ID from socket if stored during mount
+        # Create a minimal session dict with the stored ID
+        session = None
+        if hasattr(socket, "_presence_session_id") and socket._presence_session_id:
+            session = {"_presence_session_id": socket._presence_session_id}
+
         # Always remove from presence tracking on disconnect
-        user_id, local_count, total_count = presence_tracker.leave_dashboard(route_path, socket)
+        user_id, local_count, total_count = presence_tracker.leave_dashboard(
+            route_path, socket, session
+        )
 
         logger.info(
             f"Presence disconnect: user {user_id} disconnected from dashboard {route_path}. "
