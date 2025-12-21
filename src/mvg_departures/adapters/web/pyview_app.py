@@ -234,19 +234,43 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         }
         .destination {
             flex: 1 1 auto;
-            overflow-x: auto;
+            overflow-x: hidden;
             overflow-y: hidden;
-            text-overflow: ellipsis;
             white-space: nowrap;
             padding: 0 0.75rem;
             min-width: 0;
             font-size: {{ font_size_destination }};
             font-weight: 500;
             text-align: left;
-            scrollbar-width: none;
         }
-        .destination::-webkit-scrollbar {
-            display: none;
+        .destination-text {
+            display: inline-block;
+            white-space: nowrap;
+        }
+        /* Auto-scroll animation for clipped destination text */
+        /* Only applies when .clipped class is present (added by JS when text overflows) */
+        @keyframes scroll-destination {
+            0%, 30% {
+                transform: translateX(0);
+            }
+            50%, 70% {
+                /* Scroll distance is set dynamically via CSS variable --scroll-distance */
+                transform: translateX(var(--scroll-distance, -18%));
+            }
+            100% {
+                transform: translateX(0);
+            }
+        }
+        .destination-text.clipped {
+            animation: scroll-destination 20s ease-in-out infinite;
+            animation-delay: 2s;
+            will-change: transform;
+        }
+        /* Pause animation on interaction for better UX */
+        .destination:hover .destination-text.clipped,
+        .destination:active .destination-text.clipped,
+        .departure-row:hover .destination-text.clipped {
+            animation-play-state: paused;
         }
         [data-theme="light"] .destination {
             color: #374151;
@@ -776,7 +800,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                     {% for departure in group.departures %}
                     <li class="departure-row{% if departure.cancelled %} cancelled{% endif %}" role="listitem" aria-label="{{ departure.aria_label }}">
                         <div class="route-number" aria-hidden="true">{{ departure.line }}</div>
-                        <div class="destination" aria-hidden="true">{{ departure.destination }}</div>
+                        <div class="destination" aria-hidden="true"><span class="destination-text">{{ departure.destination }}</span></div>
                         <div class="platform" aria-hidden="true">{% if departure.platform %}{{ departure.platform }}{% endif %}</div>
                         <div class="time{% if departure.has_delay %} delay{% endif %}{% if departure.is_realtime %} realtime{% endif %}" aria-hidden="true" data-time-relative="{{ departure.time_str_relative }}" data-time-absolute="{{ departure.time_str_absolute }}">
                             {{ departure.time_str_relative }}{% if departure.delay_display %}{{ departure.delay_display }}{% endif %}
@@ -1177,6 +1201,11 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 initTimeFormatToggle();
             });
 
+            // Re-check destination scrolling after DOM update
+            requestAnimationFrame(() => {
+                initDestinationScrolling();
+            });
+
             // Immediately update datetime display (before delay)
             // This ensures it's visible right away, even if pyview replaced it
             requestAnimationFrame(() => {
@@ -1489,6 +1518,29 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             // Users can scroll vertically to see all direction groups
         }
 
+        // Check and enable scrolling animation for clipped destination text
+        function initDestinationScrolling() {
+            document.querySelectorAll('.destination-text').forEach(textEl => {
+                const container = textEl.closest('.destination');
+                if (!container) return;
+                // Check if text is clipped (text width > container width)
+                const textWidth = textEl.scrollWidth;
+                const containerWidth = container.clientWidth;
+                if (textWidth > containerWidth) {
+                    // Text is clipped - add clipped class and calculate exact scroll distance
+                    textEl.classList.add('clipped');
+                    // Calculate how much to scroll: difference between text and container width
+                    const scrollDistance = containerWidth - textWidth;
+                    // Set CSS variable with the exact scroll distance
+                    textEl.style.setProperty('--scroll-distance', scrollDistance + 'px');
+                } else {
+                    // Text fits - remove clipped class
+                    textEl.classList.remove('clipped');
+                    textEl.style.removeProperty('--scroll-distance');
+                }
+            });
+        }
+
         // Initialize on load
         function initializeAll() {
             if (PAGINATION_ENABLED) {
@@ -1498,6 +1550,8 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             initRefreshCountdown();
             // Initialize time format toggle
             initTimeFormatToggle();
+            // Initialize destination scrolling for clipped text
+            initDestinationScrolling();
         }
 
         if (document.readyState === 'loading') {
@@ -1753,11 +1807,11 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             return "now"
         if total_seconds < 60:
             return "<1m"
-        
+
         total_minutes = total_seconds // 60
         if total_minutes < 60:
             return f"{total_minutes}m"
-        
+
         hours = total_minutes // 60
         minutes = total_minutes % 60
         if minutes == 0:
