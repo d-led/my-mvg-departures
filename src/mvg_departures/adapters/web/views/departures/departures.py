@@ -15,6 +15,7 @@ from pyview.vendor import ibis
 from pyview.vendor.ibis.loaders import FileReloader
 
 from mvg_departures.adapters.config import AppConfig
+from mvg_departures.adapters.web.broadcasters import PresenceBroadcaster
 from mvg_departures.adapters.web.formatters import DepartureFormatter
 from mvg_departures.adapters.web.state import DeparturesState, State
 from mvg_departures.domain.contracts import (
@@ -71,6 +72,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         self.config = config
         self.presence_tracker = presence_tracker
         self.formatter = DepartureFormatter(config)
+        self.presence_broadcaster = PresenceBroadcaster()
 
     async def mount(self, socket: LiveViewSocket[DeparturesState], _session: dict) -> None:
         """Mount the LiveView and register socket for updates."""
@@ -113,45 +115,10 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         self.state_manager.departures_state.presence_local = local_count
         self.state_manager.departures_state.presence_total = total_count
 
-        # Broadcast presence update using PubSub (only if connected)
-        if is_connected(socket):
-            from pyview.live_socket import pub_sub_hub
-            from pyview.vendor.flet.pubsub import PubSub
-
-            normalized_path = route_path.strip("/").replace("/", ":") or "root"
-            dashboard_topic = f"presence:{normalized_path}"
-            global_topic = "presence:global"
-
-            try:
-                # Subscribe to dashboard presence topic
-                await socket.subscribe(dashboard_topic)
-                # Subscribe to global presence topic
-                await socket.subscribe(global_topic)
-
-                # Broadcast to dashboard topic
-                dashboard_pubsub = PubSub(pub_sub_hub, dashboard_topic)
-                await dashboard_pubsub.send_all_on_topic_async(
-                    dashboard_topic,
-                    {
-                        "user_id": user_id,
-                        "action": "joined",
-                        "local_count": local_count,
-                        "total_count": total_count,
-                    },
-                )
-
-                # Broadcast to global topic
-                global_pubsub = PubSub(pub_sub_hub, global_topic)
-                await global_pubsub.send_all_on_topic_async(
-                    global_topic,
-                    {
-                        "user_id": user_id,
-                        "action": "joined",
-                        "total_count": total_count,
-                    },
-                )
-            except Exception as e:
-                logger.error(f"Failed to broadcast/subscribe to presence topic: {e}", exc_info=True)
+        # Broadcast presence update using PresenceBroadcaster
+        await self.presence_broadcaster.broadcast_join(
+            route_path, user_id, local_count, total_count, socket
+        )
 
         socket.context = DeparturesState(
             direction_groups=self.state_manager.departures_state.direction_groups,
@@ -207,40 +174,10 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         self.state_manager.departures_state.presence_local = local_count
         self.state_manager.departures_state.presence_total = total_count
 
-        # Broadcast presence update using PubSub (only if connected)
-        if is_connected(socket):
-            from pyview.live_socket import pub_sub_hub
-            from pyview.vendor.flet.pubsub import PubSub
-
-            normalized_path = route_path.strip("/").replace("/", ":") or "root"
-            dashboard_topic = f"presence:{normalized_path}"
-            global_topic = "presence:global"
-
-            try:
-                # Broadcast to dashboard topic
-                dashboard_pubsub = PubSub(pub_sub_hub, dashboard_topic)
-                await dashboard_pubsub.send_all_on_topic_async(
-                    dashboard_topic,
-                    {
-                        "user_id": user_id,
-                        "action": "left",
-                        "local_count": local_count,
-                        "total_count": total_count,
-                    },
-                )
-
-                # Broadcast to global topic
-                global_pubsub = PubSub(pub_sub_hub, global_topic)
-                await global_pubsub.send_all_on_topic_async(
-                    global_topic,
-                    {
-                        "user_id": user_id,
-                        "action": "left",
-                        "total_count": total_count,
-                    },
-                )
-            except Exception as e:
-                logger.error(f"Failed to broadcast presence leave: {e}", exc_info=True)
+        # Broadcast presence update using PresenceBroadcaster
+        await self.presence_broadcaster.broadcast_leave(
+            route_path, user_id, local_count, total_count, socket
+        )
 
         self.state_manager.unregister_socket(socket)
 
@@ -268,39 +205,10 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         self.state_manager.departures_state.presence_local = local_count
         self.state_manager.departures_state.presence_total = total_count
 
-        # Broadcast presence update using PubSub
-        from pyview.live_socket import pub_sub_hub
-        from pyview.vendor.flet.pubsub import PubSub
-
-        normalized_path = route_path.strip("/").replace("/", ":") or "root"
-        dashboard_topic = f"presence:{normalized_path}"
-        global_topic = "presence:global"
-
-        try:
-            # Broadcast to dashboard topic
-            dashboard_pubsub = PubSub(pub_sub_hub, dashboard_topic)
-            await dashboard_pubsub.send_all_on_topic_async(
-                dashboard_topic,
-                {
-                    "user_id": user_id,
-                    "action": "left",
-                    "local_count": local_count,
-                    "total_count": total_count,
-                },
-            )
-
-            # Broadcast to global topic
-            global_pubsub = PubSub(pub_sub_hub, global_topic)
-            await global_pubsub.send_all_on_topic_async(
-                global_topic,
-                {
-                    "user_id": user_id,
-                    "action": "left",
-                    "total_count": total_count,
-                },
-            )
-        except Exception as e:
-            logger.error(f"Failed to broadcast presence disconnect: {e}", exc_info=True)
+        # Broadcast presence update using PresenceBroadcaster
+        await self.presence_broadcaster.broadcast_leave(
+            route_path, user_id, local_count, total_count, socket
+        )
 
     async def handle_info(
         self, event: str | InfoEvent, socket: LiveViewSocket[DeparturesState]
