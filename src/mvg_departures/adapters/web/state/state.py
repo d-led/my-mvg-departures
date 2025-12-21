@@ -26,13 +26,20 @@ logger = logging.getLogger(__name__)
 class State:
     """Manages shared state for departures LiveView and API polling."""
 
-    def __init__(self) -> None:
-        """Initialize the state manager."""
+    def __init__(self, route_path: str = "/") -> None:
+        """Initialize the state manager.
+
+        Args:
+            route_path: The path for this route, used to create a unique topic.
+        """
         self.departures_state = DeparturesState()
         self.connected_sockets: set[LiveViewSocket[DeparturesState]] = set()
         self.api_poller_task: asyncio.Task | None = None
         self.cached_departures: dict[str, list[tuple[str, list[Departure]]]] = {}
-        self.broadcast_topic: str = "departures:updates"
+        # Create route-specific topic based on path
+        # Normalize path: remove leading/trailing slashes and replace / with :
+        normalized_path = route_path.strip("/").replace("/", ":") or "root"
+        self.broadcast_topic: str = f"departures:updates:{normalized_path}"
 
     async def start_api_poller(
         self,

@@ -151,12 +151,8 @@ class AppConfig(BaseSettings):
             raise ValueError("theme must be either 'light', 'dark', or 'auto'")
         return v.lower()
 
-    def get_stops_config(self) -> list[dict[str, Any]]:
-        """Parse and return stops configuration as a list of dicts from TOML file.
-
-        Loads configuration from the TOML file specified in config_file.
-        Defaults to config.example.toml if available.
-        """
+    def _load_toml_data(self) -> dict[str, Any]:
+        """Load and parse TOML file, updating display settings."""
         if not self.config_file:
             raise ValueError("config_file must be set to load stops configuration")
 
@@ -212,8 +208,71 @@ class AppConfig(BaseSettings):
                 if "font_size_status_header" in display:
                     self.font_size_status_header = display["font_size_status_header"]
 
-            stops = toml_data.get("stops", [])
+            return toml_data
+
+    def get_routes_config(self) -> list[dict[str, Any]]:
+        """Parse and return routes configuration as a list of dicts from TOML file.
+
+        Returns a list of route configurations, each with 'path' and 'stops' keys.
+        Supports mixing formats:
+        - If [[stops]] are defined, creates a default route at "/" with those stops
+        - If [[routes]] are defined, uses those routes
+        - Both can be used together (default route from stops + additional routes)
+
+        Raises ValueError if route paths are not unique (including conflict with default "/").
+        """
+        toml_data = self._load_toml_data()
+
+        routes = toml_data.get("routes", [])
+        stops = toml_data.get("stops", [])
+
+        result_routes: list[dict[str, Any]] = []
+
+        # If stops are defined, create default route at "/"
+        if stops:
             if not isinstance(stops, list):
                 raise ValueError("TOML config 'stops' must be a list")
             # Filter out stops with placeholder IDs
-            return [s for s in stops if s.get("station_id", "").find("XXX") == -1]
+            filtered_stops = [s for s in stops if s.get("station_id", "").find("XXX") == -1]
+            if filtered_stops:
+                result_routes.append({"path": "/", "stops": filtered_stops})
+
+        # If routes are defined, add them
+        if routes:
+            if not isinstance(routes, list):
+                raise ValueError("TOML config 'routes' must be a list")
+
+            # Validate all routes have paths
+            for route in routes:
+                if not isinstance(route, dict):
+                    continue
+                if "path" not in route:
+                    raise ValueError("All routes must have a 'path' field")
+                result_routes.append(route)
+
+        # Validate unique paths (including checking for "/" conflict)
+        if result_routes:
+            paths = [route.get("path") for route in result_routes if isinstance(route, dict)]
+            if len(paths) != len(set(paths)):
+                duplicates = [p for p in paths if paths.count(p) > 1]
+                raise ValueError(
+                    f"Route paths must be unique. Duplicate paths found: {set(duplicates)}"
+                )
+
+        return result_routes
+
+    def get_stops_config(self) -> list[dict[str, Any]]:
+        """Parse and return stops configuration as a list of dicts from TOML file.
+
+        Loads configuration from the TOML file specified in config_file.
+        Defaults to config.example.toml if available.
+
+        This method is kept for backward compatibility. For new code, use get_routes_config().
+        """
+        toml_data = self._load_toml_data()
+
+        stops = toml_data.get("stops", [])
+        if not isinstance(stops, list):
+            raise ValueError("TOML config 'stops' must be a list")
+        # Filter out stops with placeholder IDs
+        return [s for s in stops if s.get("station_id", "").find("XXX") == -1]

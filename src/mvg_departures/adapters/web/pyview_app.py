@@ -13,7 +13,11 @@ from pyview.events import InfoEvent
 
 from mvg_departures.adapters.config import AppConfig
 from mvg_departures.application.services import DepartureGroupingService
-from mvg_departures.domain.models import Departure, StopConfiguration
+from mvg_departures.domain.models import (
+    Departure,
+    RouteConfiguration,
+    StopConfiguration,
+)
 from mvg_departures.domain.ports import DisplayAdapter
 
 from .state import DeparturesState, State
@@ -1926,18 +1930,29 @@ class PyViewWebAdapter(DisplayAdapter):
     def __init__(
         self,
         grouping_service: DepartureGroupingService,
-        stop_configs: list[StopConfiguration],
+        route_configs: list[RouteConfiguration],
         config: AppConfig,
         session: "ClientSession | None" = None,
     ) -> None:
-        """Initialize the web adapter."""
+        """Initialize the web adapter.
+
+        Args:
+            grouping_service: Service for grouping departures.
+            route_configs: List of route configurations, each with a path and stops.
+            config: Application configuration.
+            session: Optional aiohttp session.
+        """
         self.grouping_service = grouping_service
-        self.stop_configs = stop_configs
+        self.route_configs = route_configs
         self.config = config
         self.session = session
         self._update_task: asyncio.Task | None = None
         self._server: Any | None = None
-        self.state_manager = State()
+        # Create a state manager for each route
+        self.route_states: dict[str, State] = {
+            route_config.path: State(route_path=route_config.path)
+            for route_config in route_configs
+        }
 
     async def display_departures(self, direction_groups: list[tuple[str, list[Departure]]]) -> None:
         """Display grouped departures (not used directly, handled by LiveView)."""
@@ -1948,21 +1963,41 @@ class PyViewWebAdapter(DisplayAdapter):
         import uvicorn
         from pyview import PyView
 
-        # Store dependencies in adapter for the LiveView class to access
-        # Create a LiveView class that accesses these dependencies
+        app = PyView()
+
+        # Create a LiveView for each route
         adapter = self
 
-        class ConfiguredDeparturesLiveView(DeparturesLiveView):
-            def __init__(self) -> None:
-                super().__init__(
-                    adapter.state_manager,
-                    adapter.grouping_service,
-                    adapter.stop_configs,
-                    adapter.config,
-                )
+        def make_live_view_class(
+            state: State, stop_configs: list[StopConfiguration]
+        ) -> type[DeparturesLiveView]:
+            """Create a LiveView class with captured route-specific values."""
+            # Capture values in closure to avoid late binding issues
+            captured_state = state
+            captured_stop_configs = stop_configs
 
-        app = PyView()
-        app.add_live_view("/", ConfiguredDeparturesLiveView)
+            class ConfiguredDeparturesLiveView(DeparturesLiveView):
+                def __init__(self) -> None:
+                    super().__init__(
+                        captured_state,
+                        adapter.grouping_service,
+                        captured_stop_configs,
+                        adapter.config,
+                    )
+
+            return ConfiguredDeparturesLiveView
+
+        for route_config in self.route_configs:
+            route_path = route_config.path
+            route_state = self.route_states[route_path]
+            route_stop_configs = route_config.stop_configs
+
+            logger.info(
+                f"Registering route at path '{route_path}' with {len(route_stop_configs)} stops"
+            )
+            LiveViewClass = make_live_view_class(route_state, route_stop_configs)
+            app.add_live_view(route_path, LiveViewClass)
+            logger.info(f"Successfully registered route at path '{route_path}'")
 
         # Serve pyview's client JavaScript and static assets
         from pathlib import Path
@@ -2048,13 +2083,18 @@ class PyViewWebAdapter(DisplayAdapter):
             requests_per_minute=self.config.rate_limit_per_minute,
         )
 
-        # Start the API poller immediately when server starts
+        # Start the API poller for each route immediately when server starts
         # This runs independently of client connections - API calls happen regardless
-        await self.state_manager.start_api_poller(
-            self.grouping_service,
-            self.stop_configs,
-            self.config,
-        )
+        for route_config in self.route_configs:
+            route_path = route_config.path
+            route_state = self.route_states[route_path]
+            route_stop_configs = route_config.stop_configs
+
+            await route_state.start_api_poller(
+                self.grouping_service,
+                route_stop_configs,
+                self.config,
+            )
 
         config = uvicorn.Config(
             wrapped_app,
@@ -2068,8 +2108,9 @@ class PyViewWebAdapter(DisplayAdapter):
 
     async def stop(self) -> None:
         """Stop the web server."""
-        # Stop the API poller task
-        await self.state_manager.stop_api_poller()
+        # Stop the API poller tasks for all routes
+        for route_state in self.route_states.values():
+            await route_state.stop_api_poller()
 
         if self._server:
             self._server.should_exit = True
