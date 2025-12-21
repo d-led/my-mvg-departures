@@ -144,6 +144,8 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         # Return only the content that goes inside the body
         # PyView's root template will wrap this in the full HTML structure
         html_content = """
+    <!-- Viewport meta tag to prevent zooming on iOS devices -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <!-- Minimal DaisyUI for theme support only -->
     <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
     <script src="https://cdn.tailwindcss.com"></script>
@@ -949,6 +951,41 @@ class DeparturesLiveView(LiveView[DeparturesState]):
     </div>
 
     <script>
+        // Prevent zooming on iOS devices, especially when unlocking
+        (function() {
+            // Reset zoom on visibility change (when device is unlocked)
+            document.addEventListener('visibilitychange', function() {
+                if (!document.hidden) {
+                    // Reset zoom by setting viewport scale
+                    const viewport = document.querySelector('meta[name="viewport"]');
+                    if (viewport) {
+                        viewport.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover');
+                    }
+                    // Force a reflow to ensure zoom is reset
+                    void document.body.offsetHeight;
+                }
+            });
+            
+            // Also reset zoom on focus (when app comes to foreground)
+            window.addEventListener('focus', function() {
+                const viewport = document.querySelector('meta[name="viewport"]');
+                if (viewport) {
+                    viewport.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover');
+                }
+                void document.body.offsetHeight;
+            });
+            
+            // Prevent double-tap zoom on iOS
+            let lastTouchEnd = 0;
+            document.addEventListener('touchend', function(event) {
+                const now = Date.now();
+                if (now - lastTouchEnd <= 300) {
+                    event.preventDefault();
+                }
+                lastTouchEnd = now;
+            }, false);
+        })();
+
         // Pagination configuration
         const PAGINATION_ENABLED = {{ pagination_enabled }};
         const DEPARTURES_PER_PAGE = {{ departures_per_page }};
