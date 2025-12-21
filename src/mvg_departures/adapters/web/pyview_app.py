@@ -263,7 +263,6 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         }
         .destination-text.clipped {
             animation: scroll-destination 20s ease-in-out infinite;
-            animation-delay: 2s;
             will-change: transform;
         }
         /* Pause animation on interaction for better UX */
@@ -762,6 +761,78 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         /* Ensure list items maintain departure-row styling */
         .departure-row {
             list-style: none;
+        }
+        /* Mobile responsive font sizes - reduce on phones for better fit */
+        @media (max-width: 768px) {
+            .route-number {
+                font-size: calc({{ font_size_route_number }} * 0.75);
+            }
+            .destination {
+                font-size: calc({{ font_size_destination }} * 0.75);
+            }
+            .platform {
+                font-size: calc({{ font_size_platform }} * 0.75);
+            }
+            .time {
+                font-size: calc({{ font_size_time }} * 0.75);
+            }
+            .direction-header {
+                font-size: calc({{ font_size_direction_header }} * 0.75);
+            }
+            .stop-header {
+                font-size: calc({{ font_size_stop_header }} * 0.75);
+            }
+            .no-departures {
+                font-size: calc({{ font_size_no_departures }} * 0.75);
+            }
+            .pagination-indicator {
+                font-size: calc({{ font_size_pagination_indicator }} * 0.75);
+            }
+            .countdown-text {
+                font-size: calc({{ font_size_countdown_text }} * 0.75);
+            }
+            .status-header-item {
+                font-size: calc({{ font_size_status_header }} * 0.75);
+            }
+            .delay-amount {
+                font-size: calc({{ font_size_delay_amount }} * 0.75);
+            }
+        }
+        /* Extra small phones (iPhone 13 mini, etc.) - more aggressive reduction */
+        @media (max-width: 400px) {
+            .route-number {
+                font-size: calc({{ font_size_route_number }} * 0.55);
+            }
+            .destination {
+                font-size: calc({{ font_size_destination }} * 0.65);
+            }
+            .platform {
+                font-size: calc({{ font_size_platform }} * 0.65);
+            }
+            .time {
+                font-size: calc({{ font_size_time }} * 0.55);
+            }
+            .direction-header {
+                font-size: calc({{ font_size_direction_header }} * 0.65);
+            }
+            .stop-header {
+                font-size: calc({{ font_size_stop_header }} * 0.65);
+            }
+            .no-departures {
+                font-size: calc({{ font_size_no_departures }} * 0.65);
+            }
+            .pagination-indicator {
+                font-size: calc({{ font_size_pagination_indicator }} * 0.65);
+            }
+            .countdown-text {
+                font-size: calc({{ font_size_countdown_text }} * 0.65);
+            }
+            .status-header-item {
+                font-size: calc({{ font_size_status_header }} * 0.65);
+            }
+            .delay-amount {
+                font-size: calc({{ font_size_delay_amount }} * 0.65);
+            }
         }
     </style>
 </head>
