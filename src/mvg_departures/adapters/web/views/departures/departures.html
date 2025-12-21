@@ -837,6 +837,21 @@
 </div>
 
 <script>
+    // Suppress pyview debug logging (mount/update events from app.js)
+    // This must run before app.js loads to intercept its console.log calls
+    (function() {
+        const originalLog = console.log;
+        console.log = function(...args) {
+            // Filter out pyview debug logs (mount/update events)
+            // Pattern: "phx-<id> mount:" or "phx-<id> update:"
+            const message = args.join(' ');
+            if (message.match(/phx-[a-f0-9-]+\s+(mount|update):/)) {
+                return; // Suppress these logs
+            }
+            originalLog.apply(console, args);
+        };
+    })();
+
     // Prevent zooming on iOS devices, especially when unlocking
     (function() {
         // Reset zoom on visibility change (when device is unlocked)
@@ -1006,11 +1021,12 @@
     let countdownRunning = false;
     let lastUpdateTime = Date.now();
     let startCountdown = null; // Will be set by initRefreshCountdown
+    let updateTimeout = null; // Timeout to detect when updates stop arriving
 
     function updateConnectionStatus() {
         const connectionEl = document.getElementById('connection-status');
         if (!connectionEl) {
-            console.warn('connection-status element not found');
+            // console.warn('connection-status element not found');
             return;
         }
 
@@ -1020,7 +1036,7 @@
         const liveRegion = document.getElementById('aria-live-status');
 
         if (!connectedIcon || !disconnectedIcon || !connectingIcon) {
-            console.warn('Connection status icons not found');
+            // console.warn('Connection status icons not found');
             return;
         }
 
@@ -1069,7 +1085,7 @@
     function initRefreshCountdown() {
         const circle = document.querySelector('.refresh-countdown circle.progress');
         if (!circle) {
-            console.warn('Countdown circle not found yet, will retry');
+            // console.warn('Countdown circle not found yet, will retry');
             // Retry after a short delay if element not found
             setTimeout(initRefreshCountdown, 100);
             return;
@@ -1087,7 +1103,7 @@
                 // Re-query the element in case DOM was updated by pyview
                 const circle = document.querySelector('.refresh-countdown circle.progress');
                 if (!circle) {
-                    console.warn('Countdown circle not found, cannot start countdown');
+                    // console.warn('Countdown circle not found, cannot start countdown');
                     return;
                 }
                 countdownCircle = circle;
@@ -1141,7 +1157,7 @@
                         // Check if we're overdue for an update
                         const timeSinceLastUpdate = Date.now() - lastUpdateTime;
                         if (timeSinceLastUpdate > REFRESH_INTERVAL_SECONDS * 1000 * 1.5) {
-                            console.warn('No update received - server may not be sending updates');
+                            // console.warn('No update received - server may not be sending updates');
                             // Don't mark as error immediately, just log warning
                             // The connection status will show if WebSocket is disconnected
                         }
@@ -1149,7 +1165,7 @@
                 }
 
                 countdownInterval = setInterval(updateCountdown, updateInterval);
-                console.log('Countdown started');
+                // console.log('Countdown started');
             }
         }
 
@@ -1161,15 +1177,19 @@
 
     // Set up event listeners once (outside initRefreshCountdown)
     window.addEventListener('phx:error', (event) => {
-        console.error('phx:error received:', event);
+        // console.error('phx:error received:', event);
         connectionState = 'broken';
         // Clear reconnection timeout on error
         if (reconnectTimeout) {
             clearTimeout(reconnectTimeout);
             reconnectTimeout = null;
         }
-        updateConnectionStatus();
-        updateApiStatus('error');
+        // Use requestAnimationFrame to ensure DOM is ready
+        requestAnimationFrame(() => {
+            updateConnectionStatus();
+            updateApiStatus('error');
+            hidePresenceCount();
+        });
         // Stop countdown on error
         if (countdownInterval) {
             clearInterval(countdownInterval);
@@ -1179,7 +1199,7 @@
     });
 
     window.addEventListener('phx:update', (event) => {
-        console.log('phx:update received', event);
+        // console.log('phx:update received', event);
         // Data was successfully fetched - connection is working
         connectionState = 'connected';
         lastUpdateTime = Date.now();
@@ -1190,6 +1210,21 @@
             reconnectTimeout = null;
         }
 
+        // Clear update timeout and set a new one to detect if updates stop
+        if (updateTimeout) {
+            clearTimeout(updateTimeout);
+        }
+        // If we don't receive an update within 10 seconds, assume disconnected
+        // This is faster than waiting for 2x refresh interval, providing quicker feedback
+        updateTimeout = setTimeout(() => {
+            // console.warn('No updates received for too long, assuming disconnected');
+            connectionState = 'broken';
+            requestAnimationFrame(() => {
+                updateConnectionStatus();
+                hidePresenceCount();
+            });
+        }, 10000); // 10 seconds - faster detection than 2x refresh interval
+
         // Update connection status after DOM update (pyview may have replaced elements)
         // Use requestAnimationFrame to ensure DOM is fully updated
         requestAnimationFrame(() => {
@@ -1197,6 +1232,8 @@
             // Get API status from event detail if available, default to success
             const apiStatus = event.detail?.api_status || 'success';
             updateApiStatus(apiStatus);
+            // Show presence count when connected and receiving updates
+            showPresenceCount();
         });
 
         // Handle pagination if enabled
@@ -1227,7 +1264,7 @@
             const circle = countdownEl ? countdownEl.querySelector('circle.progress') : null;
 
             if (!circle || !countdownEl) {
-                console.warn('Countdown circle not found after phx:update, will retry');
+                // console.warn('Countdown circle not found after phx:update, will retry');
                 // Retry initialization
                 initRefreshCountdown();
                 return;
@@ -1243,7 +1280,7 @@
                 lastServerUpdateTime = newServerUpdateTime;
 
                 if (countdownInitialized && startCountdown) {
-                    console.log('Restarting countdown - new data update received');
+                    // console.log('Restarting countdown - new data update received');
                     startCountdown();
                 } else {
                     // Initialize if not already done
@@ -1283,6 +1320,20 @@
         }
     }
 
+    function hidePresenceCount() {
+        const presenceEl = document.getElementById('presence-count');
+        if (presenceEl) {
+            presenceEl.style.display = 'none';
+        }
+    }
+
+    function showPresenceCount() {
+        const presenceEl = document.getElementById('presence-count');
+        if (presenceEl) {
+            presenceEl.style.display = '';
+        }
+    }
+
     function updateApiStatus(status) {
             const apiSuccessIcon = document.getElementById('api-success-icon');
             const apiErrorIcon = document.getElementById('api-error-icon');
@@ -1291,7 +1342,7 @@
             const liveRegion = document.getElementById('aria-live-status');
 
             if (!apiSuccessIcon || !apiErrorIcon || !apiUnknownIcon) {
-                console.warn('API status icons not found');
+                // console.warn('API status icons not found');
                 return;
             }
 
@@ -1334,7 +1385,7 @@
             // If we're connecting for more than 10 seconds, show as broken
             reconnectTimeout = setTimeout(() => {
                 if (connectionState === 'connecting') {
-                    console.warn('Reconnection timeout - showing broken state');
+                    // console.warn('Reconnection timeout - showing broken state');
                     connectionState = 'broken';
                     updateConnectionStatus();
                 }
@@ -1342,13 +1393,19 @@
         }
 
     window.addEventListener('phx:disconnect', () => {
-        console.log('phx:disconnect received - connection disconnected');
+        // console.log('phx:disconnect received - connection disconnected');
         // On disconnect, show broken state (red)
         connectionState = 'broken';
+        // Clear update timeout since we're explicitly disconnected
+        if (updateTimeout) {
+            clearTimeout(updateTimeout);
+            updateTimeout = null;
+        }
         // Use requestAnimationFrame to ensure DOM is ready
         requestAnimationFrame(() => {
             updateConnectionStatus();
-            console.log('Connection status updated to broken (red)');
+            hidePresenceCount();
+            // console.log('Connection status updated to broken (red), presence hidden');
         });
         // Start timeout for reconnection
         startReconnectTimeout();
@@ -1362,9 +1419,19 @@
 
     // Handle permanent connection close
     window.addEventListener('phx:close', () => {
-        console.log('phx:close received - connection permanently closed');
+        // console.log('phx:close received - connection permanently closed');
         connectionState = 'broken';
-        updateConnectionStatus();
+        // Clear update timeout since connection is closed
+        if (updateTimeout) {
+            clearTimeout(updateTimeout);
+            updateTimeout = null;
+        }
+        // Use requestAnimationFrame to ensure DOM is ready
+        requestAnimationFrame(() => {
+            updateConnectionStatus();
+            hidePresenceCount();
+            // console.log('Connection status updated to broken (red), presence hidden');
+        });
         // Stop countdown
         if (countdownInterval) {
             clearInterval(countdownInterval);
@@ -1375,12 +1442,13 @@
 
     // Detect connecting state (when WebSocket is connecting/reconnecting)
     window.addEventListener('phx:connecting', () => {
-        console.log('phx:connecting received - attempting to reconnect');
+        // console.log('phx:connecting received - attempting to reconnect');
         connectionState = 'connecting';
         // Use requestAnimationFrame to ensure DOM is ready
         requestAnimationFrame(() => {
             updateConnectionStatus();
-            console.log('Connection status updated to connecting (yellow, pulsating)');
+            hidePresenceCount(); // Hide presence while connecting
+            // console.log('Connection status updated to connecting (yellow, pulsating), presence hidden');
         });
         // Start/restart timeout for reconnection
         startReconnectTimeout();
@@ -1388,7 +1456,7 @@
 
     // Detect when WebSocket opens (connected)
     window.addEventListener('phx:open', () => {
-        console.log('phx:open received - WebSocket connected');
+        // console.log('phx:open received - WebSocket connected');
         connectionState = 'connected';
         // Clear reconnection timeout since we're now connected
         if (reconnectTimeout) {
@@ -1398,7 +1466,8 @@
         // Use requestAnimationFrame to ensure DOM is ready after pyview updates
         requestAnimationFrame(() => {
             updateConnectionStatus();
-            console.log('Connection status updated to connected (green)');
+            // Presence will be shown when phx:update is received with actual data
+            // console.log('Connection status updated to connected (green)');
         });
     });
 
@@ -1417,6 +1486,9 @@
         }
         if (reconnectTimeout) {
             clearTimeout(reconnectTimeout);
+        }
+        if (updateTimeout) {
+            clearTimeout(updateTimeout);
         }
         if (timeFormatToggleInterval) {
             clearInterval(timeFormatToggleInterval);
@@ -1615,27 +1687,27 @@
     // Verify CSRF token exists
     const csrfMeta = document.querySelector("meta[name='csrf-token']");
     if (!csrfMeta) {
-        console.error('CSRF token meta tag not found!');
+        // console.error('CSRF token meta tag not found!');
     } else {
-        console.log('CSRF token found:', csrfMeta.getAttribute('content'));
+        // console.log('CSRF token found:', csrfMeta.getAttribute('content'));
     }
 
     // Verify data-phx-main exists
     const phxMain = document.querySelector('[data-phx-main]');
     if (!phxMain) {
-        console.error('data-phx-main element not found!');
+        // console.error('data-phx-main element not found!');
     } else {
-        console.log('data-phx-main element found');
+        // console.log('data-phx-main element found');
     }
 
     // Load pyview client JS
     const script = document.createElement('script');
     script.src = '/static/assets/app.js';
     script.onerror = function() {
-        console.error('Failed to load /static/assets/app.js');
+        // console.error('Failed to load /static/assets/app.js');
     };
     script.onload = function() {
-        console.log('app.js loaded successfully');
+        // console.log('app.js loaded successfully');
         // Connection status will be updated via phx:open/phx:close events
         // No need to check directly - observe events instead
     };
