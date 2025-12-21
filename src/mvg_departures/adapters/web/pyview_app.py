@@ -1,7 +1,7 @@
 """PyView web adapter for displaying departures."""
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
 
@@ -1720,28 +1720,24 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
         if self.config.time_format == "minutes":
             delta = time_until - now
-            minutes = int(delta.total_seconds() / 60)
-            if minutes < 0:
+            if delta.total_seconds() < 0:
                 return "now"
-            if minutes == 0:
-                return "<1m"
-            return f"{minutes}m"
+            # Format as compact hours and minutes (e.g., "2h40m")
+            return self._format_compact_duration(delta)
         # "at" format
         return time_until.strftime("%H:%M")
 
     def _format_departure_time_relative(self, departure: Departure) -> str:
-        """Format departure time as relative (e.g., '5m', '<1m', 'now')."""
+        """Format departure time as relative in compact format (e.g., '5m', '2h40m', 'now')."""
         # Convert to configured timezone
         server_timezone = ZoneInfo(self.config.timezone)
         now = datetime.now(UTC).astimezone(server_timezone)
         time_until = departure.time.astimezone(server_timezone)
         delta = time_until - now
-        minutes = int(delta.total_seconds() / 60)
-        if minutes < 0:
+        if delta.total_seconds() < 0:
             return "now"
-        if minutes == 0:
-            return "<1m"
-        return f"{minutes}m"
+        # Format as compact hours and minutes (e.g., "2h40m")
+        return self._format_compact_duration(delta)
 
     def _format_departure_time_absolute(self, departure: Departure) -> str:
         """Format departure time as absolute (HH:mm format)."""
@@ -1749,6 +1745,24 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         server_timezone = ZoneInfo(self.config.timezone)
         time_until = departure.time.astimezone(server_timezone)
         return time_until.strftime("%H:%M")
+
+    def _format_compact_duration(self, delta: timedelta) -> str:
+        """Format timedelta as compact hours and minutes (e.g., '2h40m', '5m', 'now')."""
+        total_seconds = int(delta.total_seconds())
+        if total_seconds < 0:
+            return "now"
+        if total_seconds < 60:
+            return "<1m"
+        
+        total_minutes = total_seconds // 60
+        if total_minutes < 60:
+            return f"{total_minutes}m"
+        
+        hours = total_minutes // 60
+        minutes = total_minutes % 60
+        if minutes == 0:
+            return f"{hours}h"
+        return f"{hours}h{minutes}m"
 
     def _format_update_time(self, update_time: datetime | None) -> str:
         """Format last update time."""
