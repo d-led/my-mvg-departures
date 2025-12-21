@@ -76,6 +76,10 @@ show_ungrouped = true
     "139 Klinikum Harlaching",
 ]
 
+"->Schwanseestr." = [
+    "18 Schwanseestraße",
+]
+
 # Group destinations heading toward Tegernseer Landstraße (north)
 "->Tegernseer" = [
     "54 Lorettoplatz",
