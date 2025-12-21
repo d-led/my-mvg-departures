@@ -46,14 +46,23 @@ class State:
         grouping_service: DepartureGroupingService,
         stop_configs: list[StopConfiguration],
         config: AppConfig,
+        shared_cache: dict[str, list[Departure]] | None = None,
     ) -> None:
-        """Start the API poller task."""
+        """Start the API poller task.
+
+        Args:
+            grouping_service: Service for grouping departures.
+            stop_configs: List of stop configurations for this route.
+            config: Application configuration.
+            shared_cache: Optional shared cache of raw departures by station_id.
+                         If provided, will use cached data instead of fetching.
+        """
         if self.api_poller_task is not None and not self.api_poller_task.done():
             logger.warning("API poller already running")
             return
 
         self.api_poller_task = asyncio.create_task(
-            self._api_poller(grouping_service, stop_configs, config)
+            self._api_poller(grouping_service, stop_configs, config, shared_cache)
         )
         logger.info("Started API poller task")
 
@@ -70,11 +79,20 @@ class State:
         grouping_service: DepartureGroupingService,
         stop_configs: list[StopConfiguration],
         config: AppConfig,
+        shared_cache: dict[str, list[Departure]] | None = None,
     ) -> None:
         """Independent API poller that updates shared state and broadcasts to connected sockets.
 
         This runs as a separate background task, completely independent of LiveView instances.
-        It polls the API periodically and broadcasts updates to all connected sockets.
+        It processes cached raw departures (if shared_cache is provided) or fetches from API,
+        then broadcasts updates to all connected sockets.
+
+        Args:
+            grouping_service: Service for grouping departures.
+            stop_configs: List of stop configurations for this route.
+            config: Application configuration.
+            shared_cache: Optional shared cache of raw departures by station_id.
+                         If provided, uses cached data instead of fetching.
         """
         from pyview.live_socket import pub_sub_hub
         from pyview.vendor.flet.pubsub import PubSub
@@ -82,7 +100,12 @@ class State:
         # Create PubSub instance once and reuse it
         pubsub = PubSub(pub_sub_hub, self.broadcast_topic)
 
-        logger.info("API poller started (independent of client connections)")
+        if shared_cache is not None:
+            logger.info(
+                "API poller started with shared cache (independent of client connections)"
+            )
+        else:
+            logger.info("API poller started (independent of client connections)")
 
         def extract_error_details(error: Exception) -> tuple[int | None, str]:
             """Extract HTTP status code and error reason from exception."""
@@ -110,27 +133,53 @@ class State:
 
             return status_code, reason
 
-        async def _fetch_and_broadcast() -> None:
-            """Fetch departures and broadcast update to all connected sockets."""
-            # Fetch departures from API - handle errors per stop
+        async def _process_and_broadcast() -> None:
+            """Process departures (from cache or API) and broadcast update to all connected sockets."""
             all_groups: list[tuple[str, str, list[Departure]]] = []
             has_errors = False
 
             for stop_config in stop_configs:
                 try:
-                    groups = await grouping_service.get_grouped_departures(stop_config)
+                    if shared_cache is not None:
+                        # Use shared cache - get raw departures and process them
+                        raw_departures = shared_cache.get(stop_config.station_id, [])
+                        if not raw_departures:
+                            logger.warning(
+                                f"No cached departures for {stop_config.station_name} "
+                                f"(station_id: {stop_config.station_id})"
+                            )
+                            has_errors = True
+                            # Use cached processed groups if available
+                            if stop_config.station_name in self.cached_departures:
+                                cached_groups = self.cached_departures[stop_config.station_name]
+                                for direction_name, cached_departures in cached_groups:
+                                    all_groups.append(
+                                        (stop_config.station_name, direction_name, cached_departures)
+                                    )
+                            continue
+
+                        # Process cached raw departures using this route's stop configuration
+                        groups = grouping_service.group_departures(raw_departures, stop_config)
+                    else:
+                        # Fetch from API (fallback if no shared cache)
+                        groups = await grouping_service.get_grouped_departures(stop_config)
+
                     # Convert to format with station_name
                     stop_groups: list[tuple[str, list[Departure]]] = []
                     for direction_name, departures in groups:
                         stop_groups.append((direction_name, departures))
-                        all_groups.append((stop_config.station_name, direction_name, departures))
-                    # Cache successful fetch
+                        all_groups.append(
+                            (stop_config.station_name, direction_name, departures)
+                        )
+                    # Cache successful processing
                     self.cached_departures[stop_config.station_name] = stop_groups
-                    logger.debug(f"Successfully fetched departures for {stop_config.station_name}")
+                    logger.debug(
+                        f"Successfully processed departures for {stop_config.station_name}"
+                    )
                 except Exception as e:
                     status_code, reason = extract_error_details(e)
                     logger.error(
-                        f"API poller failed to fetch departures for {stop_config.station_name}: "
+                        f"API poller failed to process departures for {stop_config.station_name}: "
                         f"{reason} (status: {status_code}, error: {e})"
                     )
                     has_errors = True
@@ -140,11 +189,11 @@ class State:
                             "consider adding delays between API calls"
                         )
 
-                    # Use cached data if available, mark as stale
+                    # Use cached processed groups if available, mark as stale
                     if stop_config.station_name in self.cached_departures:
                         cached_groups = self.cached_departures[stop_config.station_name]
                         logger.info(
-                            f"Using cached departures for {stop_config.station_name} "
+                            f"Using cached processed departures for {stop_config.station_name} "
                             f"({len(cached_groups)} direction groups) due to {reason}"
                         )
                         # Mark departures as stale (non-realtime)
@@ -177,13 +226,14 @@ class State:
                 logger.error(f"Failed to broadcast via pubsub: {pubsub_err}", exc_info=True)
 
         # Do initial update immediately
-        await _fetch_and_broadcast()
+        await _process_and_broadcast()
 
         # Then poll periodically
+        # If using shared cache, we still need to reprocess periodically as cache updates
         try:
             while True:
                 await asyncio.sleep(config.refresh_interval_seconds)
-                await _fetch_and_broadcast()
+                await _process_and_broadcast()
         except asyncio.CancelledError:
             logger.info("API poller cancelled")
             raise

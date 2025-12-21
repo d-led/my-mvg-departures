@@ -36,6 +36,23 @@ class DepartureGroupingService:
             stop_config.station_id, limit=fetch_limit
         )
 
+        return self.group_departures(departures, stop_config)
+
+    def group_departures(
+        self, departures: list[Departure], stop_config: StopConfiguration
+    ) -> list[tuple[str, list[Departure]]]:
+        """Group pre-fetched departures by configured directions.
+
+        This method allows grouping departures that were already fetched,
+        enabling shared fetching across multiple routes.
+
+        Args:
+            departures: Pre-fetched list of departures to group.
+            stop_config: Stop configuration with direction mappings and limits.
+
+        Returns:
+            List of tuples (direction_name, departures) for this stop.
+        """
         # Group departures by direction first
         direction_groups: dict[str, list[Departure]] = {}
         ungrouped: list[Departure] = []

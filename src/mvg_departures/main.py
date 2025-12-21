@@ -24,6 +24,8 @@ logging.basicConfig(
     stream=sys.stderr,
 )
 
+logger = logging.getLogger(__name__)
+
 
 async def main() -> None:
     """Main application entry point."""
@@ -32,41 +34,29 @@ async def main() -> None:
     # Load route configurations
     try:
         route_configs = RouteConfigurationLoader.load(config)
-        logger = logging.getLogger(__name__)
         logger.info(f"Loaded {len(route_configs)} route(s):")
         for route_config in route_configs:
             logger.info(
                 f"  - Path: '{route_config.path}' with {len(route_config.stop_configs)} stop(s)"
             )
     except ValueError as e:
-        print(f"Error: Invalid route configuration: {e}", file=sys.stderr)
+        logger.error(f"Invalid route configuration: {e}")
         sys.exit(1)
 
     if not route_configs:
-        print(
-            "Error: No routes configured.",
-            file=sys.stderr,
+        logger.error("No routes configured.")
+        logger.error("Please configure routes in your config.toml file.")
+        logger.error(
+            "Either use [[routes]] with path and stops, or use [[stops]] for default route at '/'."
         )
-        print(
-            "Please configure routes in your config.toml file.",
-            file=sys.stderr,
-        )
-        print(
-            "Either use [[routes]] with path and stops, or use [[stops]] for default route at '/'.",
-            file=sys.stderr,
-        )
-        print(
-            "Or copy config.example.toml to config.toml and customize it.",
-            file=sys.stderr,
-        )
+        logger.error("Or copy config.example.toml to config.toml and customize it.")
         sys.exit(1)
 
     # Validate that all routes have at least one stop
     for route_config in route_configs:
         if not route_config.stop_configs:
-            print(
-                f"Error: Route at path '{route_config.path}' has no stops configured.",
-                file=sys.stderr,
+            logger.error(
+                f"Route at path '{route_config.path}' has no stops configured."
             )
             sys.exit(1)
 
@@ -84,7 +74,7 @@ async def main() -> None:
         try:
             await display_adapter.start()
         except KeyboardInterrupt:
-            print("\nShutting down...")
+            logger.info("Shutting down...")
             await display_adapter.stop()
 
 

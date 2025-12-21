@@ -1,12 +1,11 @@
 """PyView web adapter for displaying departures."""
 
+import asyncio
+import contextlib
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
-
-if TYPE_CHECKING:
-    import asyncio
 
 from pyview import LiveView, LiveViewSocket, is_connected
 from pyview.events import InfoEvent
@@ -1989,6 +1988,10 @@ class PyViewWebAdapter(DisplayAdapter):
         self.route_states: dict[str, State] = {
             route_config.path: State(route_path=route_config.path) for route_config in route_configs
         }
+        # Shared cache for raw departures by station_id (to avoid duplicate API calls)
+        # Each route will process this cached data according to its own StopConfiguration
+        self._shared_departure_cache: dict[str, list[Departure]] = {}
+        self._shared_fetcher_task: asyncio.Task | None = None
 
     async def display_departures(self, direction_groups: list[tuple[str, list[Departure]]]) -> None:
         """Display grouped departures (not used directly, handled by LiveView)."""
@@ -2119,8 +2122,11 @@ class PyViewWebAdapter(DisplayAdapter):
             requests_per_minute=self.config.rate_limit_per_minute,
         )
 
+        # Start the shared fetcher that populates the cache with raw departures
+        await self._start_shared_fetcher()
+
         # Start the API poller for each route immediately when server starts
-        # This runs independently of client connections - API calls happen regardless
+        # Each route will process cached raw departures according to its own StopConfiguration
         for route_config in self.route_configs:
             route_path = route_config.path
             route_state = self.route_states[route_path]
@@ -2130,6 +2136,7 @@ class PyViewWebAdapter(DisplayAdapter):
                 self.grouping_service,
                 route_stop_configs,
                 self.config,
+                shared_cache=self._shared_departure_cache,
             )
 
         config = uvicorn.Config(
@@ -2142,8 +2149,71 @@ class PyViewWebAdapter(DisplayAdapter):
 
         await self._server.serve()
 
+    async def _start_shared_fetcher(self) -> None:
+        """Start a shared fetcher that populates the cache with raw departures."""
+        if self._shared_fetcher_task is not None and not self._shared_fetcher_task.done():
+            logger.warning("Shared fetcher already running")
+            return
+
+        # Collect all unique station_ids across all routes
+        unique_station_ids: set[str] = set()
+        for route_config in self.route_configs:
+            for stop_config in route_config.stop_configs:
+                unique_station_ids.add(stop_config.station_id)
+
+        logger.info(
+            f"Shared fetcher: {len(unique_station_ids)} unique station(s) across {len(self.route_configs)} route(s)"
+        )
+
+        # Get the departure repository from the grouping service
+        departure_repo = self.grouping_service._departure_repository
+
+        async def _fetch_all_stations() -> None:
+            """Fetch raw departures for all unique stations."""
+            fetch_limit = 50  # Same as in DepartureGroupingService
+            for station_id in unique_station_ids:
+                try:
+                    departures = await departure_repo.get_departures(
+                        station_id, limit=fetch_limit
+                    )
+                    self._shared_departure_cache[station_id] = departures
+                    logger.debug(
+                        f"Fetched {len(departures)} raw departures for station {station_id}"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to fetch departures for station {station_id}: {e}",
+                        exc_info=True,
+                    )
+                    # Keep cached data if available, otherwise set empty list
+                    if station_id not in self._shared_departure_cache:
+                        self._shared_departure_cache[station_id] = []
+
+        # Do initial fetch immediately
+        await _fetch_all_stations()
+
+        # Then fetch periodically
+        async def _fetch_loop() -> None:
+            try:
+                while True:
+                    await asyncio.sleep(self.config.refresh_interval_seconds)
+                    await _fetch_all_stations()
+            except asyncio.CancelledError:
+                logger.info("Shared fetcher cancelled")
+                raise
+
+        self._shared_fetcher_task = asyncio.create_task(_fetch_loop())
+        logger.info("Started shared departure fetcher")
+
     async def stop(self) -> None:
         """Stop the web server."""
+        # Stop the shared fetcher
+        if self._shared_fetcher_task and not self._shared_fetcher_task.done():
+            self._shared_fetcher_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._shared_fetcher_task
+            logger.info("Stopped shared departure fetcher")
+
         # Stop the API poller tasks for all routes
         for route_state in self.route_states.values():
             await route_state.stop_api_poller()
