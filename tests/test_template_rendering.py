@@ -50,7 +50,7 @@ def test_prepare_template_data_includes_line_and_destination() -> None:
 
     view = _create_test_view()
     direction_groups = [("Universität", "->Giesing", [departure])]
-    template_data = view._prepare_template_data(direction_groups)
+    template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
     assert len(template_data["groups_with_departures"]) == 1
     group = template_data["groups_with_departures"][0]
@@ -79,7 +79,7 @@ def test_prepare_template_data_cancelled_sets_flag() -> None:
 
     view = _create_test_view()
     direction_groups = [("Universität", "->Giesing", [departure])]
-    template_data = view._prepare_template_data(direction_groups)
+    template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
     dep_data = template_data["groups_with_departures"][0]["departures"][0]
     assert dep_data["cancelled"] is True
@@ -104,7 +104,7 @@ def test_prepare_template_data_delay_sets_flag() -> None:
 
     view = _create_test_view()
     direction_groups = [("Universität", "->Giesing", [departure])]
-    template_data = view._prepare_template_data(direction_groups)
+    template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
     dep_data = template_data["groups_with_departures"][0]["departures"][0]
     assert dep_data["has_delay"] is True
@@ -131,7 +131,7 @@ def test_prepare_template_data_realtime_sets_flag() -> None:
 
     view = _create_test_view()
     direction_groups = [("Universität", "->Giesing", [departure])]
-    template_data = view._prepare_template_data(direction_groups)
+    template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
     dep_data = template_data["groups_with_departures"][0]["departures"][0]
     assert dep_data["is_realtime"] is True
@@ -156,7 +156,7 @@ def test_prepare_template_data_platform_when_present() -> None:
 
     view = _create_test_view()
     direction_groups = [("Universität", "->Giesing", [departure])]
-    template_data = view._prepare_template_data(direction_groups)
+    template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
     dep_data = template_data["groups_with_departures"][0]["departures"][0]
     assert dep_data["platform"] == "1"
@@ -181,7 +181,7 @@ def test_prepare_template_data_platform_when_missing() -> None:
 
     view = _create_test_view()
     direction_groups = [("Universität", "->Giesing", [departure])]
-    template_data = view._prepare_template_data(direction_groups)
+    template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
     dep_data = template_data["groups_with_departures"][0]["departures"][0]
     assert dep_data["platform"] is None
@@ -190,7 +190,7 @@ def test_prepare_template_data_platform_when_missing() -> None:
 def test_prepare_template_data_empty_list() -> None:
     """Given empty direction groups, when preparing template data, then has_departures is False."""
     view = _create_test_view()
-    template_data = view._prepare_template_data([])
+    template_data = view.departure_grouping_calculator.calculate_display_data([])
 
     assert template_data["has_departures"] is False
     assert len(template_data["groups_with_departures"]) == 0
@@ -215,7 +215,7 @@ def test_prepare_template_data_single_departure() -> None:
 
     view = _create_test_view()
     direction_groups = [("Universität", "->Giesing", [departure])]
-    template_data = view._prepare_template_data(direction_groups)
+    template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
     assert template_data["has_departures"] is True
     assert len(template_data["groups_with_departures"]) == 1
@@ -257,7 +257,7 @@ def test_prepare_template_data_multiple_departures() -> None:
         ("Universität", "->Giesing", [departure1]),
         ("Universität", "->Klinikum Großhadern", [departure2]),
     ]
-    template_data = view._prepare_template_data(direction_groups)
+    template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
     assert template_data["has_departures"] is True
     assert len(template_data["groups_with_departures"]) == 2
@@ -267,7 +267,7 @@ def test_prepare_template_data_stop_without_departures() -> None:
     """Given a stop with no departures, when preparing template data, then it is in stops_without_departures."""
     view = _create_test_view()
     direction_groups = [("Universität", "->Giesing", [])]
-    template_data = view._prepare_template_data(direction_groups)
+    template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
     assert template_data["has_departures"] is False
     assert "Universität" in template_data["stops_without_departures"]
@@ -292,7 +292,7 @@ def test_prepare_template_data_first_header_flag() -> None:
 
     view = _create_test_view()
     direction_groups = [("Universität", "->Giesing", [departure])]
-    template_data = view._prepare_template_data(direction_groups)
+    template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
     group = template_data["groups_with_departures"][0]
     assert group["is_first_header"] is True
@@ -335,7 +335,7 @@ def test_prepare_template_data_new_stop_flag() -> None:
         ("Universität", "->Giesing", [departure1]),
         ("Marienplatz", "->Klinikum Großhadern", [departure2]),
     ]
-    template_data = view._prepare_template_data(direction_groups)
+    template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
     assert template_data["groups_with_departures"][0]["is_new_stop"] is True
     assert template_data["groups_with_departures"][1]["is_new_stop"] is True
