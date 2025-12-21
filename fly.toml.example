@@ -34,3 +34,4 @@ primary_region = "fra"  # Frankfurt, change to your preferred region
     timeout = "5s"
     path = "/"
 
+

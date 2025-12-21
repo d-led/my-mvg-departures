@@ -3,21 +3,18 @@
 import logging
 import re
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
 
 from mvg_departures.domain.models.departure import Departure
 from mvg_departures.domain.models.stop_configuration import StopConfiguration
+from mvg_departures.domain.ports.departure_repository import DepartureRepository
 
 logger = logging.getLogger(__name__)
-
-if TYPE_CHECKING:
-    from mvg_departures.domain.ports.departure_repository import DepartureRepository
 
 
 class DepartureGroupingService:
     """Service for grouping departures by configured directions."""
 
-    def __init__(self, departure_repository: "DepartureRepository") -> None:
+    def __init__(self, departure_repository: DepartureRepository) -> None:
         """Initialize with a departure repository."""
         self._departure_repository = departure_repository
 

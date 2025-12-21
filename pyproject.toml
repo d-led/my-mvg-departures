@@ -30,6 +30,7 @@ dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",
+    "pytest-archon>=0.0.7",
     "black>=24.10.0",
     "ruff>=0.8.0",
     "mypy>=1.13.0",
@@ -57,6 +58,11 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "DTZ", "T10", "SIM", "ARG", "PIE", "PT", "RET", "TCH", "TID", "Q", "RUF"]
 ignore = ["E501"]
+
+[tool.ruff.lint.flake8-type-checking]
+# These classes are used at runtime (attribute access, method calls)
+# so they should not be moved to TYPE_CHECKING blocks
+runtime-evaluated-base-classes = ["AppConfig", "RouteConfiguration", "StopConfiguration", "DepartureGroupingService", "PresenceTrackerProtocol"]
 
 [tool.mypy]
 python_version = "3.12"

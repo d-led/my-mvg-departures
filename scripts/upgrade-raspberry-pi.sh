@@ -105,3 +105,4 @@ echo ""
 echo "View logs with: sudo journalctl -u ${APP_NAME} -f"
 echo ""
 
+

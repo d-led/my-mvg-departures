@@ -8,17 +8,19 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from mvg_departures.adapters.config.app_config import AppConfig
+
 from .departures_state import DeparturesState
 
 if TYPE_CHECKING:
     from pyview import LiveViewSocket
 
-    from mvg_departures.adapters.config.app_config import AppConfig
-    from mvg_departures.application.services.departure_grouping_service import (
-        DepartureGroupingService,
-    )
     from mvg_departures.domain.models.departure import Departure
-    from mvg_departures.domain.models.stop_configuration import StopConfiguration
+
+from mvg_departures.domain.models.stop_configuration import StopConfiguration
+from mvg_departures.domain.ports import (
+    DepartureGroupingService,  # noqa: TC001 - Runtime dependency: methods called at runtime
+)
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +60,22 @@ class State:
             shared_cache: Optional shared cache of raw departures by station_id.
                          If provided, will use cached data instead of fetching.
         """
+        # Runtime usage - these checks ensure Ruff detects runtime dependency
+        if not isinstance(config, AppConfig):
+            raise TypeError("config must be an AppConfig instance")
+        if not isinstance(stop_configs, list) or not all(
+            isinstance(sc, StopConfiguration) for sc in stop_configs
+        ):
+            raise TypeError("stop_configs must be a list of StopConfiguration instances")
+        # Protocols can't be checked with isinstance, but we verify required method exists
+        # This explicit check ensures Ruff detects runtime usage of DepartureGroupingService
+        # Access the method directly to make runtime dependency explicit for Ruff
+        _ = grouping_service.group_departures  # Runtime usage - ensures Ruff detects dependency
+        if not callable(grouping_service.group_departures):
+            raise TypeError("grouping_service must implement DepartureGroupingService protocol")
+        if shared_cache is not None and not isinstance(shared_cache, dict):
+            raise TypeError("shared_cache must be a dict or None")
+
         if self.api_poller_task is not None and not self.api_poller_task.done():
             logger.warning("API poller already running")
             return

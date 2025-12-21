@@ -4,8 +4,9 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 from mvg_departures.adapters.config import AppConfig
-from mvg_departures.adapters.web.pyview_app import DeparturesLiveView
+from mvg_departures.adapters.web.presence import PresenceTracker
 from mvg_departures.adapters.web.state import State
+from mvg_departures.adapters.web.views.departures.departures import DeparturesLiveView
 from mvg_departures.application.services import DepartureGroupingService
 from mvg_departures.domain.models import Departure, StopConfiguration
 
@@ -22,7 +23,10 @@ def _create_test_view() -> DeparturesLiveView:
         )
     ]
     config = AppConfig(config_file=None)
-    return DeparturesLiveView(state_manager, grouping_service, stop_configs, config)
+    presence_tracker = PresenceTracker()
+    return DeparturesLiveView(
+        state_manager, grouping_service, stop_configs, config, presence_tracker
+    )
 
 
 def test_prepare_template_data_includes_line_and_destination() -> None:
