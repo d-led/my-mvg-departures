@@ -302,6 +302,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             margin-right: 0;
             white-space: nowrap;
             min-width: fit-content;
+            overflow: hidden;
             transition: opacity 0.3s ease-in-out;
         }
         [data-theme="light"] .time {
@@ -1007,7 +1008,11 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 const absolute = el.getAttribute('data-time-absolute');
                 if (!relative || !absolute) return;
 
-                // Fade out
+                // Store current width to prevent layout shift when longer text is inserted
+                const currentWidth = el.offsetWidth;
+                el.style.width = currentWidth + 'px';
+                
+                // Fade out smoothly
                 el.style.opacity = '0';
 
                 setTimeout(() => {
@@ -1023,12 +1028,21 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                         // Switch to relative
                         el.innerHTML = relative + delayHTML;
                     }
-                    // Fade in
+                    
+                    // Remove fixed width to allow new content to size naturally
+                    el.style.width = '';
+                    
+                    // Fade in smoothly
                     el.style.opacity = '1';
                 }, 150);
             });
 
             currentTimeFormat = currentTimeFormat === 'relative' ? 'absolute' : 'relative';
+            
+            // Recalculate destination clipping after layout settles (time format change may affect container widths)
+            setTimeout(() => {
+                initDestinationScrolling();
+            }, 200);
         }
 
         function initTimeFormatToggle() {
@@ -1597,17 +1611,27 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 // Check if text is clipped (text width > container width)
                 const textWidth = textEl.scrollWidth;
                 const containerWidth = container.clientWidth;
-                if (textWidth > containerWidth) {
+                const wasClipped = textEl.classList.contains('clipped');
+                const isClipped = textWidth > containerWidth;
+                
+                if (isClipped) {
                     // Text is clipped - add clipped class and calculate exact scroll distance
-                    textEl.classList.add('clipped');
-                    // Calculate how much to scroll: difference between text and container width
                     const scrollDistance = containerWidth - textWidth;
-                    // Set CSS variable with the exact scroll distance
-                    textEl.style.setProperty('--scroll-distance', scrollDistance + 'px');
+                    const currentScrollDistance = textEl.style.getPropertyValue('--scroll-distance');
+                    
+                    // Only update if clipping state changed or scroll distance changed significantly
+                    // This prevents restarting animation unnecessarily when time format changes
+                    if (!wasClipped || Math.abs(parseFloat(currentScrollDistance) - scrollDistance) > 1) {
+                        textEl.classList.add('clipped');
+                        // Set CSS variable with the exact scroll distance
+                        textEl.style.setProperty('--scroll-distance', scrollDistance + 'px');
+                    }
                 } else {
                     // Text fits - remove clipped class
-                    textEl.classList.remove('clipped');
-                    textEl.style.removeProperty('--scroll-distance');
+                    if (wasClipped) {
+                        textEl.classList.remove('clipped');
+                        textEl.style.removeProperty('--scroll-distance');
+                    }
                 }
             });
         }
