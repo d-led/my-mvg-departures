@@ -5,9 +5,8 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from pyview import LiveView, LiveViewSocket, is_connected
 from pyview.events import InfoEvent
@@ -16,6 +15,7 @@ from pyview.vendor import ibis
 from pyview.vendor.ibis.loaders import FileReloader
 
 from mvg_departures.adapters.config import AppConfig
+from mvg_departures.adapters.web.formatters import DepartureFormatter
 from mvg_departures.adapters.web.state import DeparturesState, State
 from mvg_departures.domain.contracts import (
     PresenceTrackerProtocol,  # noqa: TC001 - Runtime dependency: methods called at runtime
@@ -70,6 +70,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         self.stop_configs = stop_configs
         self.config = config
         self.presence_tracker = presence_tracker
+        self.formatter = DepartureFormatter(config)
 
     async def mount(self, socket: LiveViewSocket[DeparturesState], _session: dict) -> None:
         """Mount the LiveView and register socket for updates."""
@@ -442,7 +443,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             "last_update_timestamp": (
                 str(int(last_update.timestamp() * 1000)) if last_update is not None else "0"
             ),
-            "update_time": self._format_update_time(last_update),
+            "update_time": self.formatter.format_update_time(last_update),
             "presence_local": state.presence_local,
             "presence_total": state.presence_total,
         }
@@ -492,9 +493,9 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 sorted_departures = sorted(departures, key=lambda d: d.time)
                 departure_data = []
                 for departure in sorted_departures:
-                    time_str = self._format_departure_time(departure)
-                    time_str_relative = self._format_departure_time_relative(departure)
-                    time_str_absolute = self._format_departure_time_absolute(departure)
+                    time_str = self.formatter.format_departure_time(departure)
+                    time_str_relative = self.formatter.format_departure_time_relative(departure)
+                    time_str_absolute = self.formatter.format_departure_time_absolute(departure)
 
                     # Format platform
                     platform_display = (
@@ -576,65 +577,6 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             "has_departures": len(groups_with_departures) > 0,
             "font_size_no_departures": self.config.font_size_no_departures_available,
         }
-
-    def _format_departure_time(self, departure: Departure) -> str:
-        """Format departure time according to configuration."""
-        # Convert to configured timezone
-        server_timezone = ZoneInfo(self.config.timezone)
-        now = datetime.now(UTC).astimezone(server_timezone)
-        time_until = departure.time.astimezone(server_timezone)
-
-        if self.config.time_format == "minutes":
-            delta = time_until - now
-            if delta.total_seconds() < 0:
-                return "now"
-            # Format as compact hours and minutes (e.g., "2h40m")
-            return self._format_compact_duration(delta)
-        # "at" format
-        return time_until.strftime("%H:%M")
-
-    def _format_departure_time_relative(self, departure: Departure) -> str:
-        """Format departure time as relative in compact format (e.g., '5m', '2h40m', 'now')."""
-        # Convert to configured timezone
-        server_timezone = ZoneInfo(self.config.timezone)
-        now = datetime.now(UTC).astimezone(server_timezone)
-        time_until = departure.time.astimezone(server_timezone)
-        delta = time_until - now
-        if delta.total_seconds() < 0:
-            return "now"
-        # Format as compact hours and minutes (e.g., "2h40m")
-        return self._format_compact_duration(delta)
-
-    def _format_departure_time_absolute(self, departure: Departure) -> str:
-        """Format departure time as absolute (HH:mm format)."""
-        # Convert to configured timezone
-        server_timezone = ZoneInfo(self.config.timezone)
-        time_until = departure.time.astimezone(server_timezone)
-        return time_until.strftime("%H:%M")
-
-    def _format_compact_duration(self, delta: timedelta) -> str:
-        """Format timedelta as compact hours and minutes (e.g., '2h40m', '5m', 'now')."""
-        total_seconds = int(delta.total_seconds())
-        if total_seconds < 0:
-            return "now"
-        if total_seconds < 60:
-            return "<1m"
-
-        total_minutes = total_seconds // 60
-        if total_minutes < 60:
-            return f"{total_minutes}m"
-
-        hours = total_minutes // 60
-        minutes = total_minutes % 60
-        if minutes == 0:
-            return f"{hours}h"
-        return f"{hours}h{minutes}m"
-
-    def _format_update_time(self, update_time: datetime | None) -> str:
-        """Format last update time."""
-        if not update_time:
-            return "Never"
-        return update_time.strftime("%H:%M:%S")
 
 
 def create_departures_live_view(

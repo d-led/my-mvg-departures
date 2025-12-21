@@ -1,7 +1,8 @@
 """Tests for template rendering in pyview_app."""
 
+import os
 from datetime import UTC, datetime
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from mvg_departures.adapters.config import AppConfig
 from mvg_departures.adapters.web.presence import PresenceTracker
@@ -13,20 +14,21 @@ from mvg_departures.domain.models import Departure, StopConfiguration
 
 def _create_test_view() -> DeparturesLiveView:
     """Create a test DeparturesLiveView instance."""
-    state_manager = State()
-    grouping_service = MagicMock(spec=DepartureGroupingService)
-    stop_configs = [
-        StopConfiguration(
-            station_id="de:09162:70",
-            station_name="Universität",
-            direction_mappings={},
+    with patch.dict(os.environ, {}, clear=True):
+        state_manager = State()
+        grouping_service = MagicMock(spec=DepartureGroupingService)
+        stop_configs = [
+            StopConfiguration(
+                station_id="de:09162:70",
+                station_name="Universität",
+                direction_mappings={},
+            )
+        ]
+        config = AppConfig(config_file=None, _env_file=None)
+        presence_tracker = PresenceTracker()
+        return DeparturesLiveView(
+            state_manager, grouping_service, stop_configs, config, presence_tracker
         )
-    ]
-    config = AppConfig(config_file=None)
-    presence_tracker = PresenceTracker()
-    return DeparturesLiveView(
-        state_manager, grouping_service, stop_configs, config, presence_tracker
-    )
 
 
 def test_prepare_template_data_includes_line_and_destination() -> None:
