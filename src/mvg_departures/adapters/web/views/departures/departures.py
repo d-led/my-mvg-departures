@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from datetime import UTC, datetime
@@ -77,6 +76,90 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         self.departure_grouping_calculator = DepartureGroupingCalculator(
             stop_configs, config, self.formatter
         )
+
+    def _update_presence_from_event(
+        self, topic: str, payload: dict[str, Any], socket: LiveViewSocket[DeparturesState]
+    ) -> None:
+        """Update socket context with presence counts from event.
+
+        Args:
+            topic: The pub/sub topic name.
+            payload: The event payload dictionary (pyview passes dicts directly).
+            socket: The socket connection.
+        """
+        # For dashboard topic, update both local and total
+        if topic != "presence:global" and "local_count" in payload:
+            socket.context.presence_local = payload["local_count"]
+        # For both dashboard and global topics, update total
+        if "total_count" in payload:
+            socket.context.presence_total = payload["total_count"]
+        logger.debug(
+            f"Updated presence counts: local={socket.context.presence_local}, "
+            f"total={socket.context.presence_total}"
+        )
+
+    def _update_context_from_state(self, socket: LiveViewSocket[DeparturesState]) -> None:
+        """Update socket context from shared state manager.
+
+        Args:
+            socket: The socket connection.
+        """
+        socket.context.direction_groups = self.state_manager.departures_state.direction_groups
+        socket.context.last_update = self.state_manager.departures_state.last_update
+        socket.context.api_status = self.state_manager.departures_state.api_status
+        socket.context.presence_local = self.state_manager.departures_state.presence_local
+        socket.context.presence_total = self.state_manager.departures_state.presence_total
+        logger.info(
+            f"Updated context from pubsub message at {datetime.now(UTC)}, "
+            f"groups: {len(self.state_manager.departures_state.direction_groups)}"
+        )
+
+    def _build_template_assigns(
+        self, state: DeparturesState, template_data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Build template assigns dictionary from state and template data.
+
+        Args:
+            state: The current departures state.
+            template_data: Pre-calculated template data from DepartureGroupingCalculator.
+
+        Returns:
+            Dictionary of template variables for rendering.
+        """
+        # Determine theme
+        theme = self.config.theme.lower()
+        if theme not in ("light", "dark", "auto"):
+            theme = "auto"
+
+        last_update = state.last_update
+        return {
+            **template_data,
+            "theme": theme,
+            "banner_color": self.config.banner_color,
+            "font_size_route_number": self.config.font_size_route_number,
+            "font_size_destination": self.config.font_size_destination,
+            "font_size_platform": self.config.font_size_platform,
+            "font_size_time": self.config.font_size_time,
+            "font_size_no_departures": self.config.font_size_no_departures,
+            "font_size_direction_header": self.config.font_size_direction_header,
+            "font_size_pagination_indicator": self.config.font_size_pagination_indicator,
+            "font_size_countdown_text": self.config.font_size_countdown_text,
+            "font_size_status_header": self.config.font_size_status_header,
+            "font_size_delay_amount": self.config.font_size_delay_amount,
+            "font_size_stop_header": self.config.font_size_stop_header,
+            "pagination_enabled": str(self.config.pagination_enabled).lower(),
+            "departures_per_page": str(self.config.departures_per_page),
+            "page_rotation_seconds": str(self.config.page_rotation_seconds),
+            "refresh_interval_seconds": str(self.config.refresh_interval_seconds),
+            "time_format_toggle_seconds": str(self.config.time_format_toggle_seconds),
+            "api_status": state.api_status,
+            "last_update_timestamp": (
+                str(int(last_update.timestamp() * 1000)) if last_update is not None else "0"
+            ),
+            "update_time": self.formatter.format_update_time(last_update),
+            "presence_local": state.presence_local,
+            "presence_total": state.presence_total,
+        }
 
     async def mount(self, socket: LiveViewSocket[DeparturesState], _session: dict) -> None:
         """Mount the LiveView and register socket for updates."""
@@ -226,47 +309,15 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
             # Handle presence events
             if topic.startswith("presence:"):
-                # Parse payload - might be dict or JSON string
-                presence_data: dict[str, Any] | None = None
                 if isinstance(payload, dict):
-                    presence_data = payload
-                elif isinstance(payload, str):
-                    # Try to parse as JSON
-                    try:
-                        presence_data = json.loads(payload)
-                    except (json.JSONDecodeError, TypeError):
-                        logger.debug(f"Could not parse presence payload as JSON: {payload}")
-                        return
-
-                if presence_data:
-                    # Update presence counts from payload
-                    # For dashboard topic, update both local and total
-                    if topic != "presence:global" and "local_count" in presence_data:
-                        socket.context.presence_local = presence_data["local_count"]
-                    # For both dashboard and global topics, update total
-                    if "total_count" in presence_data:
-                        socket.context.presence_total = presence_data["total_count"]
-                    logger.debug(
-                        f"Updated presence counts: local={socket.context.presence_local}, "
-                        f"total={socket.context.presence_total}"
-                    )
+                    self._update_presence_from_event(topic, payload, socket)
+                else:
+                    logger.warning(f"Unexpected presence payload type: {type(payload)}")
                 return
 
             # Handle regular update messages
             if payload == "update":
-                # Update the existing context object's fields directly
-                # Pyview detects field changes and automatically triggers re-render
-                socket.context.direction_groups = (
-                    self.state_manager.departures_state.direction_groups
-                )
-                socket.context.last_update = self.state_manager.departures_state.last_update
-                socket.context.api_status = self.state_manager.departures_state.api_status
-                # Also update presence counts from state
-                socket.context.presence_local = self.state_manager.departures_state.presence_local
-                socket.context.presence_total = self.state_manager.departures_state.presence_total
-                logger.info(
-                    f"Updated context from pubsub message at {datetime.now(UTC)}, groups: {len(self.state_manager.departures_state.direction_groups)}"
-                )
+                self._update_context_from_state(socket)
                 return
 
             logger.debug(f"Received InfoEvent from topic '{topic}' with payload: {payload}")
@@ -274,23 +325,11 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
         # Handle direct string payload (legacy format)
         if isinstance(event, str):
-            payload = event
-            if payload == "update":
-                # Update the existing context object's fields directly
-                socket.context.direction_groups = (
-                    self.state_manager.departures_state.direction_groups
-                )
-                socket.context.last_update = self.state_manager.departures_state.last_update
-                socket.context.api_status = self.state_manager.departures_state.api_status
-                # Also update presence counts from state
-                socket.context.presence_local = self.state_manager.departures_state.presence_local
-                socket.context.presence_total = self.state_manager.departures_state.presence_total
-                logger.info(
-                    f"Updated context from pubsub message at {datetime.now(UTC)}, groups: {len(self.state_manager.departures_state.direction_groups)}"
-                )
+            if event == "update":
+                self._update_context_from_state(socket)
                 return
 
-            logger.debug(f"Received direct payload: {payload}")
+            logger.debug(f"Received direct payload: {event}")
             return
 
         # Unknown event type - log error and return
@@ -315,50 +354,11 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             # Fallback to shared state
             state = self.state_manager.departures_state
 
-        direction_groups = state.direction_groups
-        last_update = state.last_update
-        api_status = state.api_status
-
-        # Determine theme
-        theme = self.config.theme.lower()
-        if theme not in ("light", "dark", "auto"):
-            theme = "auto"
-
-        # Get banner color from config
-        banner_color = self.config.banner_color
-
-        # Prepare template data
-        template_data = self.departure_grouping_calculator.calculate_display_data(direction_groups)
-
-        # Merge template data with config values for template
-        template_assigns = {
-            **template_data,
-            "theme": theme,
-            "banner_color": banner_color,
-            "font_size_route_number": self.config.font_size_route_number,
-            "font_size_destination": self.config.font_size_destination,
-            "font_size_platform": self.config.font_size_platform,
-            "font_size_time": self.config.font_size_time,
-            "font_size_no_departures": self.config.font_size_no_departures,
-            "font_size_direction_header": self.config.font_size_direction_header,
-            "font_size_pagination_indicator": self.config.font_size_pagination_indicator,
-            "font_size_countdown_text": self.config.font_size_countdown_text,
-            "font_size_status_header": self.config.font_size_status_header,
-            "font_size_delay_amount": self.config.font_size_delay_amount,
-            "font_size_stop_header": self.config.font_size_stop_header,
-            "pagination_enabled": str(self.config.pagination_enabled).lower(),
-            "departures_per_page": str(self.config.departures_per_page),
-            "page_rotation_seconds": str(self.config.page_rotation_seconds),
-            "refresh_interval_seconds": str(self.config.refresh_interval_seconds),
-            "time_format_toggle_seconds": str(self.config.time_format_toggle_seconds),
-            "api_status": api_status,
-            "last_update_timestamp": (
-                str(int(last_update.timestamp() * 1000)) if last_update is not None else "0"
-            ),
-            "update_time": self.formatter.format_update_time(last_update),
-            "presence_local": state.presence_local,
-            "presence_total": state.presence_total,
-        }
+        # Prepare template data and build assigns
+        template_data = self.departure_grouping_calculator.calculate_display_data(
+            state.direction_groups
+        )
+        template_assigns = self._build_template_assigns(state, template_data)
 
         # Use pyview's LiveTemplate system with FileReloader
         # Set up template loader if not already configured
