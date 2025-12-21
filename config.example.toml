@@ -103,18 +103,34 @@ show_ungrouped = false
 # Group destinations heading toward Giesing
 "->Giesing" = ["139 Klinikum Harlaching", "59 Giesing Bahnhof"]
 
-
-
-# Example: Additional route at "/station1"
+# Additional route example
 [[routes]]
-path = "/giesing2"
+
+path = "/hohenzollernplatz"
 
 [[routes.stops]]
-station_id = "de:09162:1110"
-station_name = "Giesing"
+station_id = "de:09162:140"
+station_name = "Hohenzollernplatz"
+
 max_departures_per_stop = 12
 max_departures_per_route = 2
-show_ungrouped = true
+show_ungrouped = false
 
 [routes.stops.direction_mappings]
-"->Custom Balanstr." = ["139 Messestadt West"]
+"->Rotkreuzplatz" = ["53 Aidenbachstraße", "12 Romanplatz"]
+"->Scheidplatz" = ["U2 Feldmoching", "12 Schwabing Nord"]
+"->HBf" = ["U2 Messestadt Ost", "U2 Giesing"]
+
+[[routes.stops]]
+
+station_id = "de:09162:43"
+station_name = "Kurfürstenplatz"
+
+max_departures_per_stop = 3
+max_departures_per_route = 2
+# example included walking distance
+departure_leeway_minutes = 8
+show_ungrouped = false
+
+[routes.stops.direction_mappings]
+"->Stachus" = ["27 Sendlinger Tor", "28 Sendlinger Tor"]
