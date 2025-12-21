@@ -21,5 +21,5 @@ class StopConfiguration:
         True  # If False, only show departures matching direction_mappings (strict whitelist)
     )
     departure_leeway_minutes: int = (
-        0  # Leeway in minutes: departures earlier than now + leeway are filtered out (does not affect counts)
+        0  # Leeway in minutes: departures earlier than now + leeway are filtered out before counting for limits
     )

@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import json
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -19,6 +20,7 @@ from mvg_departures.domain.models import (
 )
 from mvg_departures.domain.ports import DisplayAdapter
 
+from .presence import get_presence_tracker
 from .state import DeparturesState, State
 
 logger = logging.getLogger(__name__)
@@ -47,14 +49,83 @@ class DeparturesLiveView(LiveView[DeparturesState]):
     async def mount(self, socket: LiveViewSocket[DeparturesState], _session: dict) -> None:
         """Mount the LiveView and register socket for updates."""
         # Initialize context with current shared state
+        presence_tracker = get_presence_tracker()
+        route_path = self.state_manager.route_path
+
+        # Register socket first so we can use it for cleanup
+        self.state_manager.register_socket(socket)
+
+        # Join presence tracking - always track, even if not connected yet
+        # (socket will connect later and we'll update counts then)
+        # Use get_or_create pattern: if already in presence, don't duplicate
+        if not presence_tracker.is_user_tracked(socket):
+            user_id, local_count, total_count = presence_tracker.join_dashboard(route_path, socket)
+        else:
+            # Already in presence, just ensure it's in the right dashboard
+            local_count, total_count = presence_tracker.ensure_dashboard_membership(
+                route_path, socket
+            )
+            user_id = presence_tracker.get_user_id(socket)
+            logger.debug(f"User {user_id} already in presence, ensured dashboard membership")
+
+        logger.info(
+            f"Presence: user {user_id} joined dashboard {route_path}. "
+            f"Local: {local_count}, Total: {total_count}"
+        )
+
+        # Update state with initial presence counts
+        self.state_manager.departures_state.presence_local = local_count
+        self.state_manager.departures_state.presence_total = total_count
+
+        # Broadcast presence update using PubSub (only if connected)
+        if is_connected(socket):
+            from pyview.live_socket import pub_sub_hub
+            from pyview.vendor.flet.pubsub import PubSub
+
+            normalized_path = route_path.strip("/").replace("/", ":") or "root"
+            dashboard_topic = f"presence:{normalized_path}"
+            global_topic = "presence:global"
+
+            try:
+                # Subscribe to dashboard presence topic
+                await socket.subscribe(dashboard_topic)
+                # Subscribe to global presence topic
+                await socket.subscribe(global_topic)
+
+                # Broadcast to dashboard topic
+                dashboard_pubsub = PubSub(pub_sub_hub, dashboard_topic)
+                await dashboard_pubsub.send_all_on_topic_async(
+                    dashboard_topic,
+                    {
+                        "user_id": user_id,
+                        "action": "joined",
+                        "local_count": local_count,
+                        "total_count": total_count,
+                    },
+                )
+
+                # Broadcast to global topic
+                global_pubsub = PubSub(pub_sub_hub, global_topic)
+                await global_pubsub.send_all_on_topic_async(
+                    global_topic,
+                    {
+                        "user_id": user_id,
+                        "action": "joined",
+                        "total_count": total_count,
+                    },
+                )
+            except Exception as e:
+                logger.error(f"Failed to broadcast/subscribe to presence topic: {e}", exc_info=True)
+
         socket.context = DeparturesState(
             direction_groups=self.state_manager.departures_state.direction_groups,
             last_update=self.state_manager.departures_state.last_update,
             api_status=self.state_manager.departures_state.api_status,
+            presence_local=self.state_manager.departures_state.presence_local,
+            presence_total=self.state_manager.departures_state.presence_total,
         )
 
-        # Register socket for broadcasts
-        self.state_manager.register_socket(socket)
+        # Socket already registered above for cleanup purposes
 
         # Subscribe to broadcast topic for receiving updates
         if is_connected(socket):
@@ -73,44 +144,193 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
     async def unmount(self, socket: LiveViewSocket[DeparturesState]) -> None:
         """Unmount the LiveView and unregister socket."""
+        presence_tracker = get_presence_tracker()
+        route_path = self.state_manager.route_path
+
+        # Leave presence tracking - always remove, even if not connected
+        user_id, local_count, total_count = presence_tracker.leave_dashboard(route_path, socket)
+
+        logger.info(
+            f"Presence: user {user_id} left dashboard {route_path}. "
+            f"Local: {local_count}, Total: {total_count}"
+        )
+
+        # Update state with new presence counts
+        self.state_manager.departures_state.presence_local = local_count
+        self.state_manager.departures_state.presence_total = total_count
+
+        # Broadcast presence update using PubSub (only if connected)
+        if is_connected(socket):
+            from pyview.live_socket import pub_sub_hub
+            from pyview.vendor.flet.pubsub import PubSub
+
+            normalized_path = route_path.strip("/").replace("/", ":") or "root"
+            dashboard_topic = f"presence:{normalized_path}"
+            global_topic = "presence:global"
+
+            try:
+                # Broadcast to dashboard topic
+                dashboard_pubsub = PubSub(pub_sub_hub, dashboard_topic)
+                await dashboard_pubsub.send_all_on_topic_async(
+                    dashboard_topic,
+                    {
+                        "user_id": user_id,
+                        "action": "left",
+                        "local_count": local_count,
+                        "total_count": total_count,
+                    },
+                )
+
+                # Broadcast to global topic
+                global_pubsub = PubSub(pub_sub_hub, global_topic)
+                await global_pubsub.send_all_on_topic_async(
+                    global_topic,
+                    {
+                        "user_id": user_id,
+                        "action": "left",
+                        "total_count": total_count,
+                    },
+                )
+            except Exception as e:
+                logger.error(f"Failed to broadcast presence leave: {e}", exc_info=True)
+
         self.state_manager.unregister_socket(socket)
+
+    async def disconnect(self, socket: LiveViewSocket[DeparturesState]) -> None:
+        """Handle socket disconnection - ensure presence is cleaned up."""
+        presence_tracker = get_presence_tracker()
+        route_path = self.state_manager.route_path
+
+        # Always remove from presence tracking on disconnect
+        user_id, local_count, total_count = presence_tracker.leave_dashboard(route_path, socket)
+
+        logger.info(
+            f"Presence disconnect: user {user_id} disconnected from dashboard {route_path}. "
+            f"Local: {local_count}, Total: {total_count}"
+        )
+
+        # Update state with new presence counts
+        self.state_manager.departures_state.presence_local = local_count
+        self.state_manager.departures_state.presence_total = total_count
+
+        # Broadcast presence update using PubSub
+        from pyview.live_socket import pub_sub_hub
+        from pyview.vendor.flet.pubsub import PubSub
+
+        normalized_path = route_path.strip("/").replace("/", ":") or "root"
+        dashboard_topic = f"presence:{normalized_path}"
+        global_topic = "presence:global"
+
+        try:
+            # Broadcast to dashboard topic
+            dashboard_pubsub = PubSub(pub_sub_hub, dashboard_topic)
+            await dashboard_pubsub.send_all_on_topic_async(
+                dashboard_topic,
+                {
+                    "user_id": user_id,
+                    "action": "left",
+                    "local_count": local_count,
+                    "total_count": total_count,
+                },
+            )
+
+            # Broadcast to global topic
+            global_pubsub = PubSub(pub_sub_hub, global_topic)
+            await global_pubsub.send_all_on_topic_async(
+                global_topic,
+                {
+                    "user_id": user_id,
+                    "action": "left",
+                    "total_count": total_count,
+                },
+            )
+        except Exception as e:
+            logger.error(f"Failed to broadcast presence disconnect: {e}", exc_info=True)
 
     async def handle_info(
         self, event: str | InfoEvent, socket: LiveViewSocket[DeparturesState]
     ) -> None:
         """Handle update messages from pubsub."""
 
-        # Extract payload from event - type-safe extraction
-        payload: str
+        # Handle InfoEvent for presence updates
         if isinstance(event, InfoEvent):
-            payload = event.payload
             topic = event.name
+            payload = event.payload
+
+            # Handle presence events
+            if topic.startswith("presence:"):
+                # Parse payload - might be dict or JSON string
+                presence_data: dict[str, Any] | None = None
+                if isinstance(payload, dict):
+                    presence_data = payload
+                elif isinstance(payload, str):
+                    # Try to parse as JSON
+                    try:
+                        presence_data = json.loads(payload)
+                    except (json.JSONDecodeError, TypeError):
+                        logger.debug(f"Could not parse presence payload as JSON: {payload}")
+                        return
+
+                if presence_data:
+                    # Update presence counts from payload
+                    # For dashboard topic, update both local and total
+                    if topic != "presence:global" and "local_count" in presence_data:
+                        socket.context.presence_local = presence_data["local_count"]
+                    # For both dashboard and global topics, update total
+                    if "total_count" in presence_data:
+                        socket.context.presence_total = presence_data["total_count"]
+                    logger.debug(
+                        f"Updated presence counts: local={socket.context.presence_local}, "
+                        f"total={socket.context.presence_total}"
+                    )
+                return
+
+            # Handle regular update messages
+            if payload == "update":
+                # Update the existing context object's fields directly
+                # Pyview detects field changes and automatically triggers re-render
+                socket.context.direction_groups = (
+                    self.state_manager.departures_state.direction_groups
+                )
+                socket.context.last_update = self.state_manager.departures_state.last_update
+                socket.context.api_status = self.state_manager.departures_state.api_status
+                # Also update presence counts from state
+                socket.context.presence_local = self.state_manager.departures_state.presence_local
+                socket.context.presence_total = self.state_manager.departures_state.presence_total
+                logger.info(
+                    f"Updated context from pubsub message at {datetime.now(UTC)}, groups: {len(self.state_manager.departures_state.direction_groups)}"
+                )
+                return
+
             logger.debug(f"Received InfoEvent from topic '{topic}' with payload: {payload}")
-        elif isinstance(event, str):
-            # Direct payload (string)
-            payload = event
-            logger.debug(f"Received direct payload: {payload}")
-        else:
-            # Unknown event type - log error and return
-            logger.error(
-                f"Unexpected event type in handle_info: {type(event)}, "
-                f"expected str or InfoEvent, got: {event}"
-            )
             return
 
-        # When we receive an update message, read from shared state
-        # (We don't serialize Departure objects in pubsub, just read from shared state)
-        if payload == "update":
-            # Update the existing context object's fields directly
-            # Pyview detects field changes and automatically triggers re-render
-            socket.context.direction_groups = self.state_manager.departures_state.direction_groups
-            socket.context.last_update = self.state_manager.departures_state.last_update
-            socket.context.api_status = self.state_manager.departures_state.api_status
-            logger.info(
-                f"Updated context from pubsub message at {datetime.now(UTC)}, groups: {len(self.state_manager.departures_state.direction_groups)}"
-            )
-        else:
-            logger.debug(f"Ignoring pubsub message with payload: {payload}")
+        # Handle direct string payload (legacy format)
+        if isinstance(event, str):
+            payload = event
+            if payload == "update":
+                # Update the existing context object's fields directly
+                socket.context.direction_groups = (
+                    self.state_manager.departures_state.direction_groups
+                )
+                socket.context.last_update = self.state_manager.departures_state.last_update
+                socket.context.api_status = self.state_manager.departures_state.api_status
+                # Also update presence counts from state
+                socket.context.presence_local = self.state_manager.departures_state.presence_local
+                socket.context.presence_total = self.state_manager.departures_state.presence_total
+                logger.info(
+                    f"Updated context from pubsub message at {datetime.now(UTC)}, groups: {len(self.state_manager.departures_state.direction_groups)}"
+                )
+                return
+
+            logger.debug(f"Received direct payload: {payload}")
+            return
+
+        # Unknown event type - log error and return
+        logger.error(
+            f"Unexpected event type in handle_info: {type(event)}, "
+            f"expected str or InfoEvent, got: {event}"
+        )
 
     async def render(self, assigns: DeparturesState | dict, meta: Any) -> str:
         """Render the HTML template."""
@@ -647,7 +867,6 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             flex-shrink: 0;
             text-decoration: none;
             transition: opacity 0.2s;
-            margin-left: auto; /* Push to the right */
         }
         .status-floating-box-github:hover {
             opacity: 0.8;
@@ -678,6 +897,38 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             min-width: 1em;
             min-height: 1em;
             flex-shrink: 0;
+        }
+        #presence-count {
+            width: auto;
+            min-width: auto;
+            height: 1em;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0 0.3rem;
+        }
+        .status-floating-box-presence {
+            margin-left: auto; /* Push to the right */
+        }
+        .presence-icon {
+            width: 1em;
+            height: 1em;
+            flex-shrink: 0;
+        }
+        .presence-count-text {
+            font-size: 1.2em;
+            font-weight: 500;
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+        }
+        [data-theme="light"] .presence-count-text,
+        [data-theme="light"] .presence-icon {
+            color: #111827;
+        }
+        [data-theme="dark"] .presence-count-text,
+        [data-theme="dark"] .presence-icon {
+            color: #f9fafb;
         }
         /* All status icons same size - 1em */
         .status-icon, .api-status-icon {
@@ -900,8 +1151,8 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         </div>
 
         <!-- Floating status box at bottom center -->
-        <div class="status-floating-box" role="status" aria-label="Connection and API status">
-            <div class="status-floating-box-item" id="connection-status" role="img" aria-label="Connection status: connecting">
+        <div class="status-floating-box" role="status" aria-label="System status indicators: connection status, API status, refresh countdown, and user presence">
+            <div class="status-floating-box-item" id="connection-status" role="img" aria-label="Connection status: connecting" title="WebSocket connection status">
                 <svg class="status-icon connecting" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" id="connection-icon" aria-hidden="true">
                     <!-- Connected: show plug normally -->
                     <g id="connected-plug" style="display: none;">
@@ -924,7 +1175,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                     </g>
                 </svg>
             </div>
-            <div class="status-floating-box-item" id="api-status-container" role="img" aria-label="API status: unknown">
+            <div class="status-floating-box-item" id="api-status-container" role="img" aria-label="API status: unknown" title="MVG API connection status">
                 <svg class="api-status-icon api-unknown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" id="api-status-icon" aria-hidden="true">
                     <circle cx="12" cy="12" r="10" id="api-status-circle"></circle>
                     <path d="M9 12l2 2 4-4" id="api-success-path" style="display: none;"></path>
@@ -932,20 +1183,29 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                     <line x1="15" y1="9" x2="9" y2="15" id="api-error-line2" style="display: none;"></line>
                 </svg>
             </div>
-            <div class="status-floating-box-item refresh-countdown" role="img" aria-label="Refresh countdown timer" data-last-update='{{ last_update_timestamp }}'>
+            <div class="status-floating-box-item refresh-countdown" role="img" aria-label="Refresh countdown timer" title="Time until next data refresh" data-last-update='{{ last_update_timestamp }}'>
                 <svg viewBox="0 0 12 12" width="100%" height="100%" aria-hidden="true">
                     <circle cx="6" cy="6" r="5" class="background"></circle>
                     <circle cx="6" cy="6" r="5" class="progress" transform="rotate(-90 6 6)"></circle>
                 </svg>
-                <span class="sr-only" id="refresh-countdown-sr">Refresh countdown</span>
+                <span class="sr-only" id="refresh-countdown-sr">Refresh countdown timer</span>
             </div>
             <!-- GitHub icon on the right side of status bar -->
-            <a href="https://github.com/d-led/my-mvg-departures" target="_blank" rel="noopener noreferrer" class="status-floating-box-github status-floating-box-item" aria-label="View repository on GitHub">
+            <a href="https://github.com/d-led/my-mvg-departures" target="_blank" rel="noopener noreferrer" class="status-floating-box-github status-floating-box-item" aria-label="View repository on GitHub (opens in new tab)" title="View repository on GitHub">
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                     <path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.46-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/>
                 </svg>
                 <span class="sr-only">View repository on GitHub</span>
             </a>
+            <!-- Presence count display (rightmost) -->
+            <div class="status-floating-box-item status-floating-box-presence" id="presence-count" role="status" aria-label="Users online: {{ presence_local }} on this dashboard, {{ presence_total }} total across all dashboards" title="{{ presence_local }} users on this dashboard, {{ presence_total }} users total across all dashboards">
+                <svg class="presence-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+                <span class="presence-count-text" aria-hidden="true">{{ presence_local }}/{{ presence_total }}</span>
+                <span class="sr-only">{{ presence_local }} users on this dashboard, {{ presence_total }} users total across all dashboards</span>
+            </div>
         </div>
     </div>
 
@@ -1147,6 +1407,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             if (connectionState === 'connecting') {
                 icon.className = 'status-icon connecting';
                 connectionEl.setAttribute('aria-label', 'Connection status: connecting');
+                connectionEl.setAttribute('title', 'WebSocket connection: connecting');
                 // Re-enable animation for connecting state
                 icon.style.animation = '';
                 if (connectedPlug) connectedPlug.style.display = 'none';
@@ -1156,6 +1417,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             } else if (connectionState === 'connected') {
                 icon.className = 'status-icon connected';
                 connectionEl.setAttribute('aria-label', 'Connection status: connected');
+                connectionEl.setAttribute('title', 'WebSocket connection: connected');
                 // Ensure animation is removed for connected state
                 icon.style.animation = 'none';
                 if (connectedPlug) connectedPlug.style.display = '';
@@ -1165,6 +1427,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             } else { // broken
                 icon.className = 'status-icon disconnected';
                 connectionEl.setAttribute('aria-label', 'Connection status: disconnected');
+                connectionEl.setAttribute('title', 'WebSocket connection: disconnected');
                 // Ensure animation is removed for broken state
                 icon.style.animation = 'none';
                 if (connectedPlug) connectedPlug.style.display = 'none';
@@ -1374,6 +1637,30 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             }, 50); // Small delay to ensure DOM patch is complete
         });
 
+        function updatePresenceCount() {
+            const presenceEl = document.getElementById('presence-count');
+            if (!presenceEl) return;
+
+            // Try to get presence counts from the page (they should be in the DOM)
+            // The presence counts are rendered in the template, so we just need to update the display
+            // The actual values will be updated by pyview when the context changes
+            const presenceText = presenceEl.querySelector('.presence-count-text');
+            const srText = presenceEl.querySelector('.sr-only');
+            if (presenceText && srText) {
+                // Values are already in the DOM from template rendering
+                // Just ensure they're visible
+                const text = presenceText.textContent;
+                if (text) {
+                    const [local, total] = text.split('/');
+                    const ariaLabel = `${local} users on this dashboard, ${total} users total across all dashboards`;
+                    const titleText = `${local} users on this dashboard, ${total} users total across all dashboards`;
+                    presenceEl.setAttribute('aria-label', ariaLabel);
+                    presenceEl.setAttribute('title', titleText);
+                    srText.textContent = ariaLabel;
+                }
+            }
+        }
+
         function updateApiStatus(status) {
                 const apiStatusIcon = document.getElementById('api-status-icon');
                 const apiStatusContainer = document.getElementById('api-status-container');
@@ -1394,7 +1681,10 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 // Add new status class and show/hide appropriate elements
                 if (status === 'success') {
                     apiStatusIcon.classList.add('api-success');
-                    if (apiStatusContainer) apiStatusContainer.setAttribute('aria-label', 'API status: success');
+                    if (apiStatusContainer) {
+                        apiStatusContainer.setAttribute('aria-label', 'API status: success');
+                        apiStatusContainer.setAttribute('title', 'MVG API connection: success');
+                    }
                     if (statusCircle) statusCircle.style.display = 'none'; // Hide circle, show checkmark
                     if (successPath) {
                         successPath.style.display = '';
@@ -1408,7 +1698,10 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                     if (liveRegion) liveRegion.textContent = 'API status: success';
                 } else if (status === 'error') {
                     apiStatusIcon.classList.add('api-error');
-                    if (apiStatusContainer) apiStatusContainer.setAttribute('aria-label', 'API status: error');
+                    if (apiStatusContainer) {
+                        apiStatusContainer.setAttribute('aria-label', 'API status: error');
+                        apiStatusContainer.setAttribute('title', 'MVG API connection: error');
+                    }
                     if (statusCircle) statusCircle.style.display = 'none'; // Hide circle, show X
                     if (successPath) successPath.style.display = 'none';
                     if (errorLine1) errorLine1.style.display = '';
@@ -1416,7 +1709,10 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                     if (liveRegion) liveRegion.textContent = 'API status: error';
                 } else {
                     apiStatusIcon.classList.add('api-unknown');
-                    if (apiStatusContainer) apiStatusContainer.setAttribute('aria-label', 'API status: unknown');
+                    if (apiStatusContainer) {
+                        apiStatusContainer.setAttribute('aria-label', 'API status: unknown');
+                        apiStatusContainer.setAttribute('title', 'MVG API connection: status unknown');
+                    }
                     if (statusCircle) statusCircle.style.display = ''; // Show circle for unknown
                     if (successPath) successPath.style.display = 'none';
                     if (errorLine1) errorLine1.style.display = 'none';
@@ -1774,6 +2070,8 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 str(int(last_update.timestamp() * 1000)) if last_update is not None else "0"
             ),
             "update_time": self._format_update_time(last_update),
+            "presence_local": state.presence_local,
+            "presence_total": state.presence_total,
         }
 
         # Use pyview's LiveTemplate system properly

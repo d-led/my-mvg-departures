@@ -32,6 +32,7 @@ class State:
         Args:
             route_path: The path for this route, used to create a unique topic.
         """
+        self.route_path = route_path
         self.departures_state = DeparturesState()
         self.connected_sockets: set[LiveViewSocket[DeparturesState]] = set()
         self.api_poller_task: asyncio.Task | None = None

@@ -67,7 +67,16 @@ class DepartureGroupingService:
         # This ensures "<1m" (0-59 seconds) sorts before "1m" (60-119 seconds), etc.
         for direction_name in direction_groups:
             direction_groups[direction_name].sort(key=lambda d: d.time)
+            # Filter out departures that are too soon FIRST, so we only count departures that will be shown
+            if stop_config.departure_leeway_minutes > 0:
+                cutoff_time = datetime.now(UTC) + timedelta(
+                    minutes=stop_config.departure_leeway_minutes
+                )
+                direction_groups[direction_name] = [
+                    d for d in direction_groups[direction_name] if d.time >= cutoff_time
+                ]
             # Limit each route within the direction group to max_departures_per_route
+            # (only counting departures that passed the leeway filter)
             max_per_route = stop_config.max_departures_per_route or 2
             route_counts: dict[str, int] = {}
             filtered_departures: list[Departure] = []
@@ -79,20 +88,20 @@ class DepartureGroupingService:
                     route_counts[route_key] = count + 1
             direction_groups[direction_name] = filtered_departures
             # Then limit each direction group to max_departures_per_stop
+            # (only counting departures that passed the leeway filter)
             max_per_direction = stop_config.max_departures_per_stop or 20
             direction_groups[direction_name] = direction_groups[direction_name][:max_per_direction]
-            # Filter out departures that are too soon (after limits are applied, so counts aren't affected)
+
+        if ungrouped:
+            ungrouped.sort(key=lambda d: d.time)
+            # Filter out departures that are too soon FIRST, so we only count departures that will be shown
             if stop_config.departure_leeway_minutes > 0:
                 cutoff_time = datetime.now(UTC) + timedelta(
                     minutes=stop_config.departure_leeway_minutes
                 )
-                direction_groups[direction_name] = [
-                    d for d in direction_groups[direction_name] if d.time >= cutoff_time
-                ]
-
-        if ungrouped:
-            ungrouped.sort(key=lambda d: d.time)
+                ungrouped = [d for d in ungrouped if d.time >= cutoff_time]
             # Limit each route within ungrouped to max_departures_per_route
+            # (only counting departures that passed the leeway filter)
             max_per_route = stop_config.max_departures_per_route or 2
             ungrouped_route_counts: dict[str, int] = {}
             filtered_ungrouped: list[Departure] = []
@@ -104,14 +113,9 @@ class DepartureGroupingService:
                     ungrouped_route_counts[route_key] = count + 1
             ungrouped = filtered_ungrouped
             # Also limit ungrouped departures
+            # (only counting departures that passed the leeway filter)
             max_per_direction = stop_config.max_departures_per_stop or 20
             ungrouped = ungrouped[:max_per_direction]
-            # Filter out departures that are too soon (after limits are applied, so counts aren't affected)
-            if stop_config.departure_leeway_minutes > 0:
-                cutoff_time = datetime.now(UTC) + timedelta(
-                    minutes=stop_config.departure_leeway_minutes
-                )
-                ungrouped = [d for d in ungrouped if d.time >= cutoff_time]
 
         # Build result list with only directions that have departures
         # Preserve the order from the config file (direction_mappings)

@@ -114,6 +114,7 @@ station_name = "Hohenzollernplatz"
 
 max_departures_per_stop = 12
 max_departures_per_route = 2
+departure_leeway_minutes = 8
 show_ungrouped = false
 
 [routes.stops.direction_mappings]
@@ -129,7 +130,7 @@ station_name = "Kurfürstenplatz"
 max_departures_per_stop = 3
 max_departures_per_route = 2
 # example included walking distance
-departure_leeway_minutes = 8
+departure_leeway_minutes = 15
 show_ungrouped = false
 
 [routes.stops.direction_mappings]

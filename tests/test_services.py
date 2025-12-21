@@ -406,6 +406,104 @@ async def test_max_departures_per_route_then_per_stop() -> None:
 
 
 @pytest.mark.asyncio
+async def test_max_departures_per_stop_counts_only_after_leeway() -> None:
+    """Given departures with leeway, when grouped, then max_departures_per_stop counts only departures that pass leeway."""
+    now = datetime.now(UTC)
+    # Create departures: 2 within leeway (5min, 6min), 3 after leeway (10min, 11min, 12min)
+    departures = [
+        Departure(
+            time=now + timedelta(minutes=5),
+            planned_time=now + timedelta(minutes=5),
+            delay_seconds=0,
+            platform=1,
+            is_realtime=True,
+            line="U2",
+            destination="Messestadt",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(minutes=6),
+            planned_time=now + timedelta(minutes=6),
+            delay_seconds=0,
+            platform=1,
+            is_realtime=True,
+            line="U2",
+            destination="Messestadt",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(minutes=10),
+            planned_time=now + timedelta(minutes=10),
+            delay_seconds=0,
+            platform=1,
+            is_realtime=True,
+            line="U2",
+            destination="Messestadt",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(minutes=11),
+            planned_time=now + timedelta(minutes=11),
+            delay_seconds=0,
+            platform=1,
+            is_realtime=True,
+            line="U2",
+            destination="Messestadt",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(minutes=12),
+            planned_time=now + timedelta(minutes=12),
+            delay_seconds=0,
+            platform=1,
+            is_realtime=True,
+            line="U2",
+            destination="Messestadt",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+    ]
+
+    stop_config = StopConfiguration(
+        station_id="de:09162:1110",
+        station_name="Giesing",
+        direction_mappings={"->East": ["Messestadt"]},
+        max_departures_per_stop=3,  # Want 3 departures
+        max_departures_per_route=10,  # High enough to not limit
+        departure_leeway_minutes=8,  # Filter out departures < 8 minutes
+        show_ungrouped=False,
+    )
+
+    repo = MockDepartureRepository(departures)
+    service = DepartureGroupingService(repo)
+
+    groups = await service.get_grouped_departures(stop_config)
+
+    assert len(groups) == 1
+    assert groups[0][0] == "->East"
+    # Should have 3 departures (10min, 11min, 12min) - the ones that pass leeway
+    # NOT 0 (which would happen if we counted the 2 within leeway first, then filtered them out)
+    assert len(groups[0][1]) == 3
+    assert groups[0][1][0].time == now + timedelta(minutes=10)
+    assert groups[0][1][1].time == now + timedelta(minutes=11)
+    assert groups[0][1][2].time == now + timedelta(minutes=12)
+
+
+@pytest.mark.asyncio
 async def test_pattern_matching_route_and_destination() -> None:
     """Given a pattern like 'U2 Messestadt', when matching, then it matches only that route to that destination."""
     now = datetime.now(UTC)
