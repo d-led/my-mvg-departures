@@ -79,9 +79,7 @@ async def main() -> None:
         grouping_service = DepartureGroupingService(departure_repo)
 
         # Initialize display adapter
-        display_adapter = PyViewWebAdapter(
-            grouping_service, route_configs, config, session=session
-        )
+        display_adapter = PyViewWebAdapter(grouping_service, route_configs, config, session=session)
 
         try:
             await display_adapter.start()

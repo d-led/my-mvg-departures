@@ -61,9 +61,7 @@ class RouteConfigurationLoader:
 
             stop_configs: list[StopConfiguration] = []
             for stop_data in stops_data:
-                stop_config = RouteConfigurationLoader.load_stop_config_from_data(
-                    stop_data, config
-                )
+                stop_config = RouteConfigurationLoader.load_stop_config_from_data(stop_data, config)
                 if stop_config:
                     stop_configs.append(stop_config)
 
@@ -72,4 +70,3 @@ class RouteConfigurationLoader:
                 route_configs.append(route_config)
 
         return route_configs
-

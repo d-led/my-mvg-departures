@@ -1015,7 +1015,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 // Store current width to prevent layout shift when longer text is inserted
                 const currentWidth = el.offsetWidth;
                 el.style.width = currentWidth + 'px';
-                
+
                 // Fade out smoothly
                 el.style.opacity = '0';
 
@@ -1032,17 +1032,17 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                         // Switch to relative
                         el.innerHTML = relative + delayHTML;
                     }
-                    
+
                     // Remove fixed width to allow new content to size naturally
                     el.style.width = '';
-                    
+
                     // Fade in smoothly
                     el.style.opacity = '1';
                 }, 150);
             });
 
             currentTimeFormat = currentTimeFormat === 'relative' ? 'absolute' : 'relative';
-            
+
             // Recalculate destination clipping after layout settles (time format change may affect container widths)
             setTimeout(() => {
                 initDestinationScrolling();
@@ -1617,12 +1617,12 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 const containerWidth = container.clientWidth;
                 const wasClipped = textEl.classList.contains('clipped');
                 const isClipped = textWidth > containerWidth;
-                
+
                 if (isClipped) {
                     // Text is clipped - add clipped class and calculate exact scroll distance
                     const scrollDistance = containerWidth - textWidth;
                     const currentScrollDistance = textEl.style.getPropertyValue('--scroll-distance');
-                    
+
                     // Only update if clipping state changed or scroll distance changed significantly
                     // This prevents restarting animation unnecessarily when time format changes
                     if (!wasClipped || Math.abs(parseFloat(currentScrollDistance) - scrollDistance) > 1) {
@@ -1950,8 +1950,7 @@ class PyViewWebAdapter(DisplayAdapter):
         self._server: Any | None = None
         # Create a state manager for each route
         self.route_states: dict[str, State] = {
-            route_config.path: State(route_path=route_config.path)
-            for route_config in route_configs
+            route_config.path: State(route_path=route_config.path) for route_config in route_configs
         }
 
     async def display_departures(self, direction_groups: list[tuple[str, list[Departure]]]) -> None:
@@ -1995,8 +1994,8 @@ class PyViewWebAdapter(DisplayAdapter):
             logger.info(
                 f"Registering route at path '{route_path}' with {len(route_stop_configs)} stops"
             )
-            LiveViewClass = make_live_view_class(route_state, route_stop_configs)
-            app.add_live_view(route_path, LiveViewClass)
+            live_view_class = make_live_view_class(route_state, route_stop_configs)
+            app.add_live_view(route_path, live_view_class)
             logger.info(f"Successfully registered route at path '{route_path}'")
 
         # Serve pyview's client JavaScript and static assets

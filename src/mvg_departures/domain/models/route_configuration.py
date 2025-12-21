@@ -11,4 +11,3 @@ class RouteConfiguration:
 
     path: str
     stop_configs: list[StopConfiguration]
-
