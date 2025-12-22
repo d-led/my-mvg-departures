@@ -135,26 +135,17 @@ class ApiPoller(ApiPollerProtocol):
                     # Use shared cache - get raw departures and process them
                     raw_departures = self.shared_cache.get(stop_config.station_id, [])
                     if not raw_departures:
-                        logger.warning(
-                            f"No cached departures for {stop_config.station_name} "
-                            f"(station_id: {stop_config.station_id})"
+                        # Cache is empty - try to fetch fresh data directly from API
+                        # This handles cases where cache hasn't been populated yet or fetcher failed
+                        logger.info(
+                            f"Cache empty for {stop_config.station_name} "
+                            f"(station_id: {stop_config.station_id}), fetching fresh from API"
                         )
-                        has_errors = True
-                        # Use cached processed groups if available
-                        if stop_config.station_name in self.cached_departures:
-                            cached_groups = self.cached_departures[stop_config.station_name]
-                            for direction_name, cached_departures in cached_groups:
-                                all_groups.append(
-                                    (
-                                        stop_config.station_name,
-                                        direction_name,
-                                        cached_departures,
-                                    )
-                                )
-                        continue
-
-                    # Process cached raw departures using this route's stop configuration
-                    groups = self.grouping_service.group_departures(raw_departures, stop_config)
+                        # Fetch directly from API to get fresh data
+                        groups = await self.grouping_service.get_grouped_departures(stop_config)
+                    else:
+                        # Process cached raw departures using this route's stop configuration
+                        groups = self.grouping_service.group_departures(raw_departures, stop_config)
                 else:
                     # Fetch from API (fallback if no shared cache)
                     groups = await self.grouping_service.get_grouped_departures(stop_config)
