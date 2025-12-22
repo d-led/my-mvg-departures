@@ -66,24 +66,29 @@ class RouteConfigurationLoader:
                     stop_configs.append(stop_config)
 
             if stop_configs:
-                # Get optional route-specific title from routes.display.title
+                # Get optional route-specific title and fill_vertical_space from routes.display
                 route_title = None
+                fill_vertical_space = False
                 display_data = route_data.get("display")
                 if display_data:
                     # Handle both dict (single display) and list (array of displays)
                     if isinstance(display_data, dict):
                         route_title = display_data.get("title")
+                        fill_vertical_space = display_data.get("fill_vertical_space", False)
                     elif isinstance(display_data, list) and len(display_data) > 0:
-                        # Get title from first display entry
+                        # Get title and fill_vertical_space from first display entry
                         first_display = display_data[0]
                         if isinstance(first_display, dict):
                             route_title = first_display.get("title")
+                            fill_vertical_space = first_display.get("fill_vertical_space", False)
 
                 # Validate title is a string, default to None if not found
                 route_title = route_title if route_title and isinstance(route_title, str) else None
+                # Validate fill_vertical_space is a boolean (defaults to False if not specified)
+                fill_vertical_space = bool(fill_vertical_space) if fill_vertical_space is not None else False
 
                 route_config = RouteConfiguration(
-                    path=path, stop_configs=stop_configs, title=route_title
+                    path=path, stop_configs=stop_configs, title=route_title, fill_vertical_space=fill_vertical_space
                 )
                 route_configs.append(route_config)
 

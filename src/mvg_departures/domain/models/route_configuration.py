@@ -12,3 +12,4 @@ class RouteConfiguration:
     path: str
     stop_configs: list[StopConfiguration]
     title: str | None = None  # Optional route-specific title
+    fill_vertical_space: bool = False  # Enable dynamic font sizing to fill viewport

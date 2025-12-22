@@ -532,6 +532,13 @@
             initDestinationScrolling();
         });
 
+        // Recalculate font sizes if fill_vertical_space is enabled
+        if (window.DEPARTURES_CONFIG && window.DEPARTURES_CONFIG.fillVerticalSpace) {
+            requestAnimationFrame(() => {
+                calculateFillVerticalSpace();
+            });
+        }
+
         // Check if we got a new data update by comparing server's last_update timestamp
         setTimeout(() => {
             // Re-query the countdown circle in case it was replaced by DOM diff
@@ -915,6 +922,133 @@
         });
     }
 
+    // Calculate dynamic font sizes to fill vertical space
+    function calculateFillVerticalSpace() {
+        if (!window.DEPARTURES_CONFIG || !window.DEPARTURES_CONFIG.fillVerticalSpace) {
+            return;
+        }
+
+        const departuresEl = document.getElementById('departures');
+        if (!departuresEl) return;
+
+        // Get all direction groups
+        const directionGroups = departuresEl.querySelectorAll('.direction-group');
+        if (directionGroups.length === 0) return;
+
+        // Count total rows: each direction group has 1 header + its departure rows
+        let totalRows = 0;
+        directionGroups.forEach(group => {
+            const header = group.querySelector('.direction-header');
+            const departureRows = group.querySelectorAll('.departure-row');
+            if (header) totalRows += 1; // Header counts as 1 row
+            totalRows += departureRows.length;
+        });
+
+        if (totalRows === 0) return;
+
+        // Calculate available viewport height
+        // Account for status bar at bottom (approximately 60px including padding)
+        const statusBarHeight = 60;
+        const viewportHeight = window.innerHeight;
+        const availableHeight = viewportHeight - statusBarHeight;
+
+        // Calculate height per row (distribute evenly)
+        const heightPerRow = availableHeight / totalRows;
+
+        // Calculate base font size from height per row
+        // Use almost all available height, reserving only minimal padding
+        // We'll use a slightly higher line-height to better fill the vertical space
+        const reservedPadding = 4; // Minimal padding per row in pixels (reduced to eliminate bottom whitespace)
+        const usableHeight = heightPerRow - reservedPadding;
+        // Use a slightly higher line height (1.25 instead of 1.2) to better distribute vertical space
+        const lineHeight = 1.25;
+        const baseFontSize = usableHeight / lineHeight;
+
+        // Calculate proportional font sizes for different elements
+        // These ratios are based on the default font sizes in the config:
+        // route_number: 4rem, destination: 3.5rem, time: 4rem, platform: 2.5rem
+        // direction_header: same as destination (3.5rem), stop_header: 3rem
+        // So relative to a base of ~3.5rem (destination):
+        const fontSizes = {
+            routeNumber: baseFontSize * (4.0 / 3.5),      // 4rem relative to 3.5rem base
+            destination: baseFontSize,                       // 3.5rem is our base
+            time: baseFontSize * (4.0 / 3.5),              // 4rem relative to 3.5rem base
+            platform: baseFontSize * (2.5 / 3.5),         // 2.5rem relative to 3.5rem base
+            directionHeader: baseFontSize,                  // Same size as destination
+            stopHeader: baseFontSize * (3.0 / 3.5),       // 3rem relative to 3.5rem base
+            noDepartures: baseFontSize * (2.5 / 3.5),     // 2.5rem relative to 3.5rem base
+            paginationIndicator: baseFontSize * (2.0 / 3.5),
+            countdownText: baseFontSize * (1.8 / 3.5),
+            delayAmount: baseFontSize * (2.0 / 3.5),
+            statusHeader: baseFontSize * (1.875 / 3.5),
+        };
+
+        // Apply minimum font size to ensure legibility (at least 12px)
+        const minFontSize = 12;
+        Object.keys(fontSizes).forEach(key => {
+            if (fontSizes[key] < minFontSize) {
+                fontSizes[key] = minFontSize;
+            }
+        });
+
+        // Update CSS custom properties (use px units for precise control)
+        const root = document.documentElement;
+        root.style.setProperty('--font-size-route-number', fontSizes.routeNumber + 'px');
+        root.style.setProperty('--font-size-destination', fontSizes.destination + 'px');
+        root.style.setProperty('--font-size-platform', fontSizes.platform + 'px');
+        root.style.setProperty('--font-size-time', fontSizes.time + 'px');
+        root.style.setProperty('--font-size-direction-header', fontSizes.directionHeader + 'px');
+        root.style.setProperty('--font-size-stop-header', fontSizes.stopHeader + 'px');
+        root.style.setProperty('--font-size-no-departures', fontSizes.noDepartures + 'px');
+        root.style.setProperty('--font-size-pagination-indicator', fontSizes.paginationIndicator + 'px');
+        root.style.setProperty('--font-size-countdown-text', fontSizes.countdownText + 'px');
+        root.style.setProperty('--font-size-delay-amount', fontSizes.delayAmount + 'px');
+        root.style.setProperty('--font-size-status-header', fontSizes.statusHeader + 'px');
+        
+        // Set line-height to match our calculation for better vertical space distribution
+        root.style.setProperty('--line-height', lineHeight.toString());
+
+        // Remove spurious margins from direction headers and set exact heights
+        directionGroups.forEach(group => {
+            const header = group.querySelector('.direction-header');
+            if (header) {
+                // Remove top margin (0.5rem) that creates spurious space before headers
+                header.style.marginTop = '0';
+                header.style.marginBottom = '0';
+                // Keep minimal padding for readability
+                header.style.padding = '0 0.75rem 0.25rem 0.75rem';
+                // Set exact height to match calculated row height
+                header.style.height = heightPerRow + 'px';
+                header.style.minHeight = heightPerRow + 'px';
+                header.style.maxHeight = heightPerRow + 'px';
+                // Ensure flex alignment centers content vertically
+                header.style.display = 'flex';
+                header.style.alignItems = 'center';
+                // Apply line-height to match our calculation
+                header.style.lineHeight = lineHeight.toString();
+            }
+        });
+
+        // Set exact heights on departure rows to eliminate extra spacing
+        const departureRows = departuresEl.querySelectorAll('.departure-row');
+        departureRows.forEach(row => {
+            // Set exact height (not just min-height) to ensure tight fit
+            row.style.height = heightPerRow + 'px';
+            row.style.minHeight = heightPerRow + 'px';
+            row.style.maxHeight = heightPerRow + 'px';
+            // Keep minimal padding for readability (reduced from default)
+            row.style.padding = '0.25rem 0 0.25rem 0.75rem';
+            // Apply line-height to match our calculation for better vertical distribution
+            row.style.lineHeight = lineHeight.toString();
+        });
+
+        // Remove any top margins from direction groups to eliminate spurious space
+        directionGroups.forEach(group => {
+            group.style.marginTop = '0';
+            group.style.marginBottom = '0';
+        });
+    }
+
     // Initialize on load
     function initializeAll() {
         // Update datetime immediately when DOM is ready
@@ -929,6 +1063,13 @@
         initTimeFormatToggle();
         // Initialize destination scrolling for clipped text
         initDestinationScrolling();
+        // Calculate dynamic font sizes if fill_vertical_space is enabled
+        if (window.DEPARTURES_CONFIG && window.DEPARTURES_CONFIG.fillVerticalSpace) {
+            // Use requestAnimationFrame to ensure DOM is fully rendered
+            requestAnimationFrame(() => {
+                calculateFillVerticalSpace();
+            });
+        }
     }
 
     if (document.readyState === 'loading') {
@@ -936,6 +1077,18 @@
     } else {
         initializeAll();
     }
+
+    // Handle window resize for fill_vertical_space
+    let resizeTimeout;
+    window.addEventListener('resize', () => {
+        if (window.DEPARTURES_CONFIG && window.DEPARTURES_CONFIG.fillVerticalSpace) {
+            // Debounce resize events
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                calculateFillVerticalSpace();
+            }, 150);
+        }
+    });
 
     // Cleanup intervals on page unload/disconnect
     window.addEventListener('beforeunload', () => {

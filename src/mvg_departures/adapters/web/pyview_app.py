@@ -132,6 +132,7 @@ class PyViewWebAdapter(DisplayAdapter):
             route_state = self.route_states[route_path]
             route_stop_configs = route_config.stop_configs
             route_title = route_config.title
+            fill_vertical_space = route_config.fill_vertical_space
 
             # Generate route-specific favicon if route has custom title
             if route_title:
@@ -158,6 +159,7 @@ class PyViewWebAdapter(DisplayAdapter):
             logger.info(
                 f"Registering route at path '{route_path}' with {len(route_stop_configs)} stops"
                 + (f" and title '{route_title}'" if route_title else "")
+                + (f" (fill_vertical_space={fill_vertical_space})" if fill_vertical_space else "")
             )
             live_view_class = create_departures_live_view(
                 route_state,
@@ -166,6 +168,7 @@ class PyViewWebAdapter(DisplayAdapter):
                 self.config,
                 presence_tracker,
                 route_title,
+                fill_vertical_space,
             )
             app.add_live_view(route_path, live_view_class)
             logger.info(f"Successfully registered route at path '{route_path}'")

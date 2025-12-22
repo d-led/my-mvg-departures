@@ -50,7 +50,8 @@
         refreshIntervalSeconds: parseInt('{{ refresh_interval_seconds }}') || 20,
         timeFormatToggleSeconds: parseInt('{{ time_format_toggle_seconds }}') || 0,
         apiStatus: ('{{ api_status }}' && '{{ api_status }}' !== 'undefined' && '{{ api_status }}' !== '') ? '{{ api_status }}' : 'unknown',
-        lastUpdateTimestamp: parseInt('{{ last_update_timestamp }}') || 0
+        lastUpdateTimestamp: parseInt('{{ last_update_timestamp }}') || 0,
+        fillVerticalSpace: '{{ fill_vertical_space }}' === 'true'
     };
     
     // Update page title from template data (overrides rootTemplate title)

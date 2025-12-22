@@ -118,6 +118,7 @@ path = "/hohenzollernplatz"
 [[routes.display]]
 
 title = "Hohenzollernplatz Departures"
+fill_vertical_space = true
 
 [[routes.stops]]
 station_id = "de:09162:140"
