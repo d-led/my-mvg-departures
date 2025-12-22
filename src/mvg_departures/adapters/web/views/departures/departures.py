@@ -195,59 +195,6 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
         return assigns
 
-    def _validate_template_assigns(self, assigns: dict[str, Any]) -> dict[str, Any]:
-        """Validate and sanitize template assigns to ensure no None values.
-
-        Args:
-            assigns: Template assigns dictionary.
-
-        Returns:
-            Validated assigns dictionary with safe defaults for None values.
-        """
-        # Create a copy to avoid mutating the original
-        validated: dict[str, Any] = {}
-
-        for key, value in assigns.items():
-            if value is None:
-                # Provide safe defaults based on expected type
-                if key in ("groups_with_departures", "stops_without_departures"):
-                    validated[key] = []
-                elif key in ("presence_local", "presence_total"):
-                    validated[key] = 0
-                elif key == "has_departures":
-                    validated[key] = False
-                elif key == "api_status":
-                    validated[key] = "unknown"
-                elif key == "update_time":
-                    validated[key] = "Never"
-                elif key == "last_update_timestamp":
-                    validated[key] = "0"
-                elif key == "theme":
-                    validated[key] = "auto"
-                elif "font_size" in key:
-                    validated[key] = "1rem"
-                elif key == "banner_color":
-                    validated[key] = "#000000"
-                elif key in ("pagination_enabled",):
-                    validated[key] = "false"
-                elif key in (
-                    "departures_per_page",
-                    "page_rotation_seconds",
-                    "refresh_interval_seconds",
-                    "time_format_toggle_seconds",
-                ):
-                    validated[key] = "0"
-                else:
-                    # Default fallback for unknown keys
-                    validated[key] = ""
-                    logger.warning(
-                        f"Template assign '{key}' was None, using empty string as fallback"
-                    )
-            else:
-                validated[key] = value
-
-        return validated
-
     async def mount(self, socket: LiveViewSocket[DeparturesState], _session: dict) -> None:
         """Mount the LiveView and register socket for updates."""
         # Initialize context with current shared state
@@ -449,9 +396,6 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 direction_groups
             )
             template_assigns = self._build_template_assigns(state, template_data)
-
-            # Validate all template assigns are not None - replace None with safe defaults
-            template_assigns = self._validate_template_assigns(template_assigns)
 
             # Use pyview's LiveTemplate system with FileReloader
             # Set up template loader if not already configured

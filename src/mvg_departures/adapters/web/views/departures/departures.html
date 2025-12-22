@@ -4,8 +4,8 @@
 <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css" />
 <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 <script>
-    // Apply theme based on configuration with client-side resilience
-    const themeConfig = (typeof '{{ theme }}' !== 'undefined' && '{{ theme }}' !== 'undefined' && '{{ theme }}' !== '') ? '{{ theme }}' : 'auto';
+    // Apply theme based on configuration
+    const themeConfig = ('{{ theme }}' && '{{ theme }}' !== 'undefined' && '{{ theme }}' !== '') ? '{{ theme }}' : 'auto';
     if (themeConfig === 'light') {
         document.documentElement.setAttribute('data-theme', 'light');
         localStorage.theme = 'light';
@@ -848,12 +848,12 @@
             <span class="sr-only">View repository on GitHub</span>
         </a>
         <!-- Presence count display (rightmost) -->
-        <div class="status-floating-box-item status-floating-box-presence" id="presence-count" role="status" aria-label="Users online: {{ presence_local|default(0) }} on this dashboard, {{ presence_total|default(0) }} total across all dashboards" title="{{ presence_local|default(0) }} users on this dashboard, {{ presence_total|default(0) }} users total across all dashboards">
+        <div class="status-floating-box-item status-floating-box-presence" id="presence-count" role="status" aria-label="Users online: {{ presence_local }} on this dashboard, {{ presence_total }} total across all dashboards" title="{{ presence_local }} users on this dashboard, {{ presence_total }} users total across all dashboards">
             <svg class="presence-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
             </svg>
-            <span class="presence-count-text" aria-hidden="true">{{ presence_local|default(0) }}/{{ presence_total|default(0) }}</span>
-            <span class="sr-only">{{ presence_local|default(0) }} users on this dashboard, {{ presence_total|default(0) }} users total across all dashboards</span>
+            <span class="presence-count-text" aria-hidden="true">{{ presence_local }}/{{ presence_total }}</span>
+            <span class="sr-only">{{ presence_local }} users on this dashboard, {{ presence_total }} users total across all dashboards</span>
         </div>
     </div>
 </div>
@@ -907,13 +907,12 @@
         }, false);
     })();
 
-    // Pagination configuration with client-side resilience
-    // If server sends undefined, use safe defaults to prevent crashes
-    const PAGINATION_ENABLED = (typeof '{{ pagination_enabled }}' !== 'undefined' && '{{ pagination_enabled }}' === 'true') || false;
-    const DEPARTURES_PER_PAGE = (!isNaN(parseInt('{{ departures_per_page }}'))) ? parseInt('{{ departures_per_page }}') : 5;
-    const PAGE_ROTATION_SECONDS = (!isNaN(parseInt('{{ page_rotation_seconds }}'))) ? parseInt('{{ page_rotation_seconds }}') : 10;
-    const REFRESH_INTERVAL_SECONDS = (!isNaN(parseInt('{{ refresh_interval_seconds }}'))) ? parseInt('{{ refresh_interval_seconds }}') : 20;
-    const TIME_FORMAT_TOGGLE_SECONDS = (!isNaN(parseInt('{{ time_format_toggle_seconds }}'))) ? parseInt('{{ time_format_toggle_seconds }}') : 0;
+    // Pagination configuration
+    const PAGINATION_ENABLED = '{{ pagination_enabled }}' === 'true';
+    const DEPARTURES_PER_PAGE = parseInt('{{ departures_per_page }}') || 5;
+    const PAGE_ROTATION_SECONDS = parseInt('{{ page_rotation_seconds }}') || 10;
+    const REFRESH_INTERVAL_SECONDS = parseInt('{{ refresh_interval_seconds }}') || 20;
+    const TIME_FORMAT_TOGGLE_SECONDS = parseInt('{{ time_format_toggle_seconds }}') || 0;
     const INITIAL_API_STATUS = ('{{ api_status }}' && '{{ api_status }}' !== 'undefined' && '{{ api_status }}' !== '') ? '{{ api_status }}' : 'unknown';
 
     // Date/time display
@@ -1048,6 +1047,7 @@
     let updateTimeout = null; // Timeout to detect when updates stop arriving
     let failedUpdateCount = 0; // Track consecutive failed updates
     let lastSuccessfulUpdate = Date.now(); // Track last successful update
+    // No reconnectTimeout - PyView handles reconnection, we just listen to events
 
     function updateConnectionStatus() {
         const connectionEl = document.getElementById('connection-status');
@@ -1136,7 +1136,6 @@
 
     // Refresh countdown circle - synchronized with server updates
     let countdownInitialized = false;
-    let reconnectTimeout = null;
     let countdownCircle = null;
     let circumference = 0;
     let lastServerUpdateTime = null; // Track server's last_update to detect real data updates
@@ -1236,9 +1235,10 @@
 
     // Set up event listeners once (outside initRefreshCountdown)
     window.addEventListener('phx:error', (event) => {
-        // console.error('phx:error received:', event);
-        // Increment failed update count
-        failedUpdateCount++;
+        try {
+            console.error('phx:error received:', event);
+            // Increment failed update count
+            failedUpdateCount++;
         
         // If we've had multiple errors, mark as unstable
         // If errors persist, mark as broken
@@ -1248,11 +1248,7 @@
             connectionState = 'unstable';
         }
         
-        // Clear reconnection timeout on error
-        if (reconnectTimeout) {
-            clearTimeout(reconnectTimeout);
-            reconnectTimeout = null;
-        }
+        // PyView handles reconnection automatically - no custom timeout needed
         // Use requestAnimationFrame to ensure DOM is ready
         requestAnimationFrame(() => {
             updateConnectionStatus();
@@ -1267,12 +1263,17 @@
             countdownInterval = null;
             countdownRunning = false;
         }
+        } catch (e) {
+            console.error('Error in phx:error handler:', e);
+            throw e; // Re-throw to maintain observability
+        }
     });
 
     window.addEventListener('phx:update', (event) => {
-        // console.log('phx:update received', event);
-        // Data was successfully fetched - connection is working
-        const now = Date.now();
+        try {
+            // console.log('phx:update received', event);
+            // Data was successfully fetched - connection is working
+            const now = Date.now();
         const timeSinceLastUpdate = now - lastUpdateTime;
         
         // Check if this is a delayed or botched update
@@ -1291,11 +1292,7 @@
         lastUpdateTime = now;
         lastSuccessfulUpdate = now;
 
-        // Clear reconnection timeout since we're now connected
-        if (reconnectTimeout) {
-            clearTimeout(reconnectTimeout);
-            reconnectTimeout = null;
-        }
+        // PyView handles reconnection - no custom timeout to clear
 
         // Clear update timeout and set a new one to detect if updates stop
         if (updateTimeout) {
@@ -1345,15 +1342,13 @@
             requestAnimationFrame(() => {
                 // Additional small delay to ensure pyview's DOM patch is complete
                 setTimeout(() => {
-                    // Restore connection state from data attribute if element was replaced
-                    restoreConnectionState();
+                    // Don't restore connection state on phx:update - it might restore stale "connected" state
+                    // The connection state is managed by phx:disconnect, phx:connecting, phx:open, phx:close events
+                    // Only update UI if connectionState was set by those events
                     // Re-query elements in case they were replaced and update status
                     updateConnectionStatus();
-                    // Get API status from event detail if available, default to success
-                    const apiStatus = event.detail?.api_status || 'success';
-                    updateApiStatus(apiStatus);
-                    // Show presence count when connected and receiving updates
-                    showPresenceCount();
+                    // Do NOT read from event.detail - PyView manages assigns through DOM
+                    // API status and presence are rendered by PyView from server assigns
                 }, 10); // Small delay to ensure DOM patch is complete
             });
         });
@@ -1416,45 +1411,13 @@
                 }
             }
         }, 50); // Small delay to ensure DOM patch is complete
+        } catch (e) {
+            console.error('Error in phx:update handler:', e, event);
+            throw e; // Re-throw to maintain observability
+        }
     });
 
-    function updatePresenceCount() {
-        const presenceEl = document.getElementById('presence-count');
-        if (!presenceEl) return;
-
-        // Try to get presence counts from the page (they should be in the DOM)
-        // The presence counts are rendered in the template, so we just need to update the display
-        // The actual values will be updated by pyview when the context changes
-        const presenceText = presenceEl.querySelector('.presence-count-text');
-        const srText = presenceEl.querySelector('.sr-only');
-        if (presenceText && srText) {
-            // Values are already in the DOM from template rendering
-            // Just ensure they're visible
-            const text = presenceText.textContent;
-            if (text) {
-                const [local, total] = text.split('/');
-                const ariaLabel = `${local} users on this dashboard, ${total} users total across all dashboards`;
-                const titleText = `${local} users on this dashboard, ${total} users total across all dashboards`;
-                presenceEl.setAttribute('aria-label', ariaLabel);
-                presenceEl.setAttribute('title', titleText);
-                srText.textContent = ariaLabel;
-            }
-        }
-    }
-
-    function hidePresenceCount() {
-        const presenceEl = document.getElementById('presence-count');
-        if (presenceEl) {
-            presenceEl.style.display = 'none';
-        }
-    }
-
-    function showPresenceCount() {
-        const presenceEl = document.getElementById('presence-count');
-        if (presenceEl) {
-            presenceEl.style.display = '';
-        }
-    }
+    // Presence count is managed entirely by PyView - do not modify DOM
 
     function updateApiStatus(status) {
             const apiSuccessIcon = document.getElementById('api-success-icon');
@@ -1498,51 +1461,46 @@
             }
         }
 
-        // Handle reconnection timeout - if we've been connecting for too long, show broken
-        function startReconnectTimeout() {
-            // Clear any existing timeout
-            if (reconnectTimeout) {
-                clearTimeout(reconnectTimeout);
-            }
-            // If we're connecting for more than 10 seconds, show as broken
-            reconnectTimeout = setTimeout(() => {
-                if (connectionState === 'connecting') {
-                    // console.warn('Reconnection timeout - showing broken state');
-                    connectionState = 'broken';
-                    updateConnectionStatus();
-                }
-            }, 10000); // 10 second timeout
-        }
+        // No custom reconnection logic - PyView handles reconnection automatically
+        // We just listen to the events: phx:disconnect -> phx:connecting -> phx:open
 
     window.addEventListener('phx:disconnect', () => {
-        // console.log('phx:disconnect received - connection disconnected');
-        // On disconnect, show broken state (red)
-        connectionState = 'broken';
-        // Clear update timeout since we're explicitly disconnected
+        try {
+            console.log('phx:disconnect received - connection disconnected, PyView will attempt to reconnect');
+            // On disconnect, set to connecting - PyView will automatically try to reconnect
+            // This is NOT a permanent disconnect, just a temporary loss of connection
+            connectionState = 'connecting';
+            // Update UI immediately - don't wait for requestAnimationFrame
+            updateConnectionStatus();
+            
+        // Clear update timeout since we're disconnected
         if (updateTimeout) {
             clearTimeout(updateTimeout);
             updateTimeout = null;
         }
-        // Use requestAnimationFrame to ensure DOM is ready
+        // Also update in next frame to ensure it sticks
         requestAnimationFrame(() => {
             updateConnectionStatus();
-            hidePresenceCount();
-            // console.log('Connection status updated to broken (red), presence hidden');
+            hidePresenceCount(); // Hide presence while disconnected/reconnecting
         });
-        // Start timeout for reconnection
-        startReconnectTimeout();
-        // Stop countdown on disconnect - will restart when reconnected
+        // Stop countdown on disconnect - will restart when reconnected via phx:open
         if (countdownInterval) {
             clearInterval(countdownInterval);
             countdownInterval = null;
             countdownRunning = false;
         }
+        } catch (e) {
+            console.error('Error in phx:disconnect handler:', e);
+            throw e;
+        }
     });
 
-    // Handle permanent connection close
+    // Handle permanent connection close (no reconnection will be attempted)
     window.addEventListener('phx:close', () => {
-        // console.log('phx:close received - connection permanently closed');
-        connectionState = 'broken';
+        try {
+            // console.log('phx:close received - connection permanently closed, no reconnection');
+            // This is a permanent close - PyView will NOT attempt to reconnect
+            connectionState = 'broken';
         // Clear update timeout since connection is closed
         if (updateTimeout) {
             clearTimeout(updateTimeout);
@@ -1560,37 +1518,52 @@
             countdownInterval = null;
             countdownRunning = false;
         }
+        } catch (e) {
+            console.error('Error in phx:close handler:', e);
+            throw e;
+        }
     });
 
     // Detect connecting state (when WebSocket is connecting/reconnecting)
     window.addEventListener('phx:connecting', () => {
-        // console.log('phx:connecting received - attempting to reconnect');
-        connectionState = 'connecting';
+        try {
+            // console.log('phx:connecting received - attempting to reconnect');
+            connectionState = 'connecting';
         // Use requestAnimationFrame to ensure DOM is ready
         requestAnimationFrame(() => {
             updateConnectionStatus();
             hidePresenceCount(); // Hide presence while connecting
             // console.log('Connection status updated to connecting (yellow, pulsating), presence hidden');
         });
-        // Start/restart timeout for reconnection
-        startReconnectTimeout();
+        // PyView handles reconnection automatically - just update UI to show connecting state
+        } catch (e) {
+            console.error('Error in phx:connecting handler:', e);
+            throw e;
+        }
     });
 
-    // Detect when WebSocket opens (connected)
+    // Detect when WebSocket opens (connected or reconnected)
     window.addEventListener('phx:open', () => {
-        // console.log('phx:open received - WebSocket connected');
-        connectionState = 'connected';
-        // Clear reconnection timeout since we're now connected
-        if (reconnectTimeout) {
-            clearTimeout(reconnectTimeout);
-            reconnectTimeout = null;
-        }
+        try {
+            // console.log('phx:open received - WebSocket connected/reconnected');
+            connectionState = 'connected';
+            // Reset failed update count on successful connection
+            failedUpdateCount = 0;
+        // PyView handles reconnection - no custom timeout to clear
         // Use requestAnimationFrame to ensure DOM is ready after pyview updates
         requestAnimationFrame(() => {
             updateConnectionStatus();
             // Presence will be shown when phx:update is received with actual data
             // console.log('Connection status updated to connected (green)');
         });
+        // Restart countdown when connection opens/reopens
+        if (countdownInitialized && startCountdown) {
+            startCountdown();
+        }
+        } catch (e) {
+            console.error('Error in phx:open handler:', e);
+            throw e;
+        }
     });
 
     // Initial state: connecting (will change to connected on first phx:update or phx:open)
@@ -1606,9 +1579,7 @@
         if (countdownInterval) {
             clearInterval(countdownInterval);
         }
-        if (reconnectTimeout) {
-            clearTimeout(reconnectTimeout);
-        }
+        // No reconnectTimeout - PyView handles reconnection
         if (updateTimeout) {
             clearTimeout(updateTimeout);
         }
