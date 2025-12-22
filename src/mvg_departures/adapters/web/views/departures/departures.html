@@ -943,15 +943,28 @@
             if (headers.length === 0) return null;
             
             const containerRect = departuresEl.getBoundingClientRect();
+            const viewportTop = containerRect.top;
+            
+            // Find the header closest to the top of the viewport
+            let topmostHeader = null;
+            let topmostDistance = Infinity;
             
             for (const header of headers) {
                 const rect = header.getBoundingClientRect();
                 // Check if header is visible in viewport
-                if (rect.bottom > containerRect.top && rect.top < containerRect.bottom) {
-                    return header;
+                if (rect.bottom > viewportTop && rect.top < containerRect.bottom) {
+                    // Calculate distance from viewport top
+                    // Negative means header top is above viewport top (sticking out)
+                    const distance = rect.top - viewportTop;
+                    // We want the header closest to the top (smallest distance, can be negative)
+                    if (distance < topmostDistance) {
+                        topmostDistance = distance;
+                        topmostHeader = header;
+                    }
                 }
             }
-            return headers[0] || null; // Fallback to first header
+            
+            return topmostHeader || headers[0] || null;
         }
 
         moveDateTimeToVisibleHeader = function() {
@@ -968,10 +981,7 @@
             }
             if (!targetContainer) return;
             
-            // If targetContainer IS the datetime element itself, we're already in the right place
-            if (targetContainer === datetimeEl) return;
-            
-            // If datetime element is already a child of targetContainer, we're done
+            // Simple check: if already in the target container, skip (no-op to prevent blinking)
             if (datetimeEl.parentElement === targetContainer) {
                 targetContainer.classList.remove('datetime-placeholder');
                 targetContainer.style.display = '';
@@ -1068,6 +1078,12 @@
                     }, 150);
                 }
             });
+            // Update datetime position even when toggle is disabled
+            setTimeout(() => {
+                if (MOVE_DATETIME_TO_VISIBLE_HEADER && moveDateTimeToVisibleHeader) {
+                    moveDateTimeToVisibleHeader();
+                }
+            }, 200);
             return;
         }
 
@@ -1113,6 +1129,13 @@
         setTimeout(() => {
             initDestinationScrolling();
         }, 200);
+        
+        // Update datetime position to topmost visible header (separate timeout to ensure it runs)
+        setTimeout(() => {
+            if (MOVE_DATETIME_TO_VISIBLE_HEADER && moveDateTimeToVisibleHeader) {
+                moveDateTimeToVisibleHeader();
+            }
+        }, 250);
     }
 
     function initTimeFormatToggle() {
@@ -1556,24 +1579,17 @@
             const serverUpdateTime = countdownEl.getAttribute('data-last-update');
             const newServerUpdateTime = serverUpdateTime ? parseInt(serverUpdateTime, 10) : null;
 
-            // Only restart countdown if the server's last_update timestamp actually changed
-            // This ensures we only restart on real data updates, not just DOM refreshes
-            if (newServerUpdateTime && newServerUpdateTime !== lastServerUpdateTime) {
-                lastServerUpdateTime = newServerUpdateTime;
-
-                if (countdownInitialized && startCountdown) {
-                    // console.log('Restarting countdown - new data update received');
-                    startCountdown();
-                } else {
-                    // Initialize if not already done
-                    initRefreshCountdown();
-                }
-            } else if (!countdownInitialized) {
-                // Initialize on first load even if timestamp hasn't changed
+            // Always restart countdown on phx:update to keep it in sync
+            if (countdownInitialized && startCountdown) {
+                startCountdown();
+            } else {
+                // Initialize if not already done
                 initRefreshCountdown();
-                if (newServerUpdateTime) {
-                    lastServerUpdateTime = newServerUpdateTime;
-                }
+            }
+            
+            // Update the tracked timestamp
+            if (newServerUpdateTime) {
+                lastServerUpdateTime = newServerUpdateTime;
             }
         }, 50); // Small delay to ensure DOM patch is complete
         } catch (e) {
