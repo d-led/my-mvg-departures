@@ -197,9 +197,6 @@ h2.direction-header {
     align-items: center; /* Vertical alignment */
     line-height: 1; /* Match header text line height */
 }
-.datetime-placeholder {
-    display: none !important;
-}
 [data-theme="light"] .direction-header {
     background-color: var(--banner-color);
     color: #ffffff;
@@ -409,43 +406,48 @@ h1 {
 [data-theme="dark"] .status-header-item {
     color: #f3f4f6;
 }
+/* Colorize SVG images using CSS filters */
+/* Connected: green (#059669 / #047857 / #34d399) */
 .status-icon.connected {
-    color: #059669;
+    filter: brightness(0) saturate(100%) invert(42%) sepia(93%) saturate(1352%) hue-rotate(123deg) brightness(95%) contrast(87%);
 }
 [data-theme="light"] .status-icon.connected {
-    color: #047857;
+    filter: brightness(0) saturate(100%) invert(33%) sepia(95%) saturate(1352%) hue-rotate(123deg) brightness(95%) contrast(87%);
 }
 [data-theme="dark"] .status-icon.connected {
-    color: #34d399;
+    filter: brightness(0) saturate(100%) invert(72%) sepia(93%) saturate(1352%) hue-rotate(123deg) brightness(95%) contrast(87%);
 }
+/* Disconnected: red (#dc2626 / #f87171) */
 .status-icon.disconnected {
-    color: #dc2626;
+    filter: brightness(0) saturate(100%) invert(16%) sepia(94%) saturate(7151%) hue-rotate(349deg) brightness(92%) contrast(89%);
 }
 [data-theme="light"] .status-icon.disconnected {
-    color: #dc2626;
+    filter: brightness(0) saturate(100%) invert(16%) sepia(94%) saturate(7151%) hue-rotate(349deg) brightness(92%) contrast(89%);
 }
 [data-theme="dark"] .status-icon.disconnected {
-    color: #f87171;
+    filter: brightness(0) saturate(100%) invert(58%) sepia(94%) saturate(7151%) hue-rotate(349deg) brightness(92%) contrast(89%);
 }
+/* Connecting: orange (#d97706 / #b45309 / #fbbf24) */
 .status-icon.connecting {
-    color: #d97706;
+    filter: brightness(0) saturate(100%) invert(58%) sepia(96%) saturate(2000%) hue-rotate(15deg) brightness(95%) contrast(90%);
     animation: pulse-connecting 2s ease-in-out infinite;
 }
 [data-theme="light"] .status-icon.connecting {
-    color: #b45309;
+    filter: brightness(0) saturate(100%) invert(45%) sepia(96%) saturate(2000%) hue-rotate(15deg) brightness(95%) contrast(90%);
 }
 [data-theme="dark"] .status-icon.connecting {
-    color: #fbbf24;
+    filter: brightness(0) saturate(100%) invert(85%) sepia(96%) saturate(2000%) hue-rotate(15deg) brightness(95%) contrast(90%);
 }
+/* Unstable: yellow-orange (#f59e0b / #d97706 / #fbbf24) */
 .status-icon.unstable {
-    color: #f59e0b;
+    filter: brightness(0) saturate(100%) invert(70%) sepia(96%) saturate(2000%) hue-rotate(15deg) brightness(95%) contrast(90%);
     animation: rotate-unstable 2s linear infinite;
 }
 [data-theme="light"] .status-icon.unstable {
-    color: #d97706;
+    filter: brightness(0) saturate(100%) invert(58%) sepia(96%) saturate(2000%) hue-rotate(15deg) brightness(95%) contrast(90%);
 }
 [data-theme="dark"] .status-icon.unstable {
-    color: #fbbf24;
+    filter: brightness(0) saturate(100%) invert(85%) sepia(96%) saturate(2000%) hue-rotate(15deg) brightness(95%) contrast(90%);
 }
 @keyframes pulse-connecting {
     0%, 100% {

@@ -456,3 +456,4 @@ See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for detailed contribution guide
 - [mvg](https://github.com/mondbaron/mvg) - MVG API library
 - [pyview](https://github.com/ogrodnek/pyview) - Python LiveView implementation
 - [DaisyUI](https://daisyui.com/) - Component library
+- [Heroicons](https://heroicons.com/) - MIT-licensed SVG icons used for connection status indicators

@@ -78,13 +78,12 @@
         {% else %}
         {% for group in groups_with_departures %}
         <div class="direction-group">
-            <h2 class="direction-header{% if group.is_first_header %} first-header{% endif %}" {% if group.is_first_header %}id="first-direction-header"{% endif %} role="heading" aria-level="2">
+            <h2 class="direction-header" role="heading" aria-level="2">
                 {% if group.is_first_header %}
                 <span class="direction-header-text">{{ group.header }}</span>
                 <div class="direction-header-time status-header-item" id="datetime-display" aria-label="Current date and time"></div>
                 {% else %}
-                <span class="direction-header-text">{{ group.header }}</span>
-                <div class="direction-header-time status-header-item datetime-placeholder" aria-label="Current date and time"></div>
+                {{ group.header }}
                 {% endif %}
             </h2>
             <ul role="list" aria-label="Departures for {{ group.header }}">
@@ -116,14 +115,14 @@
     <!-- Floating status box at bottom center -->
     <div class="status-floating-box" role="status" aria-label="System status indicators: connection status, API status, refresh countdown, and user presence">
         <div class="status-floating-box-item" id="connection-status" data-connection-state="connecting" role="img" aria-label="Connection status: connecting" title="WebSocket connection status">
-            <!-- Connected: bolt icon (loaded from CDN) -->
-            <svg class="status-icon connected" id="connected-icon" style="display: none;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"></svg>
-            <!-- Disconnected: bolt-slash icon (loaded from CDN) -->
-            <svg class="status-icon disconnected" id="disconnected-icon" style="display: none;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"></svg>
-            <!-- Connecting: signal icon (loaded from CDN) -->
-            <svg class="status-icon connecting" id="connecting-icon" style="display: none;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"></svg>
-            <!-- Unstable/Degraded: question-mark-circle icon (loaded from CDN) -->
-            <svg class="status-icon unstable" id="unstable-icon" style="display: none;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"></svg>
+            <!-- Connected: bolt icon -->
+            <img class="status-icon connected" id="connected-icon" src="/static/img/bolt.svg" style="display: none;" alt="Connected" aria-hidden="true">
+            <!-- Disconnected: bolt-slash icon -->
+            <img class="status-icon disconnected" id="disconnected-icon" src="/static/img/bolt-slash.svg" style="display: none;" alt="Disconnected" aria-hidden="true">
+            <!-- Connecting: signal icon -->
+            <img class="status-icon connecting" id="connecting-icon" src="/static/img/signal.svg" style="display: none;" alt="Connecting" aria-hidden="true">
+            <!-- Unstable/Degraded: question-mark-circle icon -->
+            <img class="status-icon unstable" id="unstable-icon" src="/static/img/question-mark-circle.svg" style="display: none;" alt="Unstable" aria-hidden="true">
         </div>
         <div class="status-floating-box-item" id="api-status-container" role="img" aria-label="API status: unknown" title="MVG API connection status">
             <!-- Hidden element with API status that PyView updates -->

@@ -42,9 +42,9 @@
     const TIME_FORMAT_TOGGLE_SECONDS = window.DEPARTURES_CONFIG.timeFormatToggleSeconds || 0;
     const INITIAL_API_STATUS = (window.DEPARTURES_CONFIG.apiStatus && window.DEPARTURES_CONFIG.apiStatus !== 'undefined' && window.DEPARTURES_CONFIG.apiStatus !== '') ? window.DEPARTURES_CONFIG.apiStatus : 'unknown';
 
-    // OPTIONAL: Move datetime to topmost visible header on scroll
+    // OPTIONAL: Time on the topmost visible header on scroll
     // Set to true to enable this feature
-    const MOVE_DATETIME_TO_VISIBLE_HEADER = true;
+    const DATETIME_ON_VISIBLE_HEADER = true;
 
     // Date/time display
     function updateDateTime() {
@@ -71,151 +71,6 @@
     updateDateTime();
     setInterval(updateDateTime, 1000);
 
-    let moveDateTimeToVisibleHeader = null; // Function will be set if feature is enabled
-
-    if (MOVE_DATETIME_TO_VISIBLE_HEADER) {
-        let scrollTimeout = null;
-        let cachedHeaders = null;
-        
-        function getHeaders() {
-            if (!cachedHeaders) {
-                const departuresEl = document.getElementById('departures');
-                if (!departuresEl) return [];
-                cachedHeaders = Array.from(departuresEl.querySelectorAll('.direction-header'));
-            }
-            return cachedHeaders;
-        }
-        
-        function findFirstVisibleHeader() {
-            const departuresEl = document.getElementById('departures');
-            if (!departuresEl) return null;
-            
-            const headers = getHeaders();
-            if (headers.length === 0) return null;
-            
-            const containerRect = departuresEl.getBoundingClientRect();
-            const viewportTop = containerRect.top;
-            
-            // Find header closest to viewport top
-            let topmostHeader = null;
-            let topmostDistance = Infinity;
-            
-            for (const header of headers) {
-                const rect = header.getBoundingClientRect();
-                if (rect.bottom > viewportTop && rect.top < containerRect.bottom) {
-                    const distance = rect.top - viewportTop;
-                    if (distance < topmostDistance) {
-                        topmostDistance = distance;
-                        topmostHeader = header;
-                    }
-                }
-            }
-            
-            return topmostHeader || headers[0] || null;
-        }
-
-        moveDateTimeToVisibleHeader = function() {
-            const datetimeEl = document.getElementById('datetime-display');
-            if (!datetimeEl) return;
-            
-            const firstHeader = document.getElementById('first-direction-header');
-            const topmostHeader = findFirstVisibleHeader();
-            if (!topmostHeader || !firstHeader) return;
-            
-            // Clear all copies from non-topmost headers
-            document.querySelectorAll('.direction-header-time').forEach(container => {
-                if (container.id !== 'datetime-display') {
-                    const header = container.closest('.direction-header');
-                    if (header !== topmostHeader && header !== firstHeader) {
-                        container.textContent = '';
-                        container.classList.add('datetime-placeholder');
-                        container.style.display = 'none';
-                    }
-                }
-            });
-            
-            // If topmost is first header, we're done (original is already there)
-            if (topmostHeader === firstHeader) return;
-            
-            // Show copy in topmost header
-            let targetContainer = topmostHeader.querySelector('.direction-header-time.datetime-placeholder');
-            if (!targetContainer) {
-                targetContainer = topmostHeader.querySelector('.direction-header-time:not(#datetime-display)');
-            }
-            if (!targetContainer) return;
-            
-            targetContainer.textContent = datetimeEl.textContent;
-            targetContainer.setAttribute('aria-label', datetimeEl.getAttribute('aria-label') || 'Current date and time');
-            targetContainer.classList.remove('datetime-placeholder');
-            targetContainer.style.display = '';
-        };
-
-        function handleScroll() {
-            // Clear any pending timeout
-            if (scrollTimeout) {
-                clearTimeout(scrollTimeout);
-                scrollTimeout = null;
-            }
-            // Check immediately, then also check again after scroll stops
-            moveDateTimeToVisibleHeader();
-            // Also set timeout for final check after scrolling stops
-            scrollTimeout = setTimeout(() => {
-                moveDateTimeToVisibleHeader();
-                scrollTimeout = null;
-            }, 100);
-        }
-        
-        function handleTouchEnd() {
-            // On touch devices, check after touch ends
-            if (scrollTimeout) clearTimeout(scrollTimeout);
-            setTimeout(() => {
-                moveDateTimeToVisibleHeader();
-            }, 150);
-        }
-
-        function initDateTimePositioning() {
-            const departuresEl = document.getElementById('departures');
-            if (!departuresEl) {
-                // Retry if element not found yet
-                setTimeout(initDateTimePositioning, 100);
-                return;
-            }
-            
-            // Wait for datetime element to exist
-            const datetimeEl = document.getElementById('datetime-display');
-            if (!datetimeEl) {
-                setTimeout(initDateTimePositioning, 100);
-                return;
-            }
-            
-            // Listen to scroll events
-            departuresEl.addEventListener('scroll', handleScroll, { passive: true });
-            
-            // Also listen to touch events for better support on touch devices (especially older iPads)
-            departuresEl.addEventListener('touchend', handleTouchEnd, { passive: true });
-            departuresEl.addEventListener('touchcancel', handleTouchEnd, { passive: true });
-            
-            // Clear cache on DOM updates
-            window.addEventListener('phx:update', () => {
-                cachedHeaders = null;
-            });
-            
-            // Initial positioning
-            moveDateTimeToVisibleHeader();
-            // Update on resize
-            window.addEventListener('resize', () => {
-                setTimeout(moveDateTimeToVisibleHeader, 50);
-            }, { passive: true });
-        }
-
-        // Initialize after DOM is ready
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initDateTimePositioning);
-        } else {
-            initDateTimePositioning();
-        }
-    }
-
     // Time format toggle - animate text content change
     let timeFormatToggleInterval = null;
     let currentTimeFormat = 'relative';
@@ -237,12 +92,6 @@
                     }, 150);
                 }
             });
-            // Update datetime position even when toggle is disabled
-            setTimeout(() => {
-                if (MOVE_DATETIME_TO_VISIBLE_HEADER && moveDateTimeToVisibleHeader) {
-                    moveDateTimeToVisibleHeader();
-                }
-            }, 200);
             return;
         }
 
@@ -288,13 +137,6 @@
         setTimeout(() => {
             initDestinationScrolling();
         }, 200);
-        
-        // Update datetime position to topmost visible header (separate timeout to ensure it runs)
-        setTimeout(() => {
-            if (MOVE_DATETIME_TO_VISIBLE_HEADER && moveDateTimeToVisibleHeader) {
-                moveDateTimeToVisibleHeader();
-            }
-        }, 250);
     }
 
     function initTimeFormatToggle() {
@@ -339,58 +181,6 @@
     let lastSuccessfulUpdate = Date.now(); // Track last successful update
     // No reconnectTimeout - PyView handles reconnection, we just listen to events
 
-    // Load Heroicons from jsDelivr CDN and inline them
-    async function loadHeroicon(iconName, targetId) {
-        try {
-            const response = await fetch(`https://cdn.jsdelivr.net/npm/heroicons@2.2.0/24/outline/${iconName}.svg`);
-            if (!response.ok) {
-                console.warn(`Failed to load ${iconName} icon from CDN`);
-                return;
-            }
-            const svgText = await response.text();
-            const targetEl = document.getElementById(targetId);
-            if (targetEl) {
-                // Parse the SVG and extract the path element(s)
-                const parser = new DOMParser();
-                const svgDoc = parser.parseFromString(svgText, 'image/svg+xml');
-                const paths = svgDoc.querySelectorAll('path');
-                if (paths.length > 0) {
-                    // Copy all paths to our target SVG, preserving existing attributes
-                    targetEl.innerHTML = Array.from(paths).map(p => p.outerHTML).join('');
-                }
-            }
-        } catch (error) {
-            console.warn(`Error loading ${iconName} icon from CDN:`, error);
-        }
-    }
-
-    // Load all connection status icons from CDN on page load
-    loadHeroicon('bolt', 'connected-icon');
-    loadHeroicon('bolt-slash', 'disconnected-icon');
-    loadHeroicon('signal', 'connecting-icon');
-    loadHeroicon('question-mark-circle', 'unstable-icon');
-
-    // Reload icons if DOM was replaced by PyView (they might be empty after phx:update)
-    function ensureIconsLoaded() {
-        const connectedIcon = document.getElementById('connected-icon');
-        const disconnectedIcon = document.getElementById('disconnected-icon');
-        const connectingIcon = document.getElementById('connecting-icon');
-        const unstableIcon = document.getElementById('unstable-icon');
-        
-        // Reload icons if they're empty (PyView replaced the DOM)
-        if (connectedIcon && !connectedIcon.querySelector('path')) {
-            loadHeroicon('bolt', 'connected-icon');
-        }
-        if (disconnectedIcon && !disconnectedIcon.querySelector('path')) {
-            loadHeroicon('bolt-slash', 'disconnected-icon');
-        }
-        if (connectingIcon && !connectingIcon.querySelector('path')) {
-            loadHeroicon('signal', 'connecting-icon');
-        }
-        if (unstableIcon && !unstableIcon.querySelector('path')) {
-            loadHeroicon('question-mark-circle', 'unstable-icon');
-        }
-    }
 
     function updateConnectionStatus() {
         const connectionEl = document.getElementById('connection-status');
@@ -599,37 +389,12 @@
         }
     });
 
-    // Reload icons if DOM was replaced by PyView (they might be empty after phx:update)
-    function ensureIconsLoaded() {
-        const connectedIcon = document.getElementById('connected-icon');
-        const disconnectedIcon = document.getElementById('disconnected-icon');
-        const connectingIcon = document.getElementById('connecting-icon');
-        const unstableIcon = document.getElementById('unstable-icon');
-        
-        // Reload icons if they're empty (PyView replaced the DOM)
-        if (connectedIcon && !connectedIcon.querySelector('path')) {
-            loadHeroicon('bolt', 'connected-icon');
-        }
-        if (disconnectedIcon && !disconnectedIcon.querySelector('path')) {
-            loadHeroicon('bolt-slash', 'disconnected-icon');
-        }
-        if (connectingIcon && !connectingIcon.querySelector('path')) {
-            loadHeroicon('signal', 'connecting-icon');
-        }
-        if (unstableIcon && !unstableIcon.querySelector('path')) {
-            loadHeroicon('question-mark-circle', 'unstable-icon');
-        }
-    }
-
     window.addEventListener('phx:update', (event) => {
         try {
             // console.log('phx:update received', event);
             // Data was successfully fetched - connection is working
             const now = Date.now();
         const timeSinceLastUpdate = now - lastUpdateTime;
-        
-        // Ensure icons are loaded (PyView might have replaced the DOM)
-        ensureIconsLoaded();
         
         // phx:update means we're connected and receiving data
         // Always set to connected when we receive updates - this overrides any false positive from fallback checks
@@ -709,16 +474,6 @@
         // Re-check destination scrolling after DOM update
         requestAnimationFrame(() => {
             initDestinationScrolling();
-        });
-
-        // Immediately update datetime display (before delay)
-        // This ensures it's visible right away, even if pyview replaced it
-        requestAnimationFrame(() => {
-            updateDateTime();
-            // Reposition datetime to visible header if feature is enabled
-            if (typeof MOVE_DATETIME_TO_VISIBLE_HEADER !== 'undefined' && MOVE_DATETIME_TO_VISIBLE_HEADER && typeof moveDateTimeToVisibleHeader === 'function') {
-                setTimeout(moveDateTimeToVisibleHeader, 50);
-            }
         });
 
         // Check if we got a new data update by comparing server's last_update timestamp
