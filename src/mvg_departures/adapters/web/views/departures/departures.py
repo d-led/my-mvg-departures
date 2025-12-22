@@ -133,34 +133,120 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             theme = "auto"
 
         last_update = state.last_update
-        return {
+
+        # Build assigns with safe defaults - ensure no None values
+        assigns = {
             **template_data,
-            "theme": theme,
-            "banner_color": self.config.banner_color,
-            "font_size_route_number": self.config.font_size_route_number,
-            "font_size_destination": self.config.font_size_destination,
-            "font_size_platform": self.config.font_size_platform,
-            "font_size_time": self.config.font_size_time,
-            "font_size_no_departures": self.config.font_size_no_departures,
-            "font_size_direction_header": self.config.font_size_direction_header,
-            "font_size_pagination_indicator": self.config.font_size_pagination_indicator,
-            "font_size_countdown_text": self.config.font_size_countdown_text,
-            "font_size_status_header": self.config.font_size_status_header,
-            "font_size_delay_amount": self.config.font_size_delay_amount,
-            "font_size_stop_header": self.config.font_size_stop_header,
-            "pagination_enabled": str(self.config.pagination_enabled).lower(),
-            "departures_per_page": str(self.config.departures_per_page),
-            "page_rotation_seconds": str(self.config.page_rotation_seconds),
-            "refresh_interval_seconds": str(self.config.refresh_interval_seconds),
-            "time_format_toggle_seconds": str(self.config.time_format_toggle_seconds),
-            "api_status": state.api_status,
+            "theme": theme or "auto",
+            "banner_color": self.config.banner_color or "#000000",
+            "font_size_route_number": self.config.font_size_route_number or "1.5rem",
+            "font_size_destination": self.config.font_size_destination or "1.2rem",
+            "font_size_platform": self.config.font_size_platform or "1rem",
+            "font_size_time": self.config.font_size_time or "1.5rem",
+            "font_size_no_departures": self.config.font_size_no_departures_available or "1.2rem",
+            "font_size_direction_header": self.config.font_size_direction_header or "1.3rem",
+            "font_size_pagination_indicator": self.config.font_size_pagination_indicator
+            or "0.9rem",
+            "font_size_countdown_text": self.config.font_size_countdown_text or "0.9rem",
+            "font_size_status_header": self.config.font_size_status_header or "1rem",
+            "font_size_delay_amount": self.config.font_size_delay_amount or "0.9rem",
+            "font_size_stop_header": self.config.font_size_stop_header or "1.1rem",
+            "pagination_enabled": (
+                str(self.config.pagination_enabled).lower()
+                if self.config.pagination_enabled is not None
+                else "false"
+            ),
+            "departures_per_page": (
+                str(self.config.departures_per_page)
+                if self.config.departures_per_page is not None
+                else "5"
+            ),
+            "page_rotation_seconds": (
+                str(self.config.page_rotation_seconds)
+                if self.config.page_rotation_seconds is not None
+                else "10"
+            ),
+            "refresh_interval_seconds": (
+                str(self.config.refresh_interval_seconds)
+                if self.config.refresh_interval_seconds is not None
+                else "20"
+            ),
+            "time_format_toggle_seconds": (
+                str(self.config.time_format_toggle_seconds)
+                if self.config.time_format_toggle_seconds is not None
+                else "0"
+            ),
+            "api_status": state.api_status or "unknown",
             "last_update_timestamp": (
                 str(int(last_update.timestamp() * 1000)) if last_update is not None else "0"
             ),
-            "update_time": self.formatter.format_update_time(last_update),
-            "presence_local": state.presence_local,
-            "presence_total": state.presence_total,
+            "update_time": self.formatter.format_update_time(last_update) or "Never",
+            "presence_local": state.presence_local if state.presence_local is not None else 0,
+            "presence_total": state.presence_total if state.presence_total is not None else 0,
         }
+
+        # Ensure template_data values are also safe
+        if "groups_with_departures" not in assigns or assigns["groups_with_departures"] is None:
+            assigns["groups_with_departures"] = []
+        if "stops_without_departures" not in assigns or assigns["stops_without_departures"] is None:
+            assigns["stops_without_departures"] = []
+        if "has_departures" not in assigns:
+            assigns["has_departures"] = False
+
+        return assigns
+
+    def _validate_template_assigns(self, assigns: dict[str, Any]) -> dict[str, Any]:
+        """Validate and sanitize template assigns to ensure no None values.
+
+        Args:
+            assigns: Template assigns dictionary.
+
+        Returns:
+            Validated assigns dictionary with safe defaults for None values.
+        """
+        # Create a copy to avoid mutating the original
+        validated: dict[str, Any] = {}
+
+        for key, value in assigns.items():
+            if value is None:
+                # Provide safe defaults based on expected type
+                if key in ("groups_with_departures", "stops_without_departures"):
+                    validated[key] = []
+                elif key in ("presence_local", "presence_total"):
+                    validated[key] = 0
+                elif key == "has_departures":
+                    validated[key] = False
+                elif key == "api_status":
+                    validated[key] = "unknown"
+                elif key == "update_time":
+                    validated[key] = "Never"
+                elif key == "last_update_timestamp":
+                    validated[key] = "0"
+                elif key == "theme":
+                    validated[key] = "auto"
+                elif "font_size" in key:
+                    validated[key] = "1rem"
+                elif key == "banner_color":
+                    validated[key] = "#000000"
+                elif key in ("pagination_enabled",):
+                    validated[key] = "false"
+                elif key in (
+                    "departures_per_page",
+                    "page_rotation_seconds",
+                    "refresh_interval_seconds",
+                    "time_format_toggle_seconds",
+                ):
+                    validated[key] = "0"
+                else:
+                    # Default fallback for unknown keys
+                    validated[key] = ""
+                    logger.warning(
+                        f"Template assign '{key}' was None, using empty string as fallback"
+                    )
+            else:
+                validated[key] = value
+
+        return validated
 
     async def mount(self, socket: LiveViewSocket[DeparturesState], _session: dict) -> None:
         """Mount the LiveView and register socket for updates."""
@@ -341,43 +427,69 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         """Render the HTML template."""
         logger.debug(f"Render called at {datetime.now(UTC)}, assigns type: {type(assigns)}")
 
-        # Get state from assigns (which is socket.context, a DeparturesState object)
-        if isinstance(assigns, DeparturesState):
-            state = assigns
-        elif isinstance(assigns, dict):
-            # Fallback: if it's a dict, try to get context or use shared state
-            state = assigns.get("context", self.state_manager.departures_state)
-            if not isinstance(state, DeparturesState):
+        try:
+            # Get state from assigns (which is socket.context, a DeparturesState object)
+            if isinstance(assigns, DeparturesState):
+                state = assigns
+            elif isinstance(assigns, dict):
+                # Fallback: if it's a dict, try to get context or use shared state
+                state = assigns.get("context", self.state_manager.departures_state)
+                if not isinstance(state, DeparturesState):
+                    state = self.state_manager.departures_state
+            else:
+                # Fallback to shared state
                 state = self.state_manager.departures_state
-        else:
-            # Fallback to shared state
-            state = self.state_manager.departures_state
 
-        # Prepare template data and build assigns
-        template_data = self.departure_grouping_calculator.calculate_display_data(
-            state.direction_groups
-        )
-        template_assigns = self._build_template_assigns(state, template_data)
+            # Ensure direction_groups is never None - default to empty list
+            # This prevents "Cannot read properties of undefined" errors
+            direction_groups = state.direction_groups if state.direction_groups is not None else []
 
-        # Use pyview's LiveTemplate system with FileReloader
-        # Set up template loader if not already configured
-        current_file_dir = os.path.dirname(os.path.abspath(__file__))
-        views_dir = os.path.dirname(current_file_dir)  # Go up one level from departures/ to views/
-        if not hasattr(ibis, "loader") or not isinstance(ibis.loader, FileReloader):
-            ibis.loader = FileReloader(views_dir)
+            # Prepare template data and build assigns
+            template_data = self.departure_grouping_calculator.calculate_display_data(
+                direction_groups
+            )
+            template_assigns = self._build_template_assigns(state, template_data)
 
-        # Load template from file (relative to views directory)
-        # FileReloader uses the template name as a key, and we access it via ibis.loader
-        template_path = "departures/departures.html"
-        # Read the template file content
-        template_file = os.path.join(views_dir, template_path)
-        with open(template_file, encoding="utf-8") as f:
-            template_content = f.read()
+            # Validate all template assigns are not None - replace None with safe defaults
+            template_assigns = self._validate_template_assigns(template_assigns)
 
-        # Create ibis Template from content
-        template = ibis.Template(template_content)
-        live_template = LiveTemplate(template)
-        return LiveRender(live_template, template_assigns, meta)  # type: ignore[no-any-return]
+            # Use pyview's LiveTemplate system with FileReloader
+            # Set up template loader if not already configured
+            current_file_dir = os.path.dirname(os.path.abspath(__file__))
+            views_dir = os.path.dirname(
+                current_file_dir
+            )  # Go up one level from departures/ to views/
+            if not hasattr(ibis, "loader") or not isinstance(ibis.loader, FileReloader):
+                ibis.loader = FileReloader(views_dir)
+
+            # Load template from file (relative to views directory)
+            # FileReloader uses the template name as a key, and we access it via ibis.loader
+            template_path = "departures/departures.html"
+            # Read the template file content
+            template_file = os.path.join(views_dir, template_path)
+            with open(template_file, encoding="utf-8") as f:
+                template_content = f.read()
+
+            # Create ibis Template from content
+            template = ibis.Template(template_content)
+            live_template = LiveTemplate(template)
+            # LiveRender returns an object with .text() method, not a string
+            # Return it directly - pyview will call .text() on it
+            return LiveRender(live_template, template_assigns, meta)  # type: ignore[no-any-return]
+        except Exception as e:
+            logger.error(f"Error rendering template: {e}", exc_info=True)
+            # On error, we still need to return a LiveRender object, not a string
+            # Create a minimal error template
+            try:
+                error_template = ibis.Template("<div>Error rendering template: {{ error }}</div>")
+                error_live_template = LiveTemplate(error_template)
+                error_assigns = {"error": str(e)}
+                return LiveRender(error_live_template, error_assigns, meta)  # type: ignore[no-any-return]
+            except Exception:
+                # Last resort: return a simple LiveRender with minimal content
+                minimal_template = ibis.Template("<div>Error: Failed to render</div>")
+                minimal_live_template = LiveTemplate(minimal_template)
+                return LiveRender(minimal_live_template, {}, meta)  # type: ignore[no-any-return]
 
 
 def create_departures_live_view(

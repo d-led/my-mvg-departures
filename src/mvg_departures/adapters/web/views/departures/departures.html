@@ -4,8 +4,8 @@
 <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css" />
 <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 <script>
-    // Apply theme based on configuration
-    const themeConfig = '{{ theme }}';
+    // Apply theme based on configuration with client-side resilience
+    const themeConfig = (typeof '{{ theme }}' !== 'undefined' && '{{ theme }}' !== 'undefined' && '{{ theme }}' !== '') ? '{{ theme }}' : 'auto';
     if (themeConfig === 'light') {
         document.documentElement.setAttribute('data-theme', 'light');
         localStorage.theme = 'light';
@@ -458,12 +458,30 @@
     [data-theme="dark"] .status-icon.connecting {
         color: #fbbf24;
     }
+    .status-icon.unstable {
+        color: #f59e0b;
+        animation: rotate-unstable 2s linear infinite;
+    }
+    [data-theme="light"] .status-icon.unstable {
+        color: #d97706;
+    }
+    [data-theme="dark"] .status-icon.unstable {
+        color: #fbbf24;
+    }
     @keyframes pulse-connecting {
         0%, 100% {
             opacity: 1;
         }
         50% {
             opacity: 0.5;
+        }
+    }
+    @keyframes rotate-unstable {
+        from {
+            transform: rotate(0deg);
+        }
+        to {
+            transform: rotate(360deg);
         }
     }
     .status-icon.error {
@@ -783,7 +801,7 @@
 
     <!-- Floating status box at bottom center -->
     <div class="status-floating-box" role="status" aria-label="System status indicators: connection status, API status, refresh countdown, and user presence">
-        <div class="status-floating-box-item" id="connection-status" role="img" aria-label="Connection status: connecting" title="WebSocket connection status">
+        <div class="status-floating-box-item" id="connection-status" data-connection-state="connecting" role="img" aria-label="Connection status: connecting" title="WebSocket connection status">
             <!-- Connected: bolt icon -->
             <svg class="status-icon connected" id="connected-icon" style="display: none;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
@@ -793,8 +811,12 @@
                 <path stroke-linecap="round" stroke-linejoin="round" d="M11.412 15.655L9.75 21.75l3.192-2.328a.75.75 0 00.945.059l5.25-3.75a.75.75 0 00-.412-1.33l-2.728-.182-3.432-3.432a.75.75 0 00-.675-.248L3.75 13.5l7.662-8.25m8.25 0L12 10.5H3.75l5.25-3.75L9.75 3l-1.5 4.5" />
             </svg>
             <!-- Connecting: signal icon (pulsing) -->
-            <svg class="status-icon connecting" id="connecting-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
+            <svg class="status-icon connecting" id="connecting-icon" style="display: none;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M9.348 14.651a3.75 3.75 0 010-5.303m5.304 0a3.75 3.75 0 010 5.303m-7.425 2.122a6.75 6.75 0 010-9.546m9.546 0a6.75 6.75 0 010 9.546M5.106 18.894c-3.808-3.808-3.808-9.98 0-13.789m13.788 0c3.808 3.808 3.808 9.981 0 13.79M12 12h.008v.007H12V12z" />
+            </svg>
+            <!-- Unstable/Degraded: question-mark-circle icon (for botched updates/disconnections) -->
+            <svg class="status-icon unstable" id="unstable-icon" style="display: none;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
             </svg>
         </div>
         <div class="status-floating-box-item" id="api-status-container" role="img" aria-label="API status: unknown" title="MVG API connection status">
@@ -826,12 +848,12 @@
             <span class="sr-only">View repository on GitHub</span>
         </a>
         <!-- Presence count display (rightmost) -->
-        <div class="status-floating-box-item status-floating-box-presence" id="presence-count" role="status" aria-label="Users online: {{ presence_local }} on this dashboard, {{ presence_total }} total across all dashboards" title="{{ presence_local }} users on this dashboard, {{ presence_total }} users total across all dashboards">
+        <div class="status-floating-box-item status-floating-box-presence" id="presence-count" role="status" aria-label="Users online: {{ presence_local|default(0) }} on this dashboard, {{ presence_total|default(0) }} total across all dashboards" title="{{ presence_local|default(0) }} users on this dashboard, {{ presence_total|default(0) }} users total across all dashboards">
             <svg class="presence-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
             </svg>
-            <span class="presence-count-text" aria-hidden="true">{{ presence_local }}/{{ presence_total }}</span>
-            <span class="sr-only">{{ presence_local }} users on this dashboard, {{ presence_total }} users total across all dashboards</span>
+            <span class="presence-count-text" aria-hidden="true">{{ presence_local|default(0) }}/{{ presence_total|default(0) }}</span>
+            <span class="sr-only">{{ presence_local|default(0) }} users on this dashboard, {{ presence_total|default(0) }} users total across all dashboards</span>
         </div>
     </div>
 </div>
@@ -885,12 +907,14 @@
         }, false);
     })();
 
-    // Pagination configuration
-    const PAGINATION_ENABLED = {{ pagination_enabled }};
-    const DEPARTURES_PER_PAGE = {{ departures_per_page }};
-    const PAGE_ROTATION_SECONDS = {{ page_rotation_seconds }};
-    const REFRESH_INTERVAL_SECONDS = {{ refresh_interval_seconds }};
-    const INITIAL_API_STATUS = '{{ api_status }}';
+    // Pagination configuration with client-side resilience
+    // If server sends undefined, use safe defaults to prevent crashes
+    const PAGINATION_ENABLED = (typeof '{{ pagination_enabled }}' !== 'undefined' && '{{ pagination_enabled }}' === 'true') || false;
+    const DEPARTURES_PER_PAGE = (!isNaN(parseInt('{{ departures_per_page }}'))) ? parseInt('{{ departures_per_page }}') : 5;
+    const PAGE_ROTATION_SECONDS = (!isNaN(parseInt('{{ page_rotation_seconds }}'))) ? parseInt('{{ page_rotation_seconds }}') : 10;
+    const REFRESH_INTERVAL_SECONDS = (!isNaN(parseInt('{{ refresh_interval_seconds }}'))) ? parseInt('{{ refresh_interval_seconds }}') : 20;
+    const TIME_FORMAT_TOGGLE_SECONDS = (!isNaN(parseInt('{{ time_format_toggle_seconds }}'))) ? parseInt('{{ time_format_toggle_seconds }}') : 0;
+    const INITIAL_API_STATUS = ('{{ api_status }}' && '{{ api_status }}' !== 'undefined' && '{{ api_status }}' !== '') ? '{{ api_status }}' : 'unknown';
 
     // Date/time display
     function updateDateTime() {
@@ -920,7 +944,7 @@
     // Time format toggle - animate text content change
     let timeFormatToggleInterval = null;
     let currentTimeFormat = 'relative';
-    const TIME_FORMAT_TOGGLE_SECONDS = {{ time_format_toggle_seconds }};
+    // TIME_FORMAT_TOGGLE_SECONDS is defined above with safe defaults
 
     function toggleTimeFormat() {
         if (TIME_FORMAT_TOGGLE_SECONDS <= 0) {
@@ -1014,7 +1038,7 @@
     }
 
     // Connection status monitoring
-    // States: connecting (yellow), connected (green), broken (red)
+    // States: connecting (yellow), connected (green), unstable (orange/question-mark-circle), broken (red)
     let connectionState = 'connecting'; // Start as connecting (yellow)
     let countdownInterval = null;
     let countdownElapsed = 0;
@@ -1022,6 +1046,8 @@
     let lastUpdateTime = Date.now();
     let startCountdown = null; // Will be set by initRefreshCountdown
     let updateTimeout = null; // Timeout to detect when updates stop arriving
+    let failedUpdateCount = 0; // Track consecutive failed updates
+    let lastSuccessfulUpdate = Date.now(); // Track last successful update
 
     function updateConnectionStatus() {
         const connectionEl = document.getElementById('connection-status');
@@ -1033,24 +1059,31 @@
         const connectedIcon = connectionEl.querySelector('#connected-icon');
         const disconnectedIcon = connectionEl.querySelector('#disconnected-icon');
         const connectingIcon = connectionEl.querySelector('#connecting-icon');
+        const unstableIcon = connectionEl.querySelector('#unstable-icon');
         const liveRegion = document.getElementById('aria-live-status');
 
-        if (!connectedIcon || !disconnectedIcon || !connectingIcon) {
+        if (!connectedIcon || !disconnectedIcon || !connectingIcon || !unstableIcon) {
             // console.warn('Connection status icons not found');
             return;
         }
+
+        // Update data attribute to preserve state across DOM updates
+        connectionEl.setAttribute('data-connection-state', connectionState);
 
         // Hide all icons first
         connectedIcon.style.display = 'none';
         disconnectedIcon.style.display = 'none';
         connectingIcon.style.display = 'none';
+        unstableIcon.style.display = 'none';
 
         // Explicitly remove animation to stop any running animations
         connectingIcon.style.animation = 'none';
+        unstableIcon.style.animation = 'none';
         // Force a reflow to ensure animation is stopped
         void connectingIcon.offsetHeight;
+        void unstableIcon.offsetHeight;
 
-        // Determine state: connecting (yellow), connected (green), or broken (red)
+        // Determine state: connecting (yellow), connected (green), unstable (orange/question-mark-circle), or broken (red)
         if (connectionState === 'connecting') {
             connectionEl.setAttribute('aria-label', 'Connection status: connecting');
             connectionEl.setAttribute('title', 'WebSocket connection: connecting');
@@ -1065,13 +1098,39 @@
             connectingIcon.style.animation = 'none';
             connectedIcon.style.display = '';
             if (liveRegion) liveRegion.textContent = 'Connection status: connected';
+        } else if (connectionState === 'unstable') {
+            connectionEl.setAttribute('aria-label', 'Connection status: unstable');
+            connectionEl.setAttribute('title', 'WebSocket connection: unstable - updates may be delayed or incomplete');
+            // Re-enable animation for unstable state
+            unstableIcon.style.animation = '';
+            unstableIcon.style.display = '';
+            if (liveRegion) liveRegion.textContent = 'Connection status: unstable';
         } else { // broken
             connectionEl.setAttribute('aria-label', 'Connection status: disconnected');
             connectionEl.setAttribute('title', 'WebSocket connection: disconnected');
             // Ensure animation is removed for broken state
             connectingIcon.style.animation = 'none';
+            unstableIcon.style.animation = 'none';
             disconnectedIcon.style.display = '';
             if (liveRegion) liveRegion.textContent = 'Connection status: disconnected';
+        }
+    }
+
+    // Restore connection state from data attribute after DOM updates
+    function restoreConnectionState() {
+        const connectionEl = document.getElementById('connection-status');
+        if (connectionEl) {
+            const savedState = connectionEl.getAttribute('data-connection-state');
+            if (savedState && (savedState === 'connecting' || savedState === 'connected' || savedState === 'unstable' || savedState === 'broken')) {
+                // Only restore if we don't have a more recent state
+                // This prevents overwriting a newer state with an older one
+                if (connectionState === 'connecting' && savedState !== 'connecting') {
+                    connectionState = savedState;
+                } else if (connectionState !== savedState && savedState !== 'connecting') {
+                    // If saved state is more definitive (connected/unstable/broken), use it
+                    connectionState = savedState;
+                }
+            }
         }
     }
 
@@ -1178,7 +1237,17 @@
     // Set up event listeners once (outside initRefreshCountdown)
     window.addEventListener('phx:error', (event) => {
         // console.error('phx:error received:', event);
-        connectionState = 'broken';
+        // Increment failed update count
+        failedUpdateCount++;
+        
+        // If we've had multiple errors, mark as unstable
+        // If errors persist, mark as broken
+        if (failedUpdateCount >= 3) {
+            connectionState = 'broken';
+        } else if (failedUpdateCount >= 1) {
+            connectionState = 'unstable';
+        }
+        
         // Clear reconnection timeout on error
         if (reconnectTimeout) {
             clearTimeout(reconnectTimeout);
@@ -1188,7 +1257,9 @@
         requestAnimationFrame(() => {
             updateConnectionStatus();
             updateApiStatus('error');
-            hidePresenceCount();
+            if (connectionState === 'broken') {
+                hidePresenceCount();
+            }
         });
         // Stop countdown on error
         if (countdownInterval) {
@@ -1201,8 +1272,24 @@
     window.addEventListener('phx:update', (event) => {
         // console.log('phx:update received', event);
         // Data was successfully fetched - connection is working
-        connectionState = 'connected';
-        lastUpdateTime = Date.now();
+        const now = Date.now();
+        const timeSinceLastUpdate = now - lastUpdateTime;
+        
+        // Check if this is a delayed or botched update
+        // If updates are coming but with significant delays (>2x expected interval), mark as unstable
+        const expectedInterval = REFRESH_INTERVAL_SECONDS * 1000;
+        if (timeSinceLastUpdate > expectedInterval * 2.5 && lastUpdateTime > 0) {
+            // Updates are delayed - connection is unstable
+            connectionState = 'unstable';
+            failedUpdateCount = 0; // Reset failed count since we got an update
+        } else {
+            // Normal update - connection is good
+            connectionState = 'connected';
+            failedUpdateCount = 0;
+        }
+        
+        lastUpdateTime = now;
+        lastSuccessfulUpdate = now;
 
         // Clear reconnection timeout since we're now connected
         if (reconnectTimeout) {
@@ -1214,26 +1301,61 @@
         if (updateTimeout) {
             clearTimeout(updateTimeout);
         }
-        // If we don't receive an update within 10 seconds, assume disconnected
-        // This is faster than waiting for 2x refresh interval, providing quicker feedback
+        // If we don't receive an update within 10 seconds, mark as unstable first
+        // Then if still no update after 20 seconds, mark as broken
         updateTimeout = setTimeout(() => {
-            // console.warn('No updates received for too long, assuming disconnected');
-            connectionState = 'broken';
+            const timeSinceLastSuccessful = Date.now() - lastSuccessfulUpdate;
+            if (timeSinceLastSuccessful > 20000) {
+                // No updates for 20+ seconds - fully broken
+                connectionState = 'broken';
+            } else if (timeSinceLastSuccessful > 10000) {
+                // No updates for 10+ seconds - unstable
+                connectionState = 'unstable';
+            }
             requestAnimationFrame(() => {
                 updateConnectionStatus();
-                hidePresenceCount();
+                if (connectionState === 'broken') {
+                    hidePresenceCount();
+                }
             });
-        }, 10000); // 10 seconds - faster detection than 2x refresh interval
+        }, 10000); // Check every 10 seconds
+
+        // Check if update is botched (contains undefined values or errors)
+        // This detects when the server sends an update but it's malformed
+        setTimeout(() => {
+            const departuresEl = document.getElementById('departures');
+            if (departuresEl) {
+                const content = departuresEl.textContent || '';
+                // If we see "undefined" in the content, the update was botched
+                if (content.includes('undefined') || content.trim() === 'undefined') {
+                    // Botched update - mark as unstable
+                    connectionState = 'unstable';
+                    failedUpdateCount++;
+                    requestAnimationFrame(() => {
+                        updateConnectionStatus();
+                    });
+                }
+            }
+        }, 100); // Check after DOM update completes
 
         // Update connection status after DOM update (pyview may have replaced elements)
-        // Use requestAnimationFrame to ensure DOM is fully updated
+        // Use multiple requestAnimationFrame calls and a small timeout to ensure DOM is fully updated
+        // pyview patches DOM, then we need to wait for it to complete before updating status
         requestAnimationFrame(() => {
-            updateConnectionStatus();
-            // Get API status from event detail if available, default to success
-            const apiStatus = event.detail?.api_status || 'success';
-            updateApiStatus(apiStatus);
-            // Show presence count when connected and receiving updates
-            showPresenceCount();
+            requestAnimationFrame(() => {
+                // Additional small delay to ensure pyview's DOM patch is complete
+                setTimeout(() => {
+                    // Restore connection state from data attribute if element was replaced
+                    restoreConnectionState();
+                    // Re-query elements in case they were replaced and update status
+                    updateConnectionStatus();
+                    // Get API status from event detail if available, default to success
+                    const apiStatus = event.detail?.api_status || 'success';
+                    updateApiStatus(apiStatus);
+                    // Show presence count when connected and receiving updates
+                    showPresenceCount();
+                }, 10); // Small delay to ensure DOM patch is complete
+            });
         });
 
         // Handle pagination if enabled
