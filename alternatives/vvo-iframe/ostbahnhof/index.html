@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VVO Departures - Iframe Fallback</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            width: 100vw;
+            height: 100vh;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+        
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .iframe-container {
+            width: 100%;
+            flex: 1 1 auto;
+            display: block;
+            overflow: hidden;
+            position: relative;
+            min-height: 0;
+        }
+        
+        .iframe-container iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: block;
+            /* Width will be adjusted via JavaScript to control font/line-height */
+        }
+    </style>
+</head>
+<body>
+    <div class="iframe-container">
+        <iframe src="https://www.vvo-online.de/en/dm/0/0075bf/fff/5/10/91000005?a=Ostbahnhof%20(Fussweg%205min)" frameborder="0"></iframe>
+    </div>
+    <div class="iframe-container">
+        <iframe src="https://www.vvo-online.de/en/dm/0/0075bf/fff/8/4/91000895?a=Friedenstra%C3%9Fe%20(Fussweg%208min)" frameborder="0"></iframe>
+    </div>
+    <div class="iframe-container">
+        <iframe src="https://www.vvo-online.de/en/dm/0/0075bf/fff/15/6/91000898?a=Sankt%20Pius%2C%20(Fussweg%2015min)" frameborder="0"></iframe>
+    </div>
+
+    <!-- jQuery from CDN -->
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+    <script src="index.js"></script>
+</body>
+</html>
+

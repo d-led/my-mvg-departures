@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MVG Departures - Alternative Views</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: #333;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+        
+        .back-link {
+            display: inline-block;
+            margin-bottom: 30px;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+        
+        .back-link:hover {
+            color: #764ba2;
+            text-decoration: underline;
+        }
+        
+        .back-link::before {
+            content: "← ";
+            margin-right: 5px;
+        }
+        
+        .alternatives {
+            display: grid;
+            gap: 20px;
+        }
+        
+        .alternative-card {
+            border: 2px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 24px;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+        
+        .alternative-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 8px 24px rgba(102, 126, 234, 0.2);
+            transform: translateY(-2px);
+        }
+        
+        .alternative-card h2 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 1.5em;
+        }
+        
+        .alternative-card p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 8px;
+        }
+        
+        .badge {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 500;
+            margin-top: 8px;
+        }
+        
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #e0e0e0;
+            text-align: center;
+            color: #999;
+            font-size: 0.9em;
+        }
+        
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        
+        .footer a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="https://github.com/d-led/my-mvg-departures" class="back-link">Back to Main Project</a>
+        
+        <h1>Alternative Views</h1>
+        <p class="subtitle">Fallback and alternative departure displays for Munich public transport</p>
+        
+        <div class="alternatives">
+            <a href="vvo-iframe/ostbahnhof/index.html" class="alternative-card">
+                <h2>VVO Iframe - Ostbahnhof</h2>
+                <p>A simple iframe-based fallback using VVO Online departure monitors. Displays three stacked iframes filling the entire viewport.</p>
+                <p><strong>Features:</strong> Full-screen display, responsive layout, minimal dependencies (jQuery CDN)</p>
+                <p><strong>Drawbacks:</strong> 3 iframes that scale based on screen width, which means, it might not be usable out of the box. No rouite filtering.</p>
+                <span class="badge">Fallback Solution</span>
+            </a>
+        </div>
+        
+        <div class="footer">
+            <p>Part of <a href="https://github.com/d-led/my-mvg-departures">my-mvg-departures</a> project</p>
+            <p>Customizable Live MVG departures dashboard for Munich public transport</p>
+        </div>
+    </div>
+</body>
+</html>
+
