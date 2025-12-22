@@ -19,6 +19,7 @@ def test_config_loads_defaults() -> None:
     assert config.port == 8000
     assert config.reload is False
     assert config.time_format == "minutes"
+    assert config.title == "My MVG Departures"
 
 
 def test_config_loads_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -40,6 +41,29 @@ def test_config_validates_time_format(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(ValueError, match="time_format must be either"):
         AppConfig()
+
+
+def test_config_loads_title_from_toml() -> None:
+    """Given TOML config with title in display section, when loading config, then title is set."""
+    toml_content = """
+[display]
+title = "Giesing Departures"
+
+[[stops]]
+station_id = "de:09162:70"
+station_name = "Universität"
+"""
+    with NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+        f.write(toml_content)
+        temp_path = f.name
+
+    try:
+        config = AppConfig(config_file=temp_path)
+        # Trigger TOML loading by accessing a method that loads it
+        _ = config.get_stops_config()
+        assert config.title == "Giesing Departures"
+    finally:
+        Path(temp_path).unlink()
 
 
 def test_config_parses_stops_config_from_toml() -> None:

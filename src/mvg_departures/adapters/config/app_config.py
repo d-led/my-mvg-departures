@@ -49,6 +49,10 @@ class AppConfig(BaseSettings):
         default="Europe/Berlin",
         description="Timezone for displaying server time (IANA timezone name, e.g., 'Europe/Berlin')",
     )
+    title: str = Field(
+        default="My MVG Departures",
+        description="Page title displayed in browser tab",
+    )
 
     # TOML config file path
     # If not set, will try config.example.toml in project root as fallback
@@ -184,6 +188,8 @@ class AppConfig(BaseSettings):
                     self.refresh_interval_seconds = display["refresh_interval_seconds"]
                 if "time_format_toggle_seconds" in display:
                     self.time_format_toggle_seconds = display["time_format_toggle_seconds"]
+                if "title" in display:
+                    self.title = display["title"]
                 # Font sizes
                 if "font_size_route_number" in display:
                     self.font_size_route_number = display["font_size_route_number"]

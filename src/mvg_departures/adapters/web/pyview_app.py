@@ -91,9 +91,38 @@ class PyViewWebAdapter(DisplayAdapter):
     async def start(self) -> None:
         """Start the web server."""
         import uvicorn
+        from markupsafe import Markup
         from pyview import PyView
+        from pyview.playground.favicon import generate_favicon_svg
+        from pyview.template import defaultRootTemplate
+        from starlette.requests import Request
+        from starlette.responses import Response
+        from starlette.routing import Route
 
         app = PyView()
+        
+        # Generate favicon SVG from title using banner color from config
+        favicon_svg = generate_favicon_svg(
+            self.config.title,
+            bg_color=self.config.banner_color or "#087BC4",  # Use banner color from config
+            text_color="#FFFFFF",  # White text for contrast
+        )
+        
+        # Add favicon route
+        async def favicon_route(request: Request) -> Response:
+            return Response(content=favicon_svg, media_type="image/svg+xml")
+        
+        app.routes.append(Route("/favicon.svg", favicon_route, methods=["GET"]))
+        
+        # Add favicon link to CSS/head content
+        favicon_link = Markup('<link rel="icon" href="/favicon.svg" type="image/svg+xml">')
+        
+        # Configure root template with custom title and favicon (no suffix to override default " | LiveView")
+        app.rootTemplate = defaultRootTemplate(
+            title=self.config.title,
+            title_suffix="",  # Empty suffix to prevent " | LiveView" from appearing
+            css=favicon_link,  # Add favicon link to head
+        )
 
         # Get the presence tracker instance (shared across all routes)
         presence_tracker = get_presence_tracker()

@@ -169,6 +169,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         # This prevents "undefined" or "None" from appearing in the rendered HTML
         return {
             **template_data,
+            "title": str(self.config.title or "My MVG Departures"),
             "theme": str(theme),
             "banner_color": str(self.config.banner_color or "#000000"),
             "font_size_route_number": str(self.config.font_size_route_number or "1.5rem"),
