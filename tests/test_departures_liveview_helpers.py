@@ -110,8 +110,9 @@ def test_build_template_assigns_includes_all_config() -> None:
     assert "pagination_enabled" in result
     # Check state values are included
     assert result["api_status"] == "success"
-    assert result["presence_local"] == 5
-    assert result["presence_total"] == 10
+    # presence_local and presence_total are strings to prevent "undefined" in templates
+    assert result["presence_local"] == "5"
+    assert result["presence_total"] == "10"
     assert "update_time" in result
 
 

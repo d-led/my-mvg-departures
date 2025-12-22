@@ -108,8 +108,16 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         socket.context.direction_groups = self.state_manager.departures_state.direction_groups
         socket.context.last_update = self.state_manager.departures_state.last_update
         socket.context.api_status = self.state_manager.departures_state.api_status
-        socket.context.presence_local = self.state_manager.departures_state.presence_local
-        socket.context.presence_total = self.state_manager.departures_state.presence_total
+        socket.context.presence_local = (
+            self.state_manager.departures_state.presence_local
+            if self.state_manager.departures_state.presence_local is not None
+            else 0
+        )
+        socket.context.presence_total = (
+            self.state_manager.departures_state.presence_total
+            if self.state_manager.departures_state.presence_total is not None
+            else 0
+        )
         logger.info(
             f"Updated context from pubsub message at {datetime.now(UTC)}, "
             f"groups: {len(self.state_manager.departures_state.direction_groups)}"
@@ -137,45 +145,89 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         # Build assigns - keep it simple like the original
         # Only ensure essential safety checks
         if not isinstance(template_data, dict):
-            logger.warning(f"template_data is not a dict in _build_template_assigns, got {type(template_data)}")
+            logger.warning(
+                f"template_data is not a dict in _build_template_assigns, got {type(template_data)}"
+            )
             template_data = {}
-        
+
         # Ensure groups_with_departures and stops_without_departures exist
-        if "groups_with_departures" not in template_data or template_data["groups_with_departures"] is None:
+        if (
+            "groups_with_departures" not in template_data
+            or template_data["groups_with_departures"] is None
+        ):
             template_data["groups_with_departures"] = []
-        if "stops_without_departures" not in template_data or template_data["stops_without_departures"] is None:
+        if (
+            "stops_without_departures" not in template_data
+            or template_data["stops_without_departures"] is None
+        ):
             template_data["stops_without_departures"] = []
         if "has_departures" not in template_data:
             template_data["has_departures"] = False
-        
+
         last_update = state.last_update
+        # Ensure all template variables are strings or numbers, never None
+        # This prevents "undefined" or "None" from appearing in the rendered HTML
         return {
             **template_data,
-            "theme": theme,
-            "banner_color": self.config.banner_color,
-            "font_size_route_number": self.config.font_size_route_number,
-            "font_size_destination": self.config.font_size_destination,
-            "font_size_platform": self.config.font_size_platform,
-            "font_size_time": self.config.font_size_time,
-            "font_size_no_departures": self.config.font_size_no_departures_available,
-            "font_size_direction_header": self.config.font_size_direction_header,
-            "font_size_pagination_indicator": self.config.font_size_pagination_indicator,
-            "font_size_countdown_text": self.config.font_size_countdown_text,
-            "font_size_status_header": self.config.font_size_status_header,
-            "font_size_delay_amount": self.config.font_size_delay_amount,
-            "font_size_stop_header": self.config.font_size_stop_header,
-            "pagination_enabled": str(self.config.pagination_enabled).lower(),
-            "departures_per_page": str(self.config.departures_per_page),
-            "page_rotation_seconds": str(self.config.page_rotation_seconds),
-            "refresh_interval_seconds": str(self.config.refresh_interval_seconds),
-            "time_format_toggle_seconds": str(self.config.time_format_toggle_seconds),
-            "api_status": state.api_status,
+            "theme": str(theme),
+            "banner_color": str(self.config.banner_color or "#000000"),
+            "font_size_route_number": str(self.config.font_size_route_number or "1.5rem"),
+            "font_size_destination": str(self.config.font_size_destination or "1.2rem"),
+            "font_size_platform": str(self.config.font_size_platform or "1rem"),
+            "font_size_time": str(self.config.font_size_time or "1.5rem"),
+            "font_size_no_departures": str(
+                self.config.font_size_no_departures_available or "1.2rem"
+            ),
+            "font_size_direction_header": str(self.config.font_size_direction_header or "1.3rem"),
+            "font_size_pagination_indicator": str(
+                self.config.font_size_pagination_indicator or "0.9rem"
+            ),
+            "font_size_countdown_text": str(self.config.font_size_countdown_text or "0.9rem"),
+            "font_size_status_header": str(self.config.font_size_status_header or "1rem"),
+            "font_size_delay_amount": str(self.config.font_size_delay_amount or "0.9rem"),
+            "font_size_stop_header": str(self.config.font_size_stop_header or "1.1rem"),
+            "pagination_enabled": (
+                str(self.config.pagination_enabled).lower()
+                if self.config.pagination_enabled is not None
+                else "false"
+            ),
+            "departures_per_page": (
+                str(self.config.departures_per_page)
+                if self.config.departures_per_page is not None
+                else "5"
+            ),
+            "page_rotation_seconds": (
+                str(self.config.page_rotation_seconds)
+                if self.config.page_rotation_seconds is not None
+                else "10"
+            ),
+            "refresh_interval_seconds": (
+                str(self.config.refresh_interval_seconds)
+                if self.config.refresh_interval_seconds is not None
+                else "20"
+            ),
+            "time_format_toggle_seconds": (
+                str(self.config.time_format_toggle_seconds)
+                if self.config.time_format_toggle_seconds is not None
+                else "0"
+            ),
+            "api_status": str(state.api_status or "unknown"),
             "last_update_timestamp": (
                 str(int(last_update.timestamp() * 1000)) if last_update is not None else "0"
             ),
-            "update_time": self.formatter.format_update_time(last_update),
-            "presence_local": state.presence_local,
-            "presence_total": state.presence_total,
+            "update_time": str(self.formatter.format_update_time(last_update) or "Never"),
+            "presence_local": str(
+                int(state.presence_local)
+                if state.presence_local is not None
+                and isinstance(state.presence_local, (int, float))
+                else 0
+            ),
+            "presence_total": str(
+                int(state.presence_total)
+                if state.presence_total is not None
+                and isinstance(state.presence_total, (int, float))
+                else 0
+            ),
         }
 
     async def mount(self, socket: LiveViewSocket[DeparturesState], _session: dict) -> None:
@@ -226,8 +278,16 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             direction_groups=self.state_manager.departures_state.direction_groups,
             last_update=self.state_manager.departures_state.last_update,
             api_status=self.state_manager.departures_state.api_status,
-            presence_local=self.state_manager.departures_state.presence_local,
-            presence_total=self.state_manager.departures_state.presence_total,
+            presence_local=(
+                self.state_manager.departures_state.presence_local
+                if self.state_manager.departures_state.presence_local is not None
+                else 0
+            ),
+            presence_total=(
+                self.state_manager.departures_state.presence_total
+                if self.state_manager.departures_state.presence_total is not None
+                else 0
+            ),
         )
 
         # Store session ID in socket for later use in unmount/disconnect
@@ -373,6 +433,17 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             # Ensure direction_groups is never None - default to empty list
             # This prevents "Cannot read properties of undefined" errors
             direction_groups = state.direction_groups if state.direction_groups is not None else []
+            
+            # Ensure presence values are never None - default to 0
+            # This prevents "undefined" from appearing in the template
+            # CRITICAL: Do this BEFORE building template assigns to ensure template engine never sees None
+            if not hasattr(state, 'presence_local') or state.presence_local is None:
+                state.presence_local = 0
+            if not hasattr(state, 'presence_total') or state.presence_total is None:
+                state.presence_total = 0
+            # Also ensure they're integers, not floats or strings
+            state.presence_local = int(state.presence_local) if isinstance(state.presence_local, (int, float)) else 0
+            state.presence_total = int(state.presence_total) if isinstance(state.presence_total, (int, float)) else 0
 
             # Prepare template data and build assigns
             # Ensure template_data is always a dict with safe defaults
@@ -382,12 +453,20 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 )
                 # Ensure template_data is a dict and has required keys
                 if not isinstance(template_data, dict):
-                    logger.warning(f"template_data is not a dict, got {type(template_data)}, using empty dict")
+                    logger.warning(
+                        f"template_data is not a dict, got {type(template_data)}, using empty dict"
+                    )
                     template_data = {}
                 # Ensure required keys exist with safe defaults
-                if "groups_with_departures" not in template_data or template_data["groups_with_departures"] is None:
+                if (
+                    "groups_with_departures" not in template_data
+                    or template_data["groups_with_departures"] is None
+                ):
                     template_data["groups_with_departures"] = []
-                if "stops_without_departures" not in template_data or template_data["stops_without_departures"] is None:
+                if (
+                    "stops_without_departures" not in template_data
+                    or template_data["stops_without_departures"] is None
+                ):
                     template_data["stops_without_departures"] = []
                 if "has_departures" not in template_data:
                     template_data["has_departures"] = False
@@ -399,7 +478,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                     "stops_without_departures": [],
                     "has_departures": False,
                 }
-            
+
             template_assigns = self._build_template_assigns(state, template_data)
 
             # Use pyview's LiveTemplate system with FileReloader

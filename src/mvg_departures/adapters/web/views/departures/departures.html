@@ -801,7 +801,7 @@
 
     <!-- Floating status box at bottom center -->
     <div class="status-floating-box" role="status" aria-label="System status indicators: connection status, API status, refresh countdown, and user presence">
-        <div class="status-floating-box-item" id="connection-status" data-connection-state="connected" role="img" aria-label="Connection status: connected" title="WebSocket connection status">
+        <div class="status-floating-box-item" id="connection-status" data-connection-state="connecting" role="img" aria-label="Connection status: connecting" title="WebSocket connection status">
             <!-- Connected: bolt icon -->
             <svg class="status-icon connected" id="connected-icon" style="display: none;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
@@ -1028,8 +1028,8 @@
 
     // Connection status monitoring
     // States: connecting (yellow), connected (green), unstable (orange/question-mark-circle), broken (red)
-    // Start as 'connected' - we'll update based on actual events, not assumptions
-    let connectionState = 'connected';
+    // Start as 'connecting' - will change to 'connected' on phx:open, or 'broken' on phx:disconnect/phx:close
+    let connectionState = 'connecting';
     let countdownInterval = null;
     let countdownElapsed = 0;
     let countdownRunning = false;
@@ -1255,14 +1255,16 @@
         const timeSinceLastUpdate = now - lastUpdateTime;
         
         // phx:update means we're connected and receiving data
-        // Only set to connected if not already broken (broken is set by phx:disconnect/phx:close)
-        if (connectionState !== 'broken') {
-            connectionState = 'connected';
-        }
+        // Always set to connected when we receive updates - this overrides any false positive from fallback checks
+        // This is the PRIMARY way to know we're connected - updates mean the connection is working
+        connectionState = 'connected';
         failedUpdateCount = 0;
         
         lastUpdateTime = now;
         lastSuccessfulUpdate = now;
+        
+        // Update connection status immediately to ensure UI reflects connected state
+        updateConnectionStatus();
 
         // PyView handles reconnection - no custom timeout to clear
 
@@ -1273,54 +1275,49 @@
             updateTimeout = null;
         }
 
-        // Update connection status AFTER we've set the state above
-        // Don't call updateConnectionStatus() multiple times - just once after state is set
-        requestAnimationFrame(() => {
-            updateConnectionStatus();
-            // Determine API status: prioritize server's API status, then check update health
-            let apiStatus = 'unknown';
-            const departuresEl = document.getElementById('departures');
-            const apiStatusEl = document.getElementById('api-status-value');
-            
-            // First, check server's API status (indicates if MVG API call succeeded/failed)
-            let serverApiStatus = null;
-            if (apiStatusEl) {
-                const statusText = (apiStatusEl.textContent || '').trim().toLowerCase();
-                if (statusText === 'success' || statusText === 'error' || statusText === 'unknown') {
-                    serverApiStatus = statusText;
+        // Determine API status: prioritize server's API status, then check update health
+        let apiStatus = 'unknown';
+        const departuresEl = document.getElementById('departures');
+        const apiStatusEl = document.getElementById('api-status-value');
+        
+        // First, check server's API status (indicates if MVG API call succeeded/failed)
+        let serverApiStatus = null;
+        if (apiStatusEl) {
+            const statusText = (apiStatusEl.textContent || '').trim().toLowerCase();
+            if (statusText === 'success' || statusText === 'error' || statusText === 'unknown') {
+                serverApiStatus = statusText;
+            }
+        }
+        
+        // If server reports API error, show error regardless of update health
+        if (serverApiStatus === 'error') {
+            apiStatus = 'error';
+        } else {
+            // Check if update contains undefined values (unhealthy update from server)
+            let updateIsHealthy = true;
+            if (departuresEl) {
+                const content = departuresEl.textContent || '';
+                if (content.includes('undefined') || content.trim() === 'undefined') {
+                    updateIsHealthy = false;
                 }
             }
             
-            // If server reports API error, show error regardless of update health
-            if (serverApiStatus === 'error') {
+            if (!updateIsHealthy) {
+                // Unhealthy update - show error
                 apiStatus = 'error';
+            } else if (serverApiStatus === 'success') {
+                // Healthy update and server reports success
+                apiStatus = 'success';
+            } else if (serverApiStatus === 'unknown') {
+                // Server status unknown, but update looks healthy
+                apiStatus = 'unknown';
             } else {
-                // Check if update contains undefined values (unhealthy update from server)
-                let updateIsHealthy = true;
-                if (departuresEl) {
-                    const content = departuresEl.textContent || '';
-                    if (content.includes('undefined') || content.trim() === 'undefined') {
-                        updateIsHealthy = false;
-                    }
-                }
-                
-                if (!updateIsHealthy) {
-                    // Unhealthy update - show error
-                    apiStatus = 'error';
-                } else if (serverApiStatus === 'success') {
-                    // Healthy update and server reports success
-                    apiStatus = 'success';
-                } else if (serverApiStatus === 'unknown') {
-                    // Server status unknown, but update looks healthy
-                    apiStatus = 'unknown';
-                } else {
-                    // No server status, but update looks healthy - assume success
-                    apiStatus = 'success';
-                }
+                // No server status, but update looks healthy - assume success
+                apiStatus = 'success';
             }
-            
-            updateApiStatus(apiStatus);
-        });
+        }
+        
+        updateApiStatus(apiStatus);
 
         // Handle pagination if enabled
         if (PAGINATION_ENABLED) {
@@ -1389,54 +1386,54 @@
     // Presence count is managed entirely by PyView - do not modify DOM
 
     function updateApiStatus(status) {
-            const apiSuccessIcon = document.getElementById('api-success-icon');
-            const apiErrorIcon = document.getElementById('api-error-icon');
-            const apiUnknownIcon = document.getElementById('api-unknown-icon');
-            const apiStatusContainer = document.getElementById('api-status-container');
-            const liveRegion = document.getElementById('aria-live-status');
+        const apiSuccessIcon = document.getElementById('api-success-icon');
+        const apiErrorIcon = document.getElementById('api-error-icon');
+        const apiUnknownIcon = document.getElementById('api-unknown-icon');
+        const apiStatusContainer = document.getElementById('api-status-container');
+        const liveRegion = document.getElementById('aria-live-status');
 
-            if (!apiSuccessIcon || !apiErrorIcon || !apiUnknownIcon) {
-                // console.warn('API status icons not found');
-                return;
-            }
-
-            // Hide all icons first
-            apiSuccessIcon.style.display = 'none';
-            apiErrorIcon.style.display = 'none';
-            apiUnknownIcon.style.display = 'none';
-
-            // Show appropriate icon based on status
-            if (status === 'success') {
-                if (apiStatusContainer) {
-                    apiStatusContainer.setAttribute('aria-label', 'API status: success');
-                    apiStatusContainer.setAttribute('title', 'MVG API connection: success');
-                }
-                apiSuccessIcon.style.display = '';
-                if (liveRegion) liveRegion.textContent = 'API status: success';
-            } else if (status === 'error') {
-                if (apiStatusContainer) {
-                    apiStatusContainer.setAttribute('aria-label', 'API status: error');
-                    apiStatusContainer.setAttribute('title', 'MVG API connection: error');
-                }
-                apiErrorIcon.style.display = '';
-                if (liveRegion) liveRegion.textContent = 'API status: error';
-            } else {
-                if (apiStatusContainer) {
-                    apiStatusContainer.setAttribute('aria-label', 'API status: unknown');
-                    apiStatusContainer.setAttribute('title', 'MVG API connection: status unknown');
-                }
-                apiUnknownIcon.style.display = '';
-                if (liveRegion) liveRegion.textContent = 'API status: unknown';
-            }
+        if (!apiSuccessIcon || !apiErrorIcon || !apiUnknownIcon) {
+            // console.warn('API status icons not found');
+            return;
         }
+
+        // Hide all icons first
+        apiSuccessIcon.style.display = 'none';
+        apiErrorIcon.style.display = 'none';
+        apiUnknownIcon.style.display = 'none';
+
+        // Show appropriate icon based on status
+        if (status === 'success') {
+            if (apiStatusContainer) {
+                apiStatusContainer.setAttribute('aria-label', 'API status: success');
+                apiStatusContainer.setAttribute('title', 'MVG API connection: success');
+            }
+            apiSuccessIcon.style.display = '';
+            if (liveRegion) liveRegion.textContent = 'API status: success';
+        } else if (status === 'error') {
+            if (apiStatusContainer) {
+                apiStatusContainer.setAttribute('aria-label', 'API status: error');
+                apiStatusContainer.setAttribute('title', 'MVG API connection: error');
+            }
+            apiErrorIcon.style.display = '';
+            if (liveRegion) liveRegion.textContent = 'API status: error';
+        } else {
+            if (apiStatusContainer) {
+                apiStatusContainer.setAttribute('aria-label', 'API status: unknown');
+                apiStatusContainer.setAttribute('title', 'MVG API connection: status unknown');
+            }
+            apiUnknownIcon.style.display = '';
+            if (liveRegion) liveRegion.textContent = 'API status: unknown';
+        }
+    }
 
         // No custom reconnection logic - PyView handles reconnection automatically
         // We just listen to the events: phx:disconnect -> phx:connecting -> phx:open
 
     window.addEventListener('phx:disconnect', () => {
         try {
-            console.log('phx:disconnect received - connection disconnected');
             // On disconnect, show broken state (red) - PyView will attempt to reconnect
+            // Note: onClose hook already set it to 'unstable' (orange), now we confirm it's broken (red)
             connectionState = 'broken';
             // Update UI immediately - don't wait for requestAnimationFrame
             updateConnectionStatus();
@@ -1446,6 +1443,13 @@
             clearTimeout(updateTimeout);
             updateTimeout = null;
         }
+        
+        // Clear the close timeout from onClose hook since phx:disconnect fired
+        if (window._closeTimeout) {
+            clearTimeout(window._closeTimeout);
+            window._closeTimeout = null;
+        }
+        
         // Also update in next frame to ensure it sticks
         requestAnimationFrame(() => {
             updateConnectionStatus();
@@ -1508,10 +1512,12 @@
     });
 
     // Disable debug logging once - assume liveSocket is available in callbacks
+    let debugDisabled = false;
     function disableDebugOnce() {
-        if (!window.liveSocket) return;
+        if (debugDisabled || !window.liveSocket) return;
         try {
-            // window.liveSocket.disableDebug();
+            window.liveSocket.disableDebug();
+            debugDisabled = true;
         } catch (e) {
             // Silently fail - not critical
         }
@@ -1524,6 +1530,8 @@
             connectionState = 'connected';
             // Reset failed update count on successful connection
             failedUpdateCount = 0;
+            // Update lastUpdateTime to prevent false disconnection detection
+            lastUpdateTime = Date.now();
             
             // Disable debug logging once after connection
             disableDebugOnce();
@@ -1551,6 +1559,11 @@
         updateConnectionStatus();
         updateApiStatus(INITIAL_API_STATUS); // Use initial API status from server
     });
+
+    // No fallback connection check - we rely ONLY on PyView events
+    // The user requirement: "the only thing that should cause a disconnection animation 
+    // or a disconnected icon is a REAL DISCONNECTION of liveSocket!"
+    // PyView's phx:disconnect and phx:close events are the source of truth
 
     // Cleanup on unload
     window.addEventListener('beforeunload', () => {
@@ -1745,7 +1758,11 @@
     });
 
     // Also cleanup on LiveView disconnect
+    // Second phx:disconnect handler for pagination cleanup
+    // Note: The main phx:disconnect handler at line 1436 already sets connectionState = 'broken'
+    // This handler only handles pagination-specific cleanup
     window.addEventListener('phx:disconnect', () => {
+        // Clear pagination intervals
         if (window._paginationIntervals) {
             window._paginationIntervals.forEach(interval => clearInterval(interval));
             window._paginationIntervals = [];
@@ -1771,7 +1788,7 @@
         // console.log('data-phx-main element found');
     }
 
-    // Intercept WebSocket connections to fix undefined referer and detect connection failures
+    // Intercept WebSocket connections to fix undefined referer
     // PyView's app.js sets _live_referer from document.referrer, which can be undefined
     // We need to ensure it's always a valid value
     const originalWebSocket = window.WebSocket;
@@ -1782,33 +1799,7 @@
             const currentUrl = window.location.href;
             url = url.replace('_live_referer=undefined', '_live_referer=' + encodeURIComponent(currentUrl));
         }
-        const ws = new originalWebSocket(url, protocols);
-        
-        // Monitor WebSocket connection failures
-        ws.addEventListener('error', () => {
-            // WebSocket connection failed - update connection status
-            if (typeof connectionState !== 'undefined') {
-                connectionState = 'broken';
-                requestAnimationFrame(() => {
-                    updateConnectionStatus();
-                });
-            }
-        });
-        
-        ws.addEventListener('close', (event) => {
-            // WebSocket closed - if not a clean close, mark as broken
-            if (event.code !== 1000 && event.code !== 1001) {
-                // Not a normal closure - connection was broken
-                if (typeof connectionState !== 'undefined') {
-                    connectionState = 'broken';
-                    requestAnimationFrame(() => {
-                        updateConnectionStatus();
-                    });
-                }
-            }
-        });
-        
-        return ws;
+        return new originalWebSocket(url, protocols);
     };
     // Copy static properties
     Object.setPrototypeOf(window.WebSocket, originalWebSocket);
@@ -1822,20 +1813,58 @@
     };
     script.onload = function() {
         // console.log('app.js loaded successfully');
-        // Check connection status periodically to catch cases where WebSocket fails silently
-        setInterval(() => {
+        // Configure LiveSocket timeout settings and hooks after it's loaded
+        // PyView creates LiveSocket automatically, so we configure it after creation
+        function configureLiveSocket() {
             if (window.liveSocket) {
-                // Check if liveSocket thinks it's connected
-                const socket = window.liveSocket.socket;
-                if (socket && socket.readyState !== WebSocket.OPEN) {
-                    // WebSocket is not open - update connection status
-                    if (connectionState !== 'broken' && connectionState !== 'connecting') {
-                        connectionState = 'broken';
-                        updateConnectionStatus();
-                    }
+                // Get the underlying Phoenix Socket
+                const socket = window.liveSocket.getSocket ? window.liveSocket.getSocket() : null;
+                
+                if (socket) {
+                    // Hook into WebSocket close event for immediate feedback
+                    // This fires when the WebSocket actually closes (server stops, network issue, etc.)
+                    // We set connection to 'unstable' (orange) on close, then 'broken' (red) on phx:disconnect
+                    socket.onClose((event) => {
+                        // WebSocket closed - set to unstable (orange) immediately
+                        // phx:disconnect should fire next and set it to broken (red)
+                        if (connectionState !== 'broken') {
+                            connectionState = 'unstable';
+                            updateConnectionStatus();
+                            
+                            // Fallback: if phx:disconnect doesn't fire within 3 seconds, set to broken
+                            // This handles cases where PyView doesn't fire phx:disconnect immediately
+                            const closeTimeout = setTimeout(() => {
+                                // Check if WebSocket is still closed and we're still unstable
+                                if (connectionState === 'unstable') {
+                                    // Verify WebSocket is actually closed (not OPEN = 1)
+                                    const wsState = socket.conn ? socket.conn.readyState : null;
+                                    if (wsState !== null && wsState !== 1) { // Not OPEN
+                                        connectionState = 'broken';
+                                        updateConnectionStatus();
+                                    } else if (wsState === null) {
+                                        // No connection object - definitely broken
+                                        connectionState = 'broken';
+                                        updateConnectionStatus();
+                                    }
+                                }
+                            }, 3000); // Wait 3 seconds for phx:disconnect, then force broken
+                            
+                            // Store timeout ID so phx:disconnect can clear it if it fires
+                            window._closeTimeout = closeTimeout;
+                        }
+                    });
                 }
             }
-        }, 2000); // Check every 2 seconds
+        }
+        
+        // Try to configure immediately
+        configureLiveSocket();
+        
+        // Also try after a short delay in case LiveSocket isn't ready yet
+        setTimeout(configureLiveSocket, 100);
+        
+        // Connection status will be updated via phx:open/phx:disconnect/phx:close events
+        // Don't interfere with PyView's connection management
     };
     document.body.appendChild(script);
 </script>
