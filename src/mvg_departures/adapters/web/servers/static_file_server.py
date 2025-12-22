@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from starlette.responses import FileResponse, Response
 from starlette.routing import Route
+from starlette.staticfiles import StaticFiles
 
 from mvg_departures.domain.contracts.static_file_server import StaticFileServerProtocol
 
@@ -26,10 +27,34 @@ class StaticFileServer(StaticFileServerProtocol):
         Args:
             app: The PyView application instance.
         """
-        # Add route to serve pyview's client JavaScript
-        app.routes.append(Route("/static/assets/app.js", self._serve_app_js))
-        # Add route to serve GitHub icon
-        app.routes.append(Route("/static/assets/github-mark.svg", self._serve_github_icon))
+        # IMPORTANT: Register specific routes BEFORE mounting the static directory
+        # This ensures specific routes take precedence over the mount
+        # Use insert(0, ...) to put them at the beginning so they're checked first
+        # Add route to serve pyview's client JavaScript (needed for /static/assets/app.js)
+        app.routes.insert(0, Route("/static/assets/app.js", self._serve_app_js))
+        # Add route to serve GitHub icon (though this should work from static directory now)
+        app.routes.insert(0, Route("/static/assets/github-mark.svg", self._serve_github_icon))
+
+        # Mount static files directory to serve CSS, JS, and other assets
+        # Try multiple possible locations for the static directory
+        static_paths = [
+            Path.cwd() / "static",
+            Path(__file__).parent.parent.parent.parent.parent / "static",
+        ]
+
+        static_path = None
+        for path in static_paths:
+            if path.exists():
+                static_path = path
+                break
+
+        if static_path:
+            app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+            logger.info(f"Mounted static files from {static_path}")
+        else:
+            logger.warning(
+                f"Static directory not found at any of: {[str(p) for p in static_paths]}"
+            )
 
     async def _serve_app_js(self, _request: Any) -> Any:
         """Serve pyview's client JavaScript."""
