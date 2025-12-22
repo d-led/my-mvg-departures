@@ -68,10 +68,7 @@ class RouteConfigurationLoader:
             if stop_configs:
                 # Get optional route-specific title
                 route_title = route_data.get("title")
-                if route_title and isinstance(route_title, str):
-                    route_title = route_title
-                else:
-                    route_title = None
+                route_title = route_title if route_title and isinstance(route_title, str) else None
 
                 route_config = RouteConfiguration(
                     path=path, stop_configs=stop_configs, title=route_title
