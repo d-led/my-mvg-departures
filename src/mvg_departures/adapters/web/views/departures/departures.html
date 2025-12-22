@@ -81,7 +81,7 @@
             <h2 class="direction-header" role="heading" aria-level="2">
                 {% if group.is_first_header %}
                 <span class="direction-header-text">{{ group.header }}</span>
-                <div class="direction-header-time status-header-item" id="datetime-display" aria-label="Current date and time"></div>
+                <div class="direction-header-time status-header-item" id="datetime-display" aria-label="Current date and time" phx-update="ignore"></div>
                 {% else %}
                 {{ group.header }}
                 {% endif %}

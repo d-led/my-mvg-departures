@@ -917,6 +917,9 @@
 
     // Initialize on load
     function initializeAll() {
+        // Update datetime immediately when DOM is ready
+        updateDateTime();
+        
         if (PAGINATION_ENABLED) {
             initPagination();
         }
