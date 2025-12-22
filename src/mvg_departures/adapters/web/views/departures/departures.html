@@ -801,7 +801,7 @@
 
     <!-- Floating status box at bottom center -->
     <div class="status-floating-box" role="status" aria-label="System status indicators: connection status, API status, refresh countdown, and user presence">
-        <div class="status-floating-box-item" id="connection-status" data-connection-state="connecting" role="img" aria-label="Connection status: connecting" title="WebSocket connection status">
+        <div class="status-floating-box-item" id="connection-status" data-connection-state="connected" role="img" aria-label="Connection status: connected" title="WebSocket connection status">
             <!-- Connected: bolt icon -->
             <svg class="status-icon connected" id="connected-icon" style="display: none;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
@@ -820,6 +820,8 @@
             </svg>
         </div>
         <div class="status-floating-box-item" id="api-status-container" role="img" aria-label="API status: unknown" title="MVG API connection status">
+            <!-- Hidden element with API status that PyView updates -->
+            <span id="api-status-value" style="display: none;">{{ api_status }}</span>
             <!-- Success: check-circle icon -->
             <svg class="api-status-icon api-success" id="api-success-icon" style="display: none;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -861,18 +863,6 @@
 <script>
     // Suppress pyview debug logging (mount/update events from app.js)
     // This must run before app.js loads to intercept its console.log calls
-    (function() {
-        const originalLog = console.log;
-        console.log = function(...args) {
-            // Filter out pyview debug logs (mount/update events)
-            // Pattern: "phx-<id> mount:" or "phx-<id> update:"
-            const message = args.join(' ');
-            if (message.match(/phx-[a-f0-9-]+\s+(mount|update):/)) {
-                return; // Suppress these logs
-            }
-            originalLog.apply(console, args);
-        };
-    })();
 
     // Prevent zooming on iOS devices, especially when unlocking
     (function() {
@@ -1038,7 +1028,8 @@
 
     // Connection status monitoring
     // States: connecting (yellow), connected (green), unstable (orange/question-mark-circle), broken (red)
-    let connectionState = 'connecting'; // Start as connecting (yellow)
+    // Start as 'connected' - we'll update based on actual events, not assumptions
+    let connectionState = 'connected';
     let countdownInterval = null;
     let countdownElapsed = 0;
     let countdownRunning = false;
@@ -1237,26 +1228,13 @@
     window.addEventListener('phx:error', (event) => {
         try {
             console.error('phx:error received:', event);
-            // Increment failed update count
-            failedUpdateCount++;
-        
-        // If we've had multiple errors, mark as unstable
-        // If errors persist, mark as broken
-        if (failedUpdateCount >= 3) {
-            connectionState = 'broken';
-        } else if (failedUpdateCount >= 1) {
-            connectionState = 'unstable';
-        }
-        
-        // PyView handles reconnection automatically - no custom timeout needed
-        // Use requestAnimationFrame to ensure DOM is ready
-        requestAnimationFrame(() => {
-            updateConnectionStatus();
-            updateApiStatus('error');
-            if (connectionState === 'broken') {
-                hidePresenceCount();
-            }
-        });
+            // Error occurred - but don't change connection state
+            // Only phx:disconnect/phx:close indicate real disconnections
+            // phx:error might be a data error, not a connection error
+            // Use requestAnimationFrame to ensure DOM is ready
+            requestAnimationFrame(() => {
+                updateApiStatus('error');
+            });
         // Stop countdown on error
         if (countdownInterval) {
             clearInterval(countdownInterval);
@@ -1276,81 +1254,72 @@
             const now = Date.now();
         const timeSinceLastUpdate = now - lastUpdateTime;
         
-        // Check if this is a delayed or botched update
-        // If updates are coming but with significant delays (>2x expected interval), mark as unstable
-        const expectedInterval = REFRESH_INTERVAL_SECONDS * 1000;
-        if (timeSinceLastUpdate > expectedInterval * 2.5 && lastUpdateTime > 0) {
-            // Updates are delayed - connection is unstable
-            connectionState = 'unstable';
-            failedUpdateCount = 0; // Reset failed count since we got an update
-        } else {
-            // Normal update - connection is good
+        // phx:update means we're connected and receiving data
+        // Only set to connected if not already broken (broken is set by phx:disconnect/phx:close)
+        if (connectionState !== 'broken') {
             connectionState = 'connected';
-            failedUpdateCount = 0;
         }
+        failedUpdateCount = 0;
         
         lastUpdateTime = now;
         lastSuccessfulUpdate = now;
 
         // PyView handles reconnection - no custom timeout to clear
 
-        // Clear update timeout and set a new one to detect if updates stop
+        // Clear update timeout - we don't use it to detect disconnections
+        // Only phx:disconnect/phx:close events indicate real disconnections
         if (updateTimeout) {
             clearTimeout(updateTimeout);
+            updateTimeout = null;
         }
-        // If we don't receive an update within 10 seconds, mark as unstable first
-        // Then if still no update after 20 seconds, mark as broken
-        updateTimeout = setTimeout(() => {
-            const timeSinceLastSuccessful = Date.now() - lastSuccessfulUpdate;
-            if (timeSinceLastSuccessful > 20000) {
-                // No updates for 20+ seconds - fully broken
-                connectionState = 'broken';
-            } else if (timeSinceLastSuccessful > 10000) {
-                // No updates for 10+ seconds - unstable
-                connectionState = 'unstable';
-            }
-            requestAnimationFrame(() => {
-                updateConnectionStatus();
-                if (connectionState === 'broken') {
-                    hidePresenceCount();
-                }
-            });
-        }, 10000); // Check every 10 seconds
 
-        // Check if update is botched (contains undefined values or errors)
-        // This detects when the server sends an update but it's malformed
-        setTimeout(() => {
-            const departuresEl = document.getElementById('departures');
-            if (departuresEl) {
-                const content = departuresEl.textContent || '';
-                // If we see "undefined" in the content, the update was botched
-                if (content.includes('undefined') || content.trim() === 'undefined') {
-                    // Botched update - mark as unstable
-                    connectionState = 'unstable';
-                    failedUpdateCount++;
-                    requestAnimationFrame(() => {
-                        updateConnectionStatus();
-                    });
-                }
-            }
-        }, 100); // Check after DOM update completes
-
-        // Update connection status after DOM update (pyview may have replaced elements)
-        // Use multiple requestAnimationFrame calls and a small timeout to ensure DOM is fully updated
-        // pyview patches DOM, then we need to wait for it to complete before updating status
+        // Update connection status AFTER we've set the state above
+        // Don't call updateConnectionStatus() multiple times - just once after state is set
         requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-                // Additional small delay to ensure pyview's DOM patch is complete
-                setTimeout(() => {
-                    // Don't restore connection state on phx:update - it might restore stale "connected" state
-                    // The connection state is managed by phx:disconnect, phx:connecting, phx:open, phx:close events
-                    // Only update UI if connectionState was set by those events
-                    // Re-query elements in case they were replaced and update status
-                    updateConnectionStatus();
-                    // Do NOT read from event.detail - PyView manages assigns through DOM
-                    // API status and presence are rendered by PyView from server assigns
-                }, 10); // Small delay to ensure DOM patch is complete
-            });
+            updateConnectionStatus();
+            // Determine API status: prioritize server's API status, then check update health
+            let apiStatus = 'unknown';
+            const departuresEl = document.getElementById('departures');
+            const apiStatusEl = document.getElementById('api-status-value');
+            
+            // First, check server's API status (indicates if MVG API call succeeded/failed)
+            let serverApiStatus = null;
+            if (apiStatusEl) {
+                const statusText = (apiStatusEl.textContent || '').trim().toLowerCase();
+                if (statusText === 'success' || statusText === 'error' || statusText === 'unknown') {
+                    serverApiStatus = statusText;
+                }
+            }
+            
+            // If server reports API error, show error regardless of update health
+            if (serverApiStatus === 'error') {
+                apiStatus = 'error';
+            } else {
+                // Check if update contains undefined values (unhealthy update from server)
+                let updateIsHealthy = true;
+                if (departuresEl) {
+                    const content = departuresEl.textContent || '';
+                    if (content.includes('undefined') || content.trim() === 'undefined') {
+                        updateIsHealthy = false;
+                    }
+                }
+                
+                if (!updateIsHealthy) {
+                    // Unhealthy update - show error
+                    apiStatus = 'error';
+                } else if (serverApiStatus === 'success') {
+                    // Healthy update and server reports success
+                    apiStatus = 'success';
+                } else if (serverApiStatus === 'unknown') {
+                    // Server status unknown, but update looks healthy
+                    apiStatus = 'unknown';
+                } else {
+                    // No server status, but update looks healthy - assume success
+                    apiStatus = 'success';
+                }
+            }
+            
+            updateApiStatus(apiStatus);
         });
 
         // Handle pagination if enabled
@@ -1466,10 +1435,9 @@
 
     window.addEventListener('phx:disconnect', () => {
         try {
-            console.log('phx:disconnect received - connection disconnected, PyView will attempt to reconnect');
-            // On disconnect, set to connecting - PyView will automatically try to reconnect
-            // This is NOT a permanent disconnect, just a temporary loss of connection
-            connectionState = 'connecting';
+            console.log('phx:disconnect received - connection disconnected');
+            // On disconnect, show broken state (red) - PyView will attempt to reconnect
+            connectionState = 'broken';
             // Update UI immediately - don't wait for requestAnimationFrame
             updateConnectionStatus();
             
@@ -1481,7 +1449,6 @@
         // Also update in next frame to ensure it sticks
         requestAnimationFrame(() => {
             updateConnectionStatus();
-            hidePresenceCount(); // Hide presence while disconnected/reconnecting
         });
         // Stop countdown on disconnect - will restart when reconnected via phx:open
         if (countdownInterval) {
@@ -1509,8 +1476,7 @@
         // Use requestAnimationFrame to ensure DOM is ready
         requestAnimationFrame(() => {
             updateConnectionStatus();
-            hidePresenceCount();
-            // console.log('Connection status updated to broken (red), presence hidden');
+            // console.log('Connection status updated to broken (red)');
         });
         // Stop countdown
         if (countdownInterval) {
@@ -1532,8 +1498,7 @@
         // Use requestAnimationFrame to ensure DOM is ready
         requestAnimationFrame(() => {
             updateConnectionStatus();
-            hidePresenceCount(); // Hide presence while connecting
-            // console.log('Connection status updated to connecting (yellow, pulsating), presence hidden');
+            // console.log('Connection status updated to connecting (yellow, pulsating)');
         });
         // PyView handles reconnection automatically - just update UI to show connecting state
         } catch (e) {
@@ -1542,6 +1507,16 @@
         }
     });
 
+    // Disable debug logging once - assume liveSocket is available in callbacks
+    function disableDebugOnce() {
+        if (!window.liveSocket) return;
+        try {
+            // window.liveSocket.disableDebug();
+        } catch (e) {
+            // Silently fail - not critical
+        }
+    }
+
     // Detect when WebSocket opens (connected or reconnected)
     window.addEventListener('phx:open', () => {
         try {
@@ -1549,11 +1524,14 @@
             connectionState = 'connected';
             // Reset failed update count on successful connection
             failedUpdateCount = 0;
+            
+            // Disable debug logging once after connection
+            disableDebugOnce();
+            
         // PyView handles reconnection - no custom timeout to clear
         // Use requestAnimationFrame to ensure DOM is ready after pyview updates
         requestAnimationFrame(() => {
             updateConnectionStatus();
-            // Presence will be shown when phx:update is received with actual data
             // console.log('Connection status updated to connected (green)');
         });
         // Restart countdown when connection opens/reopens
@@ -1793,6 +1771,49 @@
         // console.log('data-phx-main element found');
     }
 
+    // Intercept WebSocket connections to fix undefined referer and detect connection failures
+    // PyView's app.js sets _live_referer from document.referrer, which can be undefined
+    // We need to ensure it's always a valid value
+    const originalWebSocket = window.WebSocket;
+    window.WebSocket = function(url, protocols) {
+        // Fix undefined referer in WebSocket URL
+        if (typeof url === 'string' && url.includes('_live_referer=undefined')) {
+            // Replace undefined referer with current page URL
+            const currentUrl = window.location.href;
+            url = url.replace('_live_referer=undefined', '_live_referer=' + encodeURIComponent(currentUrl));
+        }
+        const ws = new originalWebSocket(url, protocols);
+        
+        // Monitor WebSocket connection failures
+        ws.addEventListener('error', () => {
+            // WebSocket connection failed - update connection status
+            if (typeof connectionState !== 'undefined') {
+                connectionState = 'broken';
+                requestAnimationFrame(() => {
+                    updateConnectionStatus();
+                });
+            }
+        });
+        
+        ws.addEventListener('close', (event) => {
+            // WebSocket closed - if not a clean close, mark as broken
+            if (event.code !== 1000 && event.code !== 1001) {
+                // Not a normal closure - connection was broken
+                if (typeof connectionState !== 'undefined') {
+                    connectionState = 'broken';
+                    requestAnimationFrame(() => {
+                        updateConnectionStatus();
+                    });
+                }
+            }
+        });
+        
+        return ws;
+    };
+    // Copy static properties
+    Object.setPrototypeOf(window.WebSocket, originalWebSocket);
+    Object.setPrototypeOf(window.WebSocket.prototype, originalWebSocket.prototype);
+
     // Load pyview client JS
     const script = document.createElement('script');
     script.src = '/static/assets/app.js';
@@ -1801,8 +1822,20 @@
     };
     script.onload = function() {
         // console.log('app.js loaded successfully');
-        // Connection status will be updated via phx:open/phx:close events
-        // No need to check directly - observe events instead
+        // Check connection status periodically to catch cases where WebSocket fails silently
+        setInterval(() => {
+            if (window.liveSocket) {
+                // Check if liveSocket thinks it's connected
+                const socket = window.liveSocket.socket;
+                if (socket && socket.readyState !== WebSocket.OPEN) {
+                    // WebSocket is not open - update connection status
+                    if (connectionState !== 'broken' && connectionState !== 'connecting') {
+                        connectionState = 'broken';
+                        updateConnectionStatus();
+                    }
+                }
+            }
+        }, 2000); // Check every 2 seconds
     };
     document.body.appendChild(script);
 </script>

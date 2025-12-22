@@ -134,66 +134,49 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
         last_update = state.last_update
 
-        # Build assigns with safe defaults - ensure no None values
-        assigns = {
+        # Build assigns - keep it simple like the original
+        # Only ensure essential safety checks
+        if not isinstance(template_data, dict):
+            logger.warning(f"template_data is not a dict in _build_template_assigns, got {type(template_data)}")
+            template_data = {}
+        
+        # Ensure groups_with_departures and stops_without_departures exist
+        if "groups_with_departures" not in template_data or template_data["groups_with_departures"] is None:
+            template_data["groups_with_departures"] = []
+        if "stops_without_departures" not in template_data or template_data["stops_without_departures"] is None:
+            template_data["stops_without_departures"] = []
+        if "has_departures" not in template_data:
+            template_data["has_departures"] = False
+        
+        last_update = state.last_update
+        return {
             **template_data,
-            "theme": theme or "auto",
-            "banner_color": self.config.banner_color or "#000000",
-            "font_size_route_number": self.config.font_size_route_number or "1.5rem",
-            "font_size_destination": self.config.font_size_destination or "1.2rem",
-            "font_size_platform": self.config.font_size_platform or "1rem",
-            "font_size_time": self.config.font_size_time or "1.5rem",
-            "font_size_no_departures": self.config.font_size_no_departures_available or "1.2rem",
-            "font_size_direction_header": self.config.font_size_direction_header or "1.3rem",
-            "font_size_pagination_indicator": self.config.font_size_pagination_indicator
-            or "0.9rem",
-            "font_size_countdown_text": self.config.font_size_countdown_text or "0.9rem",
-            "font_size_status_header": self.config.font_size_status_header or "1rem",
-            "font_size_delay_amount": self.config.font_size_delay_amount or "0.9rem",
-            "font_size_stop_header": self.config.font_size_stop_header or "1.1rem",
-            "pagination_enabled": (
-                str(self.config.pagination_enabled).lower()
-                if self.config.pagination_enabled is not None
-                else "false"
-            ),
-            "departures_per_page": (
-                str(self.config.departures_per_page)
-                if self.config.departures_per_page is not None
-                else "5"
-            ),
-            "page_rotation_seconds": (
-                str(self.config.page_rotation_seconds)
-                if self.config.page_rotation_seconds is not None
-                else "10"
-            ),
-            "refresh_interval_seconds": (
-                str(self.config.refresh_interval_seconds)
-                if self.config.refresh_interval_seconds is not None
-                else "20"
-            ),
-            "time_format_toggle_seconds": (
-                str(self.config.time_format_toggle_seconds)
-                if self.config.time_format_toggle_seconds is not None
-                else "0"
-            ),
-            "api_status": state.api_status or "unknown",
+            "theme": theme,
+            "banner_color": self.config.banner_color,
+            "font_size_route_number": self.config.font_size_route_number,
+            "font_size_destination": self.config.font_size_destination,
+            "font_size_platform": self.config.font_size_platform,
+            "font_size_time": self.config.font_size_time,
+            "font_size_no_departures": self.config.font_size_no_departures_available,
+            "font_size_direction_header": self.config.font_size_direction_header,
+            "font_size_pagination_indicator": self.config.font_size_pagination_indicator,
+            "font_size_countdown_text": self.config.font_size_countdown_text,
+            "font_size_status_header": self.config.font_size_status_header,
+            "font_size_delay_amount": self.config.font_size_delay_amount,
+            "font_size_stop_header": self.config.font_size_stop_header,
+            "pagination_enabled": str(self.config.pagination_enabled).lower(),
+            "departures_per_page": str(self.config.departures_per_page),
+            "page_rotation_seconds": str(self.config.page_rotation_seconds),
+            "refresh_interval_seconds": str(self.config.refresh_interval_seconds),
+            "time_format_toggle_seconds": str(self.config.time_format_toggle_seconds),
+            "api_status": state.api_status,
             "last_update_timestamp": (
                 str(int(last_update.timestamp() * 1000)) if last_update is not None else "0"
             ),
-            "update_time": self.formatter.format_update_time(last_update) or "Never",
-            "presence_local": state.presence_local if state.presence_local is not None else 0,
-            "presence_total": state.presence_total if state.presence_total is not None else 0,
+            "update_time": self.formatter.format_update_time(last_update),
+            "presence_local": state.presence_local,
+            "presence_total": state.presence_total,
         }
-
-        # Ensure template_data values are also safe
-        if "groups_with_departures" not in assigns or assigns["groups_with_departures"] is None:
-            assigns["groups_with_departures"] = []
-        if "stops_without_departures" not in assigns or assigns["stops_without_departures"] is None:
-            assigns["stops_without_departures"] = []
-        if "has_departures" not in assigns:
-            assigns["has_departures"] = False
-
-        return assigns
 
     async def mount(self, socket: LiveViewSocket[DeparturesState], _session: dict) -> None:
         """Mount the LiveView and register socket for updates."""
@@ -392,9 +375,31 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             direction_groups = state.direction_groups if state.direction_groups is not None else []
 
             # Prepare template data and build assigns
-            template_data = self.departure_grouping_calculator.calculate_display_data(
-                direction_groups
-            )
+            # Ensure template_data is always a dict with safe defaults
+            try:
+                template_data = self.departure_grouping_calculator.calculate_display_data(
+                    direction_groups
+                )
+                # Ensure template_data is a dict and has required keys
+                if not isinstance(template_data, dict):
+                    logger.warning(f"template_data is not a dict, got {type(template_data)}, using empty dict")
+                    template_data = {}
+                # Ensure required keys exist with safe defaults
+                if "groups_with_departures" not in template_data or template_data["groups_with_departures"] is None:
+                    template_data["groups_with_departures"] = []
+                if "stops_without_departures" not in template_data or template_data["stops_without_departures"] is None:
+                    template_data["stops_without_departures"] = []
+                if "has_departures" not in template_data:
+                    template_data["has_departures"] = False
+            except Exception as e:
+                logger.error(f"Error calculating template data: {e}", exc_info=True)
+                # Fallback to safe defaults
+                template_data = {
+                    "groups_with_departures": [],
+                    "stops_without_departures": [],
+                    "has_departures": False,
+                }
+            
             template_assigns = self._build_template_assigns(state, template_data)
 
             # Use pyview's LiveTemplate system with FileReloader
