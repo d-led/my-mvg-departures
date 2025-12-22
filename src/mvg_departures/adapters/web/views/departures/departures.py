@@ -40,6 +40,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         stop_configs: list[StopConfiguration],
         config: AppConfig,
         presence_tracker: PresenceTrackerProtocol,
+        route_title: str | None = None,
     ) -> None:
         """Initialize the LiveView.
 
@@ -49,6 +50,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             stop_configs: List of stop configurations for this route.
             config: Application configuration.
             presence_tracker: Presence tracker for tracking user connections.
+            route_title: Optional route-specific title (overrides config title).
         """
         super().__init__()
         # Runtime usage - these assignments ensure Ruff detects runtime dependency
@@ -72,6 +74,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         self.stop_configs = stop_configs
         self.config = config
         self.presence_tracker = presence_tracker
+        self.route_title = route_title
         self.formatter = DepartureFormatter(config)
         self.presence_broadcaster = PresenceBroadcaster()
         self.departure_grouping_calculator = DepartureGroupingCalculator(
@@ -165,11 +168,19 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             template_data["has_departures"] = False
 
         last_update = state.last_update
+        # Use route-specific title if available, otherwise fall back to config title
+        page_title = self.route_title or self.config.title or "My MVG Departures"
+        # Generate favicon path - use route-specific if route has custom title, otherwise default
+        favicon_path = "/favicon.svg"
+        if self.route_title:
+            route_path = self.state_manager.route_path.rstrip("/")
+            favicon_path = f"{route_path}/favicon.svg"
         # Ensure all template variables are strings or numbers, never None
         # This prevents "undefined" or "None" from appearing in the rendered HTML
         return {
             **template_data,
-            "title": str(self.config.title or "My MVG Departures"),
+            "title": str(page_title),
+            "favicon_path": str(favicon_path),
             "theme": str(theme),
             "banner_color": str(self.config.banner_color or "#000000"),
             "font_size_route_number": str(self.config.font_size_route_number or "1.5rem"),
@@ -531,6 +542,7 @@ def create_departures_live_view(
     stop_configs: list[StopConfiguration],
     config: AppConfig,
     presence_tracker: PresenceTrackerProtocol,
+    route_title: str | None = None,
 ) -> type[DeparturesLiveView]:
     """Create a configured DeparturesLiveView class for a specific route.
 
@@ -544,6 +556,7 @@ def create_departures_live_view(
         stop_configs: List of stop configurations for this route.
         config: Application configuration.
         presence_tracker: Presence tracker for tracking user connections.
+        route_title: Optional route-specific title (overrides config title).
 
     Returns:
         A configured DeparturesLiveView class that can be registered with PyView.
@@ -554,6 +567,7 @@ def create_departures_live_view(
     captured_grouping_service = grouping_service
     captured_config = config
     captured_presence_tracker = presence_tracker
+    captured_route_title = route_title
 
     class ConfiguredDeparturesLiveView(DeparturesLiveView):
         """Configured LiveView for a specific route."""
@@ -565,6 +579,7 @@ def create_departures_live_view(
                 captured_stop_configs,
                 captured_config,
                 captured_presence_tracker,
+                captured_route_title,
             )
 
     return ConfiguredDeparturesLiveView

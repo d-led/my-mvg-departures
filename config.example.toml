@@ -115,6 +115,8 @@ show_ungrouped = false
 
 path = "/hohenzollernplatz"
 
+title = "Hohenzollernplatz Departures"
+
 [[routes.stops]]
 station_id = "de:09162:140"
 station_name = "Hohenzollernplatz"

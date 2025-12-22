@@ -11,3 +11,4 @@ class RouteConfiguration:
 
     path: str
     stop_configs: list[StopConfiguration]
+    title: str | None = None  # Optional route-specific title

@@ -100,27 +100,27 @@ class PyViewWebAdapter(DisplayAdapter):
 
         app = PyView()
 
-        # Generate favicon SVG from title using banner color from config
-        favicon_svg = generate_favicon_svg(
+        # Generate default favicon SVG from global title using banner color from config
+        default_favicon_svg = generate_favicon_svg(
             self.config.title,
             bg_color=self.config.banner_color or "#087BC4",  # Use banner color from config
             text_color="#FFFFFF",  # White text for contrast
         )
 
-        # Add favicon route
-        async def favicon_route(_request: Any) -> Response:
-            return Response(content=favicon_svg, media_type="image/svg+xml")
+        # Add default favicon route
+        async def default_favicon_route(_request: Any) -> Response:
+            return Response(content=default_favicon_svg, media_type="image/svg+xml")
 
-        app.routes.append(Route("/favicon.svg", favicon_route, methods=["GET"]))
+        app.routes.append(Route("/favicon.svg", default_favicon_route, methods=["GET"]))
 
-        # Add favicon link to CSS/head content
+        # Add default favicon link to CSS/head content
         favicon_link = Markup('<link rel="icon" href="/favicon.svg" type="image/svg+xml">')
 
-        # Configure root template with custom title and favicon (no suffix to override default " | LiveView")
+        # Set rootTemplate with default title (LiveView template data will override via JavaScript)
         app.rootTemplate = defaultRootTemplate(
-            title=self.config.title,
+            title=self.config.title,  # Default title for main page
             title_suffix="",  # Empty suffix to prevent " | LiveView" from appearing
-            css=favicon_link,  # Add favicon link to head
+            css=favicon_link,  # Add default favicon link to head
         )
 
         # Get the presence tracker instance (shared across all routes)
@@ -131,9 +131,33 @@ class PyViewWebAdapter(DisplayAdapter):
             route_path = route_config.path
             route_state = self.route_states[route_path]
             route_stop_configs = route_config.stop_configs
+            route_title = route_config.title
+
+            # Generate route-specific favicon if route has custom title
+            if route_title:
+                route_favicon_svg = generate_favicon_svg(
+                    route_title,
+                    bg_color=self.config.banner_color or "#087BC4",
+                    text_color="#FFFFFF",
+                )
+
+                # Create favicon route handler (capture SVG in closure)
+                def create_favicon_handler(svg_content: str) -> Any:
+                    async def favicon_handler(_request: Any) -> Response:
+                        return Response(content=svg_content, media_type="image/svg+xml")
+
+                    return favicon_handler
+
+                # Normalize path for favicon route
+                favicon_path = route_path.rstrip("/") + "/favicon.svg"
+
+                route_favicon_handler = create_favicon_handler(route_favicon_svg)
+                app.routes.append(Route(favicon_path, route_favicon_handler, methods=["GET"]))
+                logger.info(f"Added route-specific favicon at {favicon_path} for '{route_title}'")
 
             logger.info(
                 f"Registering route at path '{route_path}' with {len(route_stop_configs)} stops"
+                + (f" and title '{route_title}'" if route_title else "")
             )
             live_view_class = create_departures_live_view(
                 route_state,
@@ -141,6 +165,7 @@ class PyViewWebAdapter(DisplayAdapter):
                 route_stop_configs,
                 self.config,
                 presence_tracker,
+                route_title,
             )
             app.add_live_view(route_path, live_view_class)
             logger.info(f"Successfully registered route at path '{route_path}'")

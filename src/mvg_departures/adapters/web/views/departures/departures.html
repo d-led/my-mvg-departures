@@ -52,6 +52,13 @@
         apiStatus: ('{{ api_status }}' && '{{ api_status }}' !== 'undefined' && '{{ api_status }}' !== '') ? '{{ api_status }}' : 'unknown',
         lastUpdateTimestamp: parseInt('{{ last_update_timestamp }}') || 0
     };
+    
+    // Update page title from template data (overrides rootTemplate title)
+    document.title = '{{ title }}';
+    const titleEl = document.querySelector('title');
+    if (titleEl) {
+        titleEl.removeAttribute('data-suffix');
+    }
 </script>
 <!-- Custom JavaScript -->
 <script src="/static/js/app.js"></script>

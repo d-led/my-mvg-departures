@@ -66,7 +66,16 @@ class RouteConfigurationLoader:
                     stop_configs.append(stop_config)
 
             if stop_configs:
-                route_config = RouteConfiguration(path=path, stop_configs=stop_configs)
+                # Get optional route-specific title
+                route_title = route_data.get("title")
+                if route_title and isinstance(route_title, str):
+                    route_title = route_title
+                else:
+                    route_title = None
+
+                route_config = RouteConfiguration(
+                    path=path, stop_configs=stop_configs, title=route_title
+                )
                 route_configs.append(route_config)
 
         return route_configs
