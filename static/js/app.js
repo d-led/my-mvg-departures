@@ -209,41 +209,26 @@
         connectingIcon.style.display = 'none';
         unstableIcon.style.display = 'none';
 
-        // Explicitly remove animation to stop any running animations
-        connectingIcon.style.animation = 'none';
-        unstableIcon.style.animation = 'none';
-        // Force a reflow to ensure animation is stopped
-        void connectingIcon.offsetHeight;
-        void unstableIcon.offsetHeight;
-
         // Determine state: connecting (yellow), connected (green), unstable (orange/question-mark-circle), or broken (red)
+        // CSS handles animations via classes - no need to manage inline styles
         if (connectionState === 'connecting') {
             connectionEl.setAttribute('aria-label', 'Connection status: connecting');
             connectionEl.setAttribute('title', 'WebSocket connection: connecting');
-            // Re-enable animation for connecting state
-            connectingIcon.style.animation = '';
             connectingIcon.style.display = '';
             if (liveRegion) liveRegion.textContent = 'Connection status: connecting';
         } else if (connectionState === 'connected') {
             connectionEl.setAttribute('aria-label', 'Connection status: connected');
             connectionEl.setAttribute('title', 'WebSocket connection: connected');
-            // Ensure animation is removed for connected state
-            connectingIcon.style.animation = 'none';
             connectedIcon.style.display = '';
             if (liveRegion) liveRegion.textContent = 'Connection status: connected';
         } else if (connectionState === 'unstable') {
             connectionEl.setAttribute('aria-label', 'Connection status: unstable');
             connectionEl.setAttribute('title', 'WebSocket connection: unstable - updates may be delayed or incomplete');
-            // Re-enable animation for unstable state
-            unstableIcon.style.animation = '';
             unstableIcon.style.display = '';
             if (liveRegion) liveRegion.textContent = 'Connection status: unstable';
         } else { // broken
             connectionEl.setAttribute('aria-label', 'Connection status: disconnected');
             connectionEl.setAttribute('title', 'WebSocket connection: disconnected');
-            // Ensure animation is removed for broken state
-            connectingIcon.style.animation = 'none';
-            unstableIcon.style.animation = 'none';
             disconnectedIcon.style.display = '';
             if (liveRegion) liveRegion.textContent = 'Connection status: disconnected';
         }
