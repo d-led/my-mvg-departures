@@ -768,7 +768,7 @@
         {% else %}
         {% for group in groups_with_departures %}
         <div class="direction-group">
-            <h2 class="direction-header" role="heading" aria-level="2">
+            <h2 class="direction-header{% if group.is_first_header %} first-header{% endif %}" {% if group.is_first_header %}id="first-direction-header"{% endif %} role="heading" aria-level="2">
                 {% if group.is_first_header %}
                 <span class="direction-header-text">{{ group.header }}</span>
                 <div class="direction-header-time status-header-item" id="datetime-display" aria-label="Current date and time"></div>
@@ -901,6 +901,10 @@
     const TIME_FORMAT_TOGGLE_SECONDS = parseInt('{{ time_format_toggle_seconds }}') || 0;
     const INITIAL_API_STATUS = ('{{ api_status }}' && '{{ api_status }}' !== 'undefined' && '{{ api_status }}' !== '') ? '{{ api_status }}' : 'unknown';
 
+    // OPTIONAL: Move datetime to topmost visible header on scroll
+    // Set to true to enable this feature
+    const MOVE_DATETIME_TO_VISIBLE_HEADER = true;
+
     // Date/time display
     function updateDateTime() {
         const datetimeEl = document.getElementById('datetime-display');
@@ -925,10 +929,6 @@
     // Update date/time every second
     updateDateTime();
     setInterval(updateDateTime, 1000);
-
-    // OPTIONAL: Move datetime to topmost visible header on scroll
-    // Set to true to enable this feature
-    const MOVE_DATETIME_TO_VISIBLE_HEADER = true;
 
     let moveDateTimeToVisibleHeader = null; // Function will be set if feature is enabled
 
@@ -977,53 +977,36 @@
             const datetimeEl = document.getElementById('datetime-display');
             if (!datetimeEl) return;
             
-            const header = findFirstVisibleHeader();
-            if (!header) return;
+            const firstHeader = document.getElementById('first-direction-header');
+            const topmostHeader = findFirstVisibleHeader();
+            if (!topmostHeader || !firstHeader) return;
             
-            // Find the target container - prefer placeholder, but can use any .direction-header-time
-            let targetContainer = header.querySelector('.direction-header-time.datetime-placeholder');
+            // Clear all copies from non-topmost headers
+            document.querySelectorAll('.direction-header-time').forEach(container => {
+                if (container.id !== 'datetime-display') {
+                    const header = container.closest('.direction-header');
+                    if (header !== topmostHeader && header !== firstHeader) {
+                        container.textContent = '';
+                        container.classList.add('datetime-placeholder');
+                        container.style.display = 'none';
+                    }
+                }
+            });
+            
+            // If topmost is first header, we're done (original is already there)
+            if (topmostHeader === firstHeader) return;
+            
+            // Show copy in topmost header
+            let targetContainer = topmostHeader.querySelector('.direction-header-time.datetime-placeholder');
             if (!targetContainer) {
-                targetContainer = header.querySelector('.direction-header-time');
+                targetContainer = topmostHeader.querySelector('.direction-header-time:not(#datetime-display)');
             }
             if (!targetContainer) return;
             
-            // Simple check: if already in the target container, skip (no-op to prevent blinking)
-            if (datetimeEl.parentElement === targetContainer) {
-                targetContainer.classList.remove('datetime-placeholder');
-                targetContainer.style.display = '';
-                return;
-            }
-            
-            // Safety check: don't move if targetContainer is inside datetimeEl
-            if (datetimeEl.contains(targetContainer)) return;
-            
-            // Move the element
-            const currentText = datetimeEl.textContent;
-            const currentAriaLabel = datetimeEl.getAttribute('aria-label');
-            const currentId = datetimeEl.id;
-            
-            // Remove from current parent
-            datetimeEl.remove();
-            
-            // Clear target container and add datetime element
-            targetContainer.innerHTML = '';
-            targetContainer.appendChild(datetimeEl);
-            
-            // Restore properties
-            datetimeEl.id = currentId;
-            datetimeEl.textContent = currentText;
-            if (currentAriaLabel) {
-                datetimeEl.setAttribute('aria-label', currentAriaLabel);
-            }
+            targetContainer.textContent = datetimeEl.textContent;
+            targetContainer.setAttribute('aria-label', datetimeEl.getAttribute('aria-label') || 'Current date and time');
             targetContainer.classList.remove('datetime-placeholder');
             targetContainer.style.display = '';
-            
-            // Hide all other placeholders
-            document.querySelectorAll('.datetime-placeholder').forEach(placeholder => {
-                if (placeholder !== targetContainer) {
-                    placeholder.style.display = 'none';
-                }
-            });
         };
 
         function handleScroll() {
