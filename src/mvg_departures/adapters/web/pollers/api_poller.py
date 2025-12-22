@@ -135,8 +135,8 @@ class ApiPoller(ApiPollerProtocol):
                     # Use shared cache - get raw departures and process them
                     raw_departures = self.shared_cache.get(stop_config.station_id, [])
                     if not raw_departures:
-                        # Cache is empty - try to fetch fresh data directly from API
-                        # This handles cases where cache hasn't been populated yet or fetcher failed
+                        # Cache is empty - fetch fresh data directly from API
+                        # This ensures we always have fresh data, per requirement
                         logger.info(
                             f"Cache empty for {stop_config.station_name} "
                             f"(station_id: {stop_config.station_id}), fetching fresh from API"
@@ -150,12 +150,26 @@ class ApiPoller(ApiPollerProtocol):
                     # Fetch from API (fallback if no shared cache)
                     groups = await self.grouping_service.get_grouped_departures(stop_config)
 
-                # Convert to format with station_name
+                # Convert to format with station_name and deduplicate departures
+                # Deduplication: same line + destination + time = same departure
                 stop_groups: list[tuple[str, list[Departure]]] = []
                 for direction_name, departures in groups:
-                    stop_groups.append((direction_name, departures))
-                    all_groups.append((stop_config.station_name, direction_name, departures))
-                # Cache successful processing
+                    # Deduplicate departures within this direction group
+                    seen = set()
+                    unique_departures = []
+                    for dep in departures:
+                        # Create a unique key: line + destination + time
+                        dep_key = (dep.line, dep.destination, dep.time)
+                        if dep_key not in seen:
+                            seen.add(dep_key)
+                            unique_departures.append(dep)
+                        else:
+                            logger.warning(
+                                f"Duplicate departure detected and removed: {dep.line} to {dep.destination} at {dep.time}"
+                            )
+                    stop_groups.append((direction_name, unique_departures))
+                    all_groups.append((stop_config.station_name, direction_name, unique_departures))
+                # Cache successful processing - always replace with fresh data
                 self.cached_departures[stop_config.station_name] = stop_groups
                 logger.debug(f"Successfully processed departures for {stop_config.station_name}")
             except Exception as e:
