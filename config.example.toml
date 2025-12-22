@@ -115,6 +115,8 @@ show_ungrouped = false
 
 path = "/hohenzollernplatz"
 
+[[routes.display]]
+
 title = "Hohenzollernplatz Departures"
 
 [[routes.stops]]
