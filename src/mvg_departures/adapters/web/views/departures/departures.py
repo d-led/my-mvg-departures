@@ -433,17 +433,21 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             # Ensure direction_groups is never None - default to empty list
             # This prevents "Cannot read properties of undefined" errors
             direction_groups = state.direction_groups if state.direction_groups is not None else []
-            
+
             # Ensure presence values are never None - default to 0
             # This prevents "undefined" from appearing in the template
             # CRITICAL: Do this BEFORE building template assigns to ensure template engine never sees None
-            if not hasattr(state, 'presence_local') or state.presence_local is None:
+            if not hasattr(state, "presence_local") or state.presence_local is None:
                 state.presence_local = 0
-            if not hasattr(state, 'presence_total') or state.presence_total is None:
+            if not hasattr(state, "presence_total") or state.presence_total is None:
                 state.presence_total = 0
             # Also ensure they're integers, not floats or strings
-            state.presence_local = int(state.presence_local) if isinstance(state.presence_local, (int, float)) else 0
-            state.presence_total = int(state.presence_total) if isinstance(state.presence_total, (int, float)) else 0
+            state.presence_local = (
+                int(state.presence_local) if isinstance(state.presence_local, (int, float)) else 0
+            )
+            state.presence_total = (
+                int(state.presence_total) if isinstance(state.presence_total, (int, float)) else 0
+            )
 
             # Prepare template data and build assigns
             # Ensure template_data is always a dict with safe defaults
