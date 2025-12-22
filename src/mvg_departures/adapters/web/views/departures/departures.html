@@ -934,29 +934,35 @@
 
     if (MOVE_DATETIME_TO_VISIBLE_HEADER) {
         let scrollTimeout = null;
+        let cachedHeaders = null;
+        
+        function getHeaders() {
+            if (!cachedHeaders) {
+                const departuresEl = document.getElementById('departures');
+                if (!departuresEl) return [];
+                cachedHeaders = Array.from(departuresEl.querySelectorAll('.direction-header'));
+            }
+            return cachedHeaders;
+        }
         
         function findFirstVisibleHeader() {
             const departuresEl = document.getElementById('departures');
             if (!departuresEl) return null;
             
-            const headers = Array.from(departuresEl.querySelectorAll('.direction-header'));
+            const headers = getHeaders();
             if (headers.length === 0) return null;
             
             const containerRect = departuresEl.getBoundingClientRect();
             const viewportTop = containerRect.top;
             
-            // Find the header closest to the top of the viewport
+            // Find header closest to viewport top
             let topmostHeader = null;
             let topmostDistance = Infinity;
             
             for (const header of headers) {
                 const rect = header.getBoundingClientRect();
-                // Check if header is visible in viewport
                 if (rect.bottom > viewportTop && rect.top < containerRect.bottom) {
-                    // Calculate distance from viewport top
-                    // Negative means header top is above viewport top (sticking out)
                     const distance = rect.top - viewportTop;
-                    // We want the header closest to the top (smallest distance, can be negative)
                     if (distance < topmostDistance) {
                         topmostDistance = distance;
                         topmostHeader = header;
@@ -1021,8 +1027,26 @@
         };
 
         function handleScroll() {
+            // Clear any pending timeout
+            if (scrollTimeout) {
+                clearTimeout(scrollTimeout);
+                scrollTimeout = null;
+            }
+            // Check immediately, then also check again after scroll stops
+            moveDateTimeToVisibleHeader();
+            // Also set timeout for final check after scrolling stops
+            scrollTimeout = setTimeout(() => {
+                moveDateTimeToVisibleHeader();
+                scrollTimeout = null;
+            }, 100);
+        }
+        
+        function handleTouchEnd() {
+            // On touch devices, check after touch ends
             if (scrollTimeout) clearTimeout(scrollTimeout);
-            scrollTimeout = setTimeout(moveDateTimeToVisibleHeader, 10);
+            setTimeout(() => {
+                moveDateTimeToVisibleHeader();
+            }, 150);
         }
 
         function initDateTimePositioning() {
@@ -1040,7 +1064,18 @@
                 return;
             }
             
+            // Listen to scroll events
             departuresEl.addEventListener('scroll', handleScroll, { passive: true });
+            
+            // Also listen to touch events for better support on touch devices (especially older iPads)
+            departuresEl.addEventListener('touchend', handleTouchEnd, { passive: true });
+            departuresEl.addEventListener('touchcancel', handleTouchEnd, { passive: true });
+            
+            // Clear cache on DOM updates
+            window.addEventListener('phx:update', () => {
+                cachedHeaders = null;
+            });
+            
             // Initial positioning
             moveDateTimeToVisibleHeader();
             // Update on resize
