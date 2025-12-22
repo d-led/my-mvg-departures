@@ -221,6 +221,9 @@
         align-items: center; /* Vertical alignment */
         line-height: 1; /* Match header text line height */
     }
+    .datetime-placeholder {
+        display: none !important;
+    }
     [data-theme="light"] .direction-header {
         background-color: {{ banner_color }};
         color: #ffffff;
@@ -770,7 +773,8 @@
                 <span class="direction-header-text">{{ group.header }}</span>
                 <div class="direction-header-time status-header-item" id="datetime-display" aria-label="Current date and time"></div>
                 {% else %}
-                {{ group.header }}
+                <span class="direction-header-text">{{ group.header }}</span>
+                <div class="direction-header-time status-header-item datetime-placeholder" aria-label="Current date and time"></div>
                 {% endif %}
             </h2>
             <ul role="list" aria-label="Departures for {{ group.header }}">
@@ -921,6 +925,127 @@
     // Update date/time every second
     updateDateTime();
     setInterval(updateDateTime, 1000);
+
+    // OPTIONAL: Move datetime to topmost visible header on scroll
+    // Set to true to enable this feature
+    const MOVE_DATETIME_TO_VISIBLE_HEADER = true;
+
+    let moveDateTimeToVisibleHeader = null; // Function will be set if feature is enabled
+
+    if (MOVE_DATETIME_TO_VISIBLE_HEADER) {
+        let scrollTimeout = null;
+        
+        function findFirstVisibleHeader() {
+            const departuresEl = document.getElementById('departures');
+            if (!departuresEl) return null;
+            
+            const headers = Array.from(departuresEl.querySelectorAll('.direction-header'));
+            if (headers.length === 0) return null;
+            
+            const containerRect = departuresEl.getBoundingClientRect();
+            
+            for (const header of headers) {
+                const rect = header.getBoundingClientRect();
+                // Check if header is visible in viewport
+                if (rect.bottom > containerRect.top && rect.top < containerRect.bottom) {
+                    return header;
+                }
+            }
+            return headers[0] || null; // Fallback to first header
+        }
+
+        moveDateTimeToVisibleHeader = function() {
+            const datetimeEl = document.getElementById('datetime-display');
+            if (!datetimeEl) return;
+            
+            const header = findFirstVisibleHeader();
+            if (!header) return;
+            
+            // Find the target container - prefer placeholder, but can use any .direction-header-time
+            let targetContainer = header.querySelector('.direction-header-time.datetime-placeholder');
+            if (!targetContainer) {
+                targetContainer = header.querySelector('.direction-header-time');
+            }
+            if (!targetContainer) return;
+            
+            // If targetContainer IS the datetime element itself, we're already in the right place
+            if (targetContainer === datetimeEl) return;
+            
+            // If datetime element is already a child of targetContainer, we're done
+            if (datetimeEl.parentElement === targetContainer) {
+                targetContainer.classList.remove('datetime-placeholder');
+                targetContainer.style.display = '';
+                return;
+            }
+            
+            // Safety check: don't move if targetContainer is inside datetimeEl
+            if (datetimeEl.contains(targetContainer)) return;
+            
+            // Move the element
+            const currentText = datetimeEl.textContent;
+            const currentAriaLabel = datetimeEl.getAttribute('aria-label');
+            const currentId = datetimeEl.id;
+            
+            // Remove from current parent
+            datetimeEl.remove();
+            
+            // Clear target container and add datetime element
+            targetContainer.innerHTML = '';
+            targetContainer.appendChild(datetimeEl);
+            
+            // Restore properties
+            datetimeEl.id = currentId;
+            datetimeEl.textContent = currentText;
+            if (currentAriaLabel) {
+                datetimeEl.setAttribute('aria-label', currentAriaLabel);
+            }
+            targetContainer.classList.remove('datetime-placeholder');
+            targetContainer.style.display = '';
+            
+            // Hide all other placeholders
+            document.querySelectorAll('.datetime-placeholder').forEach(placeholder => {
+                if (placeholder !== targetContainer) {
+                    placeholder.style.display = 'none';
+                }
+            });
+        };
+
+        function handleScroll() {
+            if (scrollTimeout) clearTimeout(scrollTimeout);
+            scrollTimeout = setTimeout(moveDateTimeToVisibleHeader, 10);
+        }
+
+        function initDateTimePositioning() {
+            const departuresEl = document.getElementById('departures');
+            if (!departuresEl) {
+                // Retry if element not found yet
+                setTimeout(initDateTimePositioning, 100);
+                return;
+            }
+            
+            // Wait for datetime element to exist
+            const datetimeEl = document.getElementById('datetime-display');
+            if (!datetimeEl) {
+                setTimeout(initDateTimePositioning, 100);
+                return;
+            }
+            
+            departuresEl.addEventListener('scroll', handleScroll, { passive: true });
+            // Initial positioning
+            moveDateTimeToVisibleHeader();
+            // Update on resize
+            window.addEventListener('resize', () => {
+                setTimeout(moveDateTimeToVisibleHeader, 50);
+            }, { passive: true });
+        }
+
+        // Initialize after DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initDateTimePositioning);
+        } else {
+            initDateTimePositioning();
+        }
+    }
 
     // Time format toggle - animate text content change
     let timeFormatToggleInterval = null;
@@ -1408,6 +1533,10 @@
         // This ensures it's visible right away, even if pyview replaced it
         requestAnimationFrame(() => {
             updateDateTime();
+            // Reposition datetime to visible header if feature is enabled
+            if (typeof MOVE_DATETIME_TO_VISIBLE_HEADER !== 'undefined' && MOVE_DATETIME_TO_VISIBLE_HEADER && typeof moveDateTimeToVisibleHeader === 'function') {
+                setTimeout(moveDateTimeToVisibleHeader, 50);
+            }
         });
 
         // Check if we got a new data update by comparing server's last_update timestamp
