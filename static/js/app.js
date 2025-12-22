@@ -46,6 +46,68 @@
     // Set to true to enable this feature
     const DATETIME_ON_VISIBLE_HEADER = true;
 
+    // Find the topmost visible direction header (if it's not the first one)
+    function findTopmostVisibleHeader() {
+        const departuresEl = document.getElementById('departures');
+        if (!departuresEl) return null;
+
+        const scrollTop = departuresEl.scrollTop;
+        const viewportBottom = scrollTop + departuresEl.clientHeight;
+        const headers = departuresEl.querySelectorAll('.direction-header');
+        
+        if (headers.length === 0) return null;
+
+        const firstHeader = headers[0];
+        let topmostVisibleHeader = null;
+        let topmostTop = Infinity;
+
+        // Find the topmost visible header
+        for (let i = 0; i < headers.length; i++) {
+            const header = headers[i];
+            const rect = header.getBoundingClientRect();
+            const containerRect = departuresEl.getBoundingClientRect();
+            
+            // Check if header is visible in viewport
+            const headerTop = rect.top - containerRect.top + scrollTop;
+            const headerBottom = headerTop + rect.height;
+            
+            if (headerTop <= viewportBottom && headerBottom >= scrollTop) {
+                // This header is visible, check if it's the topmost so far
+                if (headerTop < topmostTop) {
+                    topmostTop = headerTop;
+                    topmostVisibleHeader = header;
+                }
+            }
+        }
+
+        // Only return if the topmost visible header is not the first one
+        if (topmostVisibleHeader && topmostVisibleHeader !== firstHeader) {
+            return topmostVisibleHeader;
+        }
+        
+        return null;
+    }
+
+    // Update clock in a header element
+    function updateHeaderClock(headerEl, dateTimeStr) {
+        if (!headerEl) return;
+        
+        // Find or create the clock element in this header
+        let clockEl = headerEl.querySelector('.direction-header-time');
+        
+        if (!clockEl) {
+            // Create clock element if it doesn't exist
+            clockEl = document.createElement('div');
+            clockEl.className = 'direction-header-time status-header-item';
+            clockEl.setAttribute('aria-label', 'Current date and time: ' + dateTimeStr);
+            headerEl.appendChild(clockEl);
+        }
+        
+        // Update only the text content (quick update)
+        clockEl.textContent = dateTimeStr.split(' ')[1]; // Only time part (HH:MM:SS)
+        clockEl.setAttribute('aria-label', 'Current date and time: ' + dateTimeStr);
+    }
+
     // Date/time display
     function updateDateTime() {
         const datetimeEl = document.getElementById('datetime-display');
@@ -63,8 +125,17 @@
         const timeStr = hours + ':' + minutes + ':' + seconds;
         const fullDateTime = dateStr + ' ' + timeStr;
 
+        // Update main header clock
         datetimeEl.textContent = fullDateTime;
         datetimeEl.setAttribute('aria-label', 'Current date and time: ' + fullDateTime);
+
+        // If feature is enabled, also update topmost visible header
+        if (DATETIME_ON_VISIBLE_HEADER) {
+            const topmostHeader = findTopmostVisibleHeader();
+            if (topmostHeader) {
+                updateHeaderClock(topmostHeader, fullDateTime);
+            }
+        }
     }
 
     // Update date/time every second
