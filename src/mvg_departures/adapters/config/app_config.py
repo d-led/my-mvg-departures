@@ -251,7 +251,17 @@ class AppConfig(BaseSettings):
             # Filter out stops with placeholder IDs
             filtered_stops = [s for s in stops if s.get("station_id", "").find("XXX") == -1]
             if filtered_stops:
-                result_routes.append({"path": "/", "stops": filtered_stops})
+                # Include display settings from [display] section for the main route
+                default_route: dict[str, Any] = {"path": "/", "stops": filtered_stops}
+                if "display" in toml_data:
+                    display = toml_data["display"]
+                    # Only include fill_vertical_space if it's set (don't override route-specific settings)
+                    # display is a dict from [display] section, not a list
+                    if isinstance(display, dict) and "fill_vertical_space" in display:
+                        default_route["display"] = {
+                            "fill_vertical_space": display["fill_vertical_space"]
+                        }
+                result_routes.append(default_route)
 
         # If routes are defined, add them
         if routes:
