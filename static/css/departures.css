@@ -475,9 +475,10 @@ h1 {
     color: #f3f4f6;
 }
 /* Floating status box at center bottom */
+/* Positioned halfway into remaining empty space below departures */
 .status-floating-box {
     position: fixed;
-    bottom: 1rem;
+    bottom: 0.5rem;
     left: 50%;
     transform: translateX(-50%);
     display: flex;
