@@ -44,6 +44,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         presence_tracker: PresenceTrackerProtocol,
         route_title: str | None = None,
         fill_vertical_space: bool = False,
+        font_scaling_factor_when_filling: float = 1.0,
     ) -> None:
         """Initialize the LiveView.
 
@@ -55,6 +56,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             presence_tracker: Presence tracker for tracking user connections.
             route_title: Optional route-specific title (overrides config title).
             fill_vertical_space: Enable dynamic font sizing to fill viewport.
+            font_scaling_factor_when_filling: Scale factor for all fonts when fill_vertical_space is enabled.
         """
         super().__init__()
         # Runtime usage - these assignments ensure Ruff detects runtime dependency
@@ -80,6 +82,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         self.presence_tracker = presence_tracker
         self.route_title = route_title
         self.fill_vertical_space = fill_vertical_space
+        self.font_scaling_factor_when_filling = font_scaling_factor_when_filling
         self.formatter = DepartureFormatter(config)
         self.presence_broadcaster = PresenceBroadcaster()
         self.departure_grouping_calculator = DepartureGroupingCalculator(
@@ -252,6 +255,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 if self.fill_vertical_space is not None
                 else "false"
             ),
+            "font_scaling_factor_when_filling": str(self.font_scaling_factor_when_filling),
             "static_version": self._static_version,
         }
 
@@ -588,6 +592,7 @@ def create_departures_live_view(
     presence_tracker: PresenceTrackerProtocol,
     route_title: str | None = None,
     fill_vertical_space: bool = False,
+    font_scaling_factor_when_filling: float = 1.0,
 ) -> type[DeparturesLiveView]:
     """Create a configured DeparturesLiveView class for a specific route.
 
@@ -603,6 +608,7 @@ def create_departures_live_view(
         presence_tracker: Presence tracker for tracking user connections.
         route_title: Optional route-specific title (overrides config title).
         fill_vertical_space: Enable dynamic font sizing to fill viewport.
+        font_scaling_factor_when_filling: Scale factor for all fonts when fill_vertical_space is enabled.
 
     Returns:
         A configured DeparturesLiveView class that can be registered with PyView.
@@ -615,6 +621,7 @@ def create_departures_live_view(
     captured_presence_tracker = presence_tracker
     captured_route_title = route_title
     captured_fill_vertical_space = fill_vertical_space
+    captured_font_scaling_factor_when_filling = font_scaling_factor_when_filling
 
     class ConfiguredDeparturesLiveView(DeparturesLiveView):
         """Configured LiveView for a specific route."""
@@ -628,6 +635,7 @@ def create_departures_live_view(
                 captured_presence_tracker,
                 captured_route_title,
                 captured_fill_vertical_space,
+                captured_font_scaling_factor_when_filling,
             )
 
     return ConfiguredDeparturesLiveView

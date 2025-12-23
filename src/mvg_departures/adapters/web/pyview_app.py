@@ -136,6 +136,7 @@ class PyViewWebAdapter(DisplayAdapter):
             route_stop_configs = route_config.stop_configs
             route_title = route_config.title
             fill_vertical_space = route_config.fill_vertical_space
+            font_scaling_factor_when_filling = route_config.font_scaling_factor_when_filling
 
             # Generate route-specific favicon if route has custom title
             if route_title:
@@ -175,6 +176,7 @@ class PyViewWebAdapter(DisplayAdapter):
                 presence_tracker,
                 route_title,
                 fill_vertical_space,
+                font_scaling_factor_when_filling,
             )
             app.add_live_view(route_path, live_view_class)
             logger.info(f"Successfully registered route at path '{route_path}'")

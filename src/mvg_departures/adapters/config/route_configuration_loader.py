@@ -66,21 +66,28 @@ class RouteConfigurationLoader:
                     stop_configs.append(stop_config)
 
             if stop_configs:
-                # Get optional route-specific title and fill_vertical_space from routes.display
+                # Get optional route-specific title, fill_vertical_space, and font_scaling_factor_when_filling from routes.display
                 route_title = None
                 fill_vertical_space = False
+                font_scaling_factor_when_filling = 1.0
                 display_data = route_data.get("display")
                 if display_data:
                     # Handle both dict (single display) and list (array of displays)
                     if isinstance(display_data, dict):
                         route_title = display_data.get("title")
                         fill_vertical_space = display_data.get("fill_vertical_space", False)
+                        font_scaling_factor_when_filling = display_data.get(
+                            "font_scaling_factor_when_filling", 1.0
+                        )
                     elif isinstance(display_data, list) and len(display_data) > 0:
-                        # Get title and fill_vertical_space from first display entry
+                        # Get title, fill_vertical_space, and font_scaling_factor_when_filling from first display entry
                         first_display = display_data[0]
                         if isinstance(first_display, dict):
                             route_title = first_display.get("title")
                             fill_vertical_space = first_display.get("fill_vertical_space", False)
+                            font_scaling_factor_when_filling = first_display.get(
+                                "font_scaling_factor_when_filling", 1.0
+                            )
 
                 # Validate title is a string, default to None if not found
                 route_title = route_title if route_title and isinstance(route_title, str) else None
@@ -88,12 +95,22 @@ class RouteConfigurationLoader:
                 fill_vertical_space = (
                     bool(fill_vertical_space) if fill_vertical_space is not None else False
                 )
+                # Validate font_scaling_factor_when_filling is a float (defaults to 1.0 if not specified)
+                try:
+                    font_scaling_factor_when_filling = (
+                        float(font_scaling_factor_when_filling)
+                        if font_scaling_factor_when_filling is not None
+                        else 1.0
+                    )
+                except (ValueError, TypeError):
+                    font_scaling_factor_when_filling = 1.0
 
                 route_config = RouteConfiguration(
                     path=path,
                     stop_configs=stop_configs,
                     title=route_title,
                     fill_vertical_space=fill_vertical_space,
+                    font_scaling_factor_when_filling=font_scaling_factor_when_filling,
                 )
                 route_configs.append(route_config)
 

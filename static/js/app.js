@@ -981,18 +981,21 @@
         // route_number: 4rem, destination: 4rem (same as time), time: 4rem, platform: 2.5rem
         // direction_header: same as destination (4rem), stop_header: 3rem
         // So relative to a base of ~3.5rem (but destination and time are 4rem):
+        // Get font scaling factor from config (defaults to 1.0)
+        const fontScalingFactor = window.DEPARTURES_CONFIG?.fontScalingFactorWhenFilling || 1.0;
+
         const fontSizes = {
-            routeNumber: baseFontSize * (4.0 / 3.5),      // 4rem relative to 3.5rem base
-            destination: baseFontSize * (4.0 / 3.5),     // Same as time - 4rem relative to 3.5rem base
-            time: baseFontSize * (4.0 / 3.5),              // 4rem relative to 3.5rem base
-            platform: baseFontSize * (2.5 / 3.5),         // 2.5rem relative to 3.5rem base
-            directionHeader: baseFontSize * (4.0 / 3.5),  // Same size as destination and time
-            stopHeader: baseFontSize * (3.0 / 3.5),       // 3rem relative to 3.5rem base
-            noDepartures: baseFontSize * (2.5 / 3.5),     // 2.5rem relative to 3.5rem base
-            paginationIndicator: baseFontSize * (2.0 / 3.5),
-            countdownText: baseFontSize * (1.8 / 3.5),
-            delayAmount: baseFontSize * (2.0 / 3.5),
-            statusHeader: baseFontSize * (4.0 / 3.5),    // Same as direction header (heading font)
+            routeNumber: baseFontSize * (4.0 / 3.5) * fontScalingFactor,      // 4rem relative to 3.5rem base
+            destination: baseFontSize * (4.0 / 3.5) * fontScalingFactor,     // Same as time - 4rem relative to 3.5rem base
+            time: baseFontSize * (4.0 / 3.5) * fontScalingFactor,              // 4rem relative to 3.5rem base
+            platform: baseFontSize * (2.5 / 3.5) * fontScalingFactor,         // 2.5rem relative to 3.5rem base
+            directionHeader: baseFontSize * (4.0 / 3.5) * fontScalingFactor,  // Same size as destination and time
+            stopHeader: baseFontSize * (3.0 / 3.5) * fontScalingFactor,       // 3rem relative to 3.5rem base
+            noDepartures: baseFontSize * (2.5 / 3.5) * fontScalingFactor,     // 2.5rem relative to 3.5rem base
+            paginationIndicator: baseFontSize * (2.0 / 3.5) * fontScalingFactor,
+            countdownText: baseFontSize * (1.8 / 3.5) * fontScalingFactor,
+            delayAmount: baseFontSize * (2.0 / 3.5) * fontScalingFactor,
+            statusHeader: baseFontSize * (4.0 / 3.5) * fontScalingFactor,    // Same as direction header (heading font)
         };
 
         // Apply minimum font size to ensure legibility (at least 12px)

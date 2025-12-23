@@ -262,12 +262,18 @@ class AppConfig(BaseSettings):
                 default_route: dict[str, Any] = {"path": "/", "stops": filtered_stops}
                 if "display" in toml_data:
                     display = toml_data["display"]
-                    # Only include fill_vertical_space if it's set (don't override route-specific settings)
+                    # Include fill_vertical_space and font_scaling_factor_when_filling if set
                     # display is a dict from [display] section, not a list
-                    if isinstance(display, dict) and "fill_vertical_space" in display:
-                        default_route["display"] = {
-                            "fill_vertical_space": display["fill_vertical_space"]
-                        }
+                    if isinstance(display, dict):
+                        display_settings: dict[str, Any] = {}
+                        if "fill_vertical_space" in display:
+                            display_settings["fill_vertical_space"] = display["fill_vertical_space"]
+                        if "font_scaling_factor_when_filling" in display:
+                            display_settings["font_scaling_factor_when_filling"] = display[
+                                "font_scaling_factor_when_filling"
+                            ]
+                        if display_settings:
+                            default_route["display"] = display_settings
                 result_routes.append(default_route)
 
         # If routes are defined, add them
