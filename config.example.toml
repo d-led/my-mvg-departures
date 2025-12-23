@@ -119,6 +119,16 @@ path = "/hohenzollernplatz"
 
 title = "Hohenzollernplatz Departures"
 fill_vertical_space = true
+font_scaling_factor_when_filling = 0.9
+
+# Enable hash-based pastel colors for headers (stable colors based on header text)
+# Colors are designed to work well in both light and dark modes
+# First header always uses banner_color; only subsequent headers get random colors
+random_header_colors = true
+
+# Brightness adjustment for random header colors (0.0-1.0, default 0.7)
+# Lower values = darker colors, higher values = lighter colors
+header_background_brightness = 0.7
 
 [[routes.stops]]
 station_id = "de:09162:140"

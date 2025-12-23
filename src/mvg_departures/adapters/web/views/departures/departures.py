@@ -45,6 +45,8 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         route_title: str | None = None,
         fill_vertical_space: bool = False,
         font_scaling_factor_when_filling: float = 1.0,
+        random_header_colors: bool = False,
+        header_background_brightness: float = 0.7,
     ) -> None:
         """Initialize the LiveView.
 
@@ -57,6 +59,8 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             route_title: Optional route-specific title (overrides config title).
             fill_vertical_space: Enable dynamic font sizing to fill viewport.
             font_scaling_factor_when_filling: Scale factor for all fonts when fill_vertical_space is enabled.
+            random_header_colors: Enable hash-based pastel colors for headers.
+            header_background_brightness: Brightness adjustment for random header colors (0.0-1.0).
         """
         super().__init__()
         # Runtime usage - these assignments ensure Ruff detects runtime dependency
@@ -83,10 +87,12 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         self.route_title = route_title
         self.fill_vertical_space = fill_vertical_space
         self.font_scaling_factor_when_filling = font_scaling_factor_when_filling
+        self.random_header_colors = random_header_colors
+        self.header_background_brightness = header_background_brightness
         self.formatter = DepartureFormatter(config)
         self.presence_broadcaster = PresenceBroadcaster()
         self.departure_grouping_calculator = DepartureGroupingCalculator(
-            stop_configs, config, self.formatter
+            stop_configs, config, self.formatter, random_header_colors, header_background_brightness
         )
         # Generate static version for cache busting
         self._static_version = self._get_static_version()
@@ -593,6 +599,8 @@ def create_departures_live_view(
     route_title: str | None = None,
     fill_vertical_space: bool = False,
     font_scaling_factor_when_filling: float = 1.0,
+    random_header_colors: bool = False,
+    header_background_brightness: float = 0.7,
 ) -> type[DeparturesLiveView]:
     """Create a configured DeparturesLiveView class for a specific route.
 
@@ -609,6 +617,8 @@ def create_departures_live_view(
         route_title: Optional route-specific title (overrides config title).
         fill_vertical_space: Enable dynamic font sizing to fill viewport.
         font_scaling_factor_when_filling: Scale factor for all fonts when fill_vertical_space is enabled.
+        random_header_colors: Enable hash-based pastel colors for headers.
+        header_background_brightness: Brightness adjustment for random header colors (0.0-1.0).
 
     Returns:
         A configured DeparturesLiveView class that can be registered with PyView.
@@ -622,6 +632,8 @@ def create_departures_live_view(
     captured_route_title = route_title
     captured_fill_vertical_space = fill_vertical_space
     captured_font_scaling_factor_when_filling = font_scaling_factor_when_filling
+    captured_random_header_colors = random_header_colors
+    captured_header_background_brightness = header_background_brightness
 
     class ConfiguredDeparturesLiveView(DeparturesLiveView):
         """Configured LiveView for a specific route."""
@@ -636,6 +648,8 @@ def create_departures_live_view(
                 captured_route_title,
                 captured_fill_vertical_space,
                 captured_font_scaling_factor_when_filling,
+                captured_random_header_colors,
+                captured_header_background_brightness,
             )
 
     return ConfiguredDeparturesLiveView

@@ -66,10 +66,12 @@ class RouteConfigurationLoader:
                     stop_configs.append(stop_config)
 
             if stop_configs:
-                # Get optional route-specific title, fill_vertical_space, and font_scaling_factor_when_filling from routes.display
+                # Get optional route-specific title, fill_vertical_space, font_scaling_factor_when_filling, random_header_colors, and header_background_brightness from routes.display
                 route_title = None
                 fill_vertical_space = False
                 font_scaling_factor_when_filling = 1.0
+                random_header_colors = False
+                header_background_brightness = 0.7
                 display_data = route_data.get("display")
                 if display_data:
                     # Handle both dict (single display) and list (array of displays)
@@ -79,14 +81,22 @@ class RouteConfigurationLoader:
                         font_scaling_factor_when_filling = display_data.get(
                             "font_scaling_factor_when_filling", 1.0
                         )
+                        random_header_colors = display_data.get("random_header_colors", False)
+                        header_background_brightness = display_data.get(
+                            "header_background_brightness", 0.7
+                        )
                     elif isinstance(display_data, list) and len(display_data) > 0:
-                        # Get title, fill_vertical_space, and font_scaling_factor_when_filling from first display entry
+                        # Get title, fill_vertical_space, font_scaling_factor_when_filling, random_header_colors, and header_background_brightness from first display entry
                         first_display = display_data[0]
                         if isinstance(first_display, dict):
                             route_title = first_display.get("title")
                             fill_vertical_space = first_display.get("fill_vertical_space", False)
                             font_scaling_factor_when_filling = first_display.get(
                                 "font_scaling_factor_when_filling", 1.0
+                            )
+                            random_header_colors = first_display.get("random_header_colors", False)
+                            header_background_brightness = first_display.get(
+                                "header_background_brightness", 0.7
                             )
 
                 # Validate title is a string, default to None if not found
@@ -104,6 +114,21 @@ class RouteConfigurationLoader:
                     )
                 except (ValueError, TypeError):
                     font_scaling_factor_when_filling = 1.0
+                # Validate random_header_colors is a boolean (defaults to False if not specified)
+                random_header_colors = (
+                    bool(random_header_colors) if random_header_colors is not None else False
+                )
+                # Validate header_background_brightness is a float (defaults to 0.7 if not specified)
+                try:
+                    header_background_brightness = (
+                        float(header_background_brightness)
+                        if header_background_brightness is not None
+                        else 0.7
+                    )
+                    # Clamp to valid range [0.0, 1.0]
+                    header_background_brightness = max(0.0, min(1.0, header_background_brightness))
+                except (ValueError, TypeError):
+                    header_background_brightness = 0.7
 
                 route_config = RouteConfiguration(
                     path=path,
@@ -111,6 +136,8 @@ class RouteConfigurationLoader:
                     title=route_title,
                     fill_vertical_space=fill_vertical_space,
                     font_scaling_factor_when_filling=font_scaling_factor_when_filling,
+                    random_header_colors=random_header_colors,
+                    header_background_brightness=header_background_brightness,
                 )
                 route_configs.append(route_config)
 

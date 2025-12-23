@@ -88,7 +88,7 @@
         {% else %}
         {% for group in groups_with_departures %}
         <div class="direction-group">
-            <h2 class="direction-header" role="heading" aria-level="2">
+            <h2 class="direction-header" role="heading" aria-level="2"{% if group.header_color %} style="background-color: {{ group.header_color }};"{% endif %}>
                 {% if group.is_first_header %}
                 <span class="direction-header-text">{{ group.header }}</span>
                 <div class="direction-header-time status-header-item" id="datetime-display" aria-label="Current date and time" phx-update="ignore"></div>

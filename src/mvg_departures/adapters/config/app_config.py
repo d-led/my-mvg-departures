@@ -262,7 +262,7 @@ class AppConfig(BaseSettings):
                 default_route: dict[str, Any] = {"path": "/", "stops": filtered_stops}
                 if "display" in toml_data:
                     display = toml_data["display"]
-                    # Include fill_vertical_space and font_scaling_factor_when_filling if set
+                    # Include fill_vertical_space, font_scaling_factor_when_filling, and random_header_colors if set
                     # display is a dict from [display] section, not a list
                     if isinstance(display, dict):
                         display_settings: dict[str, Any] = {}
@@ -271,6 +271,14 @@ class AppConfig(BaseSettings):
                         if "font_scaling_factor_when_filling" in display:
                             display_settings["font_scaling_factor_when_filling"] = display[
                                 "font_scaling_factor_when_filling"
+                            ]
+                        if "random_header_colors" in display:
+                            display_settings["random_header_colors"] = display[
+                                "random_header_colors"
+                            ]
+                        if "header_background_brightness" in display:
+                            display_settings["header_background_brightness"] = display[
+                                "header_background_brightness"
                             ]
                         if display_settings:
                             default_route["display"] = display_settings
