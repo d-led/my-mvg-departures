@@ -1090,6 +1090,14 @@
         }
 
         disableDebugOnce();
+
+        // Force a full page reload one hour after initial load.
+        // This helps recover from any long-lived client-side drift (e.g. stale
+        // WebSocket state after devices waking from sleep) by reloading the app
+        // from scratch.
+        window.setTimeout(() => {
+            window.location.reload();
+        }, 60 * 60 * 1000); // 1 hour
     }
 
     if (document.readyState === 'loading') {
