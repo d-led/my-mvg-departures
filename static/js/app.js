@@ -946,23 +946,35 @@
 
         if (totalRows === 0) return;
 
-        // Calculate available viewport height
-        // Account for status bar at bottom (approximately 60px including padding)
-        const statusBarHeight = 60;
+        // Calculate available viewport height more accurately
+        // Measure the actual status bar height from the DOM
+        const statusBar = document.querySelector('.status-floating-box');
+        let statusBarHeight = 60; // Default fallback
+        if (statusBar) {
+            const rect = statusBar.getBoundingClientRect();
+            // Get computed margin-bottom (status bar is at bottom: 1rem = ~16px)
+            const computedStyle = window.getComputedStyle(statusBar);
+            const marginBottom = parseFloat(computedStyle.marginBottom) || 16;
+            statusBarHeight = rect.height + marginBottom;
+        }
+        
         const viewportHeight = window.innerHeight;
+        // Use the full viewport height minus the actual status bar
+        // Be aggressive - use all available space
         const availableHeight = viewportHeight - statusBarHeight;
 
-        // Calculate height per row (distribute evenly)
+        // Calculate height per row (distribute evenly across all available space)
+        // Use 100% of available height - no reserved space
         const heightPerRow = availableHeight / totalRows;
 
         // Calculate base font size from height per row
-        // Use almost all available height, reserving only minimal padding
+        // Use almost all row height for font content - be very aggressive with space usage
         // We'll use a slightly higher line-height to better fill the vertical space
-        const reservedPadding = 4; // Minimal padding per row in pixels (reduced to eliminate bottom whitespace)
-        const usableHeight = heightPerRow - reservedPadding;
+        const reservedPadding = 0; // No reserved padding - use full row height
+        const fontUsableHeight = heightPerRow - reservedPadding;
         // Use a slightly higher line height (1.25 instead of 1.2) to better distribute vertical space
         const lineHeight = 1.25;
-        const baseFontSize = usableHeight / lineHeight;
+        const baseFontSize = fontUsableHeight / lineHeight;
 
         // Calculate proportional font sizes for different elements
         // These ratios are based on the default font sizes in the config:
@@ -1047,6 +1059,12 @@
             group.style.marginTop = '0';
             group.style.marginBottom = '0';
         });
+
+        // Ensure the departures container uses the full available height
+        // This prevents any bottom whitespace from container padding/margins
+        departuresEl.style.height = availableHeight + 'px';
+        departuresEl.style.maxHeight = availableHeight + 'px';
+        departuresEl.style.overflow = 'hidden'; // Prevent scrolling since we're filling exactly
     }
 
     // Initialize on load
