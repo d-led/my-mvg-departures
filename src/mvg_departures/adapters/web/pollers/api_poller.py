@@ -6,7 +6,7 @@ import asyncio
 import logging
 import re
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from mvg_departures.domain.contracts.api_poller import ApiPollerProtocol
@@ -144,8 +144,25 @@ class ApiPoller(ApiPollerProtocol):
                         # Fetch directly from API to get fresh data
                         groups = await self.grouping_service.get_grouped_departures(stop_config)
                     else:
-                        # Process cached raw departures using this route's stop configuration
-                        groups = self.grouping_service.group_departures(raw_departures, stop_config)
+                        # Check if cached departures are too old (more than 1 hour old)
+                        # Filter out departures that are more than 1 hour in the past
+                        now = datetime.now(UTC)
+                        max_age = timedelta(hours=1)
+                        recent_departures = [
+                            d for d in raw_departures
+                            if d.time >= now - max_age
+                        ]
+                        
+                        if not recent_departures:
+                            # All cached departures are too old - fetch fresh data
+                            logger.warning(
+                                f"Cached departures for {stop_config.station_name} are too old, "
+                                f"fetching fresh from API"
+                            )
+                            groups = await self.grouping_service.get_grouped_departures(stop_config)
+                        else:
+                            # Process cached raw departures using this route's stop configuration
+                            groups = self.grouping_service.group_departures(recent_departures, stop_config)
                 else:
                     # Fetch from API (fallback if no shared cache)
                     groups = await self.grouping_service.get_grouped_departures(stop_config)

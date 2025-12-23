@@ -288,45 +288,52 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             # Do not proceed with presence tracking or subscriptions.
             return
 
-        # Join presence tracking - always track, even if not connected yet
-        # (socket will connect later and we'll update counts then)
-        # Use get_or_create pattern: if already in presence, don't duplicate
-        # Use session dict to get stable user ID (persists across reconnections)
-        if not self.presence_tracker.is_user_tracked(socket, _session):
-            user_id, local_count, total_count = self.presence_tracker.join_dashboard(
-                route_path, socket, _session
+        # Only track presence if socket is actually connected
+        # Unconnected sockets (e.g., from load testing tools) should not be counted
+        if is_connected(socket):
+            # Join presence tracking - only track if connected
+            # Use get_or_create pattern: if already in presence, don't duplicate
+            # Use session dict to get stable user ID (persists across reconnections)
+            if not self.presence_tracker.is_user_tracked(socket, _session):
+                user_id, local_count, total_count = self.presence_tracker.join_dashboard(
+                    route_path, socket, _session
+                )
+            else:
+                # Already in presence, just ensure it's in the right dashboard
+                local_count, total_count = self.presence_tracker.ensure_dashboard_membership(
+                    route_path, socket, _session
+                )
+                user_id = self.presence_tracker.get_user_id(socket, _session)
+                logger.debug(f"User {user_id} already in presence, ensured dashboard membership")
+
+            client_ip, user_agent, browser_id = get_client_info_from_socket(socket)
+            logger.info(
+                (
+                    "Presence: user %s joined dashboard %s from ip=%s, agent=%s, "
+                    "browser_id=%s. Local: %s, Total: %s"
+                ),
+                user_id,
+                route_path,
+                client_ip,
+                user_agent,
+                browser_id,
+                local_count,
+                total_count,
+            )
+
+            # Update state with initial presence counts
+            self.state_manager.departures_state.presence_local = local_count
+            self.state_manager.departures_state.presence_total = total_count
+
+            # Broadcast presence update using PresenceBroadcaster
+            await self.presence_broadcaster.broadcast_join(
+                route_path, user_id, local_count, total_count, socket
             )
         else:
-            # Already in presence, just ensure it's in the right dashboard
-            local_count, total_count = self.presence_tracker.ensure_dashboard_membership(
-                route_path, socket, _session
+            logger.debug(
+                "Socket not connected during mount - skipping presence tracking. "
+                "User will be tracked when socket connects."
             )
-            user_id = self.presence_tracker.get_user_id(socket, _session)
-            logger.debug(f"User {user_id} already in presence, ensured dashboard membership")
-
-        client_ip, user_agent, browser_id = get_client_info_from_socket(socket)
-        logger.info(
-            (
-                "Presence: user %s joined dashboard %s from ip=%s, agent=%s, "
-                "browser_id=%s. Local: %s, Total: %s"
-            ),
-            user_id,
-            route_path,
-            client_ip,
-            user_agent,
-            browser_id,
-            local_count,
-            total_count,
-        )
-
-        # Update state with initial presence counts
-        self.state_manager.departures_state.presence_local = local_count
-        self.state_manager.departures_state.presence_total = total_count
-
-        # Broadcast presence update using PresenceBroadcaster
-        await self.presence_broadcaster.broadcast_join(
-            route_path, user_id, local_count, total_count, socket
-        )
 
         socket.context = DeparturesState(
             direction_groups=self.state_manager.departures_state.direction_groups,
@@ -358,6 +365,32 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 logger.info(
                     f"Successfully subscribed socket to broadcast topic: {self.state_manager.broadcast_topic}"
                 )
+                # If socket wasn't connected at mount but is now, track presence
+                if not self.presence_tracker.is_user_tracked(socket, _session):
+                    user_id, local_count, total_count = self.presence_tracker.join_dashboard(
+                        route_path, socket, _session
+                    )
+                    client_ip, user_agent, browser_id = get_client_info_from_socket(socket)
+                    logger.info(
+                        (
+                            "Presence: user %s joined dashboard %s (connected after mount) "
+                            "from ip=%s, agent=%s, browser_id=%s. Local: %s, Total: %s"
+                        ),
+                        user_id,
+                        route_path,
+                        client_ip,
+                        user_agent,
+                        browser_id,
+                        local_count,
+                        total_count,
+                    )
+                    # Update state with presence counts
+                    self.state_manager.departures_state.presence_local = local_count
+                    self.state_manager.departures_state.presence_total = total_count
+                    # Broadcast presence update
+                    await self.presence_broadcaster.broadcast_join(
+                        route_path, user_id, local_count, total_count, socket
+                    )
             except Exception as e:
                 logger.error(
                     f"Failed to subscribe to topic {self.state_manager.broadcast_topic}: {e}",

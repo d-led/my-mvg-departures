@@ -126,7 +126,7 @@
 
     <!-- Floating status box at bottom center -->
     <div class="status-floating-box" role="status" aria-label="System status indicators: connection status, API status, refresh countdown, and user presence">
-        <div class="status-floating-box-item" id="connection-status" data-connection-state="connecting" role="img" aria-label="Connection status: connecting" title="WebSocket connection status">
+        <div class="status-floating-box-item" id="connection-status" data-connection-state="connecting" role="img" aria-label="Connection status: connecting" title="WebSocket connection status" phx-update="ignore">
             <!-- Connected: bolt icon -->
             <img class="status-icon connected" id="connected-icon" src="/static/img/bolt.svg" style="display: none;" alt="Connected" aria-hidden="true">
             <!-- Disconnected: bolt-slash icon -->
@@ -136,7 +136,7 @@
             <!-- Unstable/Degraded: question-mark-circle icon -->
             <img class="status-icon unstable" id="unstable-icon" src="/static/img/question-mark-circle.svg" style="display: none;" alt="Unstable" aria-hidden="true">
         </div>
-        <div class="status-floating-box-item" id="api-status-container" role="img" aria-label="API status: unknown" title="MVG API connection status">
+        <div class="status-floating-box-item" id="api-status-container" role="img" aria-label="API status: unknown" title="MVG API connection status" phx-update="ignore">
             <!-- Hidden element with API status that PyView updates -->
             <span id="api-status-value" style="display: none;">{{ api_status }}</span>
             <!-- Success: check-circle icon -->

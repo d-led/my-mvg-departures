@@ -69,7 +69,14 @@ class DepartureFetcher:
         try:
             while True:
                 await asyncio.sleep(self.config.refresh_interval_seconds)
-                await self._fetch_all_stations()
+                try:
+                    await self._fetch_all_stations()
+                except Exception as e:
+                    # Log error but continue the loop - don't stop fetching on errors
+                    logger.error(
+                        f"Error in departure fetcher loop (will retry): {e}",
+                        exc_info=True,
+                    )
         except asyncio.CancelledError:
             logger.info("Departure fetcher cancelled")
             raise
