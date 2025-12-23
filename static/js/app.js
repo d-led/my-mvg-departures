@@ -42,6 +42,24 @@
     const TIME_FORMAT_TOGGLE_SECONDS = window.DEPARTURES_CONFIG.timeFormatToggleSeconds || 0;
     const INITIAL_API_STATUS = (window.DEPARTURES_CONFIG.apiStatus && window.DEPARTURES_CONFIG.apiStatus !== 'undefined' && window.DEPARTURES_CONFIG.apiStatus !== '') ? window.DEPARTURES_CONFIG.apiStatus : 'unknown';
 
+    // Server-initiated reload coordination
+    const RELOAD_REQUEST_STORAGE_KEY = 'mvg_departures_last_reload_request_id';
+    let lastSeenReloadRequestId = 0;
+    try {
+        const storedReloadId = window.sessionStorage
+            ? window.sessionStorage.getItem(RELOAD_REQUEST_STORAGE_KEY)
+            : null;
+        if (storedReloadId) {
+            const parsed = parseInt(storedReloadId, 10);
+            if (!Number.isNaN(parsed) && parsed >= 0) {
+                lastSeenReloadRequestId = parsed;
+            }
+        }
+    } catch (e) {
+        // Access to sessionStorage can fail in some environments; ignore and fall back to 0
+        // console.warn('Unable to read reload request state from sessionStorage', e);
+    }
+
     // OPTIONAL: Time on the topmost visible header on scroll
     // Set to true to enable this feature
     const DATETIME_ON_VISIBLE_HEADER = true;
@@ -569,6 +587,11 @@
                 lastServerUpdateTime = newServerUpdateTime;
             }
         }, 50); // Small delay to ensure DOM patch is complete
+
+        // After every successful update, check whether the server has requested
+        // a hard reload. This relies on a hidden status widget that carries a
+        // monotonically increasing reload_request_id.
+        checkServerRequestedReload();
         } catch (e) {
             console.error('Error in phx:update handler:', e, event);
             throw e; // Re-throw to maintain observability
@@ -617,6 +640,45 @@
             apiUnknownIcon.style.display = '';
             if (liveRegion) liveRegion.textContent = 'API status: unknown';
         }
+    }
+
+    function checkServerRequestedReload() {
+        const reloadEl = document.getElementById('server-reload-indicator');
+        if (!reloadEl) {
+            return;
+        }
+
+        const rawId = reloadEl.getAttribute('data-reload-request-id') || '';
+        const currentId = parseInt(rawId, 10);
+        if (Number.isNaN(currentId) || currentId <= 0) {
+            // No reload requested; ensure indicator is hidden.
+            reloadEl.style.display = 'none';
+            return;
+        }
+
+        // Show the indicator whenever a reload has been requested.
+        reloadEl.style.display = '';
+
+        // If we've already processed this request id in this tab, do nothing.
+        if (currentId === lastSeenReloadRequestId) {
+            return;
+        }
+
+        // Record the new id before reloading so that after reload the tab
+        // knows this request has already been honoured and will not loop.
+        lastSeenReloadRequestId = currentId;
+        try {
+            if (window.sessionStorage) {
+                window.sessionStorage.setItem(RELOAD_REQUEST_STORAGE_KEY, String(currentId));
+            }
+        } catch {
+            // Ignore storage errors; at worst, the tab may reload again if the
+            // server keeps the same reload_request_id for a long time.
+        }
+
+        // Trigger a full page reload. This will cause the client to fetch the
+        // latest JavaScript and reset any long-lived state.
+        window.location.reload();
     }
 
         // No custom reconnection logic - PyView handles reconnection automatically
@@ -1090,6 +1152,31 @@
         }
 
         disableDebugOnce();
+
+        // Initialize last seen reload request from initial template data so that
+        // we do not immediately reload if the server previously requested it.
+        if (window.DEPARTURES_CONFIG && typeof window.DEPARTURES_CONFIG.reloadRequestId === 'number') {
+            const initialReloadId = window.DEPARTURES_CONFIG.reloadRequestId || 0;
+            if (initialReloadId > lastSeenReloadRequestId) {
+                lastSeenReloadRequestId = initialReloadId;
+                try {
+                    if (window.sessionStorage) {
+                        window.sessionStorage.setItem(
+                            RELOAD_REQUEST_STORAGE_KEY,
+                            String(lastSeenReloadRequestId)
+                        );
+                    }
+                } catch {
+                    // Ignore storage errors; in worst case a subsequent server request will reload once.
+                }
+            }
+        }
+
+        // Check immediately whether a reload has been requested (e.g. if the
+        // page was opened after an admin command). This will trigger a reload
+        // at most once per unique reload_request_id value, guarded by
+        // lastSeenReloadRequestId persisted in sessionStorage.
+        checkServerRequestedReload();
 
         // Force a full page reload one hour after initial load.
         // This helps recover from any long-lived client-side drift (e.g. stale

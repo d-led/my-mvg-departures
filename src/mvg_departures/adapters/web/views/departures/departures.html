@@ -52,7 +52,9 @@
         apiStatus: ('{{ api_status }}' && '{{ api_status }}' !== 'undefined' && '{{ api_status }}' !== '') ? '{{ api_status }}' : 'unknown',
         lastUpdateTimestamp: parseInt('{{ last_update_timestamp }}') || 0,
         fillVerticalSpace: '{{ fill_vertical_space }}' === 'true',
-        fontScalingFactorWhenFilling: parseFloat('{{ font_scaling_factor_when_filling }}') || 1.0
+        fontScalingFactorWhenFilling: parseFloat('{{ font_scaling_factor_when_filling }}') || 1.0,
+        // Server-initiated reload coordination (numeric, defaults to 0)
+        reloadRequestId: parseInt('{{ reload_request_id }}') || 0
     };
     
     // Update page title from template data (overrides rootTemplate title)
@@ -156,6 +158,20 @@
                 <circle cx="6" cy="6" r="5" class="progress" transform="rotate(-90 6 6)"></circle>
             </svg>
             <span class="sr-only" id="refresh-countdown-sr">Refresh countdown timer</span>
+        </div>
+        <!-- Optional server-initiated reload indicator (hidden by default, shown by JS when reload is requested) -->
+        <div class="status-floating-box-item status-floating-box-reload"
+             id="server-reload-indicator"
+             data-reload-request-id="{{ reload_request_id }}"
+             role="img"
+             aria-label="Server requested page reload"
+             title="Server requested a full page reload"
+             style="display: none;">
+            <!-- Simple circular arrow icon using SVG -->
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M4 4v6h6M20 20v-6h-6M5 13a7 7 0 0112-5.292M19 11a7 7 0 01-12 5.292"/>
+            </svg>
         </div>
         <!-- GitHub icon on the right side of status bar -->
         <a href="https://github.com/d-led/my-mvg-departures" target="_blank" rel="noopener noreferrer" class="status-floating-box-github status-floating-box-item" aria-label="View repository on GitHub (opens in new tab)" title="View repository on GitHub">

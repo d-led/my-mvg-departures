@@ -143,11 +143,28 @@ class AppConfig(BaseSettings):
         description="Maximum number of requests allowed per IP address per minute",
     )
 
+    # Admin command token for privileged maintenance endpoints (e.g. connection reset)
+    # Set via ADMIN_COMMAND_TOKEN environment variable. If not set, admin endpoints
+    # remain disabled.
+    admin_command_token: str | None = Field(
+        default=None,
+        description="Shared secret token required for admin maintenance commands",
+    )
+
     # Cache busting version for static assets
     # Set via STATIC_VERSION environment variable, or defaults to timestamp-based version
     static_version: str | None = Field(
         default=None,
         description="Version string for cache busting static assets (set via STATIC_VERSION env var)",
+    )
+
+    # Client reload coordination
+    enable_server_start_reload: bool = Field(
+        default=True,
+        description=(
+            "When true, bump reload_request_id once on server start so that long-lived "
+            "browser tabs perform a single hard reload per new server process."
+        ),
     )
 
     @field_validator("time_format")

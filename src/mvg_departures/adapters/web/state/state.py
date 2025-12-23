@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from mvg_departures.adapters.config.app_config import AppConfig
 from mvg_departures.adapters.web.broadcasters import StateBroadcaster
+from mvg_departures.adapters.web.client_info import get_client_info_from_socket
 from mvg_departures.adapters.web.pollers import ApiPoller
 from mvg_departures.adapters.web.updaters import StateUpdater
 
@@ -128,7 +129,14 @@ class State:
             self._session_sockets[session_id] = socket
 
         self.connected_sockets.add(socket)
-        logger.info(f"Registered socket, total connected: {len(self.connected_sockets)}")
+        client_ip, user_agent, browser_id = get_client_info_from_socket(socket)
+        logger.info(
+            "Registered socket from ip=%s, agent=%s, browser_id=%s, total connected: %s",
+            client_ip,
+            user_agent,
+            browser_id,
+            len(self.connected_sockets),
+        )
 
     def unregister_socket(self, socket: LiveViewSocket[DeparturesState]) -> None:
         """Unregister a socket.

@@ -90,6 +90,8 @@ class PyViewWebAdapter(DisplayAdapter):
 
     async def start(self) -> None:
         """Start the web server."""
+        import time
+
         import uvicorn
         from markupsafe import Markup
         from pyview import PyView
@@ -185,6 +187,103 @@ class PyViewWebAdapter(DisplayAdapter):
             app.add_live_view(route_path, live_view_class)
             logger.info(f"Successfully registered route at path '{route_path}'")
 
+        # ------------------------------------------------------------------
+        # Admin maintenance endpoints
+        # ------------------------------------------------------------------
+        # These endpoints are intentionally minimal and guarded by a shared
+        # secret token provided via ADMIN_COMMAND_TOKEN. They are designed
+        # for operational use (e.g. from curl) and are not linked from the UI.
+
+        async def reset_connections(request: Any) -> Any:
+            """Reset server-side connection and presence state.
+
+            This endpoint:
+            - Verifies the X-Admin-Token header against admin_command_token.
+            - Clears all registered sockets from all route states.
+            - Asks the presence tracker to sync against an empty set so that
+              all presence entries are removed.
+
+            It does not attempt to change behaviour of already-loaded client
+            JavaScript; it only resets the server's view of active sessions.
+            """
+            from starlette.responses import JSONResponse
+
+            expected_token = self.config.admin_command_token
+            if not expected_token:
+                return JSONResponse(
+                    {"error": "admin endpoint disabled - ADMIN_COMMAND_TOKEN not configured"},
+                    status_code=503,
+                )
+
+            provided_token = request.headers.get("X-Admin-Token", "")
+            if provided_token != expected_token:
+                logger.warning("Unauthorized attempt to call reset_connections admin endpoint")
+                return JSONResponse({"error": "forbidden"}, status_code=403)
+
+            total_disconnected = 0
+
+            # Unregister all sockets from every route state.
+            for route_path, route_state in self.route_states.items():
+                # Work on a copy because unregister_socket mutates the set
+                sockets_to_unregister = list(route_state.connected_sockets)
+                if not sockets_to_unregister:
+                    continue
+
+                logger.info(
+                    f"Admin reset_connections: unregistering {len(sockets_to_unregister)} "
+                    f"sockets for route '{route_path}'"
+                )
+                for socket in sockets_to_unregister:
+                    route_state.unregister_socket(socket)
+                    total_disconnected += 1
+
+                # Bump reload_request_id for this route so connected clients
+                # can detect the change and perform a hard reload once.
+                try:
+                    route_state.departures_state.reload_request_id += 1
+                except Exception:
+                    # If state does not support reload_request_id for some reason,
+                    # do not fail the admin command.
+                    logger.exception(
+                        "Failed to increment reload_request_id for route '%s'", route_path
+                    )
+
+            # Drop all presence entries by syncing against an empty mapping of
+            # registered sockets. PresenceTracker will remove users it no longer
+            # sees as registered anywhere.
+            added, removed = presence_tracker.sync_with_registered_sockets({})
+
+            # Broadcast state updates to all routes so that LiveViews receive
+            # a phx:update with the new reload_request_id value.
+            from .broadcasters import StateBroadcaster
+
+            state_broadcaster = StateBroadcaster()
+            for route_path, route_state in self.route_states.items():
+                try:
+                    await state_broadcaster.broadcast_update(route_state.broadcast_topic)
+                except Exception:
+                    logger.exception("Failed to broadcast reload update for route '%s'", route_path)
+
+            logger.info(
+                "Admin reset_connections completed: "
+                f"disconnected_sockets={total_disconnected}, "
+                f"presence_added={added}, presence_removed={removed}"
+            )
+
+            # Intentionally documented only in source; typical usage:
+            #   curl -X POST https://your-app.fly.dev/admin/reset-connections \
+            #        -H "X-Admin-Token: $ADMIN_COMMAND_TOKEN"
+            return JSONResponse(
+                {
+                    "status": "ok",
+                    "disconnected_sockets": total_disconnected,
+                    "presence_added": added,
+                    "presence_removed": removed,
+                }
+            )
+
+        app.routes.append(Route("/admin/reset-connections", reset_connections, methods=["POST"]))
+
         # Register static file routes
         static_file_server = StaticFileServer()
         static_file_server.register_routes(app)
@@ -202,10 +301,10 @@ class PyViewWebAdapter(DisplayAdapter):
         # Start the shared fetcher that populates the cache with raw departures
         await self._start_departure_fetcher()
 
-        # Start the API poller for each route immediately when server starts
-        # Each route will process cached raw departures according to its own StopConfiguration
-        # Convert cache to dict for API poller (it expects a dict)
-        # TODO: Refactor ApiPoller to use DepartureCacheProtocol instead
+        # Start the API poller for each route immediately when server starts.
+        # Each route will process cached raw departures according to its own StopConfiguration.
+        # Convert cache to dict for API poller (it expects a dict).
+        # TODO: Refactor ApiPoller to use DepartureCacheProtocol instead.
         cache_dict: dict[str, list[Departure]] = {}
         station_ids: set[str] = self._shared_departure_cache.get_all_station_ids()
         for station_id in station_ids:
@@ -222,6 +321,33 @@ class PyViewWebAdapter(DisplayAdapter):
                 self.config,
                 shared_cache=cache_dict,
             )
+
+        # --------------------------------------------------------------
+        # Optional server-start reload request
+        # --------------------------------------------------------------
+        # To ensure that long-lived browser tabs pick up newly deployed
+        # JavaScript, we can bump reload_request_id once per server start.
+        #
+        # The value is derived from the current UNIX timestamp, so each
+        # fresh process is very likely to have a different value. Clients
+        # remember the last seen id in sessionStorage and will perform at
+        # most one hard reload per distinct value (per tab).
+        if self.config.enable_server_start_reload:
+            server_start_reload_id = int(time.time())
+            for route_path, route_state in self.route_states.items():
+                try:
+                    if getattr(route_state.departures_state, "reload_request_id", 0) == 0:
+                        route_state.departures_state.reload_request_id = server_start_reload_id
+                        logger.info(
+                            "Initialized reload_request_id=%s for route '%s' on server start",
+                            server_start_reload_id,
+                            route_path,
+                        )
+                except Exception:  # pragma: no cover - defensive, should not happen in normal flow
+                    logger.exception(
+                        "Failed to initialize reload_request_id for route '%s' on server start",
+                        route_path,
+                    )
 
         config = uvicorn.Config(
             wrapped_app,

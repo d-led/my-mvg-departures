@@ -19,6 +19,7 @@ from pyview.vendor.ibis.loaders import FileReloader
 from mvg_departures.adapters.config import AppConfig
 from mvg_departures.adapters.web.broadcasters import PresenceBroadcaster
 from mvg_departures.adapters.web.builders import DepartureGroupingCalculator
+from mvg_departures.adapters.web.client_info import get_client_info_from_socket
 from mvg_departures.adapters.web.formatters import DepartureFormatter
 from mvg_departures.adapters.web.state import DeparturesState, State
 from mvg_departures.domain.contracts import (
@@ -239,6 +240,8 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 if self.config.time_format_toggle_seconds is not None
                 else "0"
             ),
+            # Server-initiated reload coordination
+            "reload_request_id": str(getattr(state, "reload_request_id", 0) or 0),
             "api_status": str(state.api_status or "unknown"),
             "last_update_timestamp": (
                 str(int(last_update.timestamp() * 1000)) if last_update is not None else "0"
@@ -298,9 +301,19 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             user_id = self.presence_tracker.get_user_id(socket, _session)
             logger.debug(f"User {user_id} already in presence, ensured dashboard membership")
 
+        client_ip, user_agent, browser_id = get_client_info_from_socket(socket)
         logger.info(
-            f"Presence: user {user_id} joined dashboard {route_path}. "
-            f"Local: {local_count}, Total: {total_count}"
+            (
+                "Presence: user %s joined dashboard %s from ip=%s, agent=%s, "
+                "browser_id=%s. Local: %s, Total: %s"
+            ),
+            user_id,
+            route_path,
+            client_ip,
+            user_agent,
+            browser_id,
+            local_count,
+            total_count,
         )
 
         # Update state with initial presence counts
@@ -365,9 +378,19 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             route_path, socket, session
         )
 
+        client_ip, user_agent, browser_id = get_client_info_from_socket(socket)
         logger.info(
-            f"Presence: user {user_id} left dashboard {route_path}. "
-            f"Local: {local_count}, Total: {total_count}"
+            (
+                "Presence: user %s left dashboard %s from ip=%s, agent=%s, "
+                "browser_id=%s. Local: %s, Total: %s"
+            ),
+            user_id,
+            route_path,
+            client_ip,
+            user_agent,
+            browser_id,
+            local_count,
+            total_count,
         )
 
         # Update state with new presence counts
@@ -396,9 +419,19 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             route_path, socket, session
         )
 
+        client_ip, user_agent, browser_id = get_client_info_from_socket(socket)
         logger.info(
-            f"Presence disconnect: user {user_id} disconnected from dashboard {route_path}. "
-            f"Local: {local_count}, Total: {total_count}"
+            (
+                "Presence disconnect: user %s disconnected from dashboard %s from ip=%s, "
+                "agent=%s, browser_id=%s. Local: %s, Total: %s"
+            ),
+            user_id,
+            route_path,
+            client_ip,
+            user_agent,
+            browser_id,
+            local_count,
+            total_count,
         )
 
         # Update state with new presence counts

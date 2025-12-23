@@ -8,6 +8,7 @@ primary_region = 'fra'
 
 [env]
   TIMEZONE = 'Europe/Berlin'
+  ENABLE_SERVER_START_RELOAD = 'true'
 
 [build]
   dockerfile = 'docker/Dockerfile.optimized'
