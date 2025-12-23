@@ -288,6 +288,13 @@ class PyViewWebAdapter(DisplayAdapter):
 
         app.routes.append(Route("/admin/reset-connections", reset_connections, methods=["POST"]))
 
+        # Health check endpoint
+        async def healthz(_request: Any) -> Response:
+            """Health check endpoint for load balancers and monitoring."""
+            return Response(content="Ok", media_type="text/plain")
+
+        app.routes.append(Route("/healthz", healthz, methods=["GET"]))
+
         # Register static file routes
         static_file_server = StaticFileServer()
         static_file_server.register_routes(app)
