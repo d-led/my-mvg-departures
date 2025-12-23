@@ -119,7 +119,7 @@ path = "/hohenzollernplatz"
 
 title = "Hohenzollernplatz Departures"
 fill_vertical_space = true
-font_scaling_factor_when_filling = 0.9
+font_scaling_factor_when_filling = 0.8
 
 # Enable hash-based pastel colors for headers (stable colors based on header text)
 # Colors are designed to work well in both light and dark modes
@@ -140,9 +140,9 @@ departure_leeway_minutes = 8
 show_ungrouped = false
 
 [routes.stops.direction_mappings]
+"->HBf" = ["U2 Messestadt Ost", "U2 Giesing"]
 "->Rotkreuzplatz" = ["53 Aidenbachstraße", "12 Romanplatz"]
 "->Scheidplatz" = ["U2 Feldmoching", "12 Schwabing Nord"]
-"->HBf" = ["U2 Messestadt Ost", "U2 Giesing"]
 
 [[routes.stops]]
 
