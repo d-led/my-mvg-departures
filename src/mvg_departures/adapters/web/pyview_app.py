@@ -109,7 +109,10 @@ class PyViewWebAdapter(DisplayAdapter):
 
         # Add default favicon route
         async def default_favicon_route(_request: Any) -> Response:
-            return Response(content=default_favicon_svg, media_type="image/svg+xml")
+            response = Response(content=default_favicon_svg, media_type="image/svg+xml")
+            # Add cache headers: cache for 1 minute
+            response.headers["Cache-Control"] = "public, max-age=60, must-revalidate"
+            return response
 
         app.routes.append(Route("/favicon.svg", default_favicon_route, methods=["GET"]))
 
@@ -145,7 +148,10 @@ class PyViewWebAdapter(DisplayAdapter):
                 # Create favicon route handler (capture SVG in closure)
                 def create_favicon_handler(svg_content: str) -> Any:
                     async def favicon_handler(_request: Any) -> Response:
-                        return Response(content=svg_content, media_type="image/svg+xml")
+                        response = Response(content=svg_content, media_type="image/svg+xml")
+                        # Add cache headers: cache for 1 minute
+                        response.headers["Cache-Control"] = "public, max-age=60, must-revalidate"
+                        return response
 
                     return favicon_handler
 

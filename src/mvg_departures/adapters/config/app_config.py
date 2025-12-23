@@ -143,6 +143,13 @@ class AppConfig(BaseSettings):
         description="Maximum number of requests allowed per IP address per minute",
     )
 
+    # Cache busting version for static assets
+    # Set via STATIC_VERSION environment variable, or defaults to timestamp-based version
+    static_version: str | None = Field(
+        default=None,
+        description="Version string for cache busting static assets (set via STATIC_VERSION env var)",
+    )
+
     @field_validator("time_format")
     @classmethod
     def validate_time_format(cls, v: str) -> str:

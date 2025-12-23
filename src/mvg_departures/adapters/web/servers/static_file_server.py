@@ -13,9 +13,46 @@ from starlette.staticfiles import StaticFiles
 from mvg_departures.domain.contracts.static_file_server import StaticFileServerProtocol
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable, MutableMapping
+
     from pyview import PyView
 
 logger = logging.getLogger(__name__)
+
+
+class StaticFileCacheApp:
+    """ASGI app wrapper that adds cache headers to static file responses."""
+
+    def __init__(self, static_files: StaticFiles) -> None:
+        """Initialize with a StaticFiles instance."""
+        self.static_files = static_files
+
+    async def __call__(
+        self,
+        scope: dict[str, Any],
+        receive: Callable[[], Awaitable[dict[str, Any]]],
+        send: Callable[[MutableMapping[str, Any]], Awaitable[None]],
+    ) -> None:
+        """Handle ASGI request and add cache headers."""
+        # Intercept the response to add headers
+        original_send = send
+
+        async def send_with_cache_headers(
+            message: MutableMapping[str, Any],
+        ) -> None:
+            """Add cache headers before sending response."""
+            if message["type"] == "http.response.start":
+                # Headers in ASGI are already a list of (bytes, bytes) tuples
+                headers = list(message.get("headers", []))
+                # Check if Cache-Control already exists
+                has_cache_control = any(header[0].lower() == b"cache-control" for header in headers)
+                if not has_cache_control:
+                    # Add Cache-Control header: cache for 1 minute, allow revalidation
+                    headers.append((b"cache-control", b"public, max-age=60, must-revalidate"))
+                    message["headers"] = headers
+            await original_send(message)
+
+        await self.static_files(scope, receive, send_with_cache_headers)
 
 
 class StaticFileServer(StaticFileServerProtocol):
@@ -49,8 +86,12 @@ class StaticFileServer(StaticFileServerProtocol):
                 break
 
         if static_path:
-            app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
-            logger.info(f"Mounted static files from {static_path}")
+            # Create StaticFiles instance and wrap with cache app
+            static_files = StaticFiles(directory=str(static_path))
+            # Wrap with cache app to add cache headers
+            cached_static = StaticFileCacheApp(static_files)
+            app.mount("/static", cached_static, name="static")
+            logger.info(f"Mounted static files from {static_path} with 1-minute cache headers")
         else:
             logger.warning(
                 f"Static directory not found at any of: {[str(p) for p in static_paths]}"
@@ -66,11 +107,16 @@ class StaticFileServer(StaticFileServerProtocol):
             client_js_path = pyview_path / "static" / "assets" / "app.js"
 
             if client_js_path.exists():
-                return FileResponse(str(client_js_path), media_type="application/javascript")
+                response = FileResponse(str(client_js_path), media_type="application/javascript")
+                # Add cache headers: cache for 1 minute
+                response.headers["Cache-Control"] = "public, max-age=60, must-revalidate"
+                return response
             # Fallback: try alternative path
             alt_path = pyview_path / "assets" / "js" / "app.js"
             if alt_path.exists():
-                return FileResponse(str(alt_path), media_type="application/javascript")
+                response = FileResponse(str(alt_path), media_type="application/javascript")
+                response.headers["Cache-Control"] = "public, max-age=60, must-revalidate"
+                return response
             logger.error(f"Could not find pyview client JS at {client_js_path} or {alt_path}")
             return Response(
                 content="// PyView client not found",
@@ -101,7 +147,10 @@ class StaticFileServer(StaticFileServerProtocol):
 
             for github_icon_path in possible_paths:
                 if github_icon_path.exists():
-                    return FileResponse(str(github_icon_path), media_type="image/svg+xml")
+                    response = FileResponse(str(github_icon_path), media_type="image/svg+xml")
+                    # Add cache headers: cache for 1 minute
+                    response.headers["Cache-Control"] = "public, max-age=60, must-revalidate"
+                    return response
 
             logger.error(
                 f"Could not find GitHub icon at any of: {[str(p) for p in possible_paths]}"

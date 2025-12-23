@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from pyview import LiveView, LiveViewSocket, is_connected
@@ -83,6 +85,8 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         self.departure_grouping_calculator = DepartureGroupingCalculator(
             stop_configs, config, self.formatter
         )
+        # Generate static version for cache busting
+        self._static_version = self._get_static_version()
 
     def _update_presence_from_event(
         self, topic: str, payload: dict[str, Any], socket: LiveViewSocket[DeparturesState]
@@ -248,6 +252,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 if self.fill_vertical_space is not None
                 else "false"
             ),
+            "static_version": self._static_version,
         }
 
     async def mount(self, socket: LiveViewSocket[DeparturesState], _session: dict) -> None:
@@ -432,6 +437,37 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             f"Unexpected event type in handle_info: {type(event)}, "
             f"expected str or InfoEvent, got: {event}"
         )
+
+    def _get_static_version(self) -> str:
+        """Generate or retrieve static asset version for cache busting.
+
+        Returns:
+            Version string to append to static asset URLs.
+        """
+        # First, check if explicitly set via environment variable
+        if self.config.static_version:
+            return self.config.static_version
+
+        # Try to generate from file modification times (for development)
+        # This ensures changes are picked up during development
+        try:
+            static_js_path = Path.cwd() / "static" / "js" / "app.js"
+            if not static_js_path.exists():
+                # Try alternative path
+                static_js_path = (
+                    Path(__file__).parent.parent.parent.parent.parent / "static" / "js" / "app.js"
+                )
+
+            if static_js_path.exists():
+                # Use file modification time as version
+                mtime = static_js_path.stat().st_mtime
+                return str(int(mtime))
+        except Exception:
+            pass
+
+        # Fallback: use a hash of the current time (changes on each server restart)
+        # This ensures cache is busted on redeployment
+        return hashlib.md5(str(datetime.now(UTC).timestamp()).encode()).hexdigest()[:8]
 
     async def render(self, assigns: DeparturesState | dict, meta: Any) -> str:
         """Render the HTML template."""
