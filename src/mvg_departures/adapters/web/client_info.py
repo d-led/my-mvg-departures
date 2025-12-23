@@ -30,17 +30,12 @@ def get_client_info_from_scope(scope: dict[str, Any] | None) -> tuple[str, str, 
     if not isinstance(scope, dict):
         return "unknown", "unknown", "unknown"
 
-    ip = "unknown"
-    client = scope.get("client")
-    if isinstance(client, (list, tuple)) and client:
-        # ASGI client is typically (host, port)
-        candidate = client[0]
-        if isinstance(candidate, (str, bytes)):
-            ip = _decode_header_value(candidate)
-
     user_agent = "unknown"
     browser_id = "unknown"
     cookie_header: str | None = None
+    forwarded_for: str | None = None
+    fly_client_ip: str | None = None
+
     headers = scope.get("headers") or []
     for name, value in headers:
         decoded_name = _decode_header_value(name).lower()
@@ -51,6 +46,26 @@ def get_client_info_from_scope(scope: dict[str, Any] | None) -> tuple[str, str, 
                 user_agent = f"{user_agent[:197]}..."
         elif decoded_name == "cookie":
             cookie_header = _decode_header_value(value)
+        elif decoded_name == "x-forwarded-for":
+            forwarded_for = _decode_header_value(value)
+        elif decoded_name == "fly-client-ip":
+            fly_client_ip = _decode_header_value(value)
+
+    # Prefer Fly/forwarded headers for IP if present, otherwise fall back to ASGI client.
+    ip = "unknown"
+    if forwarded_for:
+        # X-Forwarded-For may contain a list: client, proxy1, proxy2, ...
+        first = forwarded_for.split(",")[0].strip()
+        if first:
+            ip = first
+    elif fly_client_ip:
+        ip = fly_client_ip
+    else:
+        client = scope.get("client")
+        if isinstance(client, (list, tuple)) and client:
+            candidate = client[0]
+            if isinstance(candidate, (str, bytes)):
+                ip = _decode_header_value(candidate)
 
     if cookie_header:
         for part in cookie_header.split(";"):
