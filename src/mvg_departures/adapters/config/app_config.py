@@ -167,6 +167,14 @@ class AppConfig(BaseSettings):
         ),
     )
 
+    max_sessions_per_browser: int = Field(
+        default=15,
+        description=(
+            "Maximum number of concurrent sockets allowed per browser identifier. "
+            "Connections with browser_id == 'unknown' are not limited."
+        ),
+    )
+
     @field_validator("time_format")
     @classmethod
     def validate_time_format(cls, v: str) -> str:

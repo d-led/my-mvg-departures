@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 class State:
     """Manages shared state for departures LiveView and API polling."""
 
-    def __init__(self, route_path: str = "/") -> None:
+    def __init__(self, route_path: str = "/", max_sessions_per_browser: int = 15) -> None:
         """Initialize the state manager.
 
         Args:
@@ -41,6 +41,10 @@ class State:
         # Track sockets per logical presence session so that reconnects from the same
         # client do not leak "stale" sockets in connected_sockets.
         self._session_sockets: dict[str, LiveViewSocket[DeparturesState]] = {}
+        # Optional per-browser connection limiting.
+        self.max_sessions_per_browser = max_sessions_per_browser
+        self._browser_sockets: dict[str, set[LiveViewSocket[DeparturesState]]] = {}
+        self._socket_browser: dict[LiveViewSocket[DeparturesState], str] = {}
         self.api_poller: ApiPoller | None = None
         # Create route-specific topic based on path
         # Normalize path: remove leading/trailing slashes and replace / with :
@@ -110,7 +114,7 @@ class State:
 
     def register_socket(
         self, socket: LiveViewSocket[DeparturesState], session_id: str | None = None
-    ) -> None:
+    ) -> bool:
         """Register a socket for updates.
 
         When a logical client (identified by session_id) reconnects, pyview may create
@@ -120,7 +124,31 @@ class State:
         - If session_id is provided and we already have a socket for that session,
           the old socket is first removed from the connected set.
         - The new socket is then registered and associated with the session.
+
+        Returns:
+            True if the socket was registered, False if it was rejected due to
+            per-browser session limits.
         """
+        client_ip, user_agent, browser_id = get_client_info_from_socket(socket)
+
+        # If we have a usable browser_id, enforce per-browser connection cap.
+        if browser_id != "unknown" and self.max_sessions_per_browser > 0:
+            sockets_for_browser = self._browser_sockets.get(browser_id)
+            active_count = len(sockets_for_browser) if sockets_for_browser is not None else 0
+            if active_count >= self.max_sessions_per_browser:
+                logger.warning(
+                    "Rejecting socket from ip=%s, agent=%s, browser_id=%s for route '%s' "
+                    "because it would exceed max_sessions_per_browser=%s "
+                    "(currently %s active sockets for this browser).",
+                    client_ip,
+                    user_agent,
+                    browser_id,
+                    self.route_path,
+                    self.max_sessions_per_browser,
+                    active_count,
+                )
+                return False
+
         if session_id:
             existing_socket = self._session_sockets.get(session_id)
             if existing_socket is not None and existing_socket is not socket:
@@ -129,7 +157,10 @@ class State:
             self._session_sockets[session_id] = socket
 
         self.connected_sockets.add(socket)
-        client_ip, user_agent, browser_id = get_client_info_from_socket(socket)
+        if browser_id != "unknown":
+            self._browser_sockets.setdefault(browser_id, set()).add(socket)
+            self._socket_browser[socket] = browser_id
+
         logger.info(
             "Registered socket from ip=%s, agent=%s, browser_id=%s, total connected: %s",
             client_ip,
@@ -137,6 +168,7 @@ class State:
             browser_id,
             len(self.connected_sockets),
         )
+        return True
 
     def unregister_socket(self, socket: LiveViewSocket[DeparturesState]) -> None:
         """Unregister a socket.
@@ -145,6 +177,14 @@ class State:
         points at the given socket.
         """
         self.connected_sockets.discard(socket)
+        # Remove from browser-based tracking, if present.
+        browser_id = self._socket_browser.pop(socket, None)
+        if browser_id is not None:
+            sockets_for_browser = self._browser_sockets.get(browser_id)
+            if sockets_for_browser is not None:
+                sockets_for_browser.discard(socket)
+                if not sockets_for_browser:
+                    del self._browser_sockets[browser_id]
         # Remove any session IDs associated with this socket
         stale_session_ids = [
             session_id

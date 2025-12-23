@@ -283,7 +283,10 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         # presence session ID so that reconnects from the same client replace
         # the previous socket instead of leaking additional entries.
         presence_session_id = _session["_presence_session_id"]
-        self.state_manager.register_socket(socket, presence_session_id)
+        if not self.state_manager.register_socket(socket, presence_session_id):
+            # Connection rejected due to per-browser session limits.
+            # Do not proceed with presence tracking or subscriptions.
+            return
 
         # Join presence tracking - always track, even if not connected yet
         # (socket will connect later and we'll update counts then)

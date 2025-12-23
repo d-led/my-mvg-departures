@@ -151,11 +151,11 @@ def test_state_register_socket_replaces_previous_socket_for_same_session() -> No
     first_socket = MagicMock()
     second_socket = MagicMock()
 
-    state.register_socket(first_socket, "session-1")
+    assert state.register_socket(first_socket, "session-1") is True
     assert first_socket in state.connected_sockets
     assert len(state.connected_sockets) == 1
 
-    state.register_socket(second_socket, "session-1")
+    assert state.register_socket(second_socket, "session-1") is True
 
     assert second_socket in state.connected_sockets
     assert first_socket not in state.connected_sockets

@@ -77,7 +77,11 @@ class PyViewWebAdapter(DisplayAdapter):
         self._server: Any | None = None
         # Create a state manager for each route
         self.route_states: dict[str, State] = {
-            route_config.path: State(route_path=route_config.path) for route_config in route_configs
+            route_config.path: State(
+                route_path=route_config.path,
+                max_sessions_per_browser=self.config.max_sessions_per_browser,
+            )
+            for route_config in route_configs
         }
         # Shared cache for raw departures by station_id (to avoid duplicate API calls)
         # Each route will process this cached data according to its own StopConfiguration
