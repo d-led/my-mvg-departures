@@ -407,6 +407,10 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             route_path, user_id, local_count, total_count, socket
         )
 
+        # Mirror unmount behaviour: ensure socket is always unregistered on disconnect.
+        # Discarding from the set keeps this idempotent if unmount already ran.
+        self.state_manager.unregister_socket(socket)
+
     async def handle_info(
         self, event: str | InfoEvent, socket: LiveViewSocket[DeparturesState]
     ) -> None:

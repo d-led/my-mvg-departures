@@ -703,13 +703,10 @@
         }
     });
 
-    // Disable debug logging once - assume liveSocket is available in callbacks
-    let debugDisabled = false;
+    // Disable debug
     function disableDebugOnce() {
-        if (debugDisabled || !window.liveSocket) return;
         try {
             window.liveSocket.disableDebug();
-            debugDisabled = true;
         } catch (e) {
             // Silently fail - not critical
         }
@@ -1091,6 +1088,8 @@
                 calculateFillVerticalSpace();
             });
         }
+
+        disableDebugOnce();
     }
 
     if (document.readyState === 'loading') {

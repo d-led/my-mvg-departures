@@ -4,6 +4,8 @@ import os
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from mvg_departures.adapters.config import AppConfig
 from mvg_departures.adapters.web.presence import PresenceTracker
 from mvg_departures.adapters.web.state import DeparturesState, State
@@ -137,3 +139,35 @@ def test_build_template_assigns_handles_none_last_update() -> None:
 
     result = view._build_template_assigns(state, template_data)
     assert result["last_update_timestamp"] == "0"
+
+
+@pytest.mark.asyncio
+async def test_disconnect_unregisters_socket_and_cleans_presence() -> None:
+    """Given a connected user, when disconnecting, then presence and sockets stay in sync."""
+    view = _create_test_view()
+    route_path = view.state_manager.route_path
+
+    # Arrange: a socket that is already mounted and tracked in presence.
+    socket = MagicMock()
+    socket.context = DeparturesState()
+    socket._presence_session_id = "test-session-id"
+
+    # Simulate prior registration and join so state and presence are non-empty.
+    view.state_manager.register_socket(socket)
+    view.presence_tracker.join_dashboard(
+        route_path,
+        socket,
+        {"_presence_session_id": socket._presence_session_id},
+    )
+
+    assert view.state_manager.connected_sockets  # Sanity check precondition
+    assert view.presence_tracker.get_total_count() == 1
+    assert view.presence_tracker.get_dashboard_count(route_path) == 1
+
+    # When: the socket disconnects from the LiveView.
+    await view.disconnect(socket)
+
+    # Then: the socket is unregistered and presence no longer tracks the user.
+    assert socket not in view.state_manager.connected_sockets
+    assert view.presence_tracker.get_total_count() == 0
+    assert view.presence_tracker.get_dashboard_count(route_path) == 0
