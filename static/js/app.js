@@ -980,7 +980,7 @@
             paginationIndicator: baseFontSize * (2.0 / 3.5),
             countdownText: baseFontSize * (1.8 / 3.5),
             delayAmount: baseFontSize * (2.0 / 3.5),
-            statusHeader: baseFontSize * (1.875 / 3.5),
+            statusHeader: baseFontSize * (2.5 / 3.5),     // Increased from 1.875 to 2.5 for better visibility
         };
 
         // Apply minimum font size to ensure legibility (at least 12px)
