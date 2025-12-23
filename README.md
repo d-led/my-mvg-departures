@@ -465,3 +465,4 @@ See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for detailed contribution guide
 A superb go-to alternative is the [VVO Build your own departure monitor](https://www.vvo-online.de/en/timetable/timetable-for-developers/departure-monitor/index.cshtml), based
 on the [HAFAS](https://gist.github.com/derhuerst/2b7ed83bfa5f115125a5) endpoint.
 
+Online demo: [VVO Iframe Example](https://d-led.github.io/my-mvg-departures/vvo-iframe/ostbahnhof/index.html)
