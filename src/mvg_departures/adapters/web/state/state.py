@@ -37,6 +37,9 @@ class State:
         self.route_path = route_path
         self.departures_state = DeparturesState()
         self.connected_sockets: set[LiveViewSocket[DeparturesState]] = set()
+        # Track sockets per logical presence session so that reconnects from the same
+        # client do not leak "stale" sockets in connected_sockets.
+        self._session_sockets: dict[str, LiveViewSocket[DeparturesState]] = {}
         self.api_poller: ApiPoller | None = None
         # Create route-specific topic based on path
         # Normalize path: remove leading/trailing slashes and replace / with :
@@ -104,12 +107,42 @@ class State:
             self.api_poller = None
             logger.info("Stopped API poller")
 
-    def register_socket(self, socket: LiveViewSocket[DeparturesState]) -> None:
-        """Register a socket for updates."""
+    def register_socket(
+        self, socket: LiveViewSocket[DeparturesState], session_id: str | None = None
+    ) -> None:
+        """Register a socket for updates.
+
+        When a logical client (identified by session_id) reconnects, pyview may create
+        a new LiveViewSocket instance. To keep the server-side accounting stable, we
+        ensure that at most one socket is registered per session:
+
+        - If session_id is provided and we already have a socket for that session,
+          the old socket is first removed from the connected set.
+        - The new socket is then registered and associated with the session.
+        """
+        if session_id:
+            existing_socket = self._session_sockets.get(session_id)
+            if existing_socket is not None and existing_socket is not socket:
+                # Remove stale socket for this logical session
+                self.connected_sockets.discard(existing_socket)
+            self._session_sockets[session_id] = socket
+
         self.connected_sockets.add(socket)
         logger.info(f"Registered socket, total connected: {len(self.connected_sockets)}")
 
     def unregister_socket(self, socket: LiveViewSocket[DeparturesState]) -> None:
-        """Unregister a socket."""
+        """Unregister a socket.
+
+        This method is idempotent and also cleans up any session mapping that still
+        points at the given socket.
+        """
         self.connected_sockets.discard(socket)
+        # Remove any session IDs associated with this socket
+        stale_session_ids = [
+            session_id
+            for session_id, registered_socket in self._session_sockets.items()
+            if registered_socket is socket
+        ]
+        for session_id in stale_session_ids:
+            del self._session_sockets[session_id]
         logger.info(f"Unregistered socket, total connected: {len(self.connected_sockets)}")

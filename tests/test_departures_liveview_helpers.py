@@ -141,6 +141,27 @@ def test_build_template_assigns_handles_none_last_update() -> None:
     assert result["last_update_timestamp"] == "0"
 
 
+def test_state_register_socket_replaces_previous_socket_for_same_session() -> None:
+    """Given a session ID, when registering twice, then only the latest socket is kept.
+
+    This ensures that reconnects from the same logical client (same presence session)
+    do not leak additional sockets into the state manager.
+    """
+    state = State()
+    first_socket = MagicMock()
+    second_socket = MagicMock()
+
+    state.register_socket(first_socket, "session-1")
+    assert first_socket in state.connected_sockets
+    assert len(state.connected_sockets) == 1
+
+    state.register_socket(second_socket, "session-1")
+
+    assert second_socket in state.connected_sockets
+    assert first_socket not in state.connected_sockets
+    assert len(state.connected_sockets) == 1
+
+
 @pytest.mark.asyncio
 async def test_disconnect_unregisters_socket_and_cleans_presence() -> None:
     """Given a connected user, when disconnecting, then presence and sockets stay in sync."""

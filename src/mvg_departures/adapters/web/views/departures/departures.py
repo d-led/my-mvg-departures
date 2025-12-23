@@ -276,8 +276,11 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             _session["_presence_session_id"] = str(uuid.uuid4())
             logger.debug(f"Created new presence session ID: {_session['_presence_session_id']}")
 
-        # Register socket first so we can use it for cleanup
-        self.state_manager.register_socket(socket)
+        # Register socket first so we can use it for cleanup. We pass the stable
+        # presence session ID so that reconnects from the same client replace
+        # the previous socket instead of leaking additional entries.
+        presence_session_id = _session["_presence_session_id"]
+        self.state_manager.register_socket(socket, presence_session_id)
 
         # Join presence tracking - always track, even if not connected yet
         # (socket will connect later and we'll update counts then)
