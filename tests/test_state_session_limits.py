@@ -1,6 +1,5 @@
 """Tests for per-browser session limits in State."""
 
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from mvg_departures.adapters.web.state import State
@@ -15,8 +14,9 @@ def _make_socket_with_browser_id(browser_id: str) -> object:
             (b"cookie", f"mvg_browser_id={browser_id}".encode()),
         ],
     }
-    # SimpleNamespace is enough for get_client_info_from_socket which only looks at scope.
-    return SimpleNamespace(scope=scope)
+    socket = MagicMock()
+    socket.scope = scope
+    return socket
 
 
 def test_register_socket_enforces_per_browser_limit() -> None:
