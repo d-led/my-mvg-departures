@@ -148,11 +148,8 @@ class ApiPoller(ApiPollerProtocol):
                         # Filter out departures that are more than 1 hour in the past
                         now = datetime.now(UTC)
                         max_age = timedelta(hours=1)
-                        recent_departures = [
-                            d for d in raw_departures
-                            if d.time >= now - max_age
-                        ]
-                        
+                        recent_departures = [d for d in raw_departures if d.time >= now - max_age]
+
                         if not recent_departures:
                             # All cached departures are too old - fetch fresh data
                             logger.warning(
@@ -162,7 +159,9 @@ class ApiPoller(ApiPollerProtocol):
                             groups = await self.grouping_service.get_grouped_departures(stop_config)
                         else:
                             # Process cached raw departures using this route's stop configuration
-                            groups = self.grouping_service.group_departures(recent_departures, stop_config)
+                            groups = self.grouping_service.group_departures(
+                                recent_departures, stop_config
+                            )
                 else:
                     # Fetch from API (fallback if no shared cache)
                     groups = await self.grouping_service.get_grouped_departures(stop_config)

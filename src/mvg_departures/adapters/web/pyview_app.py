@@ -360,6 +360,19 @@ class PyViewWebAdapter(DisplayAdapter):
                         route_path,
                     )
 
+        # Add logging filter to exclude /healthz from access logs
+        class HealthzFilter(logging.Filter):
+            """Filter to exclude /healthz requests from access logs."""
+
+            def filter(self, record: logging.LogRecord) -> bool:
+                # Filter out any log messages containing /healthz
+                message = record.getMessage()
+                return "/healthz" not in message
+
+        # Apply filter to uvicorn.access logger
+        access_logger = logging.getLogger("uvicorn.access")
+        access_logger.addFilter(HealthzFilter())
+
         config = uvicorn.Config(
             wrapped_app,
             host=self.config.host,
