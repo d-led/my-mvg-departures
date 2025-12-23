@@ -85,10 +85,15 @@ class RouteConfigurationLoader:
                 # Validate title is a string, default to None if not found
                 route_title = route_title if route_title and isinstance(route_title, str) else None
                 # Validate fill_vertical_space is a boolean (defaults to False if not specified)
-                fill_vertical_space = bool(fill_vertical_space) if fill_vertical_space is not None else False
+                fill_vertical_space = (
+                    bool(fill_vertical_space) if fill_vertical_space is not None else False
+                )
 
                 route_config = RouteConfiguration(
-                    path=path, stop_configs=stop_configs, title=route_title, fill_vertical_space=fill_vertical_space
+                    path=path,
+                    stop_configs=stop_configs,
+                    title=route_title,
+                    fill_vertical_space=fill_vertical_space,
                 )
                 route_configs.append(route_config)
 
