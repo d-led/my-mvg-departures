@@ -181,6 +181,8 @@ h2.direction-header {
     flex: 1;
     min-width: 0;
 }
+/* Scale first header text in fill_vertical_space mode - handled by JavaScript */
+/* CSS-only approach removed - JavaScript provides precise wrapping detection */
 .direction-header-status-group {
     display: flex;
     align-items: center;
