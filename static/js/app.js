@@ -149,6 +149,25 @@
         // If feature is enabled, also update topmost visible header
         if (DATETIME_ON_VISIBLE_HEADER) {
             const topmostHeader = findTopmostVisibleHeader();
+            const departuresEl = document.getElementById('departures');
+            
+            if (departuresEl) {
+                const headers = departuresEl.querySelectorAll('.direction-header');
+                if (headers.length > 0) {
+                    const firstHeader = headers[0];
+                    // Clear clocks from headers that are NOT the topmost visible header (and not the first header)
+                    headers.forEach(header => {
+                        if (header !== firstHeader && header !== topmostHeader) {
+                            const clockEl = header.querySelector('.direction-header-time');
+                            if (clockEl) {
+                                clockEl.remove();
+                            }
+                        }
+                    });
+                }
+            }
+            
+            // Update/add clock to the topmost visible header (if it's not the first one)
             if (topmostHeader) {
                 updateHeaderClock(topmostHeader, fullDateTime);
             }
