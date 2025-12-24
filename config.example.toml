@@ -147,7 +147,7 @@ departure_leeway_minutes = 8
 show_ungrouped = false
 
 [routes.stops.direction_mappings]
-"->HBf" = ["U2 Messestadt Ost", "U2 Giesing"]
+"->HBf (in 8+ min)" = ["U2 Messestadt Ost", "U2 Giesing"]
 "->Rotkreuzplatz" = ["53 Aidenbachstraße", "12 Romanplatz"]
 "->Scheidplatz" = ["U2 Feldmoching", "12 Schwabing Nord"]
 
