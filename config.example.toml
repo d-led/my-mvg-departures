@@ -163,4 +163,4 @@ departure_leeway_minutes = 15
 show_ungrouped = false
 
 [routes.stops.direction_mappings]
-"->Stachus" = ["27 Sendlinger Tor", "28 Sendlinger Tor"]
+"->Stachus (in 15+ min)" = ["27 Sendlinger Tor", "28 Sendlinger Tor"]
