@@ -1127,13 +1127,13 @@
         departuresEl.style.maxHeight = availableHeight + 'px';
         departuresEl.style.overflow = 'hidden'; // Prevent scrolling since we're filling exactly
 
-        // Scale first header text if it doesn't fit (only in fill_vertical_space mode)
-        scaleFirstHeaderIfNeeded();
+        // Scale all header text if it doesn't fit (only in fill_vertical_space mode)
+        scaleHeadersIfNeeded();
     }
 
-    // Scale the first header text if it wraps, only in fill_vertical_space mode
+    // Scale all header text if it wraps, only in fill_vertical_space mode
     // This ensures the text fits on one line without truncation
-    function scaleFirstHeaderIfNeeded() {
+    function scaleHeadersIfNeeded() {
         if (!window.DEPARTURES_CONFIG || !window.DEPARTURES_CONFIG.fillVerticalSpace) {
             return;
         }
@@ -1141,82 +1141,93 @@
         const departuresEl = document.getElementById('departures');
         if (!departuresEl) return;
 
-        // Find the first header (marked with data-fill-vertical-space in the template)
-        const firstHeader = departuresEl.querySelector('.direction-header[data-fill-vertical-space="true"]');
-        if (!firstHeader) return;
+        // Find all headers
+        const headers = departuresEl.querySelectorAll('.direction-header');
+        if (headers.length === 0) return;
 
-        const headerTextEl = firstHeader.querySelector('.direction-header-text');
-        if (!headerTextEl) return;
-
-        // Reset any previous scaling to start fresh
-        headerTextEl.style.fontSize = '';
-        headerTextEl.style.whiteSpace = '';
-        headerTextEl.style.overflow = '';
-        headerTextEl.style.textOverflow = '';
-        
-        // Force a reflow to get accurate measurements with default font size
-        void headerTextEl.offsetHeight;
-
-        // Get the computed font size
-        const computedStyle = window.getComputedStyle(headerTextEl);
-        const currentFontSize = parseFloat(computedStyle.fontSize);
-
-        // Check if text is wrapping by temporarily setting white-space: nowrap
-        // and comparing the natural width to the available width
-        const originalWhiteSpace = headerTextEl.style.whiteSpace;
-        headerTextEl.style.whiteSpace = 'nowrap';
-        void headerTextEl.offsetHeight; // Force reflow
-        
-        const textNaturalWidth = headerTextEl.scrollWidth;
-        const availableWidth = headerTextEl.clientWidth;
-        
-        // Restore original white-space
-        headerTextEl.style.whiteSpace = originalWhiteSpace;
-        void headerTextEl.offsetHeight; // Force reflow
-
-        const isWrapping = textNaturalWidth > availableWidth;
-
-        if (!isWrapping) {
-            // Text fits on one line, no scaling needed
-            return;
-        }
-
-        // Text is wrapping - scale it down until it fits
-        // Use binary search for efficiency, with a minimum font size limit
-        const minFontSize = 12; // Minimum readable font size
-        let minSize = minFontSize;
-        let maxSize = currentFontSize;
-        let bestSize = minFontSize; // Start with minimum as fallback
-
-        // Binary search to find the largest font size that fits on one line
-        while (maxSize - minSize > 0.5) {
-            const testSize = (minSize + maxSize) / 2;
-            headerTextEl.style.fontSize = testSize + 'px';
-            headerTextEl.style.whiteSpace = 'nowrap';
-            
-            // Force a reflow to get accurate measurements
-            void headerTextEl.offsetHeight;
-
-            const textWidth = headerTextEl.scrollWidth;
-            const containerWidth = headerTextEl.clientWidth;
-            const fits = textWidth <= containerWidth;
-
-            // Restore white-space after measurement
-            headerTextEl.style.whiteSpace = originalWhiteSpace;
-            void headerTextEl.offsetHeight;
-
-            if (!fits) {
-                maxSize = testSize;
-            } else {
-                minSize = testSize;
-                bestSize = testSize;
+        // Process each header
+        headers.forEach(header => {
+            // Find the text element - could be .direction-header-text (first header) or the header itself
+            let headerTextEl = header.querySelector('.direction-header-text');
+            if (!headerTextEl) {
+                // For headers without .direction-header-text, use the header element itself
+                // but we need to exclude the clock element if present
+                headerTextEl = header;
             }
-        }
 
-        // Apply the best fitting size and ensure no wrapping
-        headerTextEl.style.fontSize = bestSize + 'px';
-        headerTextEl.style.whiteSpace = 'nowrap';
-        // No overflow/ellipsis - we scale to fit, so text should always be visible
+            // Skip if no text element found
+            if (!headerTextEl) return;
+
+            // Reset any previous scaling to start fresh
+            headerTextEl.style.fontSize = '';
+            headerTextEl.style.whiteSpace = '';
+            headerTextEl.style.overflow = '';
+            headerTextEl.style.textOverflow = '';
+            
+            // Force a reflow to get accurate measurements with default font size
+            void headerTextEl.offsetHeight;
+
+            // Get the computed font size
+            const computedStyle = window.getComputedStyle(headerTextEl);
+            const currentFontSize = parseFloat(computedStyle.fontSize);
+
+            // Check if text is wrapping by temporarily setting white-space: nowrap
+            // and comparing the natural width to the available width
+            const originalWhiteSpace = headerTextEl.style.whiteSpace;
+            headerTextEl.style.whiteSpace = 'nowrap';
+            void headerTextEl.offsetHeight; // Force reflow
+            
+            const textNaturalWidth = headerTextEl.scrollWidth;
+            const availableWidth = headerTextEl.clientWidth;
+            
+            // Restore original white-space
+            headerTextEl.style.whiteSpace = originalWhiteSpace;
+            void headerTextEl.offsetHeight; // Force reflow
+
+            const isWrapping = textNaturalWidth > availableWidth;
+
+            if (!isWrapping) {
+                // Text fits on one line, no scaling needed
+                return;
+            }
+
+            // Text is wrapping - scale it down until it fits
+            // Use binary search for efficiency, with a minimum font size limit
+            const minFontSize = 12; // Minimum readable font size
+            let minSize = minFontSize;
+            let maxSize = currentFontSize;
+            let bestSize = minFontSize; // Start with minimum as fallback
+
+            // Binary search to find the largest font size that fits on one line
+            while (maxSize - minSize > 0.5) {
+                const testSize = (minSize + maxSize) / 2;
+                headerTextEl.style.fontSize = testSize + 'px';
+                headerTextEl.style.whiteSpace = 'nowrap';
+                
+                // Force a reflow to get accurate measurements
+                void headerTextEl.offsetHeight;
+
+                const textWidth = headerTextEl.scrollWidth;
+                const containerWidth = headerTextEl.clientWidth;
+                const fits = textWidth <= containerWidth;
+
+                // Restore white-space after measurement
+                headerTextEl.style.whiteSpace = originalWhiteSpace;
+                void headerTextEl.offsetHeight;
+
+                if (!fits) {
+                    maxSize = testSize;
+                } else {
+                    minSize = testSize;
+                    bestSize = testSize;
+                }
+            }
+
+            // Apply the best fitting size and ensure no wrapping
+            headerTextEl.style.fontSize = bestSize + 'px';
+            headerTextEl.style.whiteSpace = 'nowrap';
+            // No overflow/ellipsis - we scale to fit, so text should always be visible
+        });
     }
 
     // Initialize on load
