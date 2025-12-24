@@ -1158,11 +1158,18 @@
             // Skip if no text element found
             if (!headerTextEl) return;
 
+            // Find the clock element if it exists in this header (by design, not by search)
+            const clockEl = header.querySelector('.direction-header-time');
+
             // Reset any previous scaling to start fresh
             headerTextEl.style.fontSize = '';
             headerTextEl.style.whiteSpace = '';
             headerTextEl.style.overflow = '';
             headerTextEl.style.textOverflow = '';
+            // Reset clock font size if it exists
+            if (clockEl) {
+                clockEl.style.fontSize = '';
+            }
             
             // Force a reflow to get accurate measurements with default font size
             void headerTextEl.offsetHeight;
@@ -1203,6 +1210,10 @@
                 const testSize = (minSize + maxSize) / 2;
                 headerTextEl.style.fontSize = testSize + 'px';
                 headerTextEl.style.whiteSpace = 'nowrap';
+                // Apply same size to clock if it exists
+                if (clockEl) {
+                    clockEl.style.fontSize = testSize + 'px';
+                }
                 
                 // Force a reflow to get accurate measurements
                 void headerTextEl.offsetHeight;
@@ -1226,6 +1237,10 @@
             // Apply the best fitting size and ensure no wrapping
             headerTextEl.style.fontSize = bestSize + 'px';
             headerTextEl.style.whiteSpace = 'nowrap';
+            // Apply same size to clock if it exists (by design, they share the same font size)
+            if (clockEl) {
+                clockEl.style.fontSize = bestSize + 'px';
+            }
             // No overflow/ellipsis - we scale to fit, so text should always be visible
         });
     }
