@@ -6,6 +6,10 @@
 
 title = "Giesing Departures"
 
+# UI theme: 'light', 'dark', or 'auto' (follows system preference)
+# Default: 'light'
+theme = "auto"
+
 # Number of departures to show per page within a route group
 departures_per_page = 5
 
@@ -118,6 +122,9 @@ path = "/hohenzollernplatz"
 [[routes.display]]
 
 title = "Hohenzollernplatz Departures"
+# UI theme: 'light', 'dark', or 'auto' (follows system preference)
+# Default: 'light'
+theme = "light"
 fill_vertical_space = true
 font_scaling_factor_when_filling = 0.8
 

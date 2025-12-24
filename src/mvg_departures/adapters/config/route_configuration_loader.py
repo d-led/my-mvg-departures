@@ -66,8 +66,9 @@ class RouteConfigurationLoader:
                     stop_configs.append(stop_config)
 
             if stop_configs:
-                # Get optional route-specific title, fill_vertical_space, font_scaling_factor_when_filling, random_header_colors, and header_background_brightness from routes.display
+                # Get optional route-specific title, theme, fill_vertical_space, font_scaling_factor_when_filling, random_header_colors, and header_background_brightness from routes.display
                 route_title = None
+                route_theme = None
                 fill_vertical_space = False
                 font_scaling_factor_when_filling = 1.0
                 random_header_colors = False
@@ -77,6 +78,7 @@ class RouteConfigurationLoader:
                     # Handle both dict (single display) and list (array of displays)
                     if isinstance(display_data, dict):
                         route_title = display_data.get("title")
+                        route_theme = display_data.get("theme")
                         fill_vertical_space = display_data.get("fill_vertical_space", False)
                         font_scaling_factor_when_filling = display_data.get(
                             "font_scaling_factor_when_filling", 1.0
@@ -86,10 +88,11 @@ class RouteConfigurationLoader:
                             "header_background_brightness", 0.7
                         )
                     elif isinstance(display_data, list) and len(display_data) > 0:
-                        # Get title, fill_vertical_space, font_scaling_factor_when_filling, random_header_colors, and header_background_brightness from first display entry
+                        # Get title, theme, fill_vertical_space, font_scaling_factor_when_filling, random_header_colors, and header_background_brightness from first display entry
                         first_display = display_data[0]
                         if isinstance(first_display, dict):
                             route_title = first_display.get("title")
+                            route_theme = first_display.get("theme")
                             fill_vertical_space = first_display.get("fill_vertical_space", False)
                             font_scaling_factor_when_filling = first_display.get(
                                 "font_scaling_factor_when_filling", 1.0
@@ -101,6 +104,15 @@ class RouteConfigurationLoader:
 
                 # Validate title is a string, default to None if not found
                 route_title = route_title if route_title and isinstance(route_title, str) else None
+                # Validate theme is a string and one of the valid values, default to None if not found
+                if route_theme and isinstance(route_theme, str):
+                    route_theme_lower = route_theme.lower()
+                    if route_theme_lower not in ("light", "dark", "auto"):
+                        route_theme = None
+                    else:
+                        route_theme = route_theme_lower
+                else:
+                    route_theme = None
                 # Validate fill_vertical_space is a boolean (defaults to False if not specified)
                 fill_vertical_space = (
                     bool(fill_vertical_space) if fill_vertical_space is not None else False
@@ -134,6 +146,7 @@ class RouteConfigurationLoader:
                     path=path,
                     stop_configs=stop_configs,
                     title=route_title,
+                    theme=route_theme,
                     fill_vertical_space=fill_vertical_space,
                     font_scaling_factor_when_filling=font_scaling_factor_when_filling,
                     random_header_colors=random_header_colors,

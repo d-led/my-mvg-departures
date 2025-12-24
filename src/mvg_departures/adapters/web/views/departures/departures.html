@@ -33,12 +33,13 @@
         document.documentElement.setAttribute('data-theme', 'dark');
         localStorage.theme = 'dark';
     } else {
-        // Auto: follow system preference
-        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        // Auto: follow system preference (ignore localStorage when theme is auto)
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
             document.documentElement.setAttribute('data-theme', 'dark');
         } else {
             document.documentElement.setAttribute('data-theme', 'light');
         }
+        // Don't set localStorage.theme when using auto - let it follow system preference dynamically
     }
 </script>
 <script>

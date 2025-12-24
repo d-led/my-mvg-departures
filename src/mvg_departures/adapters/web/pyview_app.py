@@ -141,6 +141,7 @@ class PyViewWebAdapter(DisplayAdapter):
             route_state = self.route_states[route_path]
             route_stop_configs = route_config.stop_configs
             route_title = route_config.title
+            route_theme = route_config.theme
             fill_vertical_space = route_config.fill_vertical_space
             font_scaling_factor_when_filling = route_config.font_scaling_factor_when_filling
             random_header_colors = route_config.random_header_colors
@@ -183,6 +184,7 @@ class PyViewWebAdapter(DisplayAdapter):
                 self.config,
                 presence_tracker,
                 route_title,
+                route_theme,
                 fill_vertical_space,
                 font_scaling_factor_when_filling,
                 random_header_colors,

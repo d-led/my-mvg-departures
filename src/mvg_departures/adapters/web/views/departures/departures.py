@@ -44,6 +44,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         config: AppConfig,
         presence_tracker: PresenceTrackerProtocol,
         route_title: str | None = None,
+        route_theme: str | None = None,
         fill_vertical_space: bool = False,
         font_scaling_factor_when_filling: float = 1.0,
         random_header_colors: bool = False,
@@ -58,6 +59,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             config: Application configuration.
             presence_tracker: Presence tracker for tracking user connections.
             route_title: Optional route-specific title (overrides config title).
+            route_theme: Optional route-specific theme (overrides config theme).
             fill_vertical_space: Enable dynamic font sizing to fill viewport.
             font_scaling_factor_when_filling: Scale factor for all fonts when fill_vertical_space is enabled.
             random_header_colors: Enable hash-based pastel colors for headers.
@@ -86,6 +88,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         self.config = config
         self.presence_tracker = presence_tracker
         self.route_title = route_title
+        self.route_theme = route_theme
         self.fill_vertical_space = fill_vertical_space
         self.font_scaling_factor_when_filling = font_scaling_factor_when_filling
         self.random_header_colors = random_header_colors
@@ -155,8 +158,9 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         Returns:
             Dictionary of template variables for rendering.
         """
-        # Determine theme
-        theme = self.config.theme.lower()
+        # Determine theme: use route-specific theme if available, otherwise fall back to config theme
+        theme = self.route_theme if self.route_theme else self.config.theme
+        theme = theme.lower()
         if theme not in ("light", "dark", "auto"):
             theme = "auto"
 
@@ -673,6 +677,7 @@ def create_departures_live_view(
     config: AppConfig,
     presence_tracker: PresenceTrackerProtocol,
     route_title: str | None = None,
+    route_theme: str | None = None,
     fill_vertical_space: bool = False,
     font_scaling_factor_when_filling: float = 1.0,
     random_header_colors: bool = False,
@@ -691,6 +696,7 @@ def create_departures_live_view(
         config: Application configuration.
         presence_tracker: Presence tracker for tracking user connections.
         route_title: Optional route-specific title (overrides config title).
+        route_theme: Optional route-specific theme (overrides config theme).
         fill_vertical_space: Enable dynamic font sizing to fill viewport.
         font_scaling_factor_when_filling: Scale factor for all fonts when fill_vertical_space is enabled.
         random_header_colors: Enable hash-based pastel colors for headers.
@@ -706,6 +712,7 @@ def create_departures_live_view(
     captured_config = config
     captured_presence_tracker = presence_tracker
     captured_route_title = route_title
+    captured_route_theme = route_theme
     captured_fill_vertical_space = fill_vertical_space
     captured_font_scaling_factor_when_filling = font_scaling_factor_when_filling
     captured_random_header_colors = random_header_colors
@@ -722,6 +729,7 @@ def create_departures_live_view(
                 captured_config,
                 captured_presence_tracker,
                 captured_route_title,
+                captured_route_theme,
                 captured_fill_vertical_space,
                 captured_font_scaling_factor_when_filling,
                 captured_random_header_colors,

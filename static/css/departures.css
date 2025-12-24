@@ -172,6 +172,8 @@ body {
     justify-content: space-between;
     align-items: center;
     gap: 0.5rem;
+    /* Default background color - ensures headers always have colors even before theme is applied */
+    background-color: var(--banner-color);
 }
 h2.direction-header {
     margin: 0.5rem 0 0.25rem 0;
@@ -205,9 +207,11 @@ h2.direction-header {
     border-bottom-color: rgba(255, 255, 255, 0.25);
 }
 [data-theme="dark"] .direction-header {
+    background-color: var(--banner-color);
     color: #f3f4f6;
     border-bottom-color: rgba(255, 255, 255, 0.15);
 }
+/* Inline styles (header_color) have higher specificity and will override the above */
 .route-group-header {
     height: 0.15em;
     line-height: 0.15em;
