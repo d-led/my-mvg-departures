@@ -1,5 +1,18 @@
 # Changelog
 
+## [Unreleased]
+
+### TBD
+
+## [0.0.3]
+
+### Improvements
+
+- **UI enhancements**: Improved header scaling, clock display (removed seconds), fixed theming and header colors, better spacing
+- **Connection management**: Connection capping, improved presence tracking, client ID management, automatic reload after 1 hour
+- **Infrastructure**: TCP health check endpoint, X-Forwarded-For support, hashing fixes
+- **Documentation**: Updated example config, added VVO iframe example link
+
 ## [0.0.2]
 
 ### Features
