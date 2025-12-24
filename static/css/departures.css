@@ -193,7 +193,7 @@ h2.direction-header {
 }
 .direction-header-time {
     flex-shrink: 0;
-    margin-left: auto; /* Push to right */
+    margin-left: 1em; /* 1em gap between title and clock */
     white-space: nowrap;
     display: flex;
     align-items: center; /* Vertical alignment */
