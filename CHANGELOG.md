@@ -2,7 +2,15 @@
 
 ## [0.0.4]
 
+### Features
 
+- **Physical stop filtering**: Filter departures by specific physical stop points using `stop_point_global_id` format directly as `station_id`
+- **Per-stop header colors**: `random_header_colors` and `header_background_brightness` can now be set per stop (inherits from route/global if not specified)
+
+### Improvements
+
+- **CLI enhancements**: `mvg-config routes` displays stop point differentiation hints sorted by stop point with copy-paste ready configuration snippets
+- **API integration**: Improved extraction of `stopPointGlobalId` from raw MVG API responses (mvg library doesn't include it in transformed output)
 
 ## [0.0.3]
 
