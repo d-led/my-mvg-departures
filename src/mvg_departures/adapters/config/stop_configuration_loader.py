@@ -25,6 +25,7 @@ class StopConfigurationLoader:
             max_departures = stop_data.get("max_departures_per_stop", config.mvg_api_limit)
             max_departures_per_route = stop_data.get("max_departures_per_route", 2)
             show_ungrouped = stop_data.get("show_ungrouped", True)  # Default to showing ungrouped
+            ungrouped_title = stop_data.get("ungrouped_title")
             departure_leeway_minutes = stop_data.get("departure_leeway_minutes", 0)
             random_header_colors = stop_data.get("random_header_colors")
             header_background_brightness = stop_data.get("header_background_brightness")
@@ -56,6 +57,7 @@ class StopConfigurationLoader:
                 max_departures_per_stop=max_departures,
                 max_departures_per_route=max_departures_per_route,
                 show_ungrouped=show_ungrouped,
+                ungrouped_title=ungrouped_title if isinstance(ungrouped_title, str) else None,
                 departure_leeway_minutes=departure_leeway_minutes,
                 random_header_colors=random_header_colors,
                 header_background_brightness=header_background_brightness,

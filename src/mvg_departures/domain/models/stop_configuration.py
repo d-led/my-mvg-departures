@@ -20,6 +20,9 @@ class StopConfiguration:
     show_ungrouped: bool = (
         True  # If False, only show departures matching direction_mappings (strict whitelist)
     )
+    ungrouped_title: str | None = (
+        None  # Custom title for ungrouped departures. If None, defaults to "Other"
+    )
     departure_leeway_minutes: int = (
         0  # Leeway in minutes: departures earlier than now + leeway are filtered out before counting for limits
     )

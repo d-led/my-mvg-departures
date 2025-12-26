@@ -67,6 +67,8 @@ departure_leeway_minutes = 0
 # If false, only show departures matching direction_mappings (strict whitelist)
 # If true, show unmatched departures in "Other" group
 show_ungrouped = true
+# Optional: Custom title for ungrouped departures (defaults to "Other" if not set)
+# ungrouped_title = "Balanstr."
 # Optional: Use stop_point_global_id directly as station_id for physical stop filtering
 # When a station has multiple physical stops (e.g., buses making a loop),
 # define separate [[stops]] entries using the stop_point_global_id as station_id

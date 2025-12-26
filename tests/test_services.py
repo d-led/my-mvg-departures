@@ -1004,3 +1004,87 @@ async def test_empty_direction_mappings_shows_all_as_ungrouped() -> None:
     assert len(groups) == 1
     assert groups[0][0] == "Other"
     assert len(groups[0][1]) == 1
+
+
+@pytest.mark.asyncio
+async def test_ungrouped_title_custom_label() -> None:
+    """Given ungrouped_title is set, when grouped, then ungrouped departures use custom label."""
+    now = datetime.now(UTC)
+    departures = [
+        Departure(
+            time=now + timedelta(minutes=5),
+            planned_time=now + timedelta(minutes=5),
+            delay_seconds=0,
+            platform=1,
+            is_realtime=True,
+            line="U3",
+            destination="Unknown Destination",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+    ]
+
+    stop_config = StopConfiguration(
+        station_id="de:09162:1110",
+        station_name="Giesing",
+        direction_mappings={"->East": ["Messestadt"]},
+        max_departures_per_stop=10,
+        max_departures_per_route=2,
+        show_ungrouped=True,
+        ungrouped_title="Balanstr.",
+    )
+
+    repo = MockDepartureRepository(departures)
+    service = DepartureGroupingService(repo)
+
+    groups = await service.get_grouped_departures(stop_config)
+
+    # Should have ungrouped group with custom title
+    assert len(groups) == 1
+    assert groups[0][0] == "Balanstr."
+    assert len(groups[0][1]) == 1
+    assert groups[0][1][0].destination == "Unknown Destination"
+
+
+@pytest.mark.asyncio
+async def test_ungrouped_title_defaults_to_other() -> None:
+    """Given ungrouped_title is None, when grouped, then ungrouped departures use 'Other' label."""
+    now = datetime.now(UTC)
+    departures = [
+        Departure(
+            time=now + timedelta(minutes=5),
+            planned_time=now + timedelta(minutes=5),
+            delay_seconds=0,
+            platform=1,
+            is_realtime=True,
+            line="U3",
+            destination="Unknown Destination",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+    ]
+
+    stop_config = StopConfiguration(
+        station_id="de:09162:1110",
+        station_name="Giesing",
+        direction_mappings={"->East": ["Messestadt"]},
+        max_departures_per_stop=10,
+        max_departures_per_route=2,
+        show_ungrouped=True,
+        ungrouped_title=None,
+    )
+
+    repo = MockDepartureRepository(departures)
+    service = DepartureGroupingService(repo)
+
+    groups = await service.get_grouped_departures(stop_config)
+
+    # Should have ungrouped group with default "Other" label
+    assert len(groups) == 1
+    assert groups[0][0] == "Other"
+    assert len(groups[0][1]) == 1
+    assert groups[0][1][0].destination == "Unknown Destination"

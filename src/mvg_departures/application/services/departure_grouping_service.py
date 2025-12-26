@@ -111,9 +111,10 @@ class DepartureGroupingService:
                 result.append((direction_name, direction_groups[direction_name]))
 
         # Add ungrouped departures if configured to show them (whitelist mode)
-        # Only add "Other" group if show_ungrouped is True AND there are ungrouped departures
+        # Only add ungrouped group if show_ungrouped is True AND there are ungrouped departures
         if stop_config.show_ungrouped and ungrouped:
-            result.append(("Other", ungrouped))
+            ungrouped_label = stop_config.ungrouped_title or "Other"
+            result.append((ungrouped_label, ungrouped))
 
         return result
 
