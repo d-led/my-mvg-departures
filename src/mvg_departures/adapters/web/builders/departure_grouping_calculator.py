@@ -239,28 +239,30 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
         # First header uses the configured banner_color, so skip it
         # Check stop-level config first, then fall back to route-level config
         # Create a mapping of stop_name -> stop_config for quick lookup
-        stop_config_map = {stop_config.station_name: stop_config for stop_config in self.stop_configs}
-        
+        stop_config_map = {
+            stop_config.station_name: stop_config for stop_config in self.stop_configs
+        }
+
         # Track index for better color distribution
         color_index = 0
         for group in groups_with_departures:
             if not group.get("is_first_header", False):
                 header_text = group.get("header", "")
                 stop_name = group.get("stop_name", "")
-                
+
                 if header_text:
                     # Check if this stop has its own random_header_colors setting
                     stop_config = stop_config_map.get(stop_name)
                     use_random_colors = self.random_header_colors
                     brightness = self.header_background_brightness
-                    
+
                     if stop_config:
                         # Use stop-level setting if provided, otherwise use route-level
                         if stop_config.random_header_colors is not None:
                             use_random_colors = stop_config.random_header_colors
                         if stop_config.header_background_brightness is not None:
                             brightness = stop_config.header_background_brightness
-                    
+
                     if use_random_colors:
                         group["header_color"] = generate_pastel_color_from_text(
                             header_text, brightness, color_index

@@ -137,9 +137,12 @@ class DepartureGroupingService:
             # Filter to only show departures from this specific stop point
             stop_point_global_id = stop_config.station_id
             initial_count = len(departures)
-            available_stop_points = set(d.stop_point_global_id for d in departures if d.stop_point_global_id is not None)
+            available_stop_points = {
+                d.stop_point_global_id for d in departures if d.stop_point_global_id is not None
+            }
             departures = [
-                d for d in departures
+                d
+                for d in departures
                 if d.stop_point_global_id is not None
                 and d.stop_point_global_id == stop_point_global_id
             ]

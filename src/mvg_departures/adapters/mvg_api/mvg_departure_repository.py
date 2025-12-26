@@ -3,7 +3,6 @@
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-import aiohttp
 from mvg import MvgApi, TransportType
 
 from mvg_departures.domain.models.departure import Departure
@@ -44,7 +43,9 @@ class MvgDepartureRepository(DepartureRepository):
         raw_results = None
         if self._session:
             try:
-                transport_types_str = ",".join(["UBAHN", "TRAM", "SBAHN", "BUS", "REGIONAL_BUS", "BAHN"])
+                transport_types_str = ",".join(
+                    ["UBAHN", "TRAM", "SBAHN", "BUS", "REGIONAL_BUS", "BAHN"]
+                )
                 url = f"https://www.mvg.de/api/bgw-pt/v3/departures?globalId={station_id}&limit={limit}&transportTypes={transport_types_str}"
                 headers = {
                     "accept": "application/json",
@@ -76,19 +77,23 @@ class MvgDepartureRepository(DepartureRepository):
             # Extract stopPointGlobalId from raw API response
             # The raw API uses camelCase: stopPointGlobalId
             # The mvg library transforms the response and doesn't include stopPointGlobalId
-            stop_point_global_id = result.get("stopPointGlobalId") or result.get("stop_point_global_id")
+            stop_point_global_id = result.get("stopPointGlobalId") or result.get(
+                "stop_point_global_id"
+            )
 
             # Handle both raw API format and mvg library transformed format
-            # Raw API format has: realtimeDepartureTime (ms), plannedDepartureTime (ms), delayInMinutes, 
+            # Raw API format has: realtimeDepartureTime (ms), plannedDepartureTime (ms), delayInMinutes,
             #                     label, transportType, etc.
             # mvg library format has: time (s), planned (s), delay, line, type, etc.
-            
+
             # Check if this is raw API format (has realtimeDepartureTime) or mvg library format (has time)
             if "realtimeDepartureTime" in result:
                 # Raw API format - convert from milliseconds to seconds
                 time = datetime.fromtimestamp(result["realtimeDepartureTime"] / 1000, tz=UTC)
                 planned_time = datetime.fromtimestamp(result["plannedDepartureTime"] / 1000, tz=UTC)
-                delay_seconds = result.get("delayInMinutes", 0) * 60 if result.get("delayInMinutes") else 0
+                delay_seconds = (
+                    result.get("delayInMinutes", 0) * 60 if result.get("delayInMinutes") else 0
+                )
                 platform = result.get("platform")
                 is_realtime = result.get("realtime", False)
                 line = result.get("label", "")

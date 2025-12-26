@@ -88,7 +88,9 @@ async def _get_routes_from_endpoint(
                     continue
 
                 # Extract line information
-                line = str(line_info.get("label", line_info.get("line", line_info.get("number", ""))))
+                line = str(
+                    line_info.get("label", line_info.get("line", line_info.get("number", "")))
+                )
                 transport_type = line_info.get("transportType", line_info.get("type", ""))
                 icon = line_info.get("icon", line_info.get("symbol", ""))
 
@@ -251,13 +253,15 @@ async def get_station_details(station_id: str, limit: int = 100) -> dict[str, An
                 routes_from_endpoint_data = routes_from_endpoint.get("routes", {})
                 # Update route details from endpoint if available, but keep destinations from departures
                 for route_key, endpoint_route_data in routes_from_endpoint_data.items():
-                    if route_key in routes:
+                    if route_key in routes and isinstance(endpoint_route_data, dict):
                         # Merge route details (icon, etc.) but keep our destinations
-                        if isinstance(endpoint_route_data, dict):
-                            route_details[route_key].update({
-                                k: v for k, v in endpoint_route_data.items()
+                        route_details[route_key].update(
+                            {
+                                k: v
+                                for k, v in endpoint_route_data.items()
                                 if k != "destinations"  # Don't overwrite destinations
-                            })
+                            }
+                        )
 
             # Try to get station name from first departure or use ID
             station_name = station_id
@@ -279,7 +283,8 @@ async def get_station_details(station_id: str, limit: int = 100) -> dict[str, An
                 },
                 "stop_point_mapping": stop_point_mapping,
                 "total_departures_found": len(departures),
-                "source": "departures_sampling" + (" + routes_endpoint" if routes_from_endpoint else ""),
+                "source": "departures_sampling"
+                + (" + routes_endpoint" if routes_from_endpoint else ""),
             }
         except Exception as e:
             print(f"Error fetching station details: {e}", file=sys.stderr)
@@ -391,7 +396,9 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
         print("\n# Stop points by route and destination:")
 
         # Group by stop point (reverse sorted)
-        stops_with_routes: dict[str, list[tuple[str, str]]] = {}  # stop_point -> list of (route_key, destination)
+        stops_with_routes: dict[str, list[tuple[str, str]]] = (
+            {}
+        )  # stop_point -> list of (route_key, destination)
         for mapping_key, stop_points in sorted(stop_point_mapping.items()):
             if "|" in mapping_key:
                 route_key, destination = mapping_key.split("|", 1)
@@ -535,11 +542,15 @@ async def search_and_list_routes(query: str, show_patterns: bool = True) -> None
             print("  Stop Point Differentiation Hints:")
             print("  " + "-" * 68)
             print("\n  # Some destinations use different physical stops at this station.")
-            print("  # Define separate [[stops]] entries for each physical stop you want to monitor.")
+            print(
+                "  # Define separate [[stops]] entries for each physical stop you want to monitor."
+            )
             print("\n  # Stop points by route and destination:")
 
             # Group by stop point (reverse sorted)
-            stops_with_routes: dict[str, list[tuple[str, str]]] = {}  # stop_point -> list of (route_key, destination)
+            stops_with_routes: dict[str, list[tuple[str, str]]] = (
+                {}
+            )  # stop_point -> list of (route_key, destination)
             for mapping_key, stop_points in sorted(stop_point_mapping.items()):
                 if "|" in mapping_key:
                     route_key, destination = mapping_key.split("|", 1)
