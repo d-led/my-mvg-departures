@@ -90,6 +90,35 @@ class StopConfigurationLoader:
             if hafas_profile == "":
                 hafas_profile = None
             max_departures_fetch = stop_data.get("max_departures_fetch", 50)
+            platform_filter = stop_data.get("platform_filter")
+            platform_filter_routes = stop_data.get("platform_filter_routes", [])
+            vbb_api_duration_minutes = stop_data.get("vbb_api_duration_minutes", 60)
+
+            # Validate platform_filter if provided
+            if platform_filter is not None:
+                try:
+                    platform_filter = int(platform_filter)
+                except (ValueError, TypeError):
+                    platform_filter = None
+            else:
+                platform_filter = None
+
+            # Validate platform_filter_routes is a list
+            if not isinstance(platform_filter_routes, list):
+                platform_filter_routes = []
+            # Ensure all items are strings
+            platform_filter_routes = [
+                str(item) for item in platform_filter_routes if isinstance(item, (str, int))
+            ]
+
+            # Validate vbb_api_duration_minutes
+            try:
+                vbb_api_duration_minutes = int(vbb_api_duration_minutes)
+                # Ensure it's at least 1 minute
+                if vbb_api_duration_minutes < 1:
+                    vbb_api_duration_minutes = 60
+            except (ValueError, TypeError):
+                vbb_api_duration_minutes = 60
 
             stop_config = StopConfiguration(
                 station_id=station_id,
@@ -108,6 +137,9 @@ class StopConfigurationLoader:
                 api_provider=api_provider,
                 hafas_profile=hafas_profile,
                 max_departures_fetch=max_departures_fetch,
+                platform_filter=platform_filter,
+                platform_filter_routes=platform_filter_routes,
+                vbb_api_duration_minutes=vbb_api_duration_minutes,
             )
             stop_configs.append(stop_config)
 

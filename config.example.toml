@@ -286,9 +286,9 @@ show_ungrouped = false
 # Direction title includes walking time - helps coordinate when to leave
 "->Stachus (in 15+ min)" = ["27 Sendlinger Tor", "28 Sendlinger Tor"]
 
-# Example: Berlin Hardenbergstraße using HAFAS with VBB profile
-# Berlin stations work with HAFAS using VBB or BVG profiles
-# Based on hafas-client: https://github.com/public-transport/hafas-client/tree/main/p/vbb
+# Example: Berlin Hardenbergstraße using VBB REST API
+# Berlin stations use the VBB REST API (v6.bvg.transport.rest) which is more reliable than HAFAS
+# API documentation: https://github.com/derhuerst/vbb-rest/blob/master/docs/index.md
 [[routes]]
 path = "/berlin-hardenbergstrasse"
 
@@ -311,11 +311,20 @@ max_departures_per_stop = 15
 max_departures_per_route = 3
 departure_leeway_minutes = 15
 show_ungrouped = false
+# Increase fetch limit to ensure we get enough U9 departures (frequent train)
+max_departures_fetch = 100
+# VBB API duration: how far ahead to fetch departures (in minutes)
+# Default: 60 minutes. Increase to 120 for infrequent routes like bus 249
+vbb_api_duration_minutes = 120
+# Filter to only show bus 249 departures from platform 9 (bus 249 uses multiple platforms)
+# U9 will show from all platforms since it's not in platform_filter_routes
+platform_filter = 9
+platform_filter_routes = ["249"]
 
 [routes.stops.direction_mappings]
 # U-Bahn and Bus routes from Zoologischer Garten
 "->Berliner Str." = ["U9 Osloer"]
-"->Uhlandstr." = ["249 Grunewald", "249 Schmargendorf", "249"]
+"->Uhlandstr." = ["249"]
 
 [[routes.stops]]
 # Station ID for Ernst-Reuter-Platz (Berlin)

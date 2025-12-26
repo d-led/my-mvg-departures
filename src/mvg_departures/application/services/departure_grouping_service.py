@@ -38,10 +38,16 @@ class DepartureGroupingService:
             base_station_id = stop_config.station_id
 
         # Fetch departures from API - use configurable limit per stop
-        # The repository will fetch more data (e.g., 300 results over 120 minutes) but return up to this limit
+        # The repository will fetch more data (e.g., 300 results over configurable duration) but return up to this limit
         fetch_limit = stop_config.max_departures_fetch
+        
+        # Pass VBB API duration if this is a VBB stop
+        kwargs: dict[str, int] = {}
+        if stop_config.api_provider == "vbb":
+            kwargs["duration_minutes"] = stop_config.vbb_api_duration_minutes
+        
         departures = await self._departure_repository.get_departures(
-            base_station_id, limit=fetch_limit
+            base_station_id, limit=fetch_limit, **kwargs
         )
 
         return self.group_departures(departures, stop_config)
@@ -167,6 +173,52 @@ class DepartureGroupingService:
                 logger.warning(
                     f"Filtered {initial_count} departures by stop_point_global_id={stop_point_global_id}, "
                     f"but none matched. Available stop_point_global_ids: {available_stop_points}"
+                )
+
+        # Filter by platform if platform_filter is set
+        # Platform can be stored as int or str (e.g., 9, "9", "Pos. 9", "2 (U9)")
+        # We match if the platform string contains the filter number as a standalone word or after "Pos."/"Platform"
+        # But NOT as part of a line name like "U9" (e.g., "Platform 2 (U9)" should NOT match platform_filter=9)
+        # If platform_filter_routes is set, only apply to those specific routes
+        if stop_config.platform_filter is not None:
+            initial_count = len(departures)
+            available_platforms = {d.platform for d in departures if d.platform is not None}
+            platform_filter_str = str(stop_config.platform_filter)
+            # Pattern to match: "Pos. 9", "Platform 9", "9", or standalone "9" (with word boundaries)
+            # But NOT "U9" or "2 (U9)" where 9 is part of a line name
+            import re
+
+            platform_pattern = re.compile(
+                r"(?:^|\s|Pos\.|Platform\s)" + re.escape(platform_filter_str) + r"(?:\s|$|\)|,)"
+            )
+
+            filtered_departures = []
+            for d in departures:
+                # Check if this route should be filtered
+                should_filter = (
+                    not stop_config.platform_filter_routes  # Empty list = filter all routes
+                    or d.line in stop_config.platform_filter_routes  # Filter only specified routes
+                )
+
+                if not should_filter:
+                    # Don't filter this route, include it
+                    filtered_departures.append(d)
+                elif d.platform is not None and (
+                    # Exact match (int or str)
+                    d.platform == stop_config.platform_filter
+                    or d.platform == platform_filter_str
+                    # String matches pattern (e.g., "Pos. 9", "Platform 9", but not "U9")
+                    or (isinstance(d.platform, str) and platform_pattern.search(d.platform))
+                ):
+                    # Platform matches, include it
+                    filtered_departures.append(d)
+
+            departures = filtered_departures
+            filtered_count = len(departures)
+            if initial_count > 0 and filtered_count == 0:
+                logger.warning(
+                    f"Filtered {initial_count} departures by platform={stop_config.platform_filter}, "
+                    f"but none matched. Available platforms: {available_platforms}"
                 )
 
         # Filter out departures that are too soon FIRST, so we only count departures that will be shown

@@ -49,6 +49,7 @@ class HafasDepartureRepository(DepartureRepository):
         limit: int = 10,
         offset_minutes: int = 0,
         transport_types: list[str] | None = None,  # noqa: ARG002
+        duration_minutes: int = 60,  # noqa: ARG002  # Not used by HAFAS API
     ) -> list[Departure]:
         """Get departures for a station.
 

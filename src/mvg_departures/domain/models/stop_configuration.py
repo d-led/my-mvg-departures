@@ -48,3 +48,12 @@ class StopConfiguration:
     max_departures_fetch: int = (
         50  # Maximum number of departures to fetch from API before grouping/filtering
     )
+    platform_filter: int | None = (
+        None  # Filter departures to only show those from this platform number (e.g., 9). None = no filtering.
+    )
+    platform_filter_routes: list[str] = field(
+        default_factory=list
+    )  # List of route/line names to apply platform_filter to (e.g., ["249"]). If empty, applies to all routes.
+    vbb_api_duration_minutes: int = (
+        60  # VBB API duration in minutes (how far ahead to fetch departures). Default: 60 minutes. Increase for infrequent routes.
+    )

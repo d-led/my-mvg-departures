@@ -30,6 +30,7 @@ class VbbDepartureRepository(DepartureRepository):
         limit: int = 10,
         offset_minutes: int = 0,
         transport_types: list[str] | None = None,  # noqa: ARG002
+        duration_minutes: int = 60,  # VBB API duration parameter
     ) -> list[Departure]:
         """Get departures for a VBB station.
 
@@ -48,11 +49,13 @@ class VbbDepartureRepository(DepartureRepository):
         # VBB API uses HAFAS station IDs
         # URL format: /stops/{stationId}/departures
         url = f"{self._base_url}/stops/{station_id}/departures"
-        # Use a large duration (120 minutes) and high results count (300) to get many departures
+        # Note: VBB API doesn't support filtering by route/line, so we must fetch all departures
+        # Use configurable duration and high results count to get many departures
+        # This ensures we capture infrequent routes like bus 249 that may only run every 20-30 minutes
         # The limit parameter is applied after fetching to control how many we return
         params: dict[str, int | str] = {
-            "duration": 120,  # 2 hours ahead
-            "results": 300,  # Get up to 300 departures to have enough for all routes
+            "duration": duration_minutes,  # Configurable duration (default: 60 minutes)
+            "results": 500,  # Get up to 500 departures to have enough for all routes
         }
 
         if offset_minutes > 0:

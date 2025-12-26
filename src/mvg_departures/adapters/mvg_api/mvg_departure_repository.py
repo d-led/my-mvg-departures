@@ -25,6 +25,7 @@ class MvgDepartureRepository(DepartureRepository):
         limit: int = 10,
         offset_minutes: int = 0,
         transport_types: list[str] | None = None,
+        duration_minutes: int = 60,  # noqa: ARG002  # Not used by MVG API
     ) -> list[Departure]:
         """Get departures for a station."""
         mvg_transport_types = None

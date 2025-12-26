@@ -97,6 +97,7 @@ class CompositeDepartureRepository(DepartureRepository):
         limit: int = 10,
         offset_minutes: int = 0,
         transport_types: list[str] | None = None,
+        duration_minutes: int = 60,
     ) -> list:
         """Get departures for a station using the appropriate API."""
         repository = self._get_repository(station_id)
@@ -105,4 +106,5 @@ class CompositeDepartureRepository(DepartureRepository):
             limit=limit,
             offset_minutes=offset_minutes,
             transport_types=transport_types,
+            duration_minutes=duration_minutes,
         )

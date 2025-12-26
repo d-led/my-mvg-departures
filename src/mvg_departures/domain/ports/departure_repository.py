@@ -14,6 +14,7 @@ class DepartureRepository(Protocol):
         limit: int = 10,
         offset_minutes: int = 0,
         transport_types: list[str] | None = None,
+        duration_minutes: int = 60,  # VBB API duration parameter (optional, ignored by other APIs)
     ) -> list[Departure]:
         """Get departures for a station."""
         ...
