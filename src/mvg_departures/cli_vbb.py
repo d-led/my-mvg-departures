@@ -26,41 +26,64 @@ async def search_stations_vbb(query: str) -> list[dict[str, Any]]:
                 locations = data if isinstance(data, list) else data.get("locations", [])
 
                 results = []
-                query_lower = query.lower()
-                query_words = set(query_lower.split())
-
+                query_lower = query.lower().strip()
+                query_words = query_lower.split()
+                
+                # Filter out very common words that don't help with matching
+                # (like "berlin", "platz", "strasse", "garten", etc.)
+                common_words = {"berlin", "platz", "str", "strasse", "bahnhof", "bhf", "u", "s", "garten", "der", "die", "das"}
+                meaningful_words = [w for w in query_words if w not in common_words and len(w) > 2]
+                
+                # If no meaningful words after filtering, use all words
+                if not meaningful_words:
+                    meaningful_words = query_words
+                
                 for location in locations:
                     location_id = location.get("id", "")
                     location_name = location.get("name", "")
                     location_type = location.get("type", "")
-
+                    
                     # Only include stops/stations, not POIs
                     if location_type not in ("stop", "station"):
                         continue
-
-                    # Filter by relevance: check if query words appear in station name
+                    
                     location_name_lower = location_name.lower()
-                    # Count how many query words match
-                    matching_words = sum(1 for word in query_words if word in location_name_lower)
+                    
+                    # Calculate relevance score
+                    # 1. Exact match gets highest score
+                    if query_lower == location_name_lower:
+                        relevance = 1000
+                    # 2. Query is contained in station name (very relevant)
+                    elif query_lower in location_name_lower:
+                        relevance = 500
+                    # 3. Check if meaningful words match (require at least one meaningful word)
+                    else:
+                        matching_meaningful = sum(1 for word in meaningful_words if word in location_name_lower)
+                        matching_all = sum(1 for word in query_words if word in location_name_lower)
+                        
+                        # Require at least one meaningful word to match (not just common words)
+                        if matching_meaningful == 0:
+                            continue  # Skip if no meaningful words match
+                        
+                        # Score based on meaningful word matches (weighted higher)
+                        relevance = matching_meaningful * 100 + matching_all * 10
+                    
+                    results.append(
+                        {
+                            "id": location_id,
+                            "name": location_name,
+                            "type": location_type,
+                            "place": location.get("location", {}).get("city", "Berlin"),
+                            "relevance": relevance,  # For sorting
+                        }
+                    )
 
-                    # Only include if at least one word matches (or exact match)
-                    if matching_words > 0 or query_lower in location_name_lower:
-                        results.append(
-                            {
-                                "id": location_id,
-                                "name": location_name,
-                                "type": location_type,
-                                "place": location.get("location", {}).get("city", "Berlin"),
-                                "relevance": matching_words,  # For sorting
-                            }
-                        )
-
-                # Sort by relevance (more matching words first), then alphabetically
+                # Sort by relevance (higher first), then alphabetically
                 results.sort(key=lambda x: (-x.get("relevance", 0), x.get("name", "")))
                 # Remove relevance from output
                 for result in results:
                     result.pop("relevance", None)
-
+                
                 return results
         except Exception as e:
             print(f"Error searching VBB stations: {e}", file=sys.stderr)
