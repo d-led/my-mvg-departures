@@ -305,6 +305,8 @@ class AppConfig(BaseSettings):
                             display_settings["header_background_brightness"] = display[
                                 "header_background_brightness"
                             ]
+                        if "random_color_salt" in display:
+                            display_settings["random_color_salt"] = display["random_color_salt"]
                         if display_settings:
                             default_route["display"] = display_settings
                 result_routes.append(default_route)

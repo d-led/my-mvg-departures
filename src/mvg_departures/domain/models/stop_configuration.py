@@ -32,6 +32,9 @@ class StopConfiguration:
     header_background_brightness: float | None = (
         None  # Brightness adjustment for random header colors (0.0-1.0). None means inherit from route/global config.
     )
+    random_color_salt: int | None = (
+        None  # Salt value for hash-based color generation. None means inherit from route/global config.
+    )
     exclude_destinations: list[str] = field(
         default_factory=list
     )  # Blacklist patterns to exclude from display. Supports route ("54"), destination ("Messestadt"), or route+destination ("54 Münchner Freiheit")

@@ -12,47 +12,42 @@ from mvg_departures.domain.models.departure import Departure
 from mvg_departures.domain.models.stop_configuration import StopConfiguration
 
 
-def generate_pastel_color_from_text(text: str, brightness: float = 0.7, index: int = 0) -> str:
+def generate_pastel_color_from_text(
+    text: str, brightness: float = 0.7, _index: int = 0, salt: int = 0
+) -> str:
     """Generate a stable pastel color from text using hash-based mapping.
 
     The color is designed to work well in both light and dark modes,
     providing good contrast for both black and white text.
-    Uses index to ensure better color distribution across headers.
+    Color depends only on the text and salt, not on position/index.
 
     Args:
         text: The text to generate a color for (e.g., route header).
         brightness: Brightness adjustment factor (0.0-1.0). Default 0.7.
                     Lower values = darker, higher values = lighter.
-        index: Optional index to add variation and ensure better distribution.
+        _index: Deprecated parameter (kept for backward compatibility, not used).
+        salt: Salt value to influence color generation (default 0).
 
     Returns:
         A hex color code (e.g., "#A8D5E2").
     """
-    # Create a stable hash from the text
-    hash_obj = hashlib.md5(text.encode("utf-8"))
+    # Create a stable hash from the text and salt
+    # Color depends only on text and salt, not on position/index
+    hash_obj = hashlib.md5(f"{text}:{salt}".encode())
     hash_int = int(hash_obj.hexdigest(), 16)
 
-    # Use index to add variation and ensure better color distribution
-    # Combine hash with index using a prime multiplier for better distribution
-    combined_seed = (hash_int + index * 137) % (2**32)
-
     # Use the hash to generate HSL values
-    # Hue: Use golden ratio multiplier for better distribution across spectrum
-    # This ensures colors are more evenly spread out, even for similar headers
-    golden_ratio = 0.618033988749895
-    # Use different parts of the hash for base hue and offset
+    # Use different parts of the hash for base hue and variation
     hash_part1 = (hash_int >> 16) & 0xFFFF  # Upper 16 bits
     hash_part2 = hash_int & 0xFFFF  # Lower 16 bits
     hue_base = hash_part1 % 360
-    # Golden ratio spacing ensures headers are well-distributed even if text is similar
-    hue_offset = int((index * golden_ratio * 360) % 360)
-    # Also add some variation from the second hash part
+    # Add some variation from the second hash part
     hue_variation = (hash_part2 % 60) - 30  # -30 to +30 degrees
-    hue = (hue_base + hue_offset + hue_variation) % 360
+    hue = (hue_base + hue_variation) % 360
 
     # Saturation: Increased range (55-80%) for more vibrant, distinct colors
-    # Higher saturation makes colors more distinguishable and cascading
-    saturation = 55 + (combined_seed % 26)  # 55-80%
+    # Higher saturation makes colors more distinguishable
+    saturation = 55 + (hash_int % 26)  # 55-80%
 
     # Lightness: base range adjusted by brightness parameter
     # brightness 0.0 = very dark (30-40%), 0.2 = dark (40-50%), 0.7 = medium (65-75%), 1.0 = light (75-85%)
@@ -111,6 +106,7 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
         formatter: DepartureFormatterProtocol,
         random_header_colors: bool = False,
         header_background_brightness: float = 0.7,
+        random_color_salt: int = 0,
     ) -> None:
         """Initialize the departure grouping calculator.
 
@@ -120,16 +116,20 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
             formatter: Departure formatter for time formatting.
             random_header_colors: If True, generate hash-based pastel colors for headers.
             header_background_brightness: Brightness adjustment for random header colors (0.0-1.0).
+            random_color_salt: Salt value for hash-based color generation (default 0).
         """
         self.stop_configs = stop_configs
         self.config = config
         self.formatter = formatter
         self.random_header_colors = random_header_colors
         self.header_background_brightness = header_background_brightness
+        self.random_color_salt = random_color_salt
 
     def calculate_display_data(
         self,
-        direction_groups: list[tuple[str, str, str, list[Departure], bool | None, float | None]],
+        direction_groups: list[
+            tuple[str, str, str, list[Departure], bool | None, float | None, int | None]
+        ],
     ) -> dict[str, Any]:
         """Calculate display data structure from direction groups.
 
@@ -152,6 +152,7 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
             departures,
             random_colors,
             brightness,
+            salt,
         ) in direction_groups:
             if departures:
                 direction_clean = direction_name.lstrip("->")
@@ -225,6 +226,7 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
                     "is_new_stop": is_new_stop,
                     "random_header_colors": random_colors,
                     "header_background_brightness": brightness,
+                    "random_color_salt": salt,
                 }
 
                 groups_with_departures.append(group_data)
@@ -249,8 +251,7 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
         # Generate header colors for non-first headers if random_header_colors is enabled
         # First header uses the configured banner_color, so skip it
         # Use config settings from group data (passed directly, no matching needed)
-        # Track index for better color distribution
-        color_index = 0
+        # Color depends only on header text and salt, not on position
         for group in groups_with_departures:
             if not group.get("is_first_header", False):
                 header_text = group.get("header", "")
@@ -270,12 +271,13 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
                         if group_brightness is not None
                         else self.header_background_brightness
                     )
+                    group_salt = group.get("random_color_salt")
+                    salt = group_salt if group_salt is not None else self.random_color_salt
 
                     if use_random_colors:
                         group["header_color"] = generate_pastel_color_from_text(
-                            header_text, brightness, color_index
+                            header_text, brightness, 0, salt
                         )
-                        color_index += 1
 
         # Find stops without departures
         configured_stops = {stop_config.station_name for stop_config in self.stop_configs}

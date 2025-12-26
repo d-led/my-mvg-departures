@@ -31,12 +31,14 @@ class StateUpdater(StateUpdaterProtocol):
 
     def update_departures(
         self,
-        direction_groups: list[tuple[str, str, str, list[Departure], bool | None, float | None]],
+        direction_groups: list[
+            tuple[str, str, str, list[Departure], bool | None, float | None, int | None]
+        ],
     ) -> None:
         """Update the direction groups in the state.
 
         Args:
-            direction_groups: List of (station_id, station_name, direction_name, departures, random_header_colors, header_background_brightness) tuples.
+            direction_groups: List of (station_id, station_name, direction_name, departures, random_header_colors, header_background_brightness, random_color_salt) tuples.
         """
         self.departures_state.direction_groups = direction_groups
         logger.debug(f"Updated direction groups: {len(direction_groups)} groups")

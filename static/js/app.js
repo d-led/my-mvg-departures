@@ -41,6 +41,25 @@
     const REFRESH_INTERVAL_SECONDS = window.DEPARTURES_CONFIG.refreshIntervalSeconds || 20;
     const TIME_FORMAT_TOGGLE_SECONDS = window.DEPARTURES_CONFIG.timeFormatToggleSeconds || 0;
     const INITIAL_API_STATUS = (window.DEPARTURES_CONFIG.apiStatus && window.DEPARTURES_CONFIG.apiStatus !== 'undefined' && window.DEPARTURES_CONFIG.apiStatus !== '') ? window.DEPARTURES_CONFIG.apiStatus : 'unknown';
+    const THEME_CONFIG = (window.DEPARTURES_CONFIG.theme && window.DEPARTURES_CONFIG.theme !== 'undefined' && window.DEPARTURES_CONFIG.theme !== '') ? window.DEPARTURES_CONFIG.theme : 'auto';
+
+    // Function to update theme based on system preference (for auto mode)
+    function updateThemeFromSystemPreference() {
+        // Re-read theme from config in case it changed (though it's usually static)
+        const currentTheme = (window.DEPARTURES_CONFIG && window.DEPARTURES_CONFIG.theme) 
+            ? window.DEPARTURES_CONFIG.theme 
+            : 'auto';
+        
+        if (currentTheme === 'auto') {
+            // Auto: follow system preference
+            if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            } else {
+                document.documentElement.setAttribute('data-theme', 'light');
+            }
+        }
+        // For 'light' or 'dark' themes, don't change - they're set once and stay fixed
+    }
 
     // Server-initiated reload coordination
     const RELOAD_REQUEST_STORAGE_KEY = 'mvg_departures_last_reload_request_id';
@@ -574,6 +593,9 @@
                 calculateFillVerticalSpace();
             });
         }
+
+        // Update theme if it's set to auto (re-check system preference on each update)
+        updateThemeFromSystemPreference();
 
         // Check if we got a new data update by comparing server's last_update timestamp
         setTimeout(() => {

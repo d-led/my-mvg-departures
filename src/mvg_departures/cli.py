@@ -427,9 +427,9 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
         stops_with_routes: dict[str, list[tuple[str, str, str | None]]] = (
             {}
         )  # stop_point -> list of (route_key, destination, platform_info)
-        s_bahn_platforms: dict[str, dict[int, list[tuple[str, str]]]] = (
+        s_bahn_platforms: dict[str, dict[str, dict[int, list[tuple[str, str]]]]] = (
             {}
-        )  # route_key -> platform -> list of (destination, platform_info)
+        )  # transport_type -> route_key -> platform -> list of (destination, platform_info)
 
         for mapping_key, mapping_data in sorted(stop_point_mapping.items()):
             if "|" in mapping_key:
@@ -474,9 +474,15 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
             print(f"\n# Stop {stop_num} ({stop_point}):")
             print(f'# station_id = "{stop_point}"')
             # Check if this stop has platform info (S-Bahn/U-Bahn)
-            has_platforms = any(platform_info for _, _, platform_info in stops_with_routes[stop_point] if platform_info)
+            has_platforms = any(
+                platform_info
+                for _, _, platform_info in stops_with_routes[stop_point]
+                if platform_info
+            )
             if has_platforms:
-                print("# Note: You can use this stopPointGlobalId directly, or use base station_id with direction_mappings for additional filtering.")
+                print(
+                    "# Note: You can use this stopPointGlobalId directly, or use base station_id with direction_mappings for additional filtering."
+                )
             # Sort routes and destinations for this stop point
             for route_key, destination, platform_info in sorted(stops_with_routes[stop_point]):
                 # Extract line number from route_key (format: "Bus 139" -> "139")
@@ -491,19 +497,24 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
         if s_bahn_platforms:
             for transport_type_key in sorted(s_bahn_platforms.keys()):
                 print(f"\n# {transport_type_key} platforms by route and destination:")
-                print(f"# Note: These {transport_type_key} platforms don't have stopPointGlobalId values.")
+                print(
+                    f"# Note: These {transport_type_key} platforms don't have stopPointGlobalId values."
+                )
                 print("# Use base station_id with direction_mappings to filter by destination.")
                 for route_key in sorted(s_bahn_platforms[transport_type_key].keys()):
-                    line = route_key.split()[-1] if route_key.split() else ""
+                    route_parts = route_key.split()
+                    line = route_parts[-1] if route_parts else ""
                     for platform in sorted(s_bahn_platforms[transport_type_key][route_key].keys()):
                         destinations = s_bahn_platforms[transport_type_key][route_key][platform]
                         print(f"\n# {route_key} - Platform {platform}:")
                         print(f'# station_id = "{station_id}"  # Use base station_id')
                         print("# Configure direction_mappings to filter by destination:")
-                        for destination, platform_info in sorted(destinations):
+                        for destination, _platform_info in sorted(destinations):
                             pattern = f"{line} {destination}" if line else destination
                             print(f'  "{pattern}"')
-                        print("# Then add these destinations to exclude_destinations in the main config.")
+                        print(
+                            "# Then add these destinations to exclude_destinations in the main config."
+                        )
 
         # Summary of unique stop points
         all_stop_points = set()
@@ -641,9 +652,9 @@ async def search_and_list_routes(query: str, show_patterns: bool = True) -> None
             stops_with_routes: dict[str, list[tuple[str, str, str | None]]] = (
                 {}
             )  # stop_point -> list of (route_key, destination, platform_info)
-            s_bahn_platforms: dict[str, dict[int, list[tuple[str, str]]]] = (
+            s_bahn_platforms: dict[str, dict[str, dict[int, list[tuple[str, str]]]]] = (
                 {}
-            )  # route_key -> platform -> list of (destination, platform_info)
+            )  # transport_type -> route_key -> platform -> list of (destination, platform_info)
 
             for mapping_key, mapping_data in sorted(stop_point_mapping.items()):
                 if "|" in mapping_key:
@@ -689,9 +700,15 @@ async def search_and_list_routes(query: str, show_patterns: bool = True) -> None
                 print(f"\n  # Stop {stop_num} ({stop_point}):")
                 print(f'  # station_id = "{stop_point}"')
                 # Check if this stop has platform info (S-Bahn/U-Bahn)
-                has_platforms = any(platform_info for _, _, platform_info in stops_with_routes[stop_point] if platform_info)
+                has_platforms = any(
+                    platform_info
+                    for _, _, platform_info in stops_with_routes[stop_point]
+                    if platform_info
+                )
                 if has_platforms:
-                    print("  # Note: You can use this stopPointGlobalId directly, or use base station_id with direction_mappings for additional filtering.")
+                    print(
+                        "  # Note: You can use this stopPointGlobalId directly, or use base station_id with direction_mappings for additional filtering."
+                    )
                 # Sort routes and destinations for this stop point
                 for route_key, destination, platform_info in sorted(stops_with_routes[stop_point]):
                     # Extract line number from route_key (format: "Bus 139" -> "139")
@@ -706,19 +723,28 @@ async def search_and_list_routes(query: str, show_patterns: bool = True) -> None
             if s_bahn_platforms:
                 for transport_type_key in sorted(s_bahn_platforms.keys()):
                     print(f"\n  # {transport_type_key} platforms by route and destination:")
-                    print(f"  # Note: These {transport_type_key} platforms don't have stopPointGlobalId values.")
-                    print("  # Use base station_id with direction_mappings to filter by destination.")
+                    print(
+                        f"  # Note: These {transport_type_key} platforms don't have stopPointGlobalId values."
+                    )
+                    print(
+                        "  # Use base station_id with direction_mappings to filter by destination."
+                    )
                     for route_key in sorted(s_bahn_platforms[transport_type_key].keys()):
-                        line = route_key.split()[-1] if route_key.split() else ""
-                        for platform in sorted(s_bahn_platforms[transport_type_key][route_key].keys()):
+                        route_parts = route_key.split()
+                        line = route_parts[-1] if route_parts else ""
+                        for platform in sorted(
+                            s_bahn_platforms[transport_type_key][route_key].keys()
+                        ):
                             destinations = s_bahn_platforms[transport_type_key][route_key][platform]
                             print(f"\n  # {route_key} - Platform {platform}:")
                             print(f'  # station_id = "{station_id}"  # Use base station_id')
                             print("  # Configure direction_mappings to filter by destination:")
-                            for destination, platform_info in sorted(destinations):
+                            for destination, _platform_info in sorted(destinations):
                                 pattern = f"{line} {destination}" if line else destination
                                 print(f'    "{pattern}"')
-                            print("  # Then add these destinations to exclude_destinations in the main config.")
+                            print(
+                                "  # Then add these destinations to exclude_destinations in the main config."
+                            )
 
             # Summary of unique stop points
             all_stop_points = set()

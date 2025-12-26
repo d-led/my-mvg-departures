@@ -5,7 +5,10 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 from mvg_departures.adapters.config import AppConfig
-from mvg_departures.adapters.web.builders import DepartureGroupingCalculator
+from mvg_departures.adapters.web.builders import (
+    DepartureGroupingCalculator,
+    generate_pastel_color_from_text,
+)
 from mvg_departures.adapters.web.formatters import DepartureFormatter
 from mvg_departures.domain.models import Departure, StopConfiguration
 
@@ -60,7 +63,7 @@ def test_when_single_departure_exists_then_displays_it() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
     result = calculator.calculate_display_data(direction_groups)
 
     assert result["has_departures"] is True
@@ -87,7 +90,7 @@ def test_when_departure_exists_then_displays_line_and_destination() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -113,7 +116,7 @@ def test_when_departure_is_cancelled_then_shows_cancelled_status() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -138,7 +141,7 @@ def test_when_departure_is_delayed_then_shows_delay_information() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -165,7 +168,7 @@ def test_when_delay_is_under_one_minute_then_does_not_show_delay() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -191,7 +194,7 @@ def test_when_departure_has_realtime_data_then_shows_realtime_indicator() -> Non
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -216,7 +219,7 @@ def test_when_departure_has_platform_then_shows_platform_number() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -241,7 +244,7 @@ def test_when_departure_has_no_platform_then_does_not_show_platform() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -280,8 +283,8 @@ def test_when_multiple_departures_exist_then_displays_all() -> None:
 
     calculator = _create_calculator()
     direction_groups = [
-        ("de:09162:70", "Universität", "->Giesing", [departure1], None, None),
-        ("de:09162:70", "Universität", "->Klinikum Großhadern", [departure2], None, None),
+        ("de:09162:70", "Universität", "->Giesing", [departure1], None, None, None),
+        ("de:09162:70", "Universität", "->Klinikum Großhadern", [departure2], None, None, None),
     ]
     result = calculator.calculate_display_data(direction_groups)
 
@@ -294,7 +297,7 @@ def test_when_multiple_departures_exist_then_displays_all() -> None:
 def test_when_stop_has_no_departures_then_lists_it_as_empty() -> None:
     """Given a configured stop with no departures, when displaying, then lists it as having no departures."""
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [], None, None)]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [], None, None, None)]
     result = calculator.calculate_display_data(direction_groups)
 
     assert result["has_departures"] is False
@@ -320,7 +323,7 @@ def test_when_departures_exist_then_first_group_is_marked_as_first() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
     result = calculator.calculate_display_data(direction_groups)
 
     group = result["groups_with_departures"][0]
@@ -361,8 +364,8 @@ def test_when_multiple_groups_exist_then_first_and_last_are_marked() -> None:
 
     calculator = _create_calculator()
     direction_groups = [
-        ("de:09162:70", "Universität", "->Giesing", [departure1], None, None),
-        ("de:09162:70", "Universität", "->Klinikum Großhadern", [departure2], None, None),
+        ("de:09162:70", "Universität", "->Giesing", [departure1], None, None, None),
+        ("de:09162:70", "Universität", "->Klinikum Großhadern", [departure2], None, None, None),
     ]
     result = calculator.calculate_display_data(direction_groups)
 
@@ -411,8 +414,8 @@ def test_when_departures_from_different_stops_then_each_stop_is_marked_as_new() 
 
     calculator = _create_calculator()
     direction_groups = [
-        ("de:09162:70", "Universität", "->Giesing", [departure1], None, None),
-        ("de:09162:71", "Marienplatz", "->Klinikum Großhadern", [departure2], None, None),
+        ("de:09162:70", "Universität", "->Giesing", [departure1], None, None, None),
+        ("de:09162:71", "Marienplatz", "->Klinikum Großhadern", [departure2], None, None, None),
     ]
     result = calculator.calculate_display_data(direction_groups)
 
@@ -452,8 +455,8 @@ def test_when_departures_from_same_stop_then_second_is_not_marked_as_new() -> No
 
     calculator = _create_calculator()
     direction_groups = [
-        ("de:09162:70", "Universität", "->Giesing", [departure1], None, None),
-        ("de:09162:70", "Universität", "->Klinikum Großhadern", [departure2], None, None),
+        ("de:09162:70", "Universität", "->Giesing", [departure1], None, None, None),
+        ("de:09162:70", "Universität", "->Klinikum Großhadern", [departure2], None, None, None),
     ]
     result = calculator.calculate_display_data(direction_groups)
 
@@ -501,6 +504,7 @@ def test_when_departures_are_unsorted_then_displays_them_sorted_by_time() -> Non
             [later_departure, earlier_departure],
             None,
             None,
+            None,
         )
     ]
     result = calculator.calculate_display_data(direction_groups)
@@ -530,7 +534,7 @@ def test_when_departure_exists_then_includes_accessibility_label() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -560,7 +564,7 @@ def test_when_departure_is_cancelled_then_accessibility_label_includes_cancelled
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -586,7 +590,7 @@ def test_when_departure_is_scheduled_then_accessibility_label_says_scheduled() -
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -612,7 +616,7 @@ def test_when_departures_exist_then_header_shows_stop_and_direction() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
     result = calculator.calculate_display_data(direction_groups)
 
     group = result["groups_with_departures"][0]
@@ -638,7 +642,7 @@ def test_when_direction_has_arrow_prefix_then_header_removes_it() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
     result = calculator.calculate_display_data(direction_groups)
 
     group = result["groups_with_departures"][0]
@@ -665,7 +669,7 @@ def test_when_departure_exists_then_includes_all_time_formats() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -705,8 +709,8 @@ def test_when_some_stops_have_departures_and_others_dont_then_lists_both() -> No
 
     calculator = _create_calculator()
     direction_groups = [
-        ("de:09162:70", "Universität", "->Giesing", [departure], None, None),
-        ("de:09162:71", "Marienplatz", "->Ostbahnhof", [], None, None),
+        ("de:09162:70", "Universität", "->Giesing", [departure], None, None, None),
+        ("de:09162:71", "Marienplatz", "->Ostbahnhof", [], None, None, None),
     ]
     result = calculator.calculate_display_data(direction_groups)
 
@@ -734,7 +738,7 @@ def test_when_departure_has_large_delay_then_shows_delay_correctly() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -760,7 +764,7 @@ def test_when_departure_has_platform_zero_then_shows_platform_zero() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -819,7 +823,7 @@ def test_when_stops_have_same_name_different_ids_then_uses_correct_config() -> N
             stop_configs, config, formatter, random_header_colors=False
         )
 
-    # Create direction groups with station_id, stop_name, direction_name, departures, random_header_colors, header_background_brightness
+    # Create direction groups with station_id, stop_name, direction_name, departures, random_header_colors, header_background_brightness, random_color_salt
     direction_groups = [
         (
             "de:09162:1110",
@@ -828,6 +832,7 @@ def test_when_stops_have_same_name_different_ids_then_uses_correct_config() -> N
             [departure1],
             False,
             None,
+            None,
         ),  # First stop: random_header_colors=False
         (
             "de:09162:1110:4:4",
@@ -835,6 +840,7 @@ def test_when_stops_have_same_name_different_ids_then_uses_correct_config() -> N
             "->Tegernseer Str.",
             [departure2],
             True,
+            None,
             None,
         ),  # Second stop: random_header_colors=True
     ]
@@ -854,3 +860,147 @@ def test_when_stops_have_same_name_different_ids_then_uses_correct_config() -> N
     assert second_group["station_id"] == "de:09162:1110:4:4"
     assert second_group["stop_name"] == "Giesing"
     assert "header_color" in second_group
+
+
+def test_when_same_text_and_salt_then_same_color() -> None:
+    """Given the same text and salt, when generating colors, then produces the same color."""
+    text = "Giesing → Tegernseer Str."
+    brightness = 0.7
+    salt = 0
+
+    color1 = generate_pastel_color_from_text(text, brightness, 0, salt)
+    color2 = generate_pastel_color_from_text(text, brightness, 0, salt)
+
+    assert color1 == color2
+    assert color1.startswith("#")
+    assert len(color1) == 7  # #RRGGBB format
+
+
+def test_when_different_salt_then_different_color() -> None:
+    """Given the same text but different salt, when generating colors, then produces different colors."""
+    text = "Giesing → Tegernseer Str."
+    brightness = 0.7
+
+    color_with_salt_0 = generate_pastel_color_from_text(text, brightness, 0, salt=0)
+    color_with_salt_1 = generate_pastel_color_from_text(text, brightness, 0, salt=1)
+    color_with_salt_2 = generate_pastel_color_from_text(text, brightness, 0, salt=2)
+
+    # All should be valid hex colors
+    assert color_with_salt_0.startswith("#")
+    assert color_with_salt_1.startswith("#")
+    assert color_with_salt_2.startswith("#")
+    assert len(color_with_salt_0) == 7
+    assert len(color_with_salt_1) == 7
+    assert len(color_with_salt_2) == 7
+
+    # Different salts should produce different colors
+    assert color_with_salt_0 != color_with_salt_1, "Salt 0 and 1 should produce different colors"
+    assert color_with_salt_0 != color_with_salt_2, "Salt 0 and 2 should produce different colors"
+    assert color_with_salt_1 != color_with_salt_2, "Salt 1 and 2 should produce different colors"
+
+
+def test_when_salt_used_in_calculator_then_affects_color() -> None:
+    """Given direction groups with different salt values, when calculating display data, then produces different colors."""
+    now = datetime.now(UTC)
+    departure = Departure(
+        time=now + timedelta(minutes=5),
+        planned_time=now + timedelta(minutes=5),
+        line="U2",
+        destination="Tegernseer Str.",
+        is_cancelled=False,
+        delay_seconds=None,
+        is_realtime=True,
+        platform=None,
+        transport_type="U-Bahn",
+        icon="mdi:subway",
+        messages=[],
+    )
+
+    with patch.dict(os.environ, {}, clear=True):
+        stop_configs = [
+            StopConfiguration(
+                station_id="de:09162:1110",
+                station_name="Giesing",
+                direction_mappings={},
+                random_header_colors=True,
+                random_color_salt=0,
+            ),
+            StopConfiguration(
+                station_id="de:09162:1110:4:4",
+                station_name="Giesing",
+                direction_mappings={},
+                random_header_colors=True,
+                random_color_salt=1,
+            ),
+        ]
+        config = AppConfig(config_file=None, _env_file=None)
+        formatter = DepartureFormatter(config)
+        calculator = DepartureGroupingCalculator(
+            stop_configs, config, formatter, random_header_colors=True, random_color_salt=0
+        )
+
+    # Create direction groups with same header text but different salt values
+    direction_groups = [
+        (
+            "de:09162:1110",
+            "Giesing",
+            "->Tegernseer Str.",
+            [departure],
+            True,
+            None,
+            0,  # salt = 0
+        ),
+        (
+            "de:09162:1110:4:4",
+            "Giesing",
+            "->Tegernseer Str.",
+            [departure],
+            True,
+            None,
+            1,  # salt = 1
+        ),
+    ]
+    result = calculator.calculate_display_data(direction_groups)
+
+    # Should have 2 groups (first header uses banner_color, second uses random color)
+    assert len(result["groups_with_departures"]) == 2
+
+    # First group is the first header, so it won't have header_color (uses banner_color)
+    first_group = result["groups_with_departures"][0]
+    assert first_group["is_first_header"] is True
+    assert "header_color" not in first_group
+
+    # Second group should have header_color with salt=1
+    second_group = result["groups_with_departures"][1]
+    assert second_group["is_first_header"] is False
+    assert "header_color" in second_group
+    color_with_salt_1 = second_group["header_color"]
+
+    # Now test with salt=0 for the second group
+    direction_groups_salt_0 = [
+        (
+            "de:09162:1110",
+            "Giesing",
+            "->Tegernseer Str.",
+            [departure],
+            True,
+            None,
+            0,  # salt = 0
+        ),
+        (
+            "de:09162:1110:4:4",
+            "Giesing",
+            "->Tegernseer Str.",
+            [departure],
+            True,
+            None,
+            0,  # salt = 0 (same as first)
+        ),
+    ]
+    result_salt_0 = calculator.calculate_display_data(direction_groups_salt_0)
+    second_group_salt_0 = result_salt_0["groups_with_departures"][1]
+
+    # Colors should be different because salt is different
+    assert (
+        color_with_salt_1 != second_group_salt_0["header_color"]
+    ), "Different salt values should produce different colors for the same header text"

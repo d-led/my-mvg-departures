@@ -146,6 +146,7 @@ class PyViewWebAdapter(DisplayAdapter):
             font_scaling_factor_when_filling = route_config.font_scaling_factor_when_filling
             random_header_colors = route_config.random_header_colors
             header_background_brightness = route_config.header_background_brightness
+            random_color_salt = route_config.random_color_salt
 
             # Generate route-specific favicon if route has custom title
             if route_title:
@@ -189,6 +190,7 @@ class PyViewWebAdapter(DisplayAdapter):
                 font_scaling_factor_when_filling,
                 random_header_colors,
                 header_background_brightness,
+                random_color_salt,
             )
             app.add_live_view(route_path, live_view_class)
             logger.info(f"Successfully registered route at path '{route_path}'")

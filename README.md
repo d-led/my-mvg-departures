@@ -158,6 +158,18 @@ If you're only interested in a subset of routes from a complex stop, you can con
 
 If you need visual help distinguishing between destinations, turn on `random_header_colors` in your stop configuration. This assigns random colors to direction group headers, making it easier to visually separate different directions at a glance.
 
+Colors are auto-generated using a hash-based algorithm that produces stable, pastel colors based on the header text. If you want different colors for the same headers, you can add `random_color_salt` to your stop configuration. Different salt values will produce different color palettes while maintaining color stability for each header.
+
+Example:
+
+```toml
+[[stops]]
+station_id = "de:09162:1110"
+station_name = "Giesing"
+random_header_colors = true
+random_color_salt = 7  # Use salt 7 for this stop's color palette
+```
+
 ### All Routes from a Particular Stop
 
 If you're interested in all routes from a particular stop, there's no need to configure individual routes. A full global stop ID (search with the `list_routes.sh` script) will do. Don't forget to set `show_ungrouped = true` and optionally configure `ungrouped_title` to give ungrouped routes a meaningful header.
@@ -170,6 +182,38 @@ station_id = "de:09162:1110:4:4"
 station_name = "Giesing"
 show_ungrouped = true
 ungrouped_title = "Tegernseer Str."
+```
+
+### Touchable Screen vs Screen Height Filling Mode
+
+The dashboard can be configured differently depending on the type of screen you're using:
+
+**For Touchable Screens (iPad, tablets, phones):**
+- Set `fill_vertical_space = false` (or omit it, as false is the default)
+- This allows natural scrolling if content exceeds the viewport
+- Better for interactive devices where users can scroll to see all content
+- Recommended for personal devices or when you want to see all departures
+
+**For Screen Height Filling Mode (Wall-mounted displays, kiosks):**
+- Set `fill_vertical_space = true`
+- This enables dynamic font sizing to fill the entire viewport height
+- Content automatically scales to use the full screen height
+- Use `font_scaling_factor_when_filling` to fine-tune the scaling (default: 1.0, lower values = smaller fonts)
+- Recommended for permanent installations where you want maximum use of screen space
+
+Example for wall-mounted display:
+
+```toml
+[display]
+fill_vertical_space = true
+font_scaling_factor_when_filling = 0.9  # Slightly smaller fonts for better fit
+```
+
+Example for touchable screen (default behavior):
+
+```toml
+[display]
+fill_vertical_space = false  # or omit this line
 ```
 
 ### Experimentation and Tuning

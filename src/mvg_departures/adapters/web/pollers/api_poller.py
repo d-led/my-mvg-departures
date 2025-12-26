@@ -126,7 +126,9 @@ class ApiPoller(ApiPollerProtocol):
 
     async def _process_and_broadcast(self) -> None:
         """Process departures (from cache or API) and broadcast update."""
-        all_groups: list[tuple[str, str, str, list[Departure], bool | None, float | None]] = []
+        all_groups: list[
+            tuple[str, str, str, list[Departure], bool | None, float | None, int | None]
+        ] = []
         has_errors = False
 
         for stop_config in self.stop_configs:
@@ -196,6 +198,11 @@ class ApiPoller(ApiPollerProtocol):
                         if stop_config.header_background_brightness is not None
                         else None  # Will use route-level default in calculator
                     )
+                    salt = (
+                        stop_config.random_color_salt
+                        if stop_config.random_color_salt is not None
+                        else None  # Will use route-level default in calculator
+                    )
                     all_groups.append(
                         (
                             stop_config.station_id,
@@ -204,6 +211,7 @@ class ApiPoller(ApiPollerProtocol):
                             unique_departures,
                             random_colors,
                             brightness,
+                            salt,
                         )
                     )
                 # Cache successful processing - always replace with fresh data
@@ -245,6 +253,11 @@ class ApiPoller(ApiPollerProtocol):
                             if stop_config.header_background_brightness is not None
                             else None
                         )
+                        salt = (
+                            stop_config.random_color_salt
+                            if stop_config.random_color_salt is not None
+                            else None
+                        )
                         all_groups.append(
                             (
                                 stop_config.station_id,
@@ -253,6 +266,7 @@ class ApiPoller(ApiPollerProtocol):
                                 stale_departures,
                                 random_colors,
                                 brightness,
+                                salt,
                             )
                         )
                 # Continue with other stops even if one fails

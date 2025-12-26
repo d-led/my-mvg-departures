@@ -23,9 +23,14 @@ time_format_toggle_seconds = 5
 # Set to false to show all departures at once (recommended for full view)
 pagination_enabled = false
 
-# fit all departures on one page
+# Enable dynamic font sizing to fill viewport height
+# Set to true for wall-mounted displays/kiosks that should fill the entire screen
+# Set to false (or omit) for touchable screens (iPad, tablets) where scrolling is preferred
 fill_vertical_space = true
 
+# Enable hash-based pastel colors for headers (stable colors based on header text)
+# Colors are designed to work well in both light and dark modes
+# First header always uses banner_color; only subsequent headers get random colors
 random_header_colors = false
 
 # Interval between departure updates in seconds
@@ -154,6 +159,10 @@ show_ungrouped = false
 station_id = "de:09162:1110"
 station_name = "Giesing"
 random_header_colors = true
+# Salt value to influence color generation (default: 0)
+# Different salt values produce different color palettes for the same headers
+# Use this if you want different colors than the default auto-generated ones
+random_color_salt = 7
 max_departures_per_stop = 4
 max_departures_per_route = 2
 # departure_leeway_minutes = 10
@@ -175,6 +184,10 @@ ungrouped_title = "Tegernseer Str."
 max_departures_per_stop = 3
 max_departures_per_route = 2
 random_header_colors = true
+# Salt value to influence color generation (default: 0)
+# Different salt values produce different color palettes for the same headers
+# Use this if you want different colors than the default auto-generated ones
+random_color_salt = 1
 show_ungrouped = true
 
 # Second stop: Balanstraße
@@ -222,6 +235,7 @@ font_scaling_factor_when_filling = 0.8
 # Enable hash-based pastel colors for headers (stable colors based on header text)
 # Colors are designed to work well in both light and dark modes
 # First header always uses banner_color; only subsequent headers get random colors
+# You can add random_color_salt to your stop configuration to get different color palettes
 random_header_colors = true
 
 # Brightness adjustment for random header colors (0.0-1.0, default 0.7)

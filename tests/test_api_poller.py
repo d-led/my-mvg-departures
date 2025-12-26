@@ -95,7 +95,7 @@ async def test_when_cache_empty_then_fetches_fresh_from_api(
         # Verify that fresh data was fetched (not cached groups)
         # The state should have the fresh departure from the API
         assert len(mock_state_updater.departures_state.direction_groups) == 1
-        _station_id, stop_name, direction_name, departures, _random_colors, _brightness = (
+        _station_id, stop_name, direction_name, departures, _random_colors, _brightness, _salt = (
             mock_state_updater.departures_state.direction_groups[0]
         )
         assert stop_name == "Chiemgaustr."
@@ -163,7 +163,7 @@ async def test_when_api_fails_then_falls_back_to_cached_groups(
 
         # Verify that cached groups were used (marked as stale/non-realtime)
         assert len(mock_state_updater.departures_state.direction_groups) == 1
-        _station_id, stop_name, direction_name, departures, _random_colors, _brightness = (
+        _station_id, stop_name, direction_name, departures, _random_colors, _brightness, _salt = (
             mock_state_updater.departures_state.direction_groups[0]
         )
         assert stop_name == "Chiemgaustr."
@@ -208,7 +208,7 @@ async def test_when_cache_has_data_then_uses_cache(
 
         # Verify that cached data was used
         assert len(mock_state_updater.departures_state.direction_groups) == 1
-        _station_id, stop_name, direction_name, departures, _random_colors, _brightness = (
+        _station_id, stop_name, direction_name, departures, _random_colors, _brightness, _salt = (
             mock_state_updater.departures_state.direction_groups[0]
         )
         assert stop_name == "Chiemgaustr."

@@ -30,6 +30,7 @@ class RouteConfigurationLoader:
         departure_leeway_minutes = stop_data.get("departure_leeway_minutes", 0)
         random_header_colors = stop_data.get("random_header_colors")
         header_background_brightness = stop_data.get("header_background_brightness")
+        random_color_salt = stop_data.get("random_color_salt")
         exclude_destinations = stop_data.get("exclude_destinations", [])
 
         if not station_id:
@@ -52,6 +53,15 @@ class RouteConfigurationLoader:
         else:
             header_background_brightness = None
 
+        # Validate random_color_salt if provided
+        if random_color_salt is not None:
+            try:
+                random_color_salt = int(random_color_salt)
+            except (ValueError, TypeError):
+                random_color_salt = None
+        else:
+            random_color_salt = None
+
         # Validate exclude_destinations is a list
         if not isinstance(exclude_destinations, list):
             exclude_destinations = []
@@ -71,6 +81,7 @@ class RouteConfigurationLoader:
             departure_leeway_minutes=departure_leeway_minutes,
             random_header_colors=random_header_colors,
             header_background_brightness=header_background_brightness,
+            random_color_salt=random_color_salt,
             exclude_destinations=exclude_destinations,
         )
 
@@ -106,6 +117,7 @@ class RouteConfigurationLoader:
                 font_scaling_factor_when_filling = 1.0
                 random_header_colors = False
                 header_background_brightness = 0.7
+                random_color_salt = 0
                 display_data = route_data.get("display")
                 if display_data:
                     # Handle both dict (single display) and list (array of displays)
@@ -120,6 +132,7 @@ class RouteConfigurationLoader:
                         header_background_brightness = display_data.get(
                             "header_background_brightness", 0.7
                         )
+                        random_color_salt = display_data.get("random_color_salt", 0)
                     elif isinstance(display_data, list) and len(display_data) > 0:
                         # Get title, theme, fill_vertical_space, font_scaling_factor_when_filling, random_header_colors, and header_background_brightness from first display entry
                         first_display = display_data[0]
@@ -134,6 +147,7 @@ class RouteConfigurationLoader:
                             header_background_brightness = first_display.get(
                                 "header_background_brightness", 0.7
                             )
+                            random_color_salt = first_display.get("random_color_salt", 0)
 
                 # Validate title is a string, default to None if not found
                 route_title = route_title if route_title and isinstance(route_title, str) else None
@@ -174,6 +188,13 @@ class RouteConfigurationLoader:
                     header_background_brightness = max(0.0, min(1.0, header_background_brightness))
                 except (ValueError, TypeError):
                     header_background_brightness = 0.7
+                # Validate random_color_salt is an int (defaults to 0 if not specified)
+                try:
+                    random_color_salt = (
+                        int(random_color_salt) if random_color_salt is not None else 0
+                    )
+                except (ValueError, TypeError):
+                    random_color_salt = 0
 
                 route_config = RouteConfiguration(
                     path=path,
@@ -184,6 +205,7 @@ class RouteConfigurationLoader:
                     font_scaling_factor_when_filling=font_scaling_factor_when_filling,
                     random_header_colors=random_header_colors,
                     header_background_brightness=header_background_brightness,
+                    random_color_salt=random_color_salt,
                 )
                 route_configs.append(route_config)
 

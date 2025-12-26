@@ -69,7 +69,7 @@ def test_update_context_from_state() -> None:
     # Set up state manager with some data
     now = datetime.now(UTC)
     view.state_manager.departures_state.direction_groups = [
-        ("de:09162:70", "Stop", "->Dir", [], None, None)
+        ("de:09162:70", "Stop", "->Dir", [], None, None, None)
     ]
     view.state_manager.departures_state.last_update = now
     view.state_manager.departures_state.api_status = "success"
@@ -79,7 +79,7 @@ def test_update_context_from_state() -> None:
     view._update_context_from_state(mock_socket)
 
     assert mock_socket.context.direction_groups == [
-        ("de:09162:70", "Stop", "->Dir", [], None, None)
+        ("de:09162:70", "Stop", "->Dir", [], None, None, None)
     ]
     assert mock_socket.context.last_update == now
     assert mock_socket.context.api_status == "success"

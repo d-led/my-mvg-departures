@@ -55,7 +55,8 @@
         fillVerticalSpace: '{{ fill_vertical_space }}' === 'true',
         fontScalingFactorWhenFilling: parseFloat('{{ font_scaling_factor_when_filling }}') || 1.0,
         // Server-initiated reload coordination (numeric, defaults to 0)
-        reloadRequestId: parseInt('{{ reload_request_id }}') || 0
+        reloadRequestId: parseInt('{{ reload_request_id }}') || 0,
+        theme: ('{{ theme }}' && '{{ theme }}' !== 'undefined' && '{{ theme }}' !== '') ? '{{ theme }}' : 'auto'
     };
     
     // Update page title from template data (overrides rootTemplate title)

@@ -212,10 +212,6 @@ class DepartureGroupingService:
         - Route only: "U2" (matches any destination for U2 route)
         - Destination only: "Messestadt" (matches any route going to Messestadt)
         """
-        destination_lower = departure.destination.lower()
-        line_lower = departure.line.lower()
-        transport_type_lower = departure.transport_type.lower()
-
         # Normalize Unicode for consistent matching
         destination_normalized = self._normalize_unicode(departure.destination)
         line_normalized = self._normalize_unicode(departure.line)
@@ -255,7 +251,8 @@ class DepartureGroupingService:
                 elif len(pattern_words) >= 2:
                     first_two = " ".join(pattern_words[0:2])
                     if first_two == route_full or (
-                        pattern_words[1] == route_line and pattern_words[0] in transport_type_normalized
+                        pattern_words[1] == route_line
+                        and pattern_words[0] in transport_type_normalized
                     ):
                         route_matched = True
                         dest_start_idx = 2
