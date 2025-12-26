@@ -15,6 +15,8 @@ A server-side rendered live dashboard for Munich public transport (MVG) departur
 - **12-Factor App**: Configuration via environment variables
 - **Multiple Deployment Options**: Docker container or init.d service
 
+> **⚠️ Important Disclaimer**: This dashboard is provided as a visual aid and should not be considered a definitive reference. Omissions, technical and logical errors, upstream MVG API dependencies, or incorrect configuration may result in incomplete or inaccurate dashboards. The discrepancy between real departures and planned departures may also be significant. Always verify critical departure information through official MVG channels.
+
 ![DIY dashboard](./docs/img/diy_setup.jpg)
 
 ## Requirements
@@ -144,6 +146,36 @@ Use the `list_routes.sh` script to list routes for a station:
 
 📖 **See [docs/FINDING_STOP_IDS.md](docs/FINDING_STOP_IDS.md) for more details.**
 
+## Configuration Patterns
+
+Configuration is flexible and depends on your specific use case. Here are some common patterns:
+
+### Subset of Routes from a Complex Stop
+
+If you're only interested in a subset of routes from a complex stop, you can configure this under one stop. However, beware that missing routes might result in an incomplete dashboard. Use direction mappings to filter only the routes you care about.
+
+### Visual Distinction Between Destinations
+
+If you need visual help distinguishing between destinations, turn on `random_header_colors` in your stop configuration. This assigns random colors to direction group headers, making it easier to visually separate different directions at a glance.
+
+### All Routes from a Particular Stop
+
+If you're interested in all routes from a particular stop, there's no need to configure individual routes. A full global stop ID (search with the `list_routes.sh` script) will do. Don't forget to set `show_ungrouped = true` and optionally configure `ungrouped_title` to give ungrouped routes a meaningful header.
+
+Example:
+
+```toml
+[[stops]]
+station_id = "de:09162:1110:4:4"
+station_name = "Giesing"
+show_ungrouped = true
+ungrouped_title = "Tegernseer Str."
+```
+
+### Experimentation and Tuning
+
+Configuration is a lot about your preferences and use cases. Play with the numbers (departures per page, rotation intervals, max departures per route/stop) and run locally to get the desired results. The dashboard is designed to be highly customizable to match your specific needs.
+
 ## Usage
 
 ### Development
@@ -191,6 +223,7 @@ fly deploy
 ```
 
 The optimized Dockerfile provides:
+
 - Pre-compiled wheels (faster startup, less memory)
 - Removed Python cache files (smaller image)
 - Minimal runtime dependencies
@@ -311,34 +344,6 @@ For even more automation, you can use the Shortcuts app to automatically open th
 4. Disable "Ask Before Running"
 5. The dashboard will automatically open when the iPad wakes
 
-## Development
-
-### Running Tests
-
-```bash
-# Using pytest directly
-pytest
-
-# With coverage
-pytest --cov=mvg_departures --cov-report=html
-
-# Using uv
-uv run pytest
-```
-
-### Code Quality
-
-```bash
-# Format code
-black src tests
-
-# Lint code
-ruff check src tests
-
-# Type checking
-mypy src
-```
-
 ## Why This Dashboard?
 
 ### The Problem with Plain Departure Displays
@@ -404,34 +409,9 @@ This design philosophy recognizes that **you don't need to see every departure**
 - **Delays**: Warning color for significant delays (>1 minute)
 - **Cancelled**: Strikethrough and reduced opacity
 
-## Extending the Application
+## Development
 
-### Adding a New Output Device
-
-To add support for a new output device (e.g., e-ink display, LED matrix):
-
-1. Create a new adapter in `src/mvg_departures/adapters/` implementing `DisplayAdapter`
-2. Use the `DepartureGroupingService` to get grouped departures
-3. Update `main.py` to instantiate your adapter instead of `PyViewWebAdapter`
-
-Example structure:
-
-```python
-from mvg_departures.domain.ports import DisplayAdapter
-
-class MyDeviceAdapter(DisplayAdapter):
-    async def display_departures(self, direction_groups):
-        # Render to your device
-        pass
-
-    async def start(self):
-        # Initialize device
-        pass
-
-    async def stop(self):
-        # Cleanup
-        pass
-```
+For development-related topics including running tests, code quality, and extending the application, see [docs/development.md](docs/development.md).
 
 ## License
 
