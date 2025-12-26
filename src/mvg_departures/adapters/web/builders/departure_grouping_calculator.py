@@ -128,7 +128,8 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
         self.header_background_brightness = header_background_brightness
 
     def calculate_display_data(
-        self, direction_groups: list[tuple[str, str, list[Departure]]]
+        self,
+        direction_groups: list[tuple[str, str, str, list[Departure], bool | None, float | None]],
     ) -> dict[str, Any]:
         """Calculate display data structure from direction groups.
 
@@ -144,7 +145,14 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
         stops_with_departures: set[str] = set()
         current_stop: str | None = None
 
-        for stop_name, direction_name, departures in direction_groups:
+        for (
+            station_id,
+            stop_name,
+            direction_name,
+            departures,
+            random_colors,
+            brightness,
+        ) in direction_groups:
             if departures:
                 direction_clean = direction_name.lstrip("->")
                 combined_header = f"{stop_name} → {direction_clean}"
@@ -210,10 +218,13 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
                     )
 
                 group_data: dict[str, Any] = {
+                    "station_id": station_id,
                     "stop_name": stop_name,
                     "header": combined_header,
                     "departures": departure_data,
                     "is_new_stop": is_new_stop,
+                    "random_header_colors": random_colors,
+                    "header_background_brightness": brightness,
                 }
 
                 groups_with_departures.append(group_data)
@@ -237,31 +248,28 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
 
         # Generate header colors for non-first headers if random_header_colors is enabled
         # First header uses the configured banner_color, so skip it
-        # Check stop-level config first, then fall back to route-level config
-        # Create a mapping of stop_name -> stop_config for quick lookup
-        stop_config_map = {
-            stop_config.station_name: stop_config for stop_config in self.stop_configs
-        }
-
+        # Use config settings from group data (passed directly, no matching needed)
         # Track index for better color distribution
         color_index = 0
         for group in groups_with_departures:
             if not group.get("is_first_header", False):
                 header_text = group.get("header", "")
-                stop_name = group.get("stop_name", "")
+                # Get settings from group data (stop-level if provided, None means use route-level)
+                group_random_colors = group.get("random_header_colors")
+                group_brightness = group.get("header_background_brightness")
 
                 if header_text:
-                    # Check if this stop has its own random_header_colors setting
-                    stop_config = stop_config_map.get(stop_name)
-                    use_random_colors = self.random_header_colors
-                    brightness = self.header_background_brightness
-
-                    if stop_config:
-                        # Use stop-level setting if provided, otherwise use route-level
-                        if stop_config.random_header_colors is not None:
-                            use_random_colors = stop_config.random_header_colors
-                        if stop_config.header_background_brightness is not None:
-                            brightness = stop_config.header_background_brightness
+                    # Use stop-level setting if provided, otherwise use route-level default
+                    use_random_colors = (
+                        group_random_colors
+                        if group_random_colors is not None
+                        else self.random_header_colors
+                    )
+                    brightness = (
+                        group_brightness
+                        if group_brightness is not None
+                        else self.header_background_brightness
+                    )
 
                     if use_random_colors:
                         group["header_color"] = generate_pastel_color_from_text(

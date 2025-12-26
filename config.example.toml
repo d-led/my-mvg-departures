@@ -82,6 +82,12 @@ ungrouped_title = "Other/U-/S-Bahn"
 # If using base station_id (e.g., "de:09162:1108"), shows departures from all physical stops
 # Use 'mvg-config routes <station_id>' to see available stop points and copy/paste the ID
 
+# Exclude destinations as they'll be handled by another config
+# Supports route ("54"), destination ("Messestadt"), or route+destination ("54 Münchner Freiheit")
+exclude_destinations = [
+    "54",
+]
+
 [stops.direction_mappings]
 # Patterns match: "line destination" or "transport_type line destination"
 # Examples: "139 Messestadt West" or "Bus 139 Messestadt West"
@@ -105,11 +111,6 @@ ungrouped_title = "Other/U-/S-Bahn"
     "220",
 ]
 
-# Group destinations heading toward Tegernseer Landstraße (north)
-"->Tegernseer" = [
-    "54 Lorettoplatz",
-]
-
 # Group destinations heading toward Ostbahnhof
 "->Ostbahnhof" = [
     "54 Münchner Freiheit",
@@ -120,12 +121,24 @@ ungrouped_title = "Other/U-/S-Bahn"
     "18 Gondrellplatz",
 ]
 
+# We know the destinations for this stop, so we can exclude them from the other stop
+# and show these ungrouped
+[[stops]]
+station_id = "de:09162:1110:4:4"
+station_name = "Giesing"
+ungrouped_title = "Tegernseer Str."
+max_departures_per_stop = 3
+max_departures_per_route = 2
+random_header_colors = true
+show_ungrouped = true
+
 # Second stop: Balanstraße
 [[stops]]
 station_id = "de:09162:1056"
 station_name = "Balanstr."
 max_departures_per_stop = 4
 max_departures_per_route = 2
+random_header_colors = true
 show_ungrouped = false
 
 [stops.direction_mappings]

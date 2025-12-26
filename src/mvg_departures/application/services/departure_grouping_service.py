@@ -64,6 +64,20 @@ class DepartureGroupingService:
         direction_groups: dict[str, list[Departure]] = {}
         ungrouped: list[Departure] = []
 
+        # Filter out blacklisted departures first
+        if stop_config.exclude_destinations:
+            initial_count = len(departures)
+            departures = [
+                d
+                for d in departures
+                if not self._matches_departure(d, stop_config.exclude_destinations)
+            ]
+            filtered_count = initial_count - len(departures)
+            if filtered_count > 0:
+                logger.debug(
+                    f"Filtered out {filtered_count} blacklisted departures for {stop_config.station_name}"
+                )
+
         # Log what we're trying to match
         if not stop_config.direction_mappings:
             logger.warning(f"No direction_mappings configured for {stop_config.station_name}")

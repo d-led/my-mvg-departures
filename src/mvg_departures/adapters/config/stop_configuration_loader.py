@@ -29,6 +29,7 @@ class StopConfigurationLoader:
             departure_leeway_minutes = stop_data.get("departure_leeway_minutes", 0)
             random_header_colors = stop_data.get("random_header_colors")
             header_background_brightness = stop_data.get("header_background_brightness")
+            exclude_destinations = stop_data.get("exclude_destinations", [])
 
             if not station_id:
                 continue
@@ -50,6 +51,14 @@ class StopConfigurationLoader:
             else:
                 header_background_brightness = None
 
+            # Validate exclude_destinations is a list
+            if not isinstance(exclude_destinations, list):
+                exclude_destinations = []
+            # Ensure all items are strings
+            exclude_destinations = [
+                str(item) for item in exclude_destinations if isinstance(item, (str, int))
+            ]
+
             stop_config = StopConfiguration(
                 station_id=station_id,
                 station_name=station_name,
@@ -61,6 +70,7 @@ class StopConfigurationLoader:
                 departure_leeway_minutes=departure_leeway_minutes,
                 random_header_colors=random_header_colors,
                 header_background_brightness=header_background_brightness,
+                exclude_destinations=exclude_destinations,
             )
             stop_configs.append(stop_config)
 

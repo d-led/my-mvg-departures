@@ -126,7 +126,7 @@ class ApiPoller(ApiPollerProtocol):
 
     async def _process_and_broadcast(self) -> None:
         """Process departures (from cache or API) and broadcast update."""
-        all_groups: list[tuple[str, str, list[Departure]]] = []
+        all_groups: list[tuple[str, str, str, list[Departure], bool | None, float | None]] = []
         has_errors = False
 
         for stop_config in self.stop_configs:
@@ -184,7 +184,28 @@ class ApiPoller(ApiPollerProtocol):
                                 f"Duplicate departure detected and removed: {dep.line} to {dep.destination} at {dep.time}"
                             )
                     stop_groups.append((direction_name, unique_departures))
-                    all_groups.append((stop_config.station_name, direction_name, unique_departures))
+                    # Include config settings directly - no matching needed
+                    # Use stop-level settings if provided, otherwise use route-level defaults
+                    random_colors = (
+                        stop_config.random_header_colors
+                        if stop_config.random_header_colors is not None
+                        else None  # Will use route-level default in calculator
+                    )
+                    brightness = (
+                        stop_config.header_background_brightness
+                        if stop_config.header_background_brightness is not None
+                        else None  # Will use route-level default in calculator
+                    )
+                    all_groups.append(
+                        (
+                            stop_config.station_id,
+                            stop_config.station_name,
+                            direction_name,
+                            unique_departures,
+                            random_colors,
+                            brightness,
+                        )
+                    )
                 # Cache successful processing - always replace with fresh data
                 self.cached_departures[stop_config.station_name] = stop_groups
                 logger.debug(f"Successfully processed departures for {stop_config.station_name}")
@@ -213,8 +234,26 @@ class ApiPoller(ApiPollerProtocol):
                         stale_departures = [
                             replace(dep, is_realtime=False) for dep in cached_departures
                         ]
+                        # Include config settings directly - no matching needed
+                        random_colors = (
+                            stop_config.random_header_colors
+                            if stop_config.random_header_colors is not None
+                            else None
+                        )
+                        brightness = (
+                            stop_config.header_background_brightness
+                            if stop_config.header_background_brightness is not None
+                            else None
+                        )
                         all_groups.append(
-                            (stop_config.station_name, direction_name, stale_departures)
+                            (
+                                stop_config.station_id,
+                                stop_config.station_name,
+                                direction_name,
+                                stale_departures,
+                                random_colors,
+                                brightness,
+                            )
                         )
                 # Continue with other stops even if one fails
 

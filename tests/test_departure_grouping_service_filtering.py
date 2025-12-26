@@ -248,3 +248,254 @@ def test_filter_and_limit_departures_with_no_leeway() -> None:
     result = service._filter_and_limit_departures(departures, stop_config)
 
     assert len(result) == 1
+
+
+def test_group_departures_excludes_blacklisted_route() -> None:
+    """Given departures with blacklisted route, when grouping, then excludes blacklisted departures."""
+    service = DepartureGroupingService(MockDepartureRepository([]))
+    now = datetime.now(UTC)
+
+    stop_config = StopConfiguration(
+        station_id="de:09162:70",
+        station_name="Test Station",
+        direction_mappings={"->City": ["U3"]},
+        exclude_destinations=["54"],  # Blacklist route 54
+        show_ungrouped=True,
+    )
+
+    departures = [
+        Departure(
+            time=now + timedelta(minutes=10),
+            planned_time=now + timedelta(minutes=10),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U3",
+            destination="Giesing",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(minutes=11),
+            planned_time=now + timedelta(minutes=11),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="54",
+            destination="Münchner Freiheit",
+            transport_type="Bus",
+            icon="mdi:bus",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(minutes=12),
+            planned_time=now + timedelta(minutes=12),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U6",
+            destination="Giesing",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+    ]
+
+    result = service.group_departures(departures, stop_config)
+
+    # Should have U3 in ->City group and U6 in ungrouped, but not route 54
+    assert len(result) == 2
+    direction_names = [name for name, _ in result]
+    assert "->City" in direction_names
+    assert "Other" in direction_names
+
+    # Check that route 54 is not in any group
+    all_departures = [dep for _, deps in result for dep in deps]
+    assert not any(dep.line == "54" for dep in all_departures)
+    assert any(dep.line == "U3" for dep in all_departures)
+    assert any(dep.line == "U6" for dep in all_departures)
+
+
+def test_group_departures_excludes_blacklisted_destination() -> None:
+    """Given departures with blacklisted destination, when grouping, then excludes blacklisted departures."""
+    service = DepartureGroupingService(MockDepartureRepository([]))
+    now = datetime.now(UTC)
+
+    stop_config = StopConfiguration(
+        station_id="de:09162:70",
+        station_name="Test Station",
+        direction_mappings={"->City": ["U3"]},
+        exclude_destinations=["Messestadt"],  # Blacklist destination
+        show_ungrouped=True,
+    )
+
+    departures = [
+        Departure(
+            time=now + timedelta(minutes=10),
+            planned_time=now + timedelta(minutes=10),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U3",
+            destination="Giesing",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(minutes=11),
+            planned_time=now + timedelta(minutes=11),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U2",
+            destination="Messestadt Ost",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(minutes=12),
+            planned_time=now + timedelta(minutes=12),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U6",
+            destination="Giesing",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+    ]
+
+    result = service.group_departures(departures, stop_config)
+
+    # Should have U3 in ->City group and U6 in ungrouped, but not U2 to Messestadt
+    all_departures = [dep for _, deps in result for dep in deps]
+    assert not any(dep.destination == "Messestadt Ost" for dep in all_departures)
+    assert any(dep.line == "U3" for dep in all_departures)
+    assert any(dep.line == "U6" for dep in all_departures)
+
+
+def test_group_departures_excludes_blacklisted_route_and_destination() -> None:
+    """Given departures with blacklisted route+destination, when grouping, then excludes only matching combination."""
+    service = DepartureGroupingService(MockDepartureRepository([]))
+    now = datetime.now(UTC)
+
+    stop_config = StopConfiguration(
+        station_id="de:09162:70",
+        station_name="Test Station",
+        direction_mappings={"->City": ["U3"]},
+        exclude_destinations=["54 Münchner Freiheit"],  # Blacklist specific route+destination
+        show_ungrouped=True,
+    )
+
+    departures = [
+        Departure(
+            time=now + timedelta(minutes=10),
+            planned_time=now + timedelta(minutes=10),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="54",
+            destination="Münchner Freiheit",  # Should be excluded
+            transport_type="Bus",
+            icon="mdi:bus",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(minutes=11),
+            planned_time=now + timedelta(minutes=11),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="54",
+            destination="Lorettoplatz",  # Should NOT be excluded (different destination)
+            transport_type="Bus",
+            icon="mdi:bus",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(minutes=12),
+            planned_time=now + timedelta(minutes=12),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U3",
+            destination="Giesing",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+    ]
+
+    result = service.group_departures(departures, stop_config)
+
+    # Should have U3 in ->City group and route 54 to Lorettoplatz in ungrouped, but not route 54 to Münchner Freiheit
+    all_departures = [dep for _, deps in result for dep in deps]
+    assert not any(
+        dep.line == "54" and dep.destination == "Münchner Freiheit" for dep in all_departures
+    )
+    assert any(dep.line == "54" and dep.destination == "Lorettoplatz" for dep in all_departures)
+    assert any(dep.line == "U3" for dep in all_departures)
+
+
+def test_group_departures_with_empty_blacklist() -> None:
+    """Given departures with empty blacklist, when grouping, then includes all departures."""
+    service = DepartureGroupingService(MockDepartureRepository([]))
+    now = datetime.now(UTC)
+
+    stop_config = StopConfiguration(
+        station_id="de:09162:70",
+        station_name="Test Station",
+        direction_mappings={"->City": ["U3"]},
+        exclude_destinations=[],  # Empty blacklist
+        show_ungrouped=True,
+    )
+
+    departures = [
+        Departure(
+            time=now + timedelta(minutes=10),
+            planned_time=now + timedelta(minutes=10),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U3",
+            destination="Giesing",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(minutes=11),
+            planned_time=now + timedelta(minutes=11),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="54",
+            destination="Münchner Freiheit",
+            transport_type="Bus",
+            icon="mdi:bus",
+            is_cancelled=False,
+            messages=[],
+        ),
+    ]
+
+    result = service.group_departures(departures, stop_config)
+
+    # Should have all departures
+    all_departures = [dep for _, deps in result for dep in deps]
+    assert len(all_departures) == 2
+    assert any(dep.line == "U3" for dep in all_departures)
+    assert any(dep.line == "54" for dep in all_departures)

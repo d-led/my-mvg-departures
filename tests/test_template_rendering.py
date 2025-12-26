@@ -49,7 +49,7 @@ def test_prepare_template_data_includes_line_and_destination() -> None:
     )
 
     view = _create_test_view()
-    direction_groups = [("Universität", "->Giesing", [departure])]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
     template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
     assert len(template_data["groups_with_departures"]) == 1
@@ -78,7 +78,7 @@ def test_prepare_template_data_cancelled_sets_flag() -> None:
     )
 
     view = _create_test_view()
-    direction_groups = [("Universität", "->Giesing", [departure])]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
     template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
     dep_data = template_data["groups_with_departures"][0]["departures"][0]
@@ -103,7 +103,7 @@ def test_prepare_template_data_delay_sets_flag() -> None:
     )
 
     view = _create_test_view()
-    direction_groups = [("Universität", "->Giesing", [departure])]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
     template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
     dep_data = template_data["groups_with_departures"][0]["departures"][0]
@@ -130,7 +130,7 @@ def test_prepare_template_data_realtime_sets_flag() -> None:
     )
 
     view = _create_test_view()
-    direction_groups = [("Universität", "->Giesing", [departure])]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
     template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
     dep_data = template_data["groups_with_departures"][0]["departures"][0]
@@ -155,7 +155,7 @@ def test_prepare_template_data_platform_when_present() -> None:
     )
 
     view = _create_test_view()
-    direction_groups = [("Universität", "->Giesing", [departure])]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
     template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
     dep_data = template_data["groups_with_departures"][0]["departures"][0]
@@ -180,7 +180,7 @@ def test_prepare_template_data_platform_when_missing() -> None:
     )
 
     view = _create_test_view()
-    direction_groups = [("Universität", "->Giesing", [departure])]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
     template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
     dep_data = template_data["groups_with_departures"][0]["departures"][0]
@@ -214,7 +214,7 @@ def test_prepare_template_data_single_departure() -> None:
     )
 
     view = _create_test_view()
-    direction_groups = [("Universität", "->Giesing", [departure])]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
     template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
     assert template_data["has_departures"] is True
@@ -254,8 +254,8 @@ def test_prepare_template_data_multiple_departures() -> None:
 
     view = _create_test_view()
     direction_groups = [
-        ("Universität", "->Giesing", [departure1]),
-        ("Universität", "->Klinikum Großhadern", [departure2]),
+        ("de:09162:70", "Universität", "->Giesing", [departure1], None, None),
+        ("de:09162:70", "Universität", "->Klinikum Großhadern", [departure2], None, None),
     ]
     template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
@@ -266,7 +266,7 @@ def test_prepare_template_data_multiple_departures() -> None:
 def test_prepare_template_data_stop_without_departures() -> None:
     """Given a stop with no departures, when preparing template data, then it is in stops_without_departures."""
     view = _create_test_view()
-    direction_groups = [("Universität", "->Giesing", [])]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [], None, None)]
     template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
     assert template_data["has_departures"] is False
@@ -291,7 +291,7 @@ def test_prepare_template_data_first_header_flag() -> None:
     )
 
     view = _create_test_view()
-    direction_groups = [("Universität", "->Giesing", [departure])]
+    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None)]
     template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
     group = template_data["groups_with_departures"][0]
@@ -332,8 +332,8 @@ def test_prepare_template_data_new_stop_flag() -> None:
 
     view = _create_test_view()
     direction_groups = [
-        ("Universität", "->Giesing", [departure1]),
-        ("Marienplatz", "->Klinikum Großhadern", [departure2]),
+        ("de:09162:70", "Universität", "->Giesing", [departure1], None, None),
+        ("de:09162:71", "Marienplatz", "->Klinikum Großhadern", [departure2], None, None),
     ]
     template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
@@ -365,7 +365,7 @@ async def test_render_includes_line_and_destination() -> None:
     from mvg_departures.adapters.web.state import DeparturesState
 
     state = DeparturesState(
-        direction_groups=[("Universität", "->Giesing", [departure])],
+        direction_groups=[("de:09162:70", "Universität", "->Giesing", [departure], None, None)],
         last_update=now,
         api_status="success",
     )
@@ -397,7 +397,7 @@ async def test_render_cancelled_applies_class() -> None:
     from mvg_departures.adapters.web.state import DeparturesState
 
     state = DeparturesState(
-        direction_groups=[("Universität", "->Giesing", [departure])],
+        direction_groups=[("de:09162:70", "Universität", "->Giesing", [departure], None, None)],
         last_update=now,
         api_status="success",
     )
@@ -428,7 +428,7 @@ async def test_render_delay_applies_class() -> None:
     from mvg_departures.adapters.web.state import DeparturesState
 
     state = DeparturesState(
-        direction_groups=[("Universität", "->Giesing", [departure])],
+        direction_groups=[("de:09162:70", "Universität", "->Giesing", [departure], None, None)],
         last_update=now,
         api_status="success",
     )
@@ -460,7 +460,7 @@ async def test_render_realtime_applies_class() -> None:
     from mvg_departures.adapters.web.state import DeparturesState
 
     state = DeparturesState(
-        direction_groups=[("Universität", "->Giesing", [departure])],
+        direction_groups=[("de:09162:70", "Universität", "->Giesing", [departure], None, None)],
         last_update=now,
         api_status="success",
     )
@@ -491,7 +491,7 @@ async def test_render_platform_when_present() -> None:
     from mvg_departures.adapters.web.state import DeparturesState
 
     state = DeparturesState(
-        direction_groups=[("Universität", "->Giesing", [departure])],
+        direction_groups=[("de:09162:70", "Universität", "->Giesing", [departure], None, None)],
         last_update=now,
         api_status="success",
     )
@@ -550,8 +550,8 @@ async def test_render_stop_without_departures() -> None:
     # One stop has departures, one doesn't
     state = DeparturesState(
         direction_groups=[
-            ("Universität", "->Giesing", [departure]),
-            ("Marienplatz", "->Ostbahnhof", []),
+            ("de:09162:70", "Universität", "->Giesing", [departure], None, None),
+            ("de:09162:71", "Marienplatz", "->Ostbahnhof", [], None, None),
         ],
         last_update=now,
         api_status="success",

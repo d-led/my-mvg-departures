@@ -11,11 +11,14 @@ if TYPE_CHECKING:
 class StateUpdaterProtocol(Protocol):
     """Protocol for updating departures state."""
 
-    def update_departures(self, direction_groups: list[tuple[str, str, list["Departure"]]]) -> None:
+    def update_departures(
+        self,
+        direction_groups: list[tuple[str, str, str, list["Departure"], bool | None, float | None]],
+    ) -> None:
         """Update the direction groups in the state.
 
         Args:
-            direction_groups: List of (station_name, direction_name, departures) tuples.
+            direction_groups: List of (station_id, station_name, direction_name, departures, random_header_colors, header_background_brightness) tuples.
         """
         ...
 
