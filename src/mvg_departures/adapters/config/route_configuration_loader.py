@@ -33,6 +33,13 @@ class RouteConfigurationLoader:
         header_background_brightness = stop_data.get("header_background_brightness")
         random_color_salt = stop_data.get("random_color_salt")
         exclude_destinations = stop_data.get("exclude_destinations", [])
+        # API provider per stop, fallback to global config
+        api_provider = stop_data.get("api_provider", config.api_provider)
+        # hafas_profile can be None (auto-detect), empty string, or a specific profile
+        hafas_profile = stop_data.get("hafas_profile", config.hafas_profile)
+        # Convert empty string to None for auto-detection
+        if hafas_profile == "":
+            hafas_profile = None
 
         if not station_id:
             return None
@@ -97,6 +104,8 @@ class RouteConfigurationLoader:
             header_background_brightness=header_background_brightness,
             random_color_salt=random_color_salt,
             exclude_destinations=exclude_destinations,
+            api_provider=api_provider,
+            hafas_profile=hafas_profile,
         )
 
     @staticmethod

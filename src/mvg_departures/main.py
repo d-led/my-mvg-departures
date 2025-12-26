@@ -6,12 +6,12 @@ import sys
 
 import aiohttp
 
+from mvg_departures.adapters.composite_departure_repository import (
+    CompositeDepartureRepository,
+)
 from mvg_departures.adapters.config import AppConfig
 from mvg_departures.adapters.config.route_configuration_loader import (
     RouteConfigurationLoader,
-)
-from mvg_departures.adapters.mvg_api import (
-    MvgDepartureRepository,
 )
 from mvg_departures.adapters.web import PyViewWebAdapter
 from mvg_departures.application.services import DepartureGroupingService
@@ -60,15 +60,27 @@ async def main() -> None:
 
     # Create aiohttp session for efficient HTTP connections
     async with aiohttp.ClientSession() as session:
-        # Initialize repositories
-        departure_repo = MvgDepartureRepository(session=session)
+        # Collect all stop configurations from all routes
+        all_stop_configs = []
+        for route_config in route_configs:
+            all_stop_configs.extend(route_config.stop_configs)
+
+        # Initialize composite repository that routes to correct API per stop
+        departure_repo = CompositeDepartureRepository(
+            stop_configs=all_stop_configs,
+            session=session,
+        )
 
         # Initialize services
         grouping_service = DepartureGroupingService(departure_repo)
 
         # Initialize display adapter
         display_adapter = PyViewWebAdapter(
-            grouping_service, route_configs, config, departure_repo, session=session
+            grouping_service,
+            route_configs,
+            config,
+            departure_repository=departure_repo,
+            session=session,
         )
 
         try:

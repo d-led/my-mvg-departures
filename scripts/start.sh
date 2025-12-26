@@ -41,7 +41,7 @@ else
 fi
 
 # Check if package is installed by trying to import it
-if ! "$PYTHON" -c "import mvg_departures" 2>/dev/null; then
+if ! "$PYTHON" "$SCRIPT_DIR/check_package_installed.py" 2>/dev/null; then
     echo "Package not installed. Installing..." >&2
     echo "" >&2
     

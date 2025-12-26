@@ -51,7 +51,8 @@ class MvgDepartureRepository(DepartureRepository):
                     "accept": "application/json",
                     "user-agent": "Mozilla/5.0",
                 }
-                async with self._session.get(url, headers=headers) as response:
+                # Disable SSL verification for MVG API (may have certificate issues in some environments)
+                async with self._session.get(url, headers=headers, ssl=False) as response:
                     if response.status == 200:
                         raw_results = await response.json()
             except Exception:

@@ -19,7 +19,7 @@ if ! command -v python3 >/dev/null 2>&1; then
     exit 1
 fi
 
-PYTHON_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+PYTHON_VERSION=$(python3 "$SCRIPT_DIR/get_python_version.py")
 REQUIRED_VERSION="3.12"
 
 if [ "$(printf '%s\n' "$REQUIRED_VERSION" "$PYTHON_VERSION" | sort -V | head -n1)" != "$REQUIRED_VERSION" ]; then

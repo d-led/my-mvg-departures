@@ -31,9 +31,10 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",
     "pytest-archon>=0.0.7",
-    "black>=24.10.0",
+    "black>=25.12.0",
     "ruff>=0.8.0",
     "mypy>=1.13.0",
+    "types-pytz>=2024.1.0",
 ]
 
 [project.scripts]
@@ -59,11 +60,6 @@ target-version = "py312"
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "DTZ", "T10", "SIM", "ARG", "PIE", "PT", "RET", "TCH", "TID", "Q", "RUF"]
 ignore = ["E501"]
 
-[tool.ruff.lint.flake8-type-checking]
-# These classes are used at runtime (attribute access, method calls)
-# so they should not be moved to TYPE_CHECKING blocks
-runtime-evaluated-base-classes = ["AppConfig", "RouteConfiguration", "StopConfiguration", "DepartureGroupingService", "PresenceTrackerProtocol"]
-
 [tool.mypy]
 python_version = "3.12"
 warn_return_any = true
@@ -82,6 +78,9 @@ module = [
     "pyview.*",
     "tomli.*",
     "throttled.*",
+    "pyhafas.*",
+    "requests",
+    "requests.*",
 ]
 ignore_missing_imports = true
 
@@ -94,5 +93,6 @@ asyncio_mode = "auto"
 addopts = "-v --cov=mvg_departures --cov-report=term-missing --cov-report=html"
 markers = [
     "asyncio: marks tests as async (deselect with '-m \"not asyncio\"')",
+    "integration: marks tests as integration tests that require network access (deselect with '-m \"not integration\"')",
 ]
 

@@ -281,3 +281,139 @@ show_ungrouped = false
 [routes.stops.direction_mappings]
 # Direction title includes walking time - helps coordinate when to leave
 "->Stachus (in 15+ min)" = ["27 Sendlinger Tor", "28 Sendlinger Tor"]
+
+# Example: Berlin Hardenbergstraße using HAFAS with VBB profile
+# Berlin stations work with HAFAS using VBB or BVG profiles
+# Based on hafas-client: https://github.com/public-transport/hafas-client/tree/main/p/vbb
+[[routes]]
+path = "/berlin-hardenbergstrasse"
+
+[[routes.display]]
+title = "Berlin Hardenbergstraße Departures"
+theme = "light"
+fill_vertical_space = true
+random_header_colors = true
+
+[[routes.stops]]
+# Station ID for Zoologischer Garten (Berlin)
+# Using VBB REST API which works better for Berlin stations
+# Found using: curl "https://v6.bvg.transport.rest/locations?query=Zoologischer%20Garten"
+station_id = "900023201"  # S+U Zoologischer Garten Bhf (Berlin)
+station_name = "Zoologischer Garten"
+api_provider = "vbb"  # Use VBB REST API for Berlin (more reliable than HAFAS)
+max_departures_per_stop = 15
+max_departures_per_route = 2
+show_ungrouped = true
+
+[routes.stops.direction_mappings]
+# U-Bahn and Bus routes from Zoologischer Garten
+"->City Center" = ["Pankow", "Bus 100"]
+"->West" = ["Ruhleben", "Bus M45", "Bus M46"]
+
+[[routes.stops]]
+# Station ID for Ernst-Reuter-Platz (Berlin)
+# Using VBB REST API which works better for Berlin stations
+# Found using: curl "https://v6.bvg.transport.rest/locations?query=Ernst-Reuter-Platz"
+station_id = "900023101"  # U Ernst-Reuter-Platz (Berlin)
+station_name = "Ernst-Reuter-Platz"
+api_provider = "vbb"  # Use VBB REST API for Berlin (more reliable than HAFAS)
+max_departures_per_stop = 15
+max_departures_per_route = 2
+show_ungrouped = true
+
+[routes.stops.direction_mappings]
+# U-Bahn and Bus routes from Ernst-Reuter-Platz
+"->City Center" = ["Pankow", "Bus M45"]
+"->West" = ["Ruhleben", "Bus M46"]
+
+# Example: Karlsruhe Marktplatz with two different U-Bahn stops
+# NOTE: These are placeholder station IDs that need to be replaced with actual IDs
+# To find HAFAS stations and get the correct profile, use:
+#   hafas-config search "Marktplatz Karlsruhe"
+#   hafas-config detect <station_id>  # If you have a station ID from URL
+# Note: Karlsruhe uses KVV (Karlsruher Verkehrsverbund) - you may need to find the correct profile
+# This route is commented out until actual station IDs are found
+# [[routes]]
+# path = "/karlsruhe-marktplatz"
+#
+# [[routes.display]]
+# title = "Karlsruhe Marktplatz Departures"
+# theme = "light"
+# fill_vertical_space = true
+#
+# [[routes.stops]]
+# # HAFAS station ID for Marktplatz (Kaiserstraße U), Karlsruhe
+# # Find using: hafas-config search "Marktplatz Kaiserstraße Karlsruhe"
+# # Or search for the station ID from KVV website/app
+# station_id = "8000001"  # Placeholder - replace with actual station ID
+# station_name = "Marktplatz (Kaiserstraße U)"
+# api_provider = "hafas"
+# hafas_profile = "db"  # Replace with correct profile (may need KVV profile if available)
+# max_departures_per_stop = 12
+# max_departures_per_route = 2
+# show_ungrouped = true
+#
+# [routes.stops.direction_mappings]
+# # Stadtbahn (tram-train) routes from Marktplatz (Kaiserstraße U)
+# # Adjust destinations based on actual routes available at this stop
+# # Common Karlsruhe lines: S1, S11, S2, S4, S5, S51, S52, and various tram lines
+# "->Nord" = [
+#     "S1 Hochstetten",
+#     "S11 Hochstetten",
+#     "S2 Spöck",
+#     "S4 Achern",
+# ]
+# "->Süd" = [
+#     "S1 Ettlingen",
+#     "S11 Ettlingen",
+#     "S2 Rheinstetten",
+#     "S5 Wörth",
+# ]
+# "->Ost" = [
+#     "S1 Pforzheim",
+#     "S11 Pforzheim",
+#     "S4 Öhringen",
+#     "S5 Pforzheim",
+# ]
+# "->West" = [
+#     "S1 Baden-Baden",
+#     "S11 Baden-Baden",
+#     "S2 Rastatt",
+#     "S5 Bietigheim",
+# ]
+#
+# [[routes.stops]]
+# # HAFAS station ID for Marktplatz (Pyramide U), Karlsruhe
+# # Find using: hafas-config search "Marktplatz Pyramide Karlsruhe"
+# # Or search for the station ID from KVV website/app
+# station_id = "8000002"  # Placeholder - replace with actual station ID
+# station_name = "Marktplatz (Pyramide U)"
+# api_provider = "hafas"
+# hafas_profile = "db"  # Replace with correct profile (may need KVV profile if available)
+# max_departures_per_stop = 12
+# max_departures_per_route = 2
+# show_ungrouped = true
+#
+# [routes.stops.direction_mappings]
+# # Stadtbahn (tram-train) routes from Marktplatz (Pyramide U)
+# # Different directions/routes than Kaiserstraße stop
+# "->Nord" = [
+#     "S1 Hochstetten",
+#     "S11 Hochstetten",
+#     "S51 Karlsruhe Hbf",
+# ]
+# "->Süd" = [
+#     "S1 Ettlingen",
+#     "S11 Ettlingen",
+#     "S52 Karlsruhe Hbf",
+# ]
+# "->Ost" = [
+#     "S1 Pforzheim",
+#     "S11 Pforzheim",
+#     "S4 Öhringen",
+# ]
+# "->West" = [
+#     "S1 Baden-Baden",
+#     "S11 Baden-Baden",
+#     "S5 Bietigheim",
+# ]

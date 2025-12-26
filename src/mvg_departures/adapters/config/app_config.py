@@ -27,6 +27,16 @@ class AppConfig(BaseSettings):
     port: int = Field(default=8000, description="Port to bind the server to")
     reload: bool = Field(default=False, description="Enable auto-reload for development")
 
+    # API provider configuration
+    api_provider: str = Field(
+        default="mvg",
+        description="API provider to use: 'mvg' (default) or 'hafas' (optional)",
+    )
+    hafas_profile: str | None = Field(
+        default=None,
+        description="HAFAS profile to use when api_provider='hafas' (e.g., 'db', 'vvo'). None = auto-detect",
+    )
+
     # MVG API configuration
     mvg_api_timeout: int = Field(default=10, description="Timeout for MVG API requests in seconds")
     mvg_api_limit: int = Field(
@@ -191,6 +201,14 @@ class AppConfig(BaseSettings):
             raise ValueError("theme must be either 'light', 'dark', or 'auto'")
         return v.lower()
 
+    @field_validator("api_provider")
+    @classmethod
+    def validate_api_provider(cls, v: str) -> str:
+        """Validate API provider is either 'mvg' or 'hafas'."""
+        if v.lower() not in ("mvg", "hafas"):
+            raise ValueError("api_provider must be either 'mvg' or 'hafas'")
+        return v.lower()
+
     def _load_toml_data(self) -> dict[str, Any]:
         """Load and parse TOML file, updating display settings."""
         if not self.config_file:
@@ -255,6 +273,12 @@ class AppConfig(BaseSettings):
             api_config = toml_data.get("api") or toml_data.get("client", {})
             if "sleep_ms_between_calls" in api_config:
                 self.sleep_ms_between_calls = api_config["sleep_ms_between_calls"]
+            if "api_provider" in api_config:
+                self.api_provider = api_config["api_provider"]
+            if "hafas_profile" in api_config:
+                hafas_profile_value = api_config["hafas_profile"]
+                # Convert empty string to None for auto-detection
+                self.hafas_profile = hafas_profile_value if hafas_profile_value else None
 
             return toml_data
 
