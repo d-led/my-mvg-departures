@@ -23,6 +23,7 @@ dependencies = [
     "pydantic-settings>=2.6.0",  # Depends on pydantic (transitive via pyview-web)
     "aiohttp>=3.11.0",
     "throttled-py>=3.0.0",
+    "pyhafas>=0.6.1",  # HAFAS API client for public transport data
 ]
 
 [project.optional-dependencies]
