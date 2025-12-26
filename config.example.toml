@@ -67,6 +67,12 @@ departure_leeway_minutes = 0
 # If false, only show departures matching direction_mappings (strict whitelist)
 # If true, show unmatched departures in "Other" group
 show_ungrouped = true
+# Optional: Use stop_point_global_id directly as station_id for physical stop filtering
+# When a station has multiple physical stops (e.g., buses making a loop),
+# define separate [[stops]] entries using the stop_point_global_id as station_id
+# Example: station_id = "de:09162:1108:4:4"  (instead of "de:09162:1108")
+# If using base station_id (e.g., "de:09162:1108"), shows departures from all physical stops
+# Use 'mvg-config routes <station_id>' to see available stop points and copy/paste the ID
 
 [stops.direction_mappings]
 # Patterns match: "line destination" or "transport_type line destination"
@@ -113,6 +119,21 @@ show_ungrouped = false
 [stops.direction_mappings]
 # Group destinations heading toward Giesing
 "->Giesing" = ["139 Klinikum Harlaching", "59 Giesing Bahnhof"]
+
+# Example: Multiple physical stops at the same station
+# If a station has multiple physical stops, define separate [[stops]] entries
+# using the stop_point_global_id directly as the station_id:
+# [[stops]]
+# station_id = "de:09162:1108:5:5"
+# station_name = "Chiemgaustraße (Stop 5)"
+# [stops.direction_mappings]
+# "->Klinikum" = ["139 Klinikum Harlaching"]
+#
+# [[stops]]
+# station_id = "de:09162:1108:4:4"
+# station_name = "Chiemgaustraße (Stop 4)"
+# [stops.direction_mappings]
+# "->Klinikum" = ["139 Klinikum Harlaching"]
 
 # Additional route example
 [[routes]]

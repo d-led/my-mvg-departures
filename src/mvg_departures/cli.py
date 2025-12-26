@@ -54,17 +54,179 @@ async def search_stations(query: str) -> list[dict[str, Any]]:
         return results
 
 
+async def _get_routes_from_endpoint(
+    station_id: str, session: aiohttp.ClientSession
+) -> dict[str, Any] | None:
+    """Get routes from the MVG routes endpoint."""
+    try:
+        url = f"https://www.mvg.de/api/bgw-pt/v3/lines/{station_id}"
+        headers = {
+            "accept": "application/json",
+            "user-agent": "Mozilla/5.0",
+        }
+        async with session.get(url, headers=headers) as response:
+            if response.status != 200:
+                return None
+
+            data = await response.json()
+            if not data:
+                return None
+
+            # Parse the routes endpoint response
+            # The structure may vary, so we need to handle it flexibly
+            routes: dict[str, set[str]] = {}  # transport_type + line -> set of destinations
+            route_details: dict[str, dict[str, Any]] = {}  # route_key -> details
+
+            # Handle different possible response structures
+            lines = data if isinstance(data, list) else data.get("lines", [])
+            if not lines and isinstance(data, dict):
+                # Try other possible keys
+                lines = data.get("routes", data.get("data", []))
+
+            for line_info in lines:
+                if not isinstance(line_info, dict):
+                    continue
+
+                # Extract line information
+                line = str(line_info.get("label", line_info.get("line", line_info.get("number", ""))))
+                transport_type = line_info.get("transportType", line_info.get("type", ""))
+                icon = line_info.get("icon", line_info.get("symbol", ""))
+
+                # Get destinations - could be in various formats
+                destinations = []
+                if "destinations" in line_info:
+                    destinations = line_info["destinations"]
+                elif "destination" in line_info:
+                    destinations = [line_info["destination"]]
+                elif "directions" in line_info:
+                    destinations = line_info["directions"]
+                elif "direction" in line_info:
+                    destinations = [line_info["direction"]]
+
+                # Normalize transport type
+                if transport_type:
+                    # Map API transport types to our format
+                    type_map = {
+                        "BUS": "Bus",
+                        "TRAM": "Tram",
+                        "UBAHN": "U-Bahn",
+                        "SBAHN": "S-Bahn",
+                        "REGIONAL_BUS": "Bus",
+                    }
+                    transport_type = type_map.get(transport_type, transport_type)
+
+                route_key = f"{transport_type} {line}"
+                if route_key not in routes:
+                    routes[route_key] = set()
+                    route_details[route_key] = {
+                        "line": line,
+                        "transport_type": transport_type,
+                        "icon": icon,
+                    }
+
+                # Add destinations
+                for dest in destinations:
+                    if isinstance(dest, dict):
+                        dest_name = dest.get("name", dest.get("destination", ""))
+                    else:
+                        dest_name = str(dest)
+                    if dest_name:
+                        routes[route_key].add(dest_name)
+
+            if not routes:
+                return None
+
+            # Check if we actually got any destinations
+            total_destinations = sum(len(destinations) for destinations in routes.values())
+            if total_destinations == 0:
+                # Routes endpoint returned routes but no destinations - fall back to departures
+                return None
+
+            return {
+                "station": {
+                    "id": station_id,
+                    "name": station_id,  # Routes endpoint may not include station name
+                    "place": "München",
+                },
+                "routes": {
+                    route: {
+                        "destinations": sorted(destinations),
+                        **route_details[route],
+                    }
+                    for route, destinations in routes.items()
+                },
+                "source": "routes_endpoint",
+            }
+    except Exception:
+        # If routes endpoint fails, return None to fall back to departures sampling
+        return None
+
+
+async def _get_stop_point_mapping(
+    station_id: str, session: aiohttp.ClientSession, limit: int = 100
+) -> dict[str, set[str]]:
+    """Get mapping of route+destination to stop point IDs from raw API response."""
+    stop_point_mapping: dict[str, set[str]] = {}  # "route_key destination" -> set of stop_point_ids
+
+    try:
+        # Fetch raw departures to get stopPointGlobalId
+        url = f"https://www.mvg.de/api/bgw-pt/v3/departures?globalId={station_id}&limit={limit}&transportTypes=UBAHN,TRAM,SBAHN,BUS,REGIONAL_BUS,BAHN"
+        headers = {
+            "accept": "application/json",
+            "user-agent": "Mozilla/5.0",
+        }
+        async with session.get(url, headers=headers) as response:
+            if response.status == 200:
+                data = await response.json()
+                if isinstance(data, list):
+                    for dep in data:
+                        line = str(dep.get("label", dep.get("line", "")))
+                        destination = str(dep.get("destination", ""))
+                        transport_type = str(dep.get("transportType", dep.get("type", "")))
+                        stop_point_id = dep.get("stopPointGlobalId", "")
+
+                        if line and destination and stop_point_id:
+                            # Normalize transport type
+                            type_map = {
+                                "BUS": "Bus",
+                                "TRAM": "Tram",
+                                "UBAHN": "U-Bahn",
+                                "SBAHN": "S-Bahn",
+                                "REGIONAL_BUS": "Bus",
+                            }
+                            transport_type = type_map.get(transport_type, transport_type)
+
+                            route_key = f"{transport_type} {line}"
+                            mapping_key = f"{route_key}|{destination}"
+
+                            if mapping_key not in stop_point_mapping:
+                                stop_point_mapping[mapping_key] = set()
+                            stop_point_mapping[mapping_key].add(stop_point_id)
+    except Exception:
+        # If stop point mapping fails, continue without it
+        pass
+
+    return stop_point_mapping
+
+
 async def get_station_details(station_id: str, limit: int = 100) -> dict[str, Any] | None:
     """Get detailed information about a station."""
     async with aiohttp.ClientSession() as session:
         try:
+            # Always fetch stop point mapping from raw API
+            stop_point_mapping = await _get_stop_point_mapping(station_id, session, limit)
+
+            # Try to get routes from routes endpoint (for route list)
+            routes_from_endpoint = await _get_routes_from_endpoint(station_id, session)
+
+            # Always use departures sampling for destinations (more reliable)
             # Get departures to infer station info and available routes
             # Use a higher limit to capture all destinations for routes
             departures = await MvgApi.departures_async(station_id, limit=limit, session=session)
             if not departures:
                 return None
 
-            # Extract unique routes and destinations
+            # Extract unique routes and destinations from departures
             routes: dict[str, set[str]] = {}  # transport_type + line -> set of destinations
             route_details: dict[str, dict[str, Any]] = {}  # route_key -> details
 
@@ -84,6 +246,19 @@ async def get_station_details(station_id: str, limit: int = 100) -> dict[str, An
                     }
                 routes[route_key].add(destination)
 
+            # If routes endpoint provided route info, merge it (but keep destinations from departures)
+            if routes_from_endpoint:
+                routes_from_endpoint_data = routes_from_endpoint.get("routes", {})
+                # Update route details from endpoint if available, but keep destinations from departures
+                for route_key, endpoint_route_data in routes_from_endpoint_data.items():
+                    if route_key in routes:
+                        # Merge route details (icon, etc.) but keep our destinations
+                        if isinstance(endpoint_route_data, dict):
+                            route_details[route_key].update({
+                                k: v for k, v in endpoint_route_data.items()
+                                if k != "destinations"  # Don't overwrite destinations
+                            })
+
             # Try to get station name from first departure or use ID
             station_name = station_id
             # The MVG API might not return station name in departures
@@ -102,7 +277,9 @@ async def get_station_details(station_id: str, limit: int = 100) -> dict[str, An
                     }
                     for route, destinations in routes.items()
                 },
+                "stop_point_mapping": stop_point_mapping,
                 "total_departures_found": len(departures),
+                "source": "departures_sampling" + (" + routes_endpoint" if routes_from_endpoint else ""),
             }
         except Exception as e:
             print(f"Error fetching station details: {e}", file=sys.stderr)
@@ -202,6 +379,49 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
         dest_patterns = sorted(unique_destinations)
         dest_pattern_str = ", ".join(f'"{d}"' for d in dest_patterns)
         print(f"  [{dest_pattern_str}]")
+
+    # Show stop point differentiation hints
+    stop_point_mapping = details.get("stop_point_mapping", {})
+    if stop_point_mapping and len(stop_point_mapping) > 0:
+        print("\n" + "=" * 70)
+        print("Stop Point Differentiation Hints:")
+        print("=" * 70)
+        print("\n# Some destinations use different physical stops at this station.")
+        print("# Define separate [[stops]] entries for each physical stop you want to monitor.")
+        print("\n# Stop points by route and destination:")
+
+        # Group by stop point (reverse sorted)
+        stops_with_routes: dict[str, list[tuple[str, str]]] = {}  # stop_point -> list of (route_key, destination)
+        for mapping_key, stop_points in sorted(stop_point_mapping.items()):
+            if "|" in mapping_key:
+                route_key, destination = mapping_key.split("|", 1)
+                for stop_point in stop_points:
+                    if stop_point not in stops_with_routes:
+                        stops_with_routes[stop_point] = []
+                    stops_with_routes[stop_point].append((route_key, destination))
+
+        # Sort stop points in reverse order
+        for stop_point in sorted(stops_with_routes.keys(), reverse=True):
+            stop_num = stop_point.split(":")[-1] if ":" in stop_point else stop_point
+            print(f"\n# Stop {stop_num} ({stop_point}):")
+            print(f'# station_id = "{stop_point}"')
+            # Sort routes and destinations for this stop point
+            for route_key, destination in sorted(stops_with_routes[stop_point]):
+                # Extract line number from route_key (format: "Bus 139" -> "139")
+                line = route_key.split()[-1] if route_key.split() else ""
+                pattern = f"{line} {destination}" if line else destination
+                print(f'  {route_key} -> "{pattern}"')
+
+        # Summary of unique stop points
+        all_stop_points = set()
+        for stop_points in stop_point_mapping.values():
+            all_stop_points.update(stop_points)
+
+        if all_stop_points:
+            print("\n# All unique stop points at this station:")
+            for stop_point in sorted(all_stop_points):
+                stop_num = stop_point.split(":")[-1] if ":" in stop_point else stop_point
+                print(f'#   "{stop_point}"  # Stop {stop_num}')
 
 
 async def search_and_list_routes(query: str, show_patterns: bool = True) -> None:
@@ -307,6 +527,49 @@ async def search_and_list_routes(query: str, show_patterns: bool = True) -> None
             dest_patterns = sorted(unique_destinations)
             dest_pattern_str = ", ".join(f'"{d}"' for d in dest_patterns)
             print(f"    [{dest_pattern_str}]")
+
+        # Show stop point differentiation hints
+        stop_point_mapping = details.get("stop_point_mapping", {})
+        if stop_point_mapping and len(stop_point_mapping) > 0:
+            print("\n  " + "-" * 68)
+            print("  Stop Point Differentiation Hints:")
+            print("  " + "-" * 68)
+            print("\n  # Some destinations use different physical stops at this station.")
+            print("  # Define separate [[stops]] entries for each physical stop you want to monitor.")
+            print("\n  # Stop points by route and destination:")
+
+            # Group by stop point (reverse sorted)
+            stops_with_routes: dict[str, list[tuple[str, str]]] = {}  # stop_point -> list of (route_key, destination)
+            for mapping_key, stop_points in sorted(stop_point_mapping.items()):
+                if "|" in mapping_key:
+                    route_key, destination = mapping_key.split("|", 1)
+                    for stop_point in stop_points:
+                        if stop_point not in stops_with_routes:
+                            stops_with_routes[stop_point] = []
+                        stops_with_routes[stop_point].append((route_key, destination))
+
+            # Sort stop points in reverse order
+            for stop_point in sorted(stops_with_routes.keys(), reverse=True):
+                stop_num = stop_point.split(":")[-1] if ":" in stop_point else stop_point
+                print(f"\n  # Stop {stop_num} ({stop_point}):")
+                print(f'  # station_id = "{stop_point}"')
+                # Sort routes and destinations for this stop point
+                for route_key, destination in sorted(stops_with_routes[stop_point]):
+                    # Extract line number from route_key (format: "Bus 139" -> "139")
+                    line = route_key.split()[-1] if route_key.split() else ""
+                    pattern = f"{line} {destination}" if line else destination
+                    print(f'    {route_key} -> "{pattern}"')
+
+            # Summary of unique stop points
+            all_stop_points = set()
+            for stop_points in stop_point_mapping.values():
+                all_stop_points.update(stop_points)
+
+            if all_stop_points:
+                print("\n  # All unique stop points at this station:")
+                for stop_point in sorted(all_stop_points):
+                    stop_num = stop_point.split(":")[-1] if ":" in stop_point else stop_point
+                    print(f'  #   "{stop_point}"  # Stop {stop_num}')
 
         if i < len(results):
             print()

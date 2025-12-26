@@ -26,11 +26,21 @@ class DepartureGroupingService:
         Fetches a reasonable number of departures from the API, then groups them
         by direction and limits each direction group to max_departures_per_stop.
         """
+        # Extract base station_id if station_id is a stop_point_global_id
+        # API only accepts base stationGlobalId, not stop_point_global_id format
+        station_id_parts = stop_config.station_id.split(":")
+        if len(station_id_parts) >= 5 and station_id_parts[-1] == station_id_parts[-2]:
+            # station_id is a stop_point_global_id (e.g., "de:09162:1108:1:1")
+            # Extract base station_id (e.g., "de:09162:1108")
+            base_station_id = ":".join(station_id_parts[:3])
+        else:
+            base_station_id = stop_config.station_id
+
         # Fetch more departures than needed to ensure we have enough for all directions
         # Use a higher limit (50) to get a good sample, then limit per direction
         fetch_limit = 50
         departures = await self._departure_repository.get_departures(
-            stop_config.station_id, limit=fetch_limit
+            base_station_id, limit=fetch_limit
         )
 
         return self.group_departures(departures, stop_config)
@@ -119,6 +129,27 @@ class DepartureGroupingService:
         Returns:
             Filtered and limited list of departures.
         """
+        # Filter by stop point if station_id is a stop_point_global_id (format: de:09162:1108:X:X)
+        # Check if station_id has the stop point format (contains :X:X pattern)
+        station_id_parts = stop_config.station_id.split(":")
+        if len(station_id_parts) >= 5 and station_id_parts[-1] == station_id_parts[-2]:
+            # station_id is a stop_point_global_id (e.g., "de:09162:1108:1:1")
+            # Filter to only show departures from this specific stop point
+            stop_point_global_id = stop_config.station_id
+            initial_count = len(departures)
+            available_stop_points = set(d.stop_point_global_id for d in departures if d.stop_point_global_id is not None)
+            departures = [
+                d for d in departures
+                if d.stop_point_global_id is not None
+                and d.stop_point_global_id == stop_point_global_id
+            ]
+            filtered_count = len(departures)
+            if initial_count > 0 and filtered_count == 0:
+                logger.warning(
+                    f"Filtered {initial_count} departures by stop_point_global_id={stop_point_global_id}, "
+                    f"but none matched. Available stop_point_global_ids: {available_stop_points}"
+                )
+
         # Filter out departures that are too soon FIRST, so we only count departures that will be shown
         if stop_config.departure_leeway_minutes > 0:
             cutoff_time = datetime.now(UTC) + timedelta(

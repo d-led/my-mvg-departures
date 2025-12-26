@@ -19,3 +19,4 @@ class Departure:
     icon: str
     is_cancelled: bool
     messages: list[str]
+    stop_point_global_id: str | None = None  # Physical stop point identifier (e.g., "de:09162:1108:4:4")
