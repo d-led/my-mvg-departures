@@ -313,7 +313,7 @@ show_ungrouped = true
 [[routes.stops]]
 # Station ID for Ernst-Reuter-Platz (Berlin)
 # Using VBB REST API which works better for Berlin stations
-# Found using: curl "https://v6.bvg.transport.rest/locations?query=Ernst-Reuter-Platz"
+# Found using: vbb-config search "Ernst-Reuter-Platz"
 station_id = "900023101"  # U Ernst-Reuter-Platz (Berlin)
 station_name = "Ernst-Reuter-Platz"
 api_provider = "vbb"  # Use VBB REST API for Berlin (more reliable than HAFAS)
@@ -323,6 +323,9 @@ show_ungrouped = true
 
 [routes.stops.direction_mappings]
 # U-Bahn and Bus routes from Ernst-Reuter-Platz
-"->City Center" = ["Pankow", "Bus M45"]
-"->West" = ["Ruhleben", "Bus M46"]
+# Note: Include line name in match strings for more specific matching
+"->City Center" = ["U2 Pankow", "M45"]
+"->West" = ["U2 Ruhleben", "M46"]
+"->Berliner Str." = ["U9 Osloer Str.", "U9 S+U Bundesplatz (Berlin)"]
 
+    

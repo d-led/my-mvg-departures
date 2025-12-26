@@ -26,21 +26,40 @@ async def search_stations_vbb(query: str) -> list[dict[str, Any]]:
                 locations = data if isinstance(data, list) else data.get("locations", [])
 
                 results = []
+                query_lower = query.lower()
+                query_words = set(query_lower.split())
+
                 for location in locations:
                     location_id = location.get("id", "")
                     location_name = location.get("name", "")
                     location_type = location.get("type", "")
 
                     # Only include stops/stations, not POIs
-                    if location_type in ("stop", "station"):
+                    if location_type not in ("stop", "station"):
+                        continue
+
+                    # Filter by relevance: check if query words appear in station name
+                    location_name_lower = location_name.lower()
+                    # Count how many query words match
+                    matching_words = sum(1 for word in query_words if word in location_name_lower)
+
+                    # Only include if at least one word matches (or exact match)
+                    if matching_words > 0 or query_lower in location_name_lower:
                         results.append(
                             {
                                 "id": location_id,
                                 "name": location_name,
                                 "type": location_type,
                                 "place": location.get("location", {}).get("city", "Berlin"),
+                                "relevance": matching_words,  # For sorting
                             }
                         )
+
+                # Sort by relevance (more matching words first), then alphabetically
+                results.sort(key=lambda x: (-x.get("relevance", 0), x.get("name", "")))
+                # Remove relevance from output
+                for result in results:
+                    result.pop("relevance", None)
 
                 return results
         except Exception as e:
@@ -48,11 +67,14 @@ async def search_stations_vbb(query: str) -> list[dict[str, Any]]:
             return []
 
 
-async def get_station_details_vbb(station_id: str, limit: int = 50) -> dict[str, Any] | None:
+async def get_station_details_vbb(station_id: str) -> dict[str, Any] | None:
     """Get detailed information about a VBB station including routes."""
     base_url = "https://v6.bvg.transport.rest"
     url = f"{base_url}/stops/{station_id}/departures"
-    params: dict[str, int] = {"duration": limit * 2, "results": limit}
+    # Get many departures to capture all unique destinations
+    # Use a longer duration (2 hours) and high result count to get all destinations
+    # This is especially important for lines like U2 which have many stops
+    params: dict[str, int] = {"duration": 120, "results": 300}
 
     async with aiohttp.ClientSession() as session:
         try:
@@ -73,11 +95,18 @@ async def get_station_details_vbb(station_id: str, limit: int = 50) -> dict[str,
                 for dep in departures_data:
                     line_obj = dep.get("line", {})
                     line_name = line_obj.get("name", "") or line_obj.get("id", "") or ""
-                    destination = dep.get("direction", "") or dep.get("destination", "") or ""
                     product = line_obj.get("product", "") or line_obj.get("mode", "") or ""
 
                     if not line_name:
                         continue
+
+                    # Extract destination - prefer destination.name (dict) over direction (string)
+                    destination = ""
+                    dest_obj = dep.get("destination")
+                    if dest_obj and isinstance(dest_obj, dict):
+                        destination = dest_obj.get("name", "") or ""
+                    if not destination:
+                        destination = dep.get("direction", "") or ""
 
                     if line_name not in routes:
                         routes[line_name] = set()
@@ -135,8 +164,12 @@ show_ungrouped = true
             first_dest = destinations[0] if destinations else "Destination"
             direction_name = f"->{first_dest[:20]}"  # Limit length
 
+            # Include line name in match strings (e.g., "U9 Osloer Str." instead of just "Osloer Str.")
+            # This makes matching more specific and avoids conflicts between different lines
+            match_strings = [f"{line} {dest}" for dest in destinations[:3]]
+
             snippet += f"# {transport_type} {line}:\n"
-            snippet += f'# "{direction_name}" = {destinations[:3]}\n'  # Show first 3
+            snippet += f'# "{direction_name}" = {match_strings}\n'  # Show first 3 with line names
             if len(destinations) > 3:
                 snippet += f"#   # ... and {len(destinations) - 3} more destinations\n"
             snippet += "\n"
@@ -170,7 +203,7 @@ async def search_and_show_config(query: str) -> None:
         print("-" * 70)
 
         # Get routes for this station
-        details = await get_station_details_vbb(station_id, limit=50)
+        details = await get_station_details_vbb(station_id)
         if not details:
             print("  No routes found or station has no departures.")
             continue

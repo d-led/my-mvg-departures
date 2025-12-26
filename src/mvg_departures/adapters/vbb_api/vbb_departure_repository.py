@@ -137,7 +137,12 @@ class VbbDepartureRepository(DepartureRepository):
 
                         # Extract other fields
                         platform = dep_data.get("platform")
-                        destination = dep_data.get("direction", "")
+                        # Prefer destination.name (dict) over direction (string) for more complete info
+                        dest_obj = dep_data.get("destination")
+                        if dest_obj and isinstance(dest_obj, dict):
+                            destination = dest_obj.get("name", "") or dep_data.get("direction", "")
+                        else:
+                            destination = dep_data.get("direction", "") or ""
                         is_cancelled = dep_data.get("cancelled", False)
                         remarks = dep_data.get("remarks", [])
                         messages = [r.get("text", "") for r in remarks if isinstance(r, dict)]
