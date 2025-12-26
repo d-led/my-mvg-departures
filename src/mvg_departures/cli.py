@@ -166,12 +166,14 @@ async def _get_routes_from_endpoint(
 
 async def _get_stop_point_mapping(
     station_id: str, session: aiohttp.ClientSession, limit: int = 100
-) -> dict[str, set[str]]:
-    """Get mapping of route+destination to stop point IDs from raw API response."""
-    stop_point_mapping: dict[str, set[str]] = {}  # "route_key destination" -> set of stop_point_ids
+) -> dict[str, dict[str, Any]]:
+    """Get mapping of route+destination to stop point IDs and platform info from raw API response."""
+    stop_point_mapping: dict[str, dict[str, Any]] = (
+        {}
+    )  # "route_key destination" -> {"stop_points": set, "platforms": set}
 
     try:
-        # Fetch raw departures to get stopPointGlobalId
+        # Fetch raw departures to get stopPointGlobalId and platform info
         url = f"https://www.mvg.de/api/bgw-pt/v3/departures?globalId={station_id}&limit={limit}&transportTypes=UBAHN,TRAM,SBAHN,BUS,REGIONAL_BUS,BAHN"
         headers = {
             "accept": "application/json",
@@ -186,8 +188,9 @@ async def _get_stop_point_mapping(
                         destination = str(dep.get("destination", ""))
                         transport_type = str(dep.get("transportType", dep.get("type", "")))
                         stop_point_id = dep.get("stopPointGlobalId", "")
+                        platform = dep.get("platform")
 
-                        if line and destination and stop_point_id:
+                        if line and destination:
                             # Normalize transport type
                             type_map = {
                                 "BUS": "Bus",
@@ -202,8 +205,32 @@ async def _get_stop_point_mapping(
                             mapping_key = f"{route_key}|{destination}"
 
                             if mapping_key not in stop_point_mapping:
-                                stop_point_mapping[mapping_key] = set()
-                            stop_point_mapping[mapping_key].add(stop_point_id)
+                                stop_point_mapping[mapping_key] = {
+                                    "stop_points": set(),
+                                    "platforms": set(),
+                                    "platform_to_stop_point": {},  # For S-Bahn: platform -> set of stop_point_ids
+                                }
+
+                            # Add stop point ID if available
+                            if stop_point_id:
+                                stop_point_mapping[mapping_key]["stop_points"].add(stop_point_id)
+
+                            # For S-Bahn, track platform information and its relationship to stopPointGlobalId
+                            if transport_type == "S-Bahn" and platform is not None:
+                                stop_point_mapping[mapping_key]["platforms"].add(platform)
+                                if "platform_to_stop_point" not in stop_point_mapping[mapping_key]:
+                                    stop_point_mapping[mapping_key]["platform_to_stop_point"] = {}
+                                if (
+                                    platform
+                                    not in stop_point_mapping[mapping_key]["platform_to_stop_point"]
+                                ):
+                                    stop_point_mapping[mapping_key]["platform_to_stop_point"][
+                                        platform
+                                    ] = set()
+                                if stop_point_id:
+                                    stop_point_mapping[mapping_key]["platform_to_stop_point"][
+                                        platform
+                                    ].add(stop_point_id)
     except Exception:
         # If stop point mapping fails, continue without it
         pass
@@ -396,33 +423,89 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
         print("\n# Stop points by route and destination:")
 
         # Group by stop point (reverse sorted)
-        stops_with_routes: dict[str, list[tuple[str, str]]] = (
+        stops_with_routes: dict[str, list[tuple[str, str, str | None]]] = (
             {}
-        )  # stop_point -> list of (route_key, destination)
-        for mapping_key, stop_points in sorted(stop_point_mapping.items()):
+        )  # stop_point -> list of (route_key, destination, platform_info)
+        s_bahn_platforms: dict[str, dict[int, list[tuple[str, str]]]] = (
+            {}
+        )  # route_key -> platform -> list of (destination, platform_info)
+
+        for mapping_key, mapping_data in sorted(stop_point_mapping.items()):
             if "|" in mapping_key:
                 route_key, destination = mapping_key.split("|", 1)
+                stop_points = mapping_data.get("stop_points", set())
+                platforms = mapping_data.get("platforms", set())
+
+                # Handle regular stop points (including S-Bahn if they have unique stopPointGlobalId)
+                # For S-Bahn, include platform info if available
+                platform_to_stop_point = mapping_data.get("platform_to_stop_point", {})
                 for stop_point in stop_points:
                     if stop_point not in stops_with_routes:
                         stops_with_routes[stop_point] = []
-                    stops_with_routes[stop_point].append((route_key, destination))
+                    # Check if this stop_point corresponds to a specific platform for S-Bahn
+                    platform_info = None
+                    if route_key.startswith("S-Bahn") and platform_to_stop_point:
+                        for platform, sp_set in platform_to_stop_point.items():
+                            if stop_point in sp_set:
+                                platform_info = f"Platform {platform}"
+                                break
+                    stops_with_routes[stop_point].append((route_key, destination, platform_info))
 
-        # Sort stop points in reverse order
+                # Handle S-Bahn platforms separately only if they don't have unique stopPointGlobalId
+                # If S-Bahn has stopPointGlobalId values, they're already handled above
+                if route_key.startswith("S-Bahn") and platforms and not stop_points:
+                    if route_key not in s_bahn_platforms:
+                        s_bahn_platforms[route_key] = {}
+                    for platform in platforms:
+                        if platform not in s_bahn_platforms[route_key]:
+                            s_bahn_platforms[route_key][platform] = []
+                        s_bahn_platforms[route_key][platform].append(
+                            (destination, f"Platform {platform}")
+                        )
+
+        # Display regular stop points
         for stop_point in sorted(stops_with_routes.keys(), reverse=True):
             stop_num = stop_point.split(":")[-1] if ":" in stop_point else stop_point
             print(f"\n# Stop {stop_num} ({stop_point}):")
             print(f'# station_id = "{stop_point}"')
             # Sort routes and destinations for this stop point
-            for route_key, destination in sorted(stops_with_routes[stop_point]):
+            for route_key, destination, platform_info in sorted(stops_with_routes[stop_point]):
                 # Extract line number from route_key (format: "Bus 139" -> "139")
                 line = route_key.split()[-1] if route_key.split() else ""
                 pattern = f"{line} {destination}" if line else destination
-                print(f'  {route_key} -> "{pattern}"')
+                if platform_info:
+                    print(f'  {route_key} -> "{pattern}"  # {platform_info}')
+                else:
+                    print(f'  {route_key} -> "{pattern}"')
+
+        # Display S-Bahn platforms (only if they don't have unique stopPointGlobalId values)
+        if s_bahn_platforms:
+            print("\n# S-Bahn platforms by route and destination:")
+            print("# Note: These S-Bahn platforms don't have unique stopPointGlobalId values.")
+            print("# Use base station_id with direction_mappings to filter by destination.")
+            for route_key in sorted(s_bahn_platforms.keys()):
+                line = route_key.split()[-1] if route_key.split() else ""
+                for platform in sorted(s_bahn_platforms[route_key].keys()):
+                    destinations = s_bahn_platforms[route_key][platform]
+                    print(f"\n# {route_key} - Platform {platform}:")
+                    print(
+                        f'# station_id = "{station_id}"  # Use base station_id with destination filtering'
+                    )
+                    print(
+                        "# Note: Configure direction_mappings to filter by destination, then use exclude_destinations in main config"
+                    )
+                    for destination, platform_info in sorted(destinations):
+                        pattern = f"{line} {destination}" if line else destination
+                        print(f'  {route_key} -> "{pattern}"  # {platform_info}')
 
         # Summary of unique stop points
         all_stop_points = set()
-        for stop_points in stop_point_mapping.values():
-            all_stop_points.update(stop_points)
+        for mapping_data in stop_point_mapping.values():
+            if isinstance(mapping_data, dict):
+                all_stop_points.update(mapping_data.get("stop_points", set()))
+            else:
+                # Backward compatibility with old format
+                all_stop_points.update(mapping_data if isinstance(mapping_data, set) else [])
 
         if all_stop_points:
             print("\n# All unique stop points at this station:")
@@ -548,33 +631,93 @@ async def search_and_list_routes(query: str, show_patterns: bool = True) -> None
             print("\n  # Stop points by route and destination:")
 
             # Group by stop point (reverse sorted)
-            stops_with_routes: dict[str, list[tuple[str, str]]] = (
+            stops_with_routes: dict[str, list[tuple[str, str, str | None]]] = (
                 {}
-            )  # stop_point -> list of (route_key, destination)
-            for mapping_key, stop_points in sorted(stop_point_mapping.items()):
+            )  # stop_point -> list of (route_key, destination, platform_info)
+            s_bahn_platforms: dict[str, dict[int, list[tuple[str, str]]]] = (
+                {}
+            )  # route_key -> platform -> list of (destination, platform_info)
+
+            for mapping_key, mapping_data in sorted(stop_point_mapping.items()):
                 if "|" in mapping_key:
                     route_key, destination = mapping_key.split("|", 1)
+                    stop_points = mapping_data.get("stop_points", set())
+                    platforms = mapping_data.get("platforms", set())
+
+                    # Handle regular stop points (including S-Bahn if they have unique stopPointGlobalId)
+                    # For S-Bahn, include platform info if available
+                    platform_to_stop_point = mapping_data.get("platform_to_stop_point", {})
                     for stop_point in stop_points:
                         if stop_point not in stops_with_routes:
                             stops_with_routes[stop_point] = []
-                        stops_with_routes[stop_point].append((route_key, destination))
+                        # Check if this stop_point corresponds to a specific platform for S-Bahn
+                        platform_info = None
+                        if route_key.startswith("S-Bahn") and platform_to_stop_point:
+                            for platform, sp_set in platform_to_stop_point.items():
+                                if stop_point in sp_set:
+                                    platform_info = f"Platform {platform}"
+                                    break
+                        stops_with_routes[stop_point].append(
+                            (route_key, destination, platform_info)
+                        )
 
-            # Sort stop points in reverse order
+                    # Handle S-Bahn platforms separately only if they don't have unique stopPointGlobalId
+                    # If S-Bahn has stopPointGlobalId values, they're already handled above
+                    if route_key.startswith("S-Bahn") and platforms and not stop_points:
+                        if route_key not in s_bahn_platforms:
+                            s_bahn_platforms[route_key] = {}
+                        for platform in platforms:
+                            if platform not in s_bahn_platforms[route_key]:
+                                s_bahn_platforms[route_key][platform] = []
+                            s_bahn_platforms[route_key][platform].append(
+                                (destination, f"Platform {platform}")
+                            )
+
+            # Display regular stop points
             for stop_point in sorted(stops_with_routes.keys(), reverse=True):
                 stop_num = stop_point.split(":")[-1] if ":" in stop_point else stop_point
                 print(f"\n  # Stop {stop_num} ({stop_point}):")
                 print(f'  # station_id = "{stop_point}"')
                 # Sort routes and destinations for this stop point
-                for route_key, destination in sorted(stops_with_routes[stop_point]):
+                for route_key, destination, platform_info in sorted(stops_with_routes[stop_point]):
                     # Extract line number from route_key (format: "Bus 139" -> "139")
                     line = route_key.split()[-1] if route_key.split() else ""
                     pattern = f"{line} {destination}" if line else destination
-                    print(f'    {route_key} -> "{pattern}"')
+                    if platform_info:
+                        print(f'    {route_key} -> "{pattern}"  # {platform_info}')
+                    else:
+                        print(f'    {route_key} -> "{pattern}"')
+
+            # Display S-Bahn platforms (only if they don't have unique stopPointGlobalId values)
+            if s_bahn_platforms:
+                print("\n  # S-Bahn platforms by route and destination:")
+                print(
+                    "  # Note: These S-Bahn platforms don't have unique stopPointGlobalId values."
+                )
+                print("  # Use base station_id with direction_mappings to filter by destination.")
+                for route_key in sorted(s_bahn_platforms.keys()):
+                    line = route_key.split()[-1] if route_key.split() else ""
+                    for platform in sorted(s_bahn_platforms[route_key].keys()):
+                        destinations = s_bahn_platforms[route_key][platform]
+                        print(f"\n  # {route_key} - Platform {platform}:")
+                        print(
+                            f'  # station_id = "{station_id}"  # Use base station_id with destination filtering'
+                        )
+                        print(
+                            "  # Note: Configure direction_mappings to filter by destination, then use exclude_destinations in main config"
+                        )
+                        for destination, platform_info in sorted(destinations):
+                            pattern = f"{line} {destination}" if line else destination
+                            print(f'    {route_key} -> "{pattern}"  # {platform_info}')
 
             # Summary of unique stop points
             all_stop_points = set()
-            for stop_points in stop_point_mapping.values():
-                all_stop_points.update(stop_points)
+            for mapping_data in stop_point_mapping.values():
+                if isinstance(mapping_data, dict):
+                    all_stop_points.update(mapping_data.get("stop_points", set()))
+                else:
+                    # Backward compatibility with old format
+                    all_stop_points.update(mapping_data if isinstance(mapping_data, set) else [])
 
             if all_stop_points:
                 print("\n  # All unique stop points at this station:")

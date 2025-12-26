@@ -84,8 +84,16 @@ ungrouped_title = "Other/U-/S-Bahn"
 
 # Exclude destinations as they'll be handled by another config
 # Supports route ("54"), destination ("Messestadt"), or route+destination ("54 Münchner Freiheit")
+# Also exclude S-Bahn destinations that are handled by separate platform configs
 exclude_destinations = [
     "54",
+    # S-Bahn S3 destinations handled by Platform 3 (Fasangarten direction)
+    "S3 Deisenhofen",
+    "S3 Holzkirchen",
+    # S-Bahn S5 destinations handled by Platform 3 (Neuperlach direction)
+    "S5 Aying",
+    "S5 Höhenkirchen-Siegertsbrunn",
+    "S5 Kreuzstraße",
 ]
 
 [stops.direction_mappings]
@@ -119,6 +127,43 @@ exclude_destinations = [
 # Group destinations heading toward city center (west/north)
 "->Stadt" = [
     "18 Gondrellplatz",
+]
+
+# S-Bahn Platform 3 - Fasangarten direction (S-Bahn S3)
+# Run 'scripts/list_routes.sh "Giesing"' to discover the exact platform number
+# Then update the station_id if it has a unique stopPointGlobalId
+[[stops]]
+station_id = "de:09162:1110"
+station_name = "Giesing"
+random_header_colors = true
+max_departures_per_stop = 4
+max_departures_per_route = 2
+departure_leeway_minutes = 10
+show_ungrouped = false
+
+[stops.direction_mappings]
+"->Fasangarten" = [
+    "S3 Deisenhofen",
+    "S3 Holzkirchen",
+]
+
+# S-Bahn Platform 3 - Neuperlach direction (S-Bahn S5)
+# Run 'scripts/list_routes.sh "Giesing"' to discover the exact platform number
+# Then update the station_id if it has a unique stopPointGlobalId
+[[stops]]
+station_id = "de:09162:1110"
+station_name = "Giesing"
+random_header_colors = true
+max_departures_per_stop = 4
+max_departures_per_route = 2
+departure_leeway_minutes = 10
+show_ungrouped = false
+
+[stops.direction_mappings]
+"->Neuperlach" = [
+    "S5 Aying",
+    "S5 Höhenkirchen-Siegertsbrunn",
+    "S5 Kreuzstraße",
 ]
 
 # We know the destinations for this stop, so we can exclude them from the other stop
