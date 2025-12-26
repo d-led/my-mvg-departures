@@ -23,6 +23,11 @@ time_format_toggle_seconds = 5
 # Set to false to show all departures at once (recommended for full view)
 pagination_enabled = false
 
+# fit all departures on one page
+fill_vertical_space = true
+
+random_header_colors = false
+
 # Interval between departure updates in seconds
 refresh_interval_seconds = 20
 
@@ -67,6 +72,7 @@ departure_leeway_minutes = 0
 # If false, only show departures matching direction_mappings (strict whitelist)
 # If true, show unmatched departures in "Other" group
 show_ungrouped = true
+ungrouped_title = "Other/U-/S-Bahn"
 # Optional: Custom title for ungrouped departures (defaults to "Other" if not set)
 # ungrouped_title = "Balanstr."
 # Optional: Use stop_point_global_id directly as station_id for physical stop filtering
@@ -93,6 +99,10 @@ show_ungrouped = true
 
 "->Schwanseestr." = [
     "18 Schwanseestraße",
+]
+
+"->St.-Quirin-Pl." = [
+    "220",
 ]
 
 # Group destinations heading toward Tegernseer Landstraße (north)
