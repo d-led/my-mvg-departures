@@ -40,14 +40,18 @@ class DepartureGroupingService:
         # Fetch departures from API - use configurable limit per stop
         # The repository will fetch more data (e.g., 300 results over configurable duration) but return up to this limit
         fetch_limit = stop_config.max_departures_fetch
-        
+
         # Pass VBB API duration if this is a VBB stop
-        kwargs: dict[str, int] = {}
+        duration_minutes = 60  # Default
         if stop_config.api_provider == "vbb":
-            kwargs["duration_minutes"] = stop_config.vbb_api_duration_minutes
-        
+            duration_minutes = stop_config.vbb_api_duration_minutes
+
         departures = await self._departure_repository.get_departures(
-            base_station_id, limit=fetch_limit, **kwargs
+            base_station_id,
+            limit=fetch_limit,
+            offset_minutes=0,
+            transport_types=None,
+            duration_minutes=duration_minutes,
         )
 
         return self.group_departures(departures, stop_config)
@@ -238,18 +242,18 @@ class DepartureGroupingService:
         # (only counting departures that passed the leeway filter)
         max_per_route = stop_config.max_departures_per_route or 2
         route_counts: dict[str, int] = {}
-        filtered_departures: list[Departure] = []
+        route_limited_departures: list[Departure] = []
         for departure in departures:
             route_key = departure.line
             count = route_counts.get(route_key, 0)
             if count < max_per_route:
-                filtered_departures.append(departure)
+                route_limited_departures.append(departure)
                 route_counts[route_key] = count + 1
 
         # Limit to max_departures_per_stop
         # (only counting departures that passed the leeway filter)
         max_per_direction = stop_config.max_departures_per_stop or 20
-        return filtered_departures[:max_per_direction]
+        return route_limited_departures[:max_per_direction]
 
     def _normalize_unicode(self, text: str) -> str:
         """Normalize Unicode text for consistent matching (handles ä, ö, ü, ß, etc.)."""

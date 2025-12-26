@@ -21,6 +21,7 @@ class MockDepartureRepository:
         limit: int = 10,  # noqa: ARG002
         offset_minutes: int = 0,  # noqa: ARG002
         transport_types: list[str] | None = None,  # noqa: ARG002
+        duration_minutes: int = 60,  # noqa: ARG002
     ) -> list[Departure]:
         """Return the configured departures."""
         return self.departures
