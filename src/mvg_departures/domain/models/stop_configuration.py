@@ -23,3 +23,9 @@ class StopConfiguration:
     departure_leeway_minutes: int = (
         0  # Leeway in minutes: departures earlier than now + leeway are filtered out before counting for limits
     )
+    random_header_colors: bool | None = (
+        None  # Enable hash-based pastel colors for headers. None means inherit from route/global config.
+    )
+    header_background_brightness: float | None = (
+        None  # Brightness adjustment for random header colors (0.0-1.0). None means inherit from route/global config.
+    )

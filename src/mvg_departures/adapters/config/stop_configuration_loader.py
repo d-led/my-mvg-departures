@@ -26,9 +26,28 @@ class StopConfigurationLoader:
             max_departures_per_route = stop_data.get("max_departures_per_route", 2)
             show_ungrouped = stop_data.get("show_ungrouped", True)  # Default to showing ungrouped
             departure_leeway_minutes = stop_data.get("departure_leeway_minutes", 0)
+            random_header_colors = stop_data.get("random_header_colors")
+            header_background_brightness = stop_data.get("header_background_brightness")
 
             if not station_id:
                 continue
+
+            # Validate random_header_colors if provided
+            if random_header_colors is not None:
+                random_header_colors = bool(random_header_colors)
+            else:
+                random_header_colors = None
+
+            # Validate header_background_brightness if provided
+            if header_background_brightness is not None:
+                try:
+                    header_background_brightness = float(header_background_brightness)
+                    # Clamp to valid range [0.0, 1.0]
+                    header_background_brightness = max(0.0, min(1.0, header_background_brightness))
+                except (ValueError, TypeError):
+                    header_background_brightness = None
+            else:
+                header_background_brightness = None
 
             stop_config = StopConfiguration(
                 station_id=station_id,
@@ -38,6 +57,8 @@ class StopConfigurationLoader:
                 max_departures_per_route=max_departures_per_route,
                 show_ungrouped=show_ungrouped,
                 departure_leeway_minutes=departure_leeway_minutes,
+                random_header_colors=random_header_colors,
+                header_background_brightness=header_background_brightness,
             )
             stop_configs.append(stop_config)
 
