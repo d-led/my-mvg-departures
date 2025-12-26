@@ -48,9 +48,11 @@ class VbbDepartureRepository(DepartureRepository):
         # VBB API uses HAFAS station IDs
         # URL format: /stops/{stationId}/departures
         url = f"{self._base_url}/stops/{station_id}/departures"
+        # Use a large duration (120 minutes) and high results count (300) to get many departures
+        # The limit parameter is applied after fetching to control how many we return
         params: dict[str, int | str] = {
-            "duration": limit * 2,  # Get more results to account for filtering
-            "results": limit,
+            "duration": 120,  # 2 hours ahead
+            "results": 300,  # Get up to 300 departures to have enough for all routes
         }
 
         if offset_minutes > 0:
@@ -137,12 +139,23 @@ class VbbDepartureRepository(DepartureRepository):
 
                         # Extract other fields
                         platform = dep_data.get("platform")
-                        # Prefer destination.name (dict) over direction (string) for more complete info
+                        # Prefer direction (more descriptive, includes district/area) for individual departures
+                        # direction often includes district info (e.g., "Schmargendorf, Elsterplatz")
+                        # while destination.name is just the stop name (e.g., "Elsterplatz (Berlin)")
+                        # For route listing (CLI), both are shown separately so users can find by either name
+                        direction = dep_data.get("direction", "") or ""
                         dest_obj = dep_data.get("destination")
+                        dest_name = ""
                         if dest_obj and isinstance(dest_obj, dict):
-                            destination = dest_obj.get("name", "") or dep_data.get("direction", "")
+                            dest_name = dest_obj.get("name", "") or ""
+
+                        # Use direction if available (more descriptive), otherwise use destination.name
+                        if direction:
+                            destination = direction
+                        elif dest_name:
+                            destination = dest_name
                         else:
-                            destination = dep_data.get("direction", "") or ""
+                            destination = ""
                         is_cancelled = dep_data.get("cancelled", False)
                         remarks = dep_data.get("remarks", [])
                         messages = [r.get("text", "") for r in remarks if isinstance(r, dict)]

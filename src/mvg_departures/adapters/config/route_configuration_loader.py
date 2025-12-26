@@ -40,6 +40,7 @@ class RouteConfigurationLoader:
         # Convert empty string to None for auto-detection
         if hafas_profile == "":
             hafas_profile = None
+        max_departures_fetch = stop_data.get("max_departures_fetch", 50)
 
         if not station_id:
             return None
@@ -106,6 +107,7 @@ class RouteConfigurationLoader:
             exclude_destinations=exclude_destinations,
             api_provider=api_provider,
             hafas_profile=hafas_profile,
+            max_departures_fetch=max_departures_fetch,
         )
 
     @staticmethod

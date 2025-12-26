@@ -37,9 +37,9 @@ class DepartureGroupingService:
         else:
             base_station_id = stop_config.station_id
 
-        # Fetch more departures than needed to ensure we have enough for all directions
-        # Use a higher limit (50) to get a good sample, then limit per direction
-        fetch_limit = 50
+        # Fetch departures from API - use configurable limit per stop
+        # The repository will fetch more data (e.g., 300 results over 120 minutes) but return up to this limit
+        fetch_limit = stop_config.max_departures_fetch
         departures = await self._departure_repository.get_departures(
             base_station_id, limit=fetch_limit
         )

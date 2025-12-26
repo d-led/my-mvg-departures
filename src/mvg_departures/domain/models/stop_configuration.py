@@ -45,3 +45,6 @@ class StopConfiguration:
     hafas_profile: str | None = (
         None  # HAFAS profile when api_provider="hafas" (e.g., "db", "bvg", "vvo"). None = auto-detect
     )
+    max_departures_fetch: int = (
+        50  # Maximum number of departures to fetch from API before grouping/filtering
+    )

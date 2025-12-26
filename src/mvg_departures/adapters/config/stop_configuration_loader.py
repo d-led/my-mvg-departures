@@ -89,6 +89,7 @@ class StopConfigurationLoader:
             # Convert empty string to None for auto-detection
             if hafas_profile == "":
                 hafas_profile = None
+            max_departures_fetch = stop_data.get("max_departures_fetch", 50)
 
             stop_config = StopConfiguration(
                 station_id=station_id,
@@ -106,6 +107,7 @@ class StopConfigurationLoader:
                 exclude_destinations=exclude_destinations,
                 api_provider=api_provider,
                 hafas_profile=hafas_profile,
+                max_departures_fetch=max_departures_fetch,
             )
             stop_configs.append(stop_config)
 

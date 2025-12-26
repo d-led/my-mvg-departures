@@ -28,27 +28,40 @@ async def search_stations_vbb(query: str) -> list[dict[str, Any]]:
                 results = []
                 query_lower = query.lower().strip()
                 query_words = query_lower.split()
-                
+
                 # Filter out very common words that don't help with matching
                 # (like "berlin", "platz", "strasse", "garten", etc.)
-                common_words = {"berlin", "platz", "str", "strasse", "bahnhof", "bhf", "u", "s", "garten", "der", "die", "das"}
+                common_words = {
+                    "berlin",
+                    "platz",
+                    "str",
+                    "strasse",
+                    "bahnhof",
+                    "bhf",
+                    "u",
+                    "s",
+                    "garten",
+                    "der",
+                    "die",
+                    "das",
+                }
                 meaningful_words = [w for w in query_words if w not in common_words and len(w) > 2]
-                
+
                 # If no meaningful words after filtering, use all words
                 if not meaningful_words:
                     meaningful_words = query_words
-                
+
                 for location in locations:
                     location_id = location.get("id", "")
                     location_name = location.get("name", "")
                     location_type = location.get("type", "")
-                    
+
                     # Only include stops/stations, not POIs
                     if location_type not in ("stop", "station"):
                         continue
-                    
+
                     location_name_lower = location_name.lower()
-                    
+
                     # Calculate relevance score
                     # 1. Exact match gets highest score
                     if query_lower == location_name_lower:
@@ -58,16 +71,18 @@ async def search_stations_vbb(query: str) -> list[dict[str, Any]]:
                         relevance = 500
                     # 3. Check if meaningful words match (require at least one meaningful word)
                     else:
-                        matching_meaningful = sum(1 for word in meaningful_words if word in location_name_lower)
+                        matching_meaningful = sum(
+                            1 for word in meaningful_words if word in location_name_lower
+                        )
                         matching_all = sum(1 for word in query_words if word in location_name_lower)
-                        
+
                         # Require at least one meaningful word to match (not just common words)
                         if matching_meaningful == 0:
                             continue  # Skip if no meaningful words match
-                        
+
                         # Score based on meaningful word matches (weighted higher)
                         relevance = matching_meaningful * 100 + matching_all * 10
-                    
+
                     results.append(
                         {
                             "id": location_id,
@@ -83,7 +98,7 @@ async def search_stations_vbb(query: str) -> list[dict[str, Any]]:
                 # Remove relevance from output
                 for result in results:
                     result.pop("relevance", None)
-                
+
                 return results
         except Exception as e:
             print(f"Error searching VBB stations: {e}", file=sys.stderr)
@@ -123,13 +138,15 @@ async def get_station_details_vbb(station_id: str) -> dict[str, Any] | None:
                     if not line_name:
                         continue
 
-                    # Extract destination - prefer destination.name (dict) over direction (string)
-                    destination = ""
+                    # Extract destination - show both direction and destination.name as separate destinations
+                    # direction often includes district/area info (e.g., "Schmargendorf, Elsterplatz")
+                    # while destination.name is just the stop name (e.g., "Elsterplatz (Berlin)")
+                    # Show both separately so users can find by either name
+                    direction = dep.get("direction", "") or ""
                     dest_obj = dep.get("destination")
+                    dest_name = ""
                     if dest_obj and isinstance(dest_obj, dict):
-                        destination = dest_obj.get("name", "") or ""
-                    if not destination:
-                        destination = dep.get("direction", "") or ""
+                        dest_name = dest_obj.get("name", "") or ""
 
                     if line_name not in routes:
                         routes[line_name] = set()
@@ -137,8 +154,22 @@ async def get_station_details_vbb(station_id: str) -> dict[str, Any] | None:
                             "line": line_name,
                             "transport_type": product or "Unknown",
                         }
-                    if destination:
-                        routes[line_name].add(destination)
+
+                    # Add both direction and destination.name as separate destinations if they differ
+                    if direction and dest_name and direction != dest_name:
+                        # Remove "(Berlin)" suffix from dest_name to check if they're really different
+                        dest_name_clean = dest_name.replace(" (Berlin)", "")
+                        if direction != dest_name_clean:
+                            # Add both as separate destinations
+                            routes[line_name].add(dest_name)
+                            routes[line_name].add(direction)
+                        else:
+                            # They're the same, just add one
+                            routes[line_name].add(direction)
+                    elif direction:
+                        routes[line_name].add(direction)
+                    elif dest_name:
+                        routes[line_name].add(dest_name)
 
                 # Get station name from first departure or use station_id
                 station_name = departures_data[0].get("stop", {}).get("name", "") or station_id
@@ -189,12 +220,13 @@ show_ungrouped = true
 
             # Include line name in match strings (e.g., "U9 Osloer Str." instead of just "Osloer Str.")
             # This makes matching more specific and avoids conflicts between different lines
-            match_strings = [f"{line} {dest}" for dest in destinations[:3]]
+            # Show ALL destinations for copy-pasteable config
+            match_strings = [f"{line} {dest}" for dest in destinations]
 
             snippet += f"# {transport_type} {line}:\n"
-            snippet += f'# "{direction_name}" = {match_strings}\n'  # Show first 3 with line names
-            if len(destinations) > 3:
-                snippet += f"#   # ... and {len(destinations) - 3} more destinations\n"
+            snippet += (
+                f'# "{direction_name}" = {match_strings}\n'  # Show all destinations with line names
+            )
             snippet += "\n"
 
     return snippet
@@ -240,9 +272,8 @@ async def search_and_show_config(query: str) -> None:
         for line, route_data in sorted(routes.items()):
             transport_type = route_data.get("transport_type", "")
             destinations = route_data.get("destinations", [])
-            dest_str = ", ".join(destinations[:5])
-            if len(destinations) > 5:
-                dest_str += f" ... (+{len(destinations) - 5} more)"
+            # Show ALL destinations for copy-pasteable config
+            dest_str = ", ".join(destinations)
             print(f"    {transport_type} {line}: {dest_str}")
 
         # Generate and show config snippet

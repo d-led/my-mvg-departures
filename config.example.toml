@@ -70,6 +70,10 @@ station_id = "de:09162:1110"
 station_name = "Giesing"
 max_departures_per_stop = 12
 max_departures_per_route = 2
+# Maximum number of departures to fetch from API before grouping/filtering
+# The API will fetch more data (e.g., 300 results over 120 minutes) but return up to this limit
+# Default: 50. Increase for stops with many routes to get more departures in advance
+# max_departures_fetch = 50
 # Leeway in minutes: departures earlier than now + leeway are filtered out
 # This does not affect the counts (max_departures_per_stop, max_departures_per_route)
 # Set to 0 to disable filtering
@@ -293,6 +297,8 @@ title = "Berlin Hardenbergstraße Departures"
 theme = "light"
 fill_vertical_space = true
 random_header_colors = true
+font_scaling_factor_when_filling = 0.8
+
 
 [[routes.stops]]
 # Station ID for Zoologischer Garten (Berlin)
@@ -302,13 +308,14 @@ station_id = "900023201"  # S+U Zoologischer Garten Bhf (Berlin)
 station_name = "Zoologischer Garten"
 api_provider = "vbb"  # Use VBB REST API for Berlin (more reliable than HAFAS)
 max_departures_per_stop = 15
-max_departures_per_route = 2
-show_ungrouped = true
+max_departures_per_route = 3
+departure_leeway_minutes = 15
+show_ungrouped = false
 
 [routes.stops.direction_mappings]
 # U-Bahn and Bus routes from Zoologischer Garten
-"->City Center" = ["Pankow", "Bus 100"]
-"->West" = ["Ruhleben", "Bus M45", "Bus M46"]
+"->Berliner Str." = ["U9 Osloer"]
+"->Uhlandstr." = ["249 Grunewald", "249 Schmargendorf", "249"]
 
 [[routes.stops]]
 # Station ID for Ernst-Reuter-Platz (Berlin)
@@ -318,14 +325,12 @@ station_id = "900023101"  # U Ernst-Reuter-Platz (Berlin)
 station_name = "Ernst-Reuter-Platz"
 api_provider = "vbb"  # Use VBB REST API for Berlin (more reliable than HAFAS)
 max_departures_per_stop = 15
-max_departures_per_route = 2
-show_ungrouped = true
+max_departures_per_route = 3
+show_ungrouped = false
+departure_leeway_minutes = 6
 
 [routes.stops.direction_mappings]
 # U-Bahn and Bus routes from Ernst-Reuter-Platz
 # Note: Include line name in match strings for more specific matching
-"->City Center" = ["U2 Pankow", "M45"]
-"->West" = ["U2 Ruhleben", "M46"]
-"->Berliner Str." = ["U9 Osloer Str.", "U9 S+U Bundesplatz (Berlin)"]
+"->Bismarckstr." = ["U2 Ruhleben", "U Theodor"]
 
-    
