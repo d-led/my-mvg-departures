@@ -2,6 +2,7 @@
 
 import logging
 import re
+import unicodedata
 from datetime import UTC, datetime, timedelta
 
 from mvg_departures.domain.models.departure import Departure
@@ -192,6 +193,13 @@ class DepartureGroupingService:
         max_per_direction = stop_config.max_departures_per_stop or 20
         return filtered_departures[:max_per_direction]
 
+    def _normalize_unicode(self, text: str) -> str:
+        """Normalize Unicode text for consistent matching (handles ä, ö, ü, ß, etc.)."""
+        # Normalize to NFC (composed form) to ensure consistent representation
+        # This handles cases where the same character might be represented differently
+        # (e.g., ä as single character vs a + combining diaeresis)
+        return unicodedata.normalize("NFC", text).lower()
+
     def _matches_departure(self, departure: Departure, patterns: list[str]) -> bool:
         """Check if a departure matches any of the given patterns.
 
@@ -208,15 +216,20 @@ class DepartureGroupingService:
         line_lower = departure.line.lower()
         transport_type_lower = departure.transport_type.lower()
 
-        # Create route identifiers for matching
-        route_line = line_lower  # e.g., "u2", "59"
-        route_full = f"{transport_type_lower} {line_lower}"  # e.g., "u-bahn u2", "bus 59"
+        # Normalize Unicode for consistent matching
+        destination_normalized = self._normalize_unicode(departure.destination)
+        line_normalized = self._normalize_unicode(departure.line)
+        transport_type_normalized = self._normalize_unicode(departure.transport_type)
+
+        # Create route identifiers for matching (using normalized values)
+        route_line = line_normalized  # e.g., "u2", "59", "s5"
+        route_full = f"{transport_type_normalized} {line_normalized}"  # e.g., "u-bahn u2", "bus 59", "s-bahn s5"
 
         for pattern in patterns:
-            pattern_lower = pattern.lower().strip()
+            pattern_normalized = self._normalize_unicode(pattern.strip())
 
             # Split pattern into words to handle different formats
-            pattern_words = pattern_lower.split()
+            pattern_words = pattern_normalized.split()
 
             if len(pattern_words) >= 2:
                 # Pattern has multiple parts - try to match as route + destination
@@ -226,21 +239,23 @@ class DepartureGroupingService:
                 # 2. "Bus 59 Giesing" -> route="bus 59", dest="giesing"
                 # 3. "139 Messestadt West" -> route="139", dest="messestadt west"
                 # 4. "Bus 54 Lorettoplatz" -> route="bus 54", dest="lorettoplatz"
+                # 5. "S5 Aying" -> route="s5", dest="aying"
+                # 6. "S-Bahn S5 Aying" -> route="s-bahn s5", dest="aying"
 
                 # Try to match route from the beginning
                 # Check if first word matches line number
                 route_matched = False
                 dest_start_idx = 1
 
-                # Case 1: First word is the line number (e.g., "139 Messestadt West")
+                # Case 1: First word is the line number (e.g., "139 Messestadt West", "S5 Aying")
                 if pattern_words[0] == route_line:
                     route_matched = True
                     dest_start_idx = 1
-                # Case 2: First two words are transport type + line (e.g., "Bus 54 Lorettoplatz")
+                # Case 2: First two words are transport type + line (e.g., "Bus 54 Lorettoplatz", "S-Bahn S5 Aying")
                 elif len(pattern_words) >= 2:
                     first_two = " ".join(pattern_words[0:2])
                     if first_two == route_full or (
-                        pattern_words[1] == route_line and pattern_words[0] in transport_type_lower
+                        pattern_words[1] == route_line and pattern_words[0] in transport_type_normalized
                     ):
                         route_matched = True
                         dest_start_idx = 2
@@ -248,7 +263,8 @@ class DepartureGroupingService:
                 if route_matched and dest_start_idx < len(pattern_words):
                     # Destination is everything after the route
                     dest_part = " ".join(pattern_words[dest_start_idx:])
-                    if self._matches_text(destination_lower, dest_part):
+                    # Use Unicode-normalized matching for destinations
+                    if self._matches_text_normalized(destination_normalized, dest_part):
                         return True
                 # Don't fall back to destination-only matching when route doesn't match!
                 # This prevents false matches like "N75 Ostbahnhof" matching "59 Giesing Bahnhof"
@@ -258,14 +274,15 @@ class DepartureGroupingService:
                 pattern_single = pattern_words[0]
 
                 # Try matching as route only - EXACT match only (no substring matching)
+                # Use normalized values for comparison
                 route_matches = pattern_single in (route_line, route_full)
 
                 if route_matches:
                     # Route matches exactly - match any destination for this route
                     return True
 
-                # Try matching as destination only - use word-boundary matching
-                if self._matches_text(destination_lower, pattern_single):
+                # Try matching as destination only - use word-boundary matching with Unicode normalization
+                if self._matches_text_normalized(destination_normalized, pattern_single):
                     # Destination matches - match any route to this destination
                     return True
 
@@ -278,23 +295,33 @@ class DepartureGroupingService:
         For single-word patterns, requires whole-word match.
         This prevents "Ostbahnhof" from matching "Giesing Bahnhof"
         """
-        if pattern == text:
+        return self._matches_text_normalized(text, pattern)
+
+    def _matches_text_normalized(self, text: str, pattern: str) -> bool:
+        """Check if text matches pattern with Unicode normalization.
+
+        Normalizes both text and pattern to handle Unicode characters consistently
+        (e.g., ä, ö, ü, ß will match regardless of their Unicode representation).
+        """
+        # Normalize Unicode for consistent matching
+        text_normalized = self._normalize_unicode(text)
+        pattern_normalized = self._normalize_unicode(pattern)
+
+        if pattern_normalized == text_normalized:
             return True
 
         # For multi-word patterns, require exact phrase match
-        if " " in pattern:
-            pattern_lower = pattern.lower()
-            text_lower = text.lower()
-            if pattern_lower == text_lower:
+        if " " in pattern_normalized:
+            if pattern_normalized == text_normalized:
                 return True
             # Check if pattern appears as a phrase (with word boundaries)
-            pattern_escaped = re.escape(pattern_lower)
-            return bool(re.search(r"\b" + pattern_escaped + r"\b", text_lower))
+            pattern_escaped = re.escape(pattern_normalized)
+            return bool(re.search(r"\b" + pattern_escaped + r"\b", text_normalized))
 
         # For single-word patterns, use word-boundary matching
         try:
-            pattern_escaped = re.escape(pattern.lower())
-            if re.search(r"\b" + pattern_escaped + r"\b", text.lower()):
+            pattern_escaped = re.escape(pattern_normalized)
+            if re.search(r"\b" + pattern_escaped + r"\b", text_normalized):
                 return True
         except re.error:
             pass
