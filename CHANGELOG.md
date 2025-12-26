@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.5]
+
+### Features
+
+- **Destination exclusion**: `exclude_destinations` option (list of patterns: route "54", destination "Messestadt", or route+destination "54 Münchner Freiheit") to exclude specific routes or destinations from a stop
+- **Custom ungrouped titles**: `ungrouped_title` option (string, defaults to "Other") to customize the header for ungrouped departures
+- **Color palette customization**: `random_color_salt` option (integer, default 0, per stop or `routes.display`) to generate different color palettes for auto-generated header colors
+
 ## [0.0.4]
 
 ### Features
