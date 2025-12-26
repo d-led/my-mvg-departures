@@ -42,6 +42,7 @@ dev = [
 mvg-departures = "mvg_departures.main:main"
 mvg-config = "mvg_departures.cli:cli_main"
 hafas-config = "mvg_departures.cli_hafas:cli_main"
+vbb-config = "mvg_departures.cli_vbb:cli_main"
 
 [build-system]
 requires = ["hatchling"]

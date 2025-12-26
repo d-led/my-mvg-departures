@@ -7,10 +7,8 @@ from typing import TYPE_CHECKING
 from pyhafas import HafasClient
 from pyhafas.profile import DBProfile
 
-from mvg_departures.adapters.hafas_api.bvg_profile import BVGProfile
 from mvg_departures.adapters.hafas_api.profile_detector import ProfileDetector
 from mvg_departures.adapters.hafas_api.ssl_context import hafas_ssl_context
-from mvg_departures.adapters.hafas_api.vbb_profile import VBBProfile
 from mvg_departures.domain.models.departure import Departure
 from mvg_departures.domain.ports.departure_repository import DepartureRepository
 
@@ -94,8 +92,8 @@ class HafasDepartureRepository(DepartureRepository):
 
                 profile_map: dict[str, type] = {
                     "db": DBProfile,
-                    "bvg": BVGProfile,
-                    "vbb": VBBProfile,
+                    # "bvg": BVGProfile,  # Use VBB REST API for Berlin instead
+                    # "vbb": VBBProfile,  # Use VBB REST API for Berlin instead
                     "kvb": KVBProfile,
                     "nvv": NVVProfile,
                     "vvv": VVVProfile,
@@ -104,6 +102,7 @@ class HafasDepartureRepository(DepartureRepository):
                     "nasa": NASAProfile,
                     # Note: VVO (Verkehrsverbund Oberelbe) might use DB profile
                     # The hafas-config tool will detect which profile works
+                    # Note: For Berlin stations, use api_provider = "vbb" (VBB REST API) instead of HAFAS
                 }
                 profile_class = profile_map.get(profile_to_use.lower(), DBProfile)
                 if profile_to_use.lower() not in profile_map:

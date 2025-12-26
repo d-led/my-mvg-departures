@@ -15,17 +15,17 @@ from pyhafas.profile import (
     VVVProfile,
 )
 
-from mvg_departures.adapters.hafas_api.bvg_profile import BVGProfile
 from mvg_departures.adapters.hafas_api.ssl_context import hafas_ssl_context
-from mvg_departures.adapters.hafas_api.vbb_profile import VBBProfile
 
 # List of profiles to try
 # Note: VVO (Verkehrsverbund Oberelbe) might use DB profile or another profile
 # The detect command will try all profiles to find which one works
+# Note: BVG and VBB profiles are not included here because Berlin stations
+# should use the VBB REST API (api_provider = "vbb") instead of HAFAS
 PROFILES = {
     "db": DBProfile,
-    "bvg": BVGProfile,
-    "vbb": VBBProfile,
+    # "bvg": BVGProfile,  # Use VBB REST API for Berlin instead
+    # "vbb": VBBProfile,  # Use VBB REST API for Berlin instead
     "kvb": KVBProfile,
     "nvv": NVVProfile,
     "vvv": VVVProfile,
@@ -83,7 +83,27 @@ async def search_stations_hafas(query: str, profile: str | None = None) -> list[
             # Log the error for debugging but continue to next profile
             import sys
 
-            print(f"  Profile '{profile_name}' failed: {e}", file=sys.stderr)
+            # Try to extract more details from the exception
+            error_msg = str(e) if str(e) else f"{type(e).__name__}"
+
+            # For GeneralHafasError and other exceptions, try to get more details
+            if hasattr(e, "message") and e.message:
+                error_msg = f"{error_msg}: {e.message}"
+            elif hasattr(e, "args") and e.args:
+                # Show all args if available (often contains the actual error message)
+                if len(e.args) > 1:
+                    error_msg = f"{error_msg}: {e.args[1]}"
+                elif len(e.args) == 1 and str(e.args[0]) != error_msg:
+                    # If args[0] is different from str(e), include it
+                    error_msg = f"{error_msg}: {e.args[0]}"
+
+            # Check for underlying exception (__cause__ or __context__)
+            if hasattr(e, "__cause__") and e.__cause__:
+                error_msg = f"{error_msg} (caused by: {e.__cause__})"
+            elif hasattr(e, "__context__") and e.__context__:
+                error_msg = f"{error_msg} (context: {e.__context__})"
+
+            print(f"  Profile '{profile_name}' failed: {error_msg}", file=sys.stderr)
             continue
 
     return results
@@ -113,7 +133,27 @@ async def detect_profile_for_station(station_id: str) -> str | None:
             # Log the error for debugging but continue to next profile
             import sys
 
-            print(f"  Profile '{profile_name}' failed: {e}", file=sys.stderr)
+            # Try to extract more details from the exception
+            error_msg = str(e) if str(e) else f"{type(e).__name__}"
+
+            # For GeneralHafasError and other exceptions, try to get more details
+            if hasattr(e, "message") and e.message:
+                error_msg = f"{error_msg}: {e.message}"
+            elif hasattr(e, "args") and e.args:
+                # Show all args if available (often contains the actual error message)
+                if len(e.args) > 1:
+                    error_msg = f"{error_msg}: {e.args[1]}"
+                elif len(e.args) == 1 and str(e.args[0]) != error_msg:
+                    # If args[0] is different from str(e), include it
+                    error_msg = f"{error_msg}: {e.args[0]}"
+
+            # Check for underlying exception (__cause__ or __context__)
+            if hasattr(e, "__cause__") and e.__cause__:
+                error_msg = f"{error_msg} (caused by: {e.__cause__})"
+            elif hasattr(e, "__context__") and e.__context__:
+                error_msg = f"{error_msg} (context: {e.__context__})"
+
+            print(f"  Profile '{profile_name}' failed: {error_msg}", file=sys.stderr)
             continue
 
     return None
@@ -260,7 +300,13 @@ async def search_and_show_config(query: str, profile: str | None = None) -> None
     results = await search_stations_hafas(query, profile=profile)
 
     if not results:
-        print(f"No stations found for '{query}'", file=sys.stderr)
+        print(f"\n❌ No stations found for '{query}'", file=sys.stderr)
+        print("\n💡 Tips:", file=sys.stderr)
+        print("  - Try a more specific query (e.g., include city name)", file=sys.stderr)
+        print("  - Try a different spelling or partial name", file=sys.stderr)
+        if not profile:
+            print("  - Try specifying a profile: --profile <profile_name>", file=sys.stderr)
+            print("    Available profiles: " + ", ".join(PROFILES.keys()), file=sys.stderr)
         sys.exit(1)
 
     print(f"Found {len(results)} station(s):\n")
@@ -378,7 +424,11 @@ Examples:
   hafas-config detect 9000589
 
   # Search with specific profile
-  hafas-config search "Augsburg" --profile vvo
+  hafas-config search "Augsburg" --profile nvv
+
+Note: For Berlin stations, use the VBB REST API instead:
+  curl "https://v6.bvg.transport.rest/locations?query=Zoologischer%20Garten"
+  Then use api_provider = "vbb" in your config (not "hafas")
         """,
     )
 

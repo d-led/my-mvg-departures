@@ -14,9 +14,7 @@ from pyhafas.profile import (
     VVVProfile,
 )
 
-from mvg_departures.adapters.hafas_api.bvg_profile import BVGProfile
 from mvg_departures.adapters.hafas_api.ssl_context import hafas_ssl_context
-from mvg_departures.adapters.hafas_api.vbb_profile import VBBProfile
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +22,9 @@ if TYPE_CHECKING:
     from aiohttp import ClientSession
 
 # List of profiles to try in order (most common first)
-PROFILE_ORDER = ["db", "bvg", "vbb", "kvb", "nvv", "vvv", "vsn", "rkrp", "nasa"]
+# Note: BVG and VBB are not included because Berlin stations should use
+# the VBB REST API (api_provider = "vbb") instead of HAFAS
+PROFILE_ORDER = ["db", "kvb", "nvv", "vvv", "vsn", "rkrp", "nasa"]
 
 
 class ProfileDetector:
@@ -54,8 +54,8 @@ class ProfileDetector:
         # Try each profile until one works
         profile_map: dict[str, type] = {
             "db": DBProfile,
-            "bvg": BVGProfile,
-            "vbb": VBBProfile,
+            # "bvg": BVGProfile,  # Use VBB REST API for Berlin instead
+            # "vbb": VBBProfile,  # Use VBB REST API for Berlin instead
             "kvb": KVBProfile,
             "nvv": NVVProfile,
             "vvv": VVVProfile,
@@ -64,6 +64,7 @@ class ProfileDetector:
             "nasa": NASAProfile,
             # Note: VVO (Verkehrsverbund Oberelbe) might use DB profile
             # The hafas-config tool will detect which profile works
+            # Note: For Berlin stations, use api_provider = "vbb" (VBB REST API) instead of HAFAS
         }
 
         # Track profiles that return empty results (might be valid but no departures at this time)

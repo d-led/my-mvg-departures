@@ -6,9 +6,7 @@ from typing import TYPE_CHECKING
 from pyhafas import HafasClient
 from pyhafas.profile import DBProfile
 
-from mvg_departures.adapters.hafas_api.bvg_profile import BVGProfile
 from mvg_departures.adapters.hafas_api.ssl_context import hafas_ssl_context
-from mvg_departures.adapters.hafas_api.vbb_profile import VBBProfile
 from mvg_departures.domain.models.station import Station
 from mvg_departures.domain.ports.station_repository import StationRepository
 
@@ -45,8 +43,8 @@ class HafasStationRepository(StationRepository):
 
         profile_map: dict[str, type] = {
             "db": DBProfile,
-            "bvg": BVGProfile,
-            "vbb": VBBProfile,
+            # "bvg": BVGProfile,  # Use VBB REST API for Berlin instead
+            # "vbb": VBBProfile,  # Use VBB REST API for Berlin instead
             "kvb": KVBProfile,
             "nvv": NVVProfile,
             "vvv": VVVProfile,
@@ -55,6 +53,7 @@ class HafasStationRepository(StationRepository):
             "nasa": NASAProfile,
             # Note: VVO (Verkehrsverbund Oberelbe) might use DB profile
             # The hafas-config tool will detect which profile works
+            # Note: For Berlin stations, use api_provider = "vbb" (VBB REST API) instead of HAFAS
         }
         profile_class = profile_map.get(profile.lower(), DBProfile)
         # Create HafasClient with SSL verification disabled
