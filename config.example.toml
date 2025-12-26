@@ -138,7 +138,7 @@ station_name = "Giesing"
 random_header_colors = true
 max_departures_per_stop = 4
 max_departures_per_route = 2
-departure_leeway_minutes = 10
+# departure_leeway_minutes = 3
 show_ungrouped = false
 
 [stops.direction_mappings]
@@ -156,7 +156,7 @@ station_name = "Giesing"
 random_header_colors = true
 max_departures_per_stop = 4
 max_departures_per_route = 2
-departure_leeway_minutes = 10
+# departure_leeway_minutes = 10
 show_ungrouped = false
 
 [stops.direction_mappings]
