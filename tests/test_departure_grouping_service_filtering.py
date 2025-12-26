@@ -450,6 +450,208 @@ def test_group_departures_excludes_blacklisted_route_and_destination() -> None:
     assert any(dep.line == "U3" for dep in all_departures)
 
 
+def test_filter_and_limit_departures_applies_max_hours_in_advance_filter() -> None:
+    """Given departures with max_hours_in_advance configured, when filtering, then excludes departures too far in the future."""
+    service = DepartureGroupingService(MockDepartureRepository([]))
+    now = datetime.now(UTC)
+
+    stop_config = StopConfiguration(
+        station_id="de:09162:70",
+        station_name="Test Station",
+        direction_mappings={},
+        max_hours_in_advance=3.0,
+    )
+
+    departures = [
+        Departure(
+            time=now + timedelta(hours=2),  # OK - within 3 hours
+            planned_time=now + timedelta(hours=2),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="54",
+            destination="Lorettoplatz",
+            transport_type="Bus",
+            icon="mdi:bus",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(hours=4),  # Too far - beyond 3 hours
+            planned_time=now + timedelta(hours=4),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="N43",
+            destination="Ostbahnhof",
+            transport_type="Bus",
+            icon="mdi:bus",
+            is_cancelled=False,
+            messages=[],
+        ),
+    ]
+
+    result = service._filter_and_limit_departures(departures, stop_config)
+
+    assert len(result) == 1
+    assert result[0].line == "54"
+    assert result[0].time == now + timedelta(hours=2)
+
+
+def test_filter_and_limit_departures_with_max_hours_in_advance_unset() -> None:
+    """Given departures with max_hours_in_advance unset, when filtering, then shows all departures regardless of time."""
+    service = DepartureGroupingService(MockDepartureRepository([]))
+    now = datetime.now(UTC)
+
+    stop_config = StopConfiguration(
+        station_id="de:09162:70",
+        station_name="Test Station",
+        direction_mappings={},
+        max_hours_in_advance=None,
+    )
+
+    departures = [
+        Departure(
+            time=now + timedelta(hours=2),
+            planned_time=now + timedelta(hours=2),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="54",
+            destination="Lorettoplatz",
+            transport_type="Bus",
+            icon="mdi:bus",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(hours=10),  # Should still be shown
+            planned_time=now + timedelta(hours=10),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="N43",
+            destination="Ostbahnhof",
+            transport_type="Bus",
+            icon="mdi:bus",
+            is_cancelled=False,
+            messages=[],
+        ),
+    ]
+
+    result = service._filter_and_limit_departures(departures, stop_config)
+
+    assert len(result) == 2
+
+
+def test_filter_and_limit_departures_with_max_hours_in_advance_less_than_one() -> None:
+    """Given departures with max_hours_in_advance < 1, when filtering, then shows all departures (treated as unset)."""
+    service = DepartureGroupingService(MockDepartureRepository([]))
+    now = datetime.now(UTC)
+
+    stop_config = StopConfiguration(
+        station_id="de:09162:70",
+        station_name="Test Station",
+        direction_mappings={},
+        max_hours_in_advance=0.5,  # < 1, should be treated as None
+    )
+
+    departures = [
+        Departure(
+            time=now + timedelta(hours=2),
+            planned_time=now + timedelta(hours=2),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="54",
+            destination="Lorettoplatz",
+            transport_type="Bus",
+            icon="mdi:bus",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(hours=10),  # Should still be shown
+            planned_time=now + timedelta(hours=10),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="N43",
+            destination="Ostbahnhof",
+            transport_type="Bus",
+            icon="mdi:bus",
+            is_cancelled=False,
+            messages=[],
+        ),
+    ]
+
+    result = service._filter_and_limit_departures(departures, stop_config)
+
+    assert len(result) == 2
+
+
+def test_filter_and_limit_departures_applies_max_hours_in_advance_with_leeway() -> None:
+    """Given departures with both leeway and max_hours_in_advance, when filtering, then applies both filters correctly."""
+    service = DepartureGroupingService(MockDepartureRepository([]))
+    now = datetime.now(UTC)
+
+    stop_config = StopConfiguration(
+        station_id="de:09162:70",
+        station_name="Test Station",
+        direction_mappings={},
+        departure_leeway_minutes=5,
+        max_hours_in_advance=3.0,
+    )
+
+    departures = [
+        Departure(
+            time=now + timedelta(minutes=3),  # Too soon - filtered by leeway
+            planned_time=now + timedelta(minutes=3),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="54",
+            destination="Lorettoplatz",
+            transport_type="Bus",
+            icon="mdi:bus",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(hours=2),  # OK - within both limits
+            planned_time=now + timedelta(hours=2),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="54",
+            destination="Lorettoplatz",
+            transport_type="Bus",
+            icon="mdi:bus",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(hours=4),  # Too far - filtered by max_hours_in_advance
+            planned_time=now + timedelta(hours=4),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="N43",
+            destination="Ostbahnhof",
+            transport_type="Bus",
+            icon="mdi:bus",
+            is_cancelled=False,
+            messages=[],
+        ),
+    ]
+
+    result = service._filter_and_limit_departures(departures, stop_config)
+
+    assert len(result) == 1
+    assert result[0].time == now + timedelta(hours=2)
+    assert result[0].line == "54"
+
+
 def test_group_departures_with_empty_blacklist() -> None:
     """Given departures with empty blacklist, when grouping, then includes all departures."""
     service = DepartureGroupingService(MockDepartureRepository([]))

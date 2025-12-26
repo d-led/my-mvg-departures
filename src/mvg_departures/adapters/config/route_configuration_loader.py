@@ -28,6 +28,7 @@ class RouteConfigurationLoader:
         show_ungrouped = stop_data.get("show_ungrouped", True)
         ungrouped_title = stop_data.get("ungrouped_title")
         departure_leeway_minutes = stop_data.get("departure_leeway_minutes", 0)
+        max_hours_in_advance = stop_data.get("max_hours_in_advance")
         random_header_colors = stop_data.get("random_header_colors")
         header_background_brightness = stop_data.get("header_background_brightness")
         random_color_salt = stop_data.get("random_color_salt")
@@ -70,6 +71,18 @@ class RouteConfigurationLoader:
             str(item) for item in exclude_destinations if isinstance(item, (str, int))
         ]
 
+        # Validate max_hours_in_advance if provided
+        if max_hours_in_advance is not None:
+            try:
+                max_hours_in_advance = float(max_hours_in_advance)
+                # If < 1, treat as None (unfiltered)
+                if max_hours_in_advance < 1:
+                    max_hours_in_advance = None
+            except (ValueError, TypeError):
+                max_hours_in_advance = None
+        else:
+            max_hours_in_advance = None
+
         return StopConfiguration(
             station_id=station_id,
             station_name=station_name,
@@ -79,6 +92,7 @@ class RouteConfigurationLoader:
             show_ungrouped=show_ungrouped,
             ungrouped_title=ungrouped_title if isinstance(ungrouped_title, str) else None,
             departure_leeway_minutes=departure_leeway_minutes,
+            max_hours_in_advance=max_hours_in_advance,
             random_header_colors=random_header_colors,
             header_background_brightness=header_background_brightness,
             random_color_salt=random_color_salt,

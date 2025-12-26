@@ -74,6 +74,11 @@ max_departures_per_route = 2
 # This does not affect the counts (max_departures_per_stop, max_departures_per_route)
 # Set to 0 to disable filtering
 departure_leeway_minutes = 0
+# Maximum hours in advance: departures more than this many hours in the future are filtered out
+# If < 1 or unset, no filtering is applied (shows all departures)
+# Setting 1 will show departures within one hour
+# Example: max_hours_in_advance = 3  # Shows departures within 3 hours
+# max_hours_in_advance = 3
 # If false, only show departures matching direction_mappings (strict whitelist)
 # If true, show unmatched departures in "Other" group
 show_ungrouped = true
@@ -191,6 +196,7 @@ random_header_colors = true
 # Use this if you want different colors than the default auto-generated ones
 random_color_salt = 1
 show_ungrouped = true
+max_hours_in_advance = 3
 
 # Second stop: Balanstraße
 [[stops]]

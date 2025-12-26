@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.6]
+
+### Features
+
+- **Time-based filtering**: `max_hours_in_advance` option (float, per stop) to filter out departures more than N hours in the future (< 1 or unset = unfiltered)
+
 ## [0.0.5]
 
 ### Features

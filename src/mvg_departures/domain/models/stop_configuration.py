@@ -26,6 +26,9 @@ class StopConfiguration:
     departure_leeway_minutes: int = (
         0  # Leeway in minutes: departures earlier than now + leeway are filtered out before counting for limits
     )
+    max_hours_in_advance: float | None = (
+        None  # Maximum hours in advance: departures more than this many hours in the future are filtered out. If < 1 or unset, no filtering is applied.
+    )
     random_header_colors: bool | None = (
         None  # Enable hash-based pastel colors for headers. None means inherit from route/global config.
     )

@@ -136,7 +136,7 @@ class DepartureGroupingService:
     def _filter_and_limit_departures(
         self, departures: list[Departure], stop_config: StopConfiguration
     ) -> list[Departure]:
-        """Filter and limit departures based on leeway, route limits, and direction limits.
+        """Filter and limit departures based on leeway, max hours in advance, route limits, and direction limits.
 
         Args:
             departures: List of departures to filter and limit.
@@ -175,6 +175,12 @@ class DepartureGroupingService:
                 minutes=stop_config.departure_leeway_minutes
             )
             departures = [d for d in departures if d.time >= cutoff_time]
+
+        # Filter out departures that are too far in the future
+        # Only apply if >= 1 (values < 1 or None are treated as unfiltered)
+        if stop_config.max_hours_in_advance is not None and stop_config.max_hours_in_advance >= 1:
+            max_time = datetime.now(UTC) + timedelta(hours=stop_config.max_hours_in_advance)
+            departures = [d for d in departures if d.time <= max_time]
 
         # Limit each route to max_departures_per_route
         # (only counting departures that passed the leeway filter)
