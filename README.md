@@ -216,6 +216,42 @@ Example for touchable screen (default behavior):
 fill_vertical_space = false  # or omit this line
 ```
 
+### Adding Custom Meaning to Destination Titles
+
+Direction mapping keys (the text before the `=` sign) are displayed directly as headers in the UI. You can include any contextual information that helps you make decisions, such as walking time, transfer information, or other relevant details.
+
+**Common use cases:**
+- **Walking time to stops**: Include foot path minutes to help plan when to leave
+- **Transfer information**: Note connection points or transfer requirements
+- **Contextual notes**: Add any information that helps you understand the route better
+
+Example with walking time:
+
+```toml
+[stops.direction_mappings]
+"->Giesing (in 5+ min)" = ["59 Giesing Bahnhof", "139 Giesing Bf."]
+"->Ostbahnhof (in 10+ min)" = ["54 Münchner Freiheit"]
+"->Stachus (in 15+ min)" = ["27 Sendlinger Tor", "28 Sendlinger Tor"]
+```
+
+The walking time helps you:
+- Plan when to leave home to catch a specific departure
+- Account for the time needed to reach the stop
+- Coordinate multiple stops with different walking distances
+
+You can combine this with `departure_leeway_minutes` to filter out departures that are too soon to reach:
+
+```toml
+[[stops]]
+station_id = "de:09162:43"
+station_name = "Kurfürstenplatz"
+departure_leeway_minutes = 15  # Only show departures 15+ minutes away
+show_ungrouped = false
+
+[stops.direction_mappings]
+"->Stachus (in 15+ min)" = ["27 Sendlinger Tor", "28 Sendlinger Tor"]
+```
+
 ### Experimentation and Tuning
 
 Configuration is a lot about your preferences and use cases. Play with the numbers (departures per page, rotation intervals, max departures per route/stop) and run locally to get the desired results. The dashboard is designed to be highly customizable to match your specific needs.
