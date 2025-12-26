@@ -19,11 +19,11 @@ def test_get_client_info_from_scope_with_full_data() -> None:
         ],
     }
 
-    ip, user_agent, browser_id = get_client_info_from_scope(scope)
+    client_info = get_client_info_from_scope(scope)
 
-    assert ip == "203.0.113.10"
-    assert user_agent == "TestBrowser/1.0 (TestOS)"
-    assert browser_id == "test-browser-123"
+    assert client_info.ip == "203.0.113.10"
+    assert client_info.user_agent == "TestBrowser/1.0 (TestOS)"
+    assert client_info.browser_id == "test-browser-123"
 
 
 def test_get_client_info_from_scope_without_headers() -> None:
@@ -32,20 +32,20 @@ def test_get_client_info_from_scope_without_headers() -> None:
         "client": ("198.51.100.42", 12345),
     }
 
-    ip, user_agent, browser_id = get_client_info_from_scope(scope)
+    client_info = get_client_info_from_scope(scope)
 
-    assert ip == "198.51.100.42"
-    assert user_agent == "unknown"
-    assert browser_id == "unknown"
+    assert client_info.ip == "198.51.100.42"
+    assert client_info.user_agent == "unknown"
+    assert client_info.browser_id == "unknown"
 
 
 def test_get_client_info_from_scope_with_invalid_scope() -> None:
     """Given an invalid scope, then both values are unknown."""
-    ip, user_agent, browser_id = get_client_info_from_scope(None)
+    client_info = get_client_info_from_scope(None)
 
-    assert ip == "unknown"
-    assert user_agent == "unknown"
-    assert browser_id == "unknown"
+    assert client_info.ip == "unknown"
+    assert client_info.user_agent == "unknown"
+    assert client_info.browser_id == "unknown"
 
 
 def test_get_client_info_from_socket_uses_scope_attribute() -> None:
@@ -59,11 +59,11 @@ def test_get_client_info_from_socket_uses_scope_attribute() -> None:
     }
     socket = SimpleNamespace(scope=scope)
 
-    ip, user_agent, browser_id = get_client_info_from_socket(socket)
+    client_info = get_client_info_from_socket(socket)
 
-    assert ip == "192.0.2.1"
-    assert user_agent == "AnotherBrowser/2.0"
-    assert browser_id == "from-socket-999"
+    assert client_info.ip == "192.0.2.1"
+    assert client_info.user_agent == "AnotherBrowser/2.0"
+    assert client_info.browser_id == "from-socket-999"
 
 
 def test_get_client_info_from_scope_ignores_unrelated_cookies() -> None:
@@ -75,6 +75,6 @@ def test_get_client_info_from_scope_ignores_unrelated_cookies() -> None:
         ],
     }
 
-    _, _, browser_id = get_client_info_from_scope(scope)
+    client_info = get_client_info_from_scope(scope)
 
-    assert browser_id == "unknown"
+    assert client_info.browser_id == "unknown"

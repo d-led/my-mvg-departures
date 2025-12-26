@@ -309,12 +309,12 @@ def test_group_departures_excludes_blacklisted_route() -> None:
 
     # Should have U3 in ->City group and U6 in ungrouped, but not route 54
     assert len(result) == 2
-    direction_names = [name for name, _ in result]
+    direction_names = [group.direction_name for group in result]
     assert "->City" in direction_names
     assert "Other" in direction_names
 
     # Check that route 54 is not in any group
-    all_departures = [dep for _, deps in result for dep in deps]
+    all_departures = [dep for group in result for dep in group.departures]
     assert not any(dep.line == "54" for dep in all_departures)
     assert any(dep.line == "U3" for dep in all_departures)
     assert any(dep.line == "U6" for dep in all_departures)
@@ -378,7 +378,7 @@ def test_group_departures_excludes_blacklisted_destination() -> None:
     result = service.group_departures(departures, stop_config)
 
     # Should have U3 in ->City group and U6 in ungrouped, but not U2 to Messestadt
-    all_departures = [dep for _, deps in result for dep in deps]
+    all_departures = [dep for group in result for dep in group.departures]
     assert not any(dep.destination == "Messestadt Ost" for dep in all_departures)
     assert any(dep.line == "U3" for dep in all_departures)
     assert any(dep.line == "U6" for dep in all_departures)
@@ -442,7 +442,7 @@ def test_group_departures_excludes_blacklisted_route_and_destination() -> None:
     result = service.group_departures(departures, stop_config)
 
     # Should have U3 in ->City group and route 54 to Lorettoplatz in ungrouped, but not route 54 to Münchner Freiheit
-    all_departures = [dep for _, deps in result for dep in deps]
+    all_departures = [dep for group in result for dep in group.departures]
     assert not any(
         dep.line == "54" and dep.destination == "Münchner Freiheit" for dep in all_departures
     )
@@ -697,7 +697,7 @@ def test_group_departures_with_empty_blacklist() -> None:
     result = service.group_departures(departures, stop_config)
 
     # Should have all departures
-    all_departures = [dep for _, deps in result for dep in deps]
+    all_departures = [dep for group in result for dep in group.departures]
     assert len(all_departures) == 2
     assert any(dep.line == "U3" for dep in all_departures)
     assert any(dep.line == "54" for dep in all_departures)

@@ -8,7 +8,7 @@ from mvg_departures.domain.contracts.departure_formatter import DepartureFormatt
 from mvg_departures.domain.contracts.departure_grouping_calculator import (
     DepartureGroupingCalculatorProtocol,
 )
-from mvg_departures.domain.models.departure import Departure
+from mvg_departures.domain.models.direction_group_with_metadata import DirectionGroupWithMetadata
 from mvg_departures.domain.models.stop_configuration import StopConfiguration
 
 
@@ -127,14 +127,12 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
 
     def calculate_display_data(
         self,
-        direction_groups: list[
-            tuple[str, str, str, list[Departure], bool | None, float | None, int | None]
-        ],
+        direction_groups: list[DirectionGroupWithMetadata],
     ) -> dict[str, Any]:
         """Calculate display data structure from direction groups.
 
         Args:
-            direction_groups: List of tuples containing (stop_name, direction_name, departures).
+            direction_groups: List of direction groups with metadata.
 
         Returns:
             Dictionary with display data including groups_with_departures,
@@ -145,26 +143,18 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
         stops_with_departures: set[str] = set()
         current_stop: str | None = None
 
-        for (
-            station_id,
-            stop_name,
-            direction_name,
-            departures,
-            random_colors,
-            brightness,
-            salt,
-        ) in direction_groups:
-            if departures:
-                direction_clean = direction_name.lstrip("->")
-                combined_header = f"{stop_name} → {direction_clean}"
+        for group in direction_groups:
+            if group.departures:
+                direction_clean = group.direction_name.lstrip("->")
+                combined_header = f"{group.stop_name} → {direction_clean}"
 
                 # Check if this is a new stop
-                is_new_stop = stop_name != current_stop
+                is_new_stop = group.stop_name != current_stop
                 if is_new_stop:
-                    current_stop = stop_name
+                    current_stop = group.stop_name
 
                 # Prepare departures for this group
-                sorted_departures = sorted(departures, key=lambda d: d.time)
+                sorted_departures = sorted(group.departures, key=lambda d: d.time)
                 departure_data = []
                 for departure in sorted_departures:
                     time_str = self.formatter.format_departure_time(departure)
@@ -219,18 +209,18 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
                     )
 
                 group_data: dict[str, Any] = {
-                    "station_id": station_id,
-                    "stop_name": stop_name,
+                    "station_id": group.station_id,
+                    "stop_name": group.stop_name,
                     "header": combined_header,
                     "departures": departure_data,
                     "is_new_stop": is_new_stop,
-                    "random_header_colors": random_colors,
-                    "header_background_brightness": brightness,
-                    "random_color_salt": salt,
+                    "random_header_colors": group.random_header_colors,
+                    "header_background_brightness": group.header_background_brightness,
+                    "random_color_salt": group.random_color_salt,
                 }
 
                 groups_with_departures.append(group_data)
-                stops_with_departures.add(stop_name)
+                stops_with_departures.add(group.stop_name)
 
         # Mark first header and last group
         if groups_with_departures:
@@ -252,12 +242,12 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
         # First header uses the configured banner_color, so skip it
         # Use config settings from group data (passed directly, no matching needed)
         # Color depends only on header text and salt, not on position
-        for group in groups_with_departures:
-            if not group.get("is_first_header", False):
-                header_text = group.get("header", "")
+        for group_dict in groups_with_departures:
+            if not group_dict.get("is_first_header", False):
+                header_text = group_dict.get("header", "")
                 # Get settings from group data (stop-level if provided, None means use route-level)
-                group_random_colors = group.get("random_header_colors")
-                group_brightness = group.get("header_background_brightness")
+                group_random_colors = group_dict.get("random_header_colors")
+                group_brightness = group_dict.get("header_background_brightness")
 
                 if header_text:
                     # Use stop-level setting if provided, otherwise use route-level default
@@ -271,11 +261,11 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
                         if group_brightness is not None
                         else self.header_background_brightness
                     )
-                    group_salt = group.get("random_color_salt")
+                    group_salt = group_dict.get("random_color_salt")
                     salt = group_salt if group_salt is not None else self.random_color_salt
 
                     if use_random_colors:
-                        group["header_color"] = generate_pastel_color_from_text(
+                        group_dict["header_color"] = generate_pastel_color_from_text(
                             header_text, brightness, 0, salt
                         )
 

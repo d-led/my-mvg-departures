@@ -307,18 +307,21 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             # Use get_or_create pattern: if already in presence, don't duplicate
             # Use session dict to get stable user ID (persists across reconnections)
             if not self.presence_tracker.is_user_tracked(socket, _session):
-                user_id, local_count, total_count = self.presence_tracker.join_dashboard(
-                    route_path, socket, _session
-                )
+                presence_result = self.presence_tracker.join_dashboard(route_path, socket, _session)
+                user_id = presence_result.user_id
+                local_count = presence_result.local_count
+                total_count = presence_result.total_count
             else:
                 # Already in presence, just ensure it's in the right dashboard
-                local_count, total_count = self.presence_tracker.ensure_dashboard_membership(
+                presence_counts = self.presence_tracker.ensure_dashboard_membership(
                     route_path, socket, _session
                 )
                 user_id = self.presence_tracker.get_user_id(socket, _session)
+                local_count = presence_counts.local_count
+                total_count = presence_counts.total_count
                 logger.debug(f"User {user_id} already in presence, ensured dashboard membership")
 
-            client_ip, user_agent, browser_id = get_client_info_from_socket(socket)
+            client_info = get_client_info_from_socket(socket)
             logger.info(
                 (
                     "Presence: user %s joined dashboard %s from ip=%s, agent=%s, "
@@ -326,9 +329,9 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 ),
                 user_id,
                 route_path,
-                client_ip,
-                user_agent,
-                browser_id,
+                client_info.ip,
+                client_info.user_agent,
+                client_info.browser_id,
                 local_count,
                 total_count,
             )
@@ -379,10 +382,13 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 )
                 # If socket wasn't connected at mount but is now, track presence
                 if not self.presence_tracker.is_user_tracked(socket, _session):
-                    user_id, local_count, total_count = self.presence_tracker.join_dashboard(
+                    presence_result = self.presence_tracker.join_dashboard(
                         route_path, socket, _session
                     )
-                    client_ip, user_agent, browser_id = get_client_info_from_socket(socket)
+                    user_id = presence_result.user_id
+                    local_count = presence_result.local_count
+                    total_count = presence_result.total_count
+                    client_info = get_client_info_from_socket(socket)
                     logger.info(
                         (
                             "Presence: user %s joined dashboard %s (connected after mount) "
@@ -390,9 +396,9 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                         ),
                         user_id,
                         route_path,
-                        client_ip,
-                        user_agent,
-                        browser_id,
+                        client_info.ip,
+                        client_info.user_agent,
+                        client_info.browser_id,
                         local_count,
                         total_count,
                     )
@@ -422,11 +428,12 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             session = {"_presence_session_id": socket._presence_session_id}
 
         # Leave presence tracking - always remove, even if not connected
-        user_id, local_count, total_count = self.presence_tracker.leave_dashboard(
-            route_path, socket, session
-        )
+        presence_result = self.presence_tracker.leave_dashboard(route_path, socket, session)
+        user_id = presence_result.user_id
+        local_count = presence_result.local_count
+        total_count = presence_result.total_count
 
-        client_ip, user_agent, browser_id = get_client_info_from_socket(socket)
+        client_info = get_client_info_from_socket(socket)
         logger.info(
             (
                 "Presence: user %s left dashboard %s from ip=%s, agent=%s, "
@@ -434,9 +441,9 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             ),
             user_id,
             route_path,
-            client_ip,
-            user_agent,
-            browser_id,
+            client_info.ip,
+            client_info.user_agent,
+            client_info.browser_id,
             local_count,
             total_count,
         )
@@ -463,11 +470,12 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             session = {"_presence_session_id": socket._presence_session_id}
 
         # Always remove from presence tracking on disconnect
-        user_id, local_count, total_count = self.presence_tracker.leave_dashboard(
-            route_path, socket, session
-        )
+        presence_result = self.presence_tracker.leave_dashboard(route_path, socket, session)
+        user_id = presence_result.user_id
+        local_count = presence_result.local_count
+        total_count = presence_result.total_count
 
-        client_ip, user_agent, browser_id = get_client_info_from_socket(socket)
+        client_info = get_client_info_from_socket(socket)
         logger.info(
             (
                 "Presence disconnect: user %s disconnected from dashboard %s from ip=%s, "
@@ -475,9 +483,9 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             ),
             user_id,
             route_path,
-            client_ip,
-            user_agent,
-            browser_id,
+            client_info.ip,
+            client_info.user_agent,
+            client_info.browser_id,
             local_count,
             total_count,
         )

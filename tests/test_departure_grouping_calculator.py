@@ -10,7 +10,11 @@ from mvg_departures.adapters.web.builders import (
     generate_pastel_color_from_text,
 )
 from mvg_departures.adapters.web.formatters import DepartureFormatter
-from mvg_departures.domain.models import Departure, StopConfiguration
+from mvg_departures.domain.models import (
+    Departure,
+    DirectionGroupWithMetadata,
+    StopConfiguration,
+)
 
 
 def _create_calculator() -> DepartureGroupingCalculator:
@@ -63,7 +67,17 @@ def test_when_single_departure_exists_then_displays_it() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
     result = calculator.calculate_display_data(direction_groups)
 
     assert result["has_departures"] is True
@@ -90,7 +104,17 @@ def test_when_departure_exists_then_displays_line_and_destination() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -116,7 +140,17 @@ def test_when_departure_is_cancelled_then_shows_cancelled_status() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -141,7 +175,17 @@ def test_when_departure_is_delayed_then_shows_delay_information() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -168,7 +212,17 @@ def test_when_delay_is_under_one_minute_then_does_not_show_delay() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -194,7 +248,17 @@ def test_when_departure_has_realtime_data_then_shows_realtime_indicator() -> Non
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -219,7 +283,17 @@ def test_when_departure_has_platform_then_shows_platform_number() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -244,7 +318,17 @@ def test_when_departure_has_no_platform_then_does_not_show_platform() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -283,8 +367,24 @@ def test_when_multiple_departures_exist_then_displays_all() -> None:
 
     calculator = _create_calculator()
     direction_groups = [
-        ("de:09162:70", "Universität", "->Giesing", [departure1], None, None, None),
-        ("de:09162:70", "Universität", "->Klinikum Großhadern", [departure2], None, None, None),
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure1],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        ),
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Klinikum Großhadern",
+            departures=[departure2],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        ),
     ]
     result = calculator.calculate_display_data(direction_groups)
 
@@ -297,7 +397,17 @@ def test_when_multiple_departures_exist_then_displays_all() -> None:
 def test_when_stop_has_no_departures_then_lists_it_as_empty() -> None:
     """Given a configured stop with no departures, when displaying, then lists it as having no departures."""
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [], None, None, None)]
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
     result = calculator.calculate_display_data(direction_groups)
 
     assert result["has_departures"] is False
@@ -323,7 +433,17 @@ def test_when_departures_exist_then_first_group_is_marked_as_first() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
     result = calculator.calculate_display_data(direction_groups)
 
     group = result["groups_with_departures"][0]
@@ -364,8 +484,24 @@ def test_when_multiple_groups_exist_then_first_and_last_are_marked() -> None:
 
     calculator = _create_calculator()
     direction_groups = [
-        ("de:09162:70", "Universität", "->Giesing", [departure1], None, None, None),
-        ("de:09162:70", "Universität", "->Klinikum Großhadern", [departure2], None, None, None),
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure1],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        ),
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Klinikum Großhadern",
+            departures=[departure2],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        ),
     ]
     result = calculator.calculate_display_data(direction_groups)
 
@@ -414,8 +550,24 @@ def test_when_departures_from_different_stops_then_each_stop_is_marked_as_new() 
 
     calculator = _create_calculator()
     direction_groups = [
-        ("de:09162:70", "Universität", "->Giesing", [departure1], None, None, None),
-        ("de:09162:71", "Marienplatz", "->Klinikum Großhadern", [departure2], None, None, None),
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure1],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        ),
+        DirectionGroupWithMetadata(
+            station_id="de:09162:71",
+            stop_name="Marienplatz",
+            direction_name="->Klinikum Großhadern",
+            departures=[departure2],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        ),
     ]
     result = calculator.calculate_display_data(direction_groups)
 
@@ -455,8 +607,24 @@ def test_when_departures_from_same_stop_then_second_is_not_marked_as_new() -> No
 
     calculator = _create_calculator()
     direction_groups = [
-        ("de:09162:70", "Universität", "->Giesing", [departure1], None, None, None),
-        ("de:09162:70", "Universität", "->Klinikum Großhadern", [departure2], None, None, None),
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure1],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        ),
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Klinikum Großhadern",
+            departures=[departure2],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        ),
     ]
     result = calculator.calculate_display_data(direction_groups)
 
@@ -497,14 +665,14 @@ def test_when_departures_are_unsorted_then_displays_them_sorted_by_time() -> Non
     calculator = _create_calculator()
     # Add in reverse order
     direction_groups = [
-        (
-            "de:09162:70",
-            "Universität",
-            "->Giesing",
-            [later_departure, earlier_departure],
-            None,
-            None,
-            None,
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[later_departure, earlier_departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
         )
     ]
     result = calculator.calculate_display_data(direction_groups)
@@ -534,7 +702,17 @@ def test_when_departure_exists_then_includes_accessibility_label() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -564,7 +742,17 @@ def test_when_departure_is_cancelled_then_accessibility_label_includes_cancelled
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -590,7 +778,17 @@ def test_when_departure_is_scheduled_then_accessibility_label_says_scheduled() -
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -616,7 +814,17 @@ def test_when_departures_exist_then_header_shows_stop_and_direction() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
     result = calculator.calculate_display_data(direction_groups)
 
     group = result["groups_with_departures"][0]
@@ -642,7 +850,17 @@ def test_when_direction_has_arrow_prefix_then_header_removes_it() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
     result = calculator.calculate_display_data(direction_groups)
 
     group = result["groups_with_departures"][0]
@@ -669,7 +887,17 @@ def test_when_departure_exists_then_includes_all_time_formats() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -709,8 +937,24 @@ def test_when_some_stops_have_departures_and_others_dont_then_lists_both() -> No
 
     calculator = _create_calculator()
     direction_groups = [
-        ("de:09162:70", "Universität", "->Giesing", [departure], None, None, None),
-        ("de:09162:71", "Marienplatz", "->Ostbahnhof", [], None, None, None),
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        ),
+        DirectionGroupWithMetadata(
+            station_id="de:09162:71",
+            stop_name="Marienplatz",
+            direction_name="->Ostbahnhof",
+            departures=[],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        ),
     ]
     result = calculator.calculate_display_data(direction_groups)
 
@@ -738,7 +982,17 @@ def test_when_departure_has_large_delay_then_shows_delay_correctly() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -764,7 +1018,17 @@ def test_when_departure_has_platform_zero_then_shows_platform_zero() -> None:
     )
 
     calculator = _create_calculator()
-    direction_groups = [("de:09162:70", "Universität", "->Giesing", [departure], None, None, None)]
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
     result = calculator.calculate_display_data(direction_groups)
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
@@ -825,23 +1089,23 @@ def test_when_stops_have_same_name_different_ids_then_uses_correct_config() -> N
 
     # Create direction groups with station_id, stop_name, direction_name, departures, random_header_colors, header_background_brightness, random_color_salt
     direction_groups = [
-        (
-            "de:09162:1110",
-            "Giesing",
-            "->City",
-            [departure1],
-            False,
-            None,
-            None,
+        DirectionGroupWithMetadata(
+            station_id="de:09162:1110",
+            stop_name="Giesing",
+            direction_name="->City",
+            departures=[departure1],
+            random_header_colors=False,
+            header_background_brightness=None,
+            random_color_salt=None,
         ),  # First stop: random_header_colors=False
-        (
-            "de:09162:1110:4:4",
-            "Giesing",
-            "->Tegernseer Str.",
-            [departure2],
-            True,
-            None,
-            None,
+        DirectionGroupWithMetadata(
+            station_id="de:09162:1110:4:4",
+            stop_name="Giesing",
+            direction_name="->Tegernseer Str.",
+            departures=[departure2],
+            random_header_colors=True,
+            header_background_brightness=None,
+            random_color_salt=None,
         ),  # Second stop: random_header_colors=True
     ]
     result = calculator.calculate_display_data(direction_groups)
@@ -941,23 +1205,23 @@ def test_when_salt_used_in_calculator_then_affects_color() -> None:
 
     # Create direction groups with same header text but different salt values
     direction_groups = [
-        (
-            "de:09162:1110",
-            "Giesing",
-            "->Tegernseer Str.",
-            [departure],
-            True,
-            None,
-            0,  # salt = 0
+        DirectionGroupWithMetadata(
+            station_id="de:09162:1110",
+            stop_name="Giesing",
+            direction_name="->Tegernseer Str.",
+            departures=[departure],
+            random_header_colors=True,
+            header_background_brightness=None,
+            random_color_salt=0,  # salt = 0
         ),
-        (
-            "de:09162:1110:4:4",
-            "Giesing",
-            "->Tegernseer Str.",
-            [departure],
-            True,
-            None,
-            1,  # salt = 1
+        DirectionGroupWithMetadata(
+            station_id="de:09162:1110:4:4",
+            stop_name="Giesing",
+            direction_name="->Tegernseer Str.",
+            departures=[departure],
+            random_header_colors=True,
+            header_background_brightness=None,
+            random_color_salt=1,  # salt = 1
         ),
     ]
     result = calculator.calculate_display_data(direction_groups)
@@ -978,23 +1242,23 @@ def test_when_salt_used_in_calculator_then_affects_color() -> None:
 
     # Now test with salt=0 for the second group
     direction_groups_salt_0 = [
-        (
-            "de:09162:1110",
-            "Giesing",
-            "->Tegernseer Str.",
-            [departure],
-            True,
-            None,
-            0,  # salt = 0
+        DirectionGroupWithMetadata(
+            station_id="de:09162:1110",
+            stop_name="Giesing",
+            direction_name="->Tegernseer Str.",
+            departures=[departure],
+            random_header_colors=True,
+            header_background_brightness=None,
+            random_color_salt=0,  # salt = 0
         ),
-        (
-            "de:09162:1110:4:4",
-            "Giesing",
-            "->Tegernseer Str.",
-            [departure],
-            True,
-            None,
-            0,  # salt = 0 (same as first)
+        DirectionGroupWithMetadata(
+            station_id="de:09162:1110:4:4",
+            stop_name="Giesing",
+            direction_name="->Tegernseer Str.",
+            departures=[departure],
+            random_header_colors=True,
+            header_background_brightness=None,
+            random_color_salt=0,  # salt = 0 (same as first)
         ),
     ]
     result_salt_0 = calculator.calculate_display_data(direction_groups_salt_0)

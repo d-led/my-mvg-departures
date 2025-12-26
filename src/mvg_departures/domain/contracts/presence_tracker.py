@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     from pyview import LiveViewSocket
 
+from mvg_departures.domain.models.presence_result import PresenceCounts, PresenceResult
+
 
 class PresenceTrackerProtocol(Protocol):
     """Protocol for presence tracking functionality."""
@@ -23,7 +25,7 @@ class PresenceTrackerProtocol(Protocol):
 
     def join_dashboard(
         self, route_path: str, socket: "LiveViewSocket", session: dict | None = None
-    ) -> tuple[str, int, int]:
+    ) -> PresenceResult:
         """Join a dashboard and track the socket.
 
         Args:
@@ -32,13 +34,13 @@ class PresenceTrackerProtocol(Protocol):
             session: Optional session dict that may contain a stable session ID.
 
         Returns:
-            Tuple of (user_id, local_count, total_count).
+            PresenceResult with user_id, local_count, and total_count.
         """
         ...
 
     def leave_dashboard(
         self, route_path: str, socket: "LiveViewSocket", session: dict | None = None
-    ) -> tuple[str, int, int]:
+    ) -> PresenceResult:
         """Leave a dashboard and untrack the socket.
 
         Args:
@@ -47,13 +49,13 @@ class PresenceTrackerProtocol(Protocol):
             session: Optional session dict that may contain a stable session ID.
 
         Returns:
-            Tuple of (user_id, local_count, total_count).
+            PresenceResult with user_id, local_count, and total_count.
         """
         ...
 
     def ensure_dashboard_membership(
         self, route_path: str, socket: "LiveViewSocket", session: dict | None = None
-    ) -> tuple[int, int]:
+    ) -> PresenceCounts:
         """Ensure a socket is tracked in presence and belongs to the specified dashboard.
 
         Args:
@@ -62,7 +64,7 @@ class PresenceTrackerProtocol(Protocol):
             session: Optional session dict that may contain a stable session ID.
 
         Returns:
-            Tuple of (local_count, total_count) - the updated counts.
+            PresenceCounts with local_count and total_count.
         """
         ...
 

@@ -3,16 +3,14 @@
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from mvg_departures.domain.models.departure import Departure
+from mvg_departures.domain.models.direction_group_with_metadata import DirectionGroupWithMetadata
 
 
 @dataclass
 class DeparturesState:
     """State for the departures LiveView."""
 
-    direction_groups: list[
-        tuple[str, str, str, list[Departure], bool | None, float | None, int | None]
-    ] = field(default_factory=list)
+    direction_groups: list[DirectionGroupWithMetadata] = field(default_factory=list)
     last_update: datetime | None = None
     api_status: str = "unknown"
     presence_local: int = 0  # Number of users on this dashboard

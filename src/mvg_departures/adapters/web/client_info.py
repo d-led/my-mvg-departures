@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from mvg_departures.domain.models.client_info import ClientInfo
+
 
 def _decode_header_value(value: Any) -> str:
     """Decode a header value into a readable string."""
@@ -20,15 +22,15 @@ def _decode_header_value(value: Any) -> str:
     return str(value)
 
 
-def get_client_info_from_scope(scope: dict[str, Any] | None) -> tuple[str, str, str]:
+def get_client_info_from_scope(scope: dict[str, Any] | None) -> ClientInfo:
     """Extract client IP, user agent, and browser ID from an ASGI scope-like mapping.
 
     Returns:
-        Tuple of (ip, user_agent, browser_id). When information is not available, the
+        ClientInfo with ip, user_agent, and browser_id. When information is not available, the
         returned values fall back to the string ``"unknown"``.
     """
     if not isinstance(scope, dict):
-        return "unknown", "unknown", "unknown"
+        return ClientInfo(ip="unknown", user_agent="unknown", browser_id="unknown")
 
     user_agent = "unknown"
     browser_id = "unknown"
@@ -76,15 +78,15 @@ def get_client_info_from_scope(scope: dict[str, Any] | None) -> tuple[str, str, 
                     browser_id = f"{browser_id[:125]}..."
                 break
 
-    return ip, user_agent, browser_id
+    return ClientInfo(ip=ip, user_agent=user_agent, browser_id=browser_id)
 
 
-def get_client_info_from_socket(socket: Any) -> tuple[str, str, str]:
+def get_client_info_from_socket(socket: Any) -> ClientInfo:
     """Convenience wrapper to extract client info directly from a socket.
 
     The socket is expected to expose a ``scope`` attribute with the usual
     ASGI shape. When that attribute is missing or malformed, this function
-    returns ``(\"unknown\", \"unknown\", \"unknown\")`` rather than raising.
+    returns ClientInfo with all fields set to ``"unknown"`` rather than raising.
     """
     scope = getattr(socket, "scope", None)
     return get_client_info_from_scope(scope)

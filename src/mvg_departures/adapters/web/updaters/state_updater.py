@@ -13,7 +13,9 @@ from mvg_departures.domain.contracts.state_updater import StateUpdaterProtocol
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from mvg_departures.domain.models.departure import Departure
+    from mvg_departures.domain.models.direction_group_with_metadata import (
+        DirectionGroupWithMetadata,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -31,14 +33,12 @@ class StateUpdater(StateUpdaterProtocol):
 
     def update_departures(
         self,
-        direction_groups: list[
-            tuple[str, str, str, list[Departure], bool | None, float | None, int | None]
-        ],
+        direction_groups: list[DirectionGroupWithMetadata],
     ) -> None:
         """Update the direction groups in the state.
 
         Args:
-            direction_groups: List of (station_id, station_name, direction_name, departures, random_header_colors, header_background_brightness, random_color_salt) tuples.
+            direction_groups: List of direction groups with metadata.
         """
         self.departures_state.direction_groups = direction_groups
         logger.debug(f"Updated direction groups: {len(direction_groups)} groups")

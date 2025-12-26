@@ -92,12 +92,12 @@ fi
 echo "✓ Type checking passed"
 echo ""
 
-# 4. Run tests
+# 4. Run tests (excluding integration tests by default)
 echo "4. Running tests..."
 if [ -n "$RUN_CMD" ]; then
-    $RUN_CMD pytest "$@"
+    $RUN_CMD pytest -m "not integration" "$@"
 else
-    $PYTHON -m pytest "$@"
+    $PYTHON -m pytest -m "not integration" "$@"
 fi
 echo "✓ Tests passed"
 echo ""

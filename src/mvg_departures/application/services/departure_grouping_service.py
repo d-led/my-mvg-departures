@@ -6,6 +6,7 @@ import unicodedata
 from datetime import UTC, datetime, timedelta
 
 from mvg_departures.domain.models.departure import Departure
+from mvg_departures.domain.models.grouped_departures import GroupedDepartures
 from mvg_departures.domain.models.stop_configuration import StopConfiguration
 from mvg_departures.domain.ports.departure_repository import DepartureRepository
 
@@ -21,7 +22,7 @@ class DepartureGroupingService:
 
     async def get_grouped_departures(
         self, stop_config: StopConfiguration
-    ) -> list[tuple[str, list[Departure]]]:
+    ) -> list[GroupedDepartures]:
         """Get departures for a stop, grouped by configured directions.
 
         Fetches a reasonable number of departures from the API, then groups them
@@ -58,7 +59,7 @@ class DepartureGroupingService:
 
     def group_departures(
         self, departures: list[Departure], stop_config: StopConfiguration
-    ) -> list[tuple[str, list[Departure]]]:
+    ) -> list[GroupedDepartures]:
         """Group pre-fetched departures by configured directions.
 
         This method allows grouping departures that were already fetched,
@@ -133,13 +134,17 @@ class DepartureGroupingService:
         # Iterate through direction_mappings in config order
         for direction_name in stop_config.direction_mappings:
             if direction_name in direction_groups:
-                result.append((direction_name, direction_groups[direction_name]))
+                result.append(
+                    GroupedDepartures(
+                        direction_name=direction_name, departures=direction_groups[direction_name]
+                    )
+                )
 
         # Add ungrouped departures if configured to show them (whitelist mode)
         # Only add ungrouped group if show_ungrouped is True AND there are ungrouped departures
         if stop_config.show_ungrouped and ungrouped:
             ungrouped_label = stop_config.ungrouped_title or "Other"
-            result.append((ungrouped_label, ungrouped))
+            result.append(GroupedDepartures(direction_name=ungrouped_label, departures=ungrouped))
 
         return result
 

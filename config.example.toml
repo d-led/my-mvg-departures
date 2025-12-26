@@ -323,7 +323,7 @@ platform_filter_routes = ["249"]
 
 [routes.stops.direction_mappings]
 # U-Bahn and Bus routes from Zoologischer Garten
-"->Berliner Str." = ["U9 Osloer"]
+"->Berliner Str." = ["U9 S+U Bundesplatz"]
 "->Uhlandstr." = ["249"]
 
 [[routes.stops]]

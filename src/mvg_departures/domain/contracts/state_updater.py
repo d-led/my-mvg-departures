@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from mvg_departures.domain.models.departure import Departure
+from mvg_departures.domain.models.direction_group_with_metadata import DirectionGroupWithMetadata
 
 
 class StateUpdaterProtocol(Protocol):
@@ -13,14 +13,12 @@ class StateUpdaterProtocol(Protocol):
 
     def update_departures(
         self,
-        direction_groups: list[
-            tuple[str, str, str, list["Departure"], bool | None, float | None, int | None]
-        ],
+        direction_groups: list[DirectionGroupWithMetadata],
     ) -> None:
         """Update the direction groups in the state.
 
         Args:
-            direction_groups: List of (station_id, station_name, direction_name, departures, random_header_colors, header_background_brightness, random_color_salt) tuples.
+            direction_groups: List of direction groups with metadata.
         """
         ...
 

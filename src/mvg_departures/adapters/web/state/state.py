@@ -129,20 +129,20 @@ class State:
             True if the socket was registered, False if it was rejected due to
             per-browser session limits.
         """
-        client_ip, user_agent, browser_id = get_client_info_from_socket(socket)
+        client_info = get_client_info_from_socket(socket)
 
         # If we have a usable browser_id, enforce per-browser connection cap.
-        if browser_id != "unknown" and self.max_sessions_per_browser > 0:
-            sockets_for_browser = self._browser_sockets.get(browser_id)
+        if client_info.browser_id != "unknown" and self.max_sessions_per_browser > 0:
+            sockets_for_browser = self._browser_sockets.get(client_info.browser_id)
             active_count = len(sockets_for_browser) if sockets_for_browser is not None else 0
             if active_count >= self.max_sessions_per_browser:
                 logger.warning(
                     "Rejecting socket from ip=%s, agent=%s, browser_id=%s for route '%s' "
                     "because it would exceed max_sessions_per_browser=%s "
                     "(currently %s active sockets for this browser).",
-                    client_ip,
-                    user_agent,
-                    browser_id,
+                    client_info.ip,
+                    client_info.user_agent,
+                    client_info.browser_id,
                     self.route_path,
                     self.max_sessions_per_browser,
                     active_count,
@@ -157,15 +157,15 @@ class State:
             self._session_sockets[session_id] = socket
 
         self.connected_sockets.add(socket)
-        if browser_id != "unknown":
-            self._browser_sockets.setdefault(browser_id, set()).add(socket)
-            self._socket_browser[socket] = browser_id
+        if client_info.browser_id != "unknown":
+            self._browser_sockets.setdefault(client_info.browser_id, set()).add(socket)
+            self._socket_browser[socket] = client_info.browser_id
 
         logger.info(
             "Registered socket from ip=%s, agent=%s, browser_id=%s, total connected: %s",
-            client_ip,
-            user_agent,
-            browser_id,
+            client_info.ip,
+            client_info.user_agent,
+            client_info.browser_id,
             len(self.connected_sockets),
         )
         return True

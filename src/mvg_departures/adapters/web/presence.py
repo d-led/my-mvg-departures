@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from pyview import LiveViewSocket
 
 from mvg_departures.domain.contracts import PresenceTrackerProtocol
+from mvg_departures.domain.models.presence_result import PresenceCounts, PresenceResult
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,7 @@ class PresenceTracker(PresenceTrackerProtocol):
 
     def join_dashboard(
         self, route_path: str, socket: "LiveViewSocket", session: dict | None = None
-    ) -> tuple[str, int, int]:
+    ) -> PresenceResult:
         """Join a dashboard and track the socket.
 
         Args:
@@ -70,7 +71,7 @@ class PresenceTracker(PresenceTrackerProtocol):
             session: Optional session dict that may contain a stable session ID.
 
         Returns:
-            Tuple of (user_id, local_count, total_count) - the updated counts.
+            PresenceResult with user_id, local_count, and total_count.
         """
         user_id = self._get_user_id(socket, session)
         normalized_path = route_path.strip("/").replace("/", ":") or "root"
@@ -94,11 +95,11 @@ class PresenceTracker(PresenceTrackerProtocol):
                 f"Local: {local_count}, Total: {total_count}"
             )
 
-        return user_id, local_count, total_count
+        return PresenceResult(user_id=user_id, local_count=local_count, total_count=total_count)
 
     def leave_dashboard(
         self, route_path: str, socket: "LiveViewSocket", session: dict | None = None
-    ) -> tuple[str, int, int]:
+    ) -> PresenceResult:
         """Leave a dashboard and untrack the socket.
 
         Args:
@@ -107,7 +108,7 @@ class PresenceTracker(PresenceTrackerProtocol):
             session: Optional session dict that may contain a stable session ID.
 
         Returns:
-            Tuple of (user_id, local_count, total_count) - the updated counts.
+            PresenceResult with user_id, local_count, and total_count.
         """
         user_id = self._get_user_id(socket, session)
         normalized_path = route_path.strip("/").replace("/", ":") or "root"
@@ -131,7 +132,7 @@ class PresenceTracker(PresenceTrackerProtocol):
             f"Local: {local_count}, Total: {total_count}"
         )
 
-        return user_id, local_count, total_count
+        return PresenceResult(user_id=user_id, local_count=local_count, total_count=total_count)
 
     def get_dashboard_count(self, route_path: str) -> int:
         """Get the number of users in a specific dashboard.
@@ -169,7 +170,7 @@ class PresenceTracker(PresenceTrackerProtocol):
 
     def ensure_dashboard_membership(
         self, route_path: str, socket: "LiveViewSocket", session: dict | None = None
-    ) -> tuple[int, int]:
+    ) -> PresenceCounts:
         """Ensure a socket is tracked in presence and belongs to the specified dashboard.
 
         Args:
@@ -178,7 +179,7 @@ class PresenceTracker(PresenceTrackerProtocol):
             session: Optional session dict that may contain a stable session ID.
 
         Returns:
-            Tuple of (local_count, total_count) - the updated counts.
+            PresenceCounts with local_count and total_count.
         """
         user_id = self._get_user_id(socket, session)
         normalized_path = route_path.strip("/").replace("/", ":") or "root"
@@ -195,7 +196,7 @@ class PresenceTracker(PresenceTrackerProtocol):
         local_count = len(self._dashboard_users[normalized_path])
         total_count = len(self._all_users)
 
-        return local_count, total_count
+        return PresenceCounts(local_count=local_count, total_count=total_count)
 
     def cleanup_stale_entries(self, route_path: str, active_sockets: set["LiveViewSocket"]) -> int:
         """Clean up stale presence entries for a route.
@@ -232,7 +233,7 @@ class PresenceTracker(PresenceTrackerProtocol):
 
     def sync_with_registered_sockets(
         self, route_sockets: dict[str, set["LiveViewSocket"]]
-    ) -> tuple[int, int]:
+    ) -> tuple[int, int]:  # Keep as tuple for backward compatibility with internal usage
         """Sync presence tracking with registered sockets for all routes.
 
         This method ensures that presence tracking matches the actual registered sockets.

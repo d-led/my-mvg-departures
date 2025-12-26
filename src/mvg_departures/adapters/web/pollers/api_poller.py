@@ -16,6 +16,9 @@ from mvg_departures.domain.contracts.state_broadcaster import (
 from mvg_departures.domain.contracts.state_updater import (
     StateUpdaterProtocol,  # noqa: TC001 - Runtime dependency: used in __init__ signature
 )
+from mvg_departures.domain.models.direction_group_with_metadata import DirectionGroupWithMetadata
+from mvg_departures.domain.models.error_details import ErrorDetails
+from mvg_departures.domain.models.grouped_departures import GroupedDepartures
 
 if TYPE_CHECKING:
     from mvg_departures.adapters.config.app_config import AppConfig
@@ -26,7 +29,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _extract_error_details(error: Exception) -> tuple[int | None, str]:
+def _extract_error_details(error: Exception) -> ErrorDetails:
     """Extract HTTP status code and error reason from exception."""
     error_str = str(error)
     # Try to extract HTTP status code from error message
@@ -48,7 +51,7 @@ def _extract_error_details(error: Exception) -> tuple[int | None, str]:
     else:
         reason = "Unknown error"
 
-    return status_code, reason
+    return ErrorDetails(status_code=status_code, reason=reason)
 
 
 class ApiPoller(ApiPollerProtocol):
@@ -82,7 +85,7 @@ class ApiPoller(ApiPollerProtocol):
         self.state_broadcaster = state_broadcaster
         self.broadcast_topic = broadcast_topic
         self.shared_cache = shared_cache
-        self.cached_departures: dict[str, list[tuple[str, list[Departure]]]] = {}
+        self.cached_departures: dict[str, list[GroupedDepartures]] = {}
         self._task: asyncio.Task | None = None
 
     async def start(self) -> None:
@@ -126,9 +129,7 @@ class ApiPoller(ApiPollerProtocol):
 
     async def _process_and_broadcast(self) -> None:
         """Process departures (from cache or API) and broadcast update."""
-        all_groups: list[
-            tuple[str, str, str, list[Departure], bool | None, float | None, int | None]
-        ] = []
+        all_groups: list[DirectionGroupWithMetadata] = []
         has_errors = False
 
         for stop_config in self.stop_configs:
@@ -170,12 +171,12 @@ class ApiPoller(ApiPollerProtocol):
 
                 # Convert to format with station_name and deduplicate departures
                 # Deduplication: same line + destination + time = same departure
-                stop_groups: list[tuple[str, list[Departure]]] = []
-                for direction_name, departures in groups:
+                stop_groups: list[GroupedDepartures] = []
+                for group in groups:
                     # Deduplicate departures within this direction group
                     seen = set()
                     unique_departures = []
-                    for dep in departures:
+                    for dep in group.departures:
                         # Create a unique key: line + destination + time
                         dep_key = (dep.line, dep.destination, dep.time)
                         if dep_key not in seen:
@@ -185,7 +186,11 @@ class ApiPoller(ApiPollerProtocol):
                             logger.warning(
                                 f"Duplicate departure detected and removed: {dep.line} to {dep.destination} at {dep.time}"
                             )
-                    stop_groups.append((direction_name, unique_departures))
+                    stop_groups.append(
+                        GroupedDepartures(
+                            direction_name=group.direction_name, departures=unique_departures
+                        )
+                    )
                     # Include config settings directly - no matching needed
                     # Use stop-level settings if provided, otherwise use route-level defaults
                     random_colors = (
@@ -204,27 +209,27 @@ class ApiPoller(ApiPollerProtocol):
                         else None  # Will use route-level default in calculator
                     )
                     all_groups.append(
-                        (
-                            stop_config.station_id,
-                            stop_config.station_name,
-                            direction_name,
-                            unique_departures,
-                            random_colors,
-                            brightness,
-                            salt,
+                        DirectionGroupWithMetadata(
+                            station_id=stop_config.station_id,
+                            stop_name=stop_config.station_name,
+                            direction_name=group.direction_name,
+                            departures=unique_departures,
+                            random_header_colors=random_colors,
+                            header_background_brightness=brightness,
+                            random_color_salt=salt,
                         )
                     )
                 # Cache successful processing - always replace with fresh data
                 self.cached_departures[stop_config.station_name] = stop_groups
                 logger.debug(f"Successfully processed departures for {stop_config.station_name}")
             except Exception as e:
-                status_code, reason = _extract_error_details(e)
+                error_details = _extract_error_details(e)
                 logger.error(
                     f"API poller failed to process departures for {stop_config.station_name}: "
-                    f"{reason} (status: {status_code}, error: {e})"
+                    f"{error_details.reason} (status: {error_details.status_code}, error: {e})"
                 )
                 has_errors = True
-                if status_code == 429:
+                if error_details.status_code == 429:
                     logger.warning(
                         f"Rate limit (429) detected for {stop_config.station_name} - "
                         "consider adding delays between API calls"
@@ -235,12 +240,12 @@ class ApiPoller(ApiPollerProtocol):
                     cached_groups = self.cached_departures[stop_config.station_name]
                     logger.info(
                         f"Using cached processed departures for {stop_config.station_name} "
-                        f"({len(cached_groups)} direction groups) due to {reason}"
+                        f"({len(cached_groups)} direction groups) due to {error_details.reason}"
                     )
                     # Mark departures as stale (non-realtime)
-                    for direction_name, cached_departures in cached_groups:
+                    for cached_group in cached_groups:
                         stale_departures = [
-                            replace(dep, is_realtime=False) for dep in cached_departures
+                            replace(dep, is_realtime=False) for dep in cached_group.departures
                         ]
                         # Include config settings directly - no matching needed
                         random_colors = (
@@ -259,14 +264,14 @@ class ApiPoller(ApiPollerProtocol):
                             else None
                         )
                         all_groups.append(
-                            (
-                                stop_config.station_id,
-                                stop_config.station_name,
-                                direction_name,
-                                stale_departures,
-                                random_colors,
-                                brightness,
-                                salt,
+                            DirectionGroupWithMetadata(
+                                station_id=stop_config.station_id,
+                                stop_name=stop_config.station_name,
+                                direction_name=cached_group.direction_name,
+                                departures=stale_departures,
+                                random_header_colors=random_colors,
+                                header_background_brightness=brightness,
+                                random_color_salt=salt,
                             )
                         )
                 # Continue with other stops even if one fails

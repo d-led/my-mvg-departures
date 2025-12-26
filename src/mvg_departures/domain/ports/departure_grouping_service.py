@@ -3,6 +3,7 @@
 from typing import Protocol
 
 from mvg_departures.domain.models.departure import Departure
+from mvg_departures.domain.models.grouped_departures import GroupedDepartures
 from mvg_departures.domain.models.stop_configuration import StopConfiguration
 
 
@@ -11,7 +12,7 @@ class DepartureGroupingService(Protocol):
 
     async def get_grouped_departures(
         self, stop_config: StopConfiguration
-    ) -> list[tuple[str, list[Departure]]]:
+    ) -> list[GroupedDepartures]:
         """Get departures for a stop, grouped by configured directions.
 
         Fetches a reasonable number of departures from the API, then groups them
@@ -21,13 +22,13 @@ class DepartureGroupingService(Protocol):
             stop_config: Stop configuration with direction mappings and limits.
 
         Returns:
-            List of tuples (direction_name, departures) for this stop.
+            List of grouped departures for this stop.
         """
         ...
 
     def group_departures(
         self, departures: list[Departure], stop_config: StopConfiguration
-    ) -> list[tuple[str, list[Departure]]]:
+    ) -> list[GroupedDepartures]:
         """Group pre-fetched departures by configured directions.
 
         This method allows grouping departures that were already fetched,
@@ -38,6 +39,6 @@ class DepartureGroupingService(Protocol):
             stop_config: Stop configuration with direction mappings and limits.
 
         Returns:
-            List of tuples (direction_name, departures) for this stop.
+            List of grouped departures for this stop.
         """
         ...

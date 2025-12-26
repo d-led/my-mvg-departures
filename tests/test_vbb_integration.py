@@ -41,9 +41,9 @@ async def test_vbb_zoologischer_garten_bus249_matching() -> None:
 
         # Find the Uhlandstr. group
         uhlandstr_group = None
-        for direction_name, departures in grouped:
-            if direction_name == "->Uhlandstr.":
-                uhlandstr_group = departures
+        for group in grouped:
+            if group.direction_name == "->Uhlandstr.":
+                uhlandstr_group = group.departures
                 break
 
         assert uhlandstr_group is not None, "Should have ->Uhlandstr. group"

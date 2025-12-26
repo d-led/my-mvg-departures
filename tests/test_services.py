@@ -98,7 +98,7 @@ async def test_group_departures_by_direction(
     groups = await service.get_grouped_departures(stop_config)
 
     assert len(groups) == 2
-    direction_names = [name for name, _ in groups]
+    direction_names = [group.direction_name for group in groups]
     assert "->Giesing" in direction_names
     assert "->West" in direction_names
 
@@ -113,9 +113,11 @@ async def test_group_departures_sorts_by_time(
 
     groups = await service.get_grouped_departures(stop_config)
 
-    for direction_name, departures in groups:
-        times = [d.time for d in departures]
-        assert times == sorted(times), f"Departures in {direction_name} should be sorted by time"
+    for group in groups:
+        times = [d.time for d in group.departures]
+        assert times == sorted(
+            times
+        ), f"Departures in {group.direction_name} should be sorted by time"
 
 
 @pytest.mark.asyncio
@@ -143,10 +145,10 @@ async def test_group_departures_matches_exact_destination(
 
     groups = await service.get_grouped_departures(stop_config)
 
-    giesing_groups = [g for g in groups if g[0] == "->Giesing"]
+    giesing_groups = [g for g in groups if g.direction_name == "->Giesing"]
     assert len(giesing_groups) == 1
-    assert len(giesing_groups[0][1]) == 1
-    assert giesing_groups[0][1][0].destination == "Giesing"
+    assert len(giesing_groups[0].departures) == 1
+    assert giesing_groups[0].departures[0].destination == "Giesing"
 
 
 @pytest.mark.asyncio
@@ -174,10 +176,10 @@ async def test_group_departures_handles_ungrouped(
 
     groups = await service.get_grouped_departures(stop_config)
 
-    other_groups = [g for g in groups if g[0] == "Other"]
+    other_groups = [g for g in groups if g.direction_name == "Other"]
     assert len(other_groups) == 1
-    assert len(other_groups[0][1]) == 1
-    assert other_groups[0][1][0].destination == "Unknown Destination"
+    assert len(other_groups[0].departures) == 1
+    assert other_groups[0].departures[0].destination == "Unknown Destination"
 
 
 @pytest.mark.asyncio
@@ -205,9 +207,9 @@ async def test_group_departures_matches_pattern(
 
     groups = await service.get_grouped_departures(stop_config)
 
-    west_groups = [g for g in groups if g[0] == "->West"]
+    west_groups = [g for g in groups if g.direction_name == "->West"]
     assert len(west_groups) == 1
-    assert len(west_groups[0][1]) == 1
+    assert len(west_groups[0].departures) == 1
 
 
 @pytest.mark.asyncio
@@ -247,12 +249,12 @@ async def test_max_departures_per_route_filters_by_route() -> None:
     groups = await service.get_grouped_departures(stop_config)
 
     assert len(groups) == 1
-    assert groups[0][0] == "->Stadt"
+    assert groups[0].direction_name == "->Stadt"
     # Should only have 2 departures (max_departures_per_route), not 5
-    assert len(groups[0][1]) == 2
+    assert len(groups[0].departures) == 2
     # Should be the first 2 (sorted by time)
-    assert groups[0][1][0].time == now + timedelta(minutes=1)
-    assert groups[0][1][1].time == now + timedelta(minutes=2)
+    assert groups[0].departures[0].time == now + timedelta(minutes=1)
+    assert groups[0].departures[1].time == now + timedelta(minutes=2)
 
 
 @pytest.mark.asyncio
@@ -309,12 +311,12 @@ async def test_max_departures_per_route_applies_to_multiple_routes() -> None:
     groups = await service.get_grouped_departures(stop_config)
 
     assert len(groups) == 1
-    assert groups[0][0] == "->East"
+    assert groups[0].direction_name == "->East"
     # Should have 2 from route 18 + 2 from route 139 = 4 total
-    assert len(groups[0][1]) == 4
+    assert len(groups[0].departures) == 4
     # Check that we have exactly 2 of each route
-    route_18_count = sum(1 for d in groups[0][1] if d.line == "18")
-    route_139_count = sum(1 for d in groups[0][1] if d.line == "139")
+    route_18_count = sum(1 for d in groups[0].departures if d.line == "18")
+    route_139_count = sum(1 for d in groups[0].departures if d.line == "139")
     assert route_18_count == 2
     assert route_139_count == 2
 
@@ -356,9 +358,9 @@ async def test_max_departures_per_stop_limits_direction() -> None:
     groups = await service.get_grouped_departures(stop_config)
 
     assert len(groups) == 1
-    assert groups[0][0] == "->East"
+    assert groups[0].direction_name == "->East"
     # Should be limited to 4 (max_departures_per_stop)
-    assert len(groups[0][1]) == 4
+    assert len(groups[0].departures) == 4
 
 
 @pytest.mark.asyncio
@@ -400,10 +402,10 @@ async def test_max_departures_per_route_then_per_stop() -> None:
     groups = await service.get_grouped_departures(stop_config)
 
     assert len(groups) == 1
-    assert groups[0][0] == "->East"
+    assert groups[0].direction_name == "->East"
     # After route filtering: 2 from route 18 + 2 from route 139 = 4
     # After direction limiting: 3 (max_departures_per_stop)
-    assert len(groups[0][1]) == 3
+    assert len(groups[0].departures) == 3
 
 
 @pytest.mark.asyncio
@@ -495,13 +497,13 @@ async def test_max_departures_per_stop_counts_only_after_leeway() -> None:
     groups = await service.get_grouped_departures(stop_config)
 
     assert len(groups) == 1
-    assert groups[0][0] == "->East"
+    assert groups[0].direction_name == "->East"
     # Should have 3 departures (10min, 11min, 12min) - the ones that pass leeway
     # NOT 0 (which would happen if we counted the 2 within leeway first, then filtered them out)
-    assert len(groups[0][1]) == 3
-    assert groups[0][1][0].time == now + timedelta(minutes=10)
-    assert groups[0][1][1].time == now + timedelta(minutes=11)
-    assert groups[0][1][2].time == now + timedelta(minutes=12)
+    assert len(groups[0].departures) == 3
+    assert groups[0].departures[0].time == now + timedelta(minutes=10)
+    assert groups[0].departures[1].time == now + timedelta(minutes=11)
+    assert groups[0].departures[2].time == now + timedelta(minutes=12)
 
 
 @pytest.mark.asyncio
@@ -565,11 +567,11 @@ async def test_pattern_matching_route_and_destination() -> None:
     groups = await service.get_grouped_departures(stop_config)
 
     assert len(groups) == 1
-    assert groups[0][0] == "->East"
+    assert groups[0].direction_name == "->East"
     # Should only match U2 to Messestadt Ost, not U2 to Feldmoching or U3 to Messestadt
-    assert len(groups[0][1]) == 1
-    assert groups[0][1][0].line == "U2"
-    assert "Messestadt" in groups[0][1][0].destination
+    assert len(groups[0].departures) == 1
+    assert groups[0].departures[0].line == "U2"
+    assert "Messestadt" in groups[0].departures[0].destination
 
 
 @pytest.mark.asyncio
@@ -633,10 +635,10 @@ async def test_pattern_matching_route_only() -> None:
     groups = await service.get_grouped_departures(stop_config)
 
     assert len(groups) == 1
-    assert groups[0][0] == "->East"
+    assert groups[0].direction_name == "->East"
     # Should match both U2 departures, but not U3
-    assert len(groups[0][1]) == 2
-    assert all(d.line == "U2" for d in groups[0][1])
+    assert len(groups[0].departures) == 2
+    assert all(d.line == "U2" for d in groups[0].departures)
 
 
 @pytest.mark.asyncio
@@ -700,10 +702,10 @@ async def test_pattern_matching_destination_only() -> None:
     groups = await service.get_grouped_departures(stop_config)
 
     assert len(groups) == 1
-    assert groups[0][0] == "->East"
+    assert groups[0].direction_name == "->East"
     # Should match both Messestadt departures (U2 and U3), but not U2 to Feldmoching
-    assert len(groups[0][1]) == 2
-    assert all("Messestadt" in d.destination for d in groups[0][1])
+    assert len(groups[0].departures) == 2
+    assert all("Messestadt" in d.destination for d in groups[0].departures)
 
 
 @pytest.mark.asyncio
@@ -754,10 +756,10 @@ async def test_pattern_matching_bus_with_transport_type() -> None:
     groups = await service.get_grouped_departures(stop_config)
 
     assert len(groups) == 1
-    assert groups[0][0] == "->Giesing"
+    assert groups[0].direction_name == "->Giesing"
     # Should only match Bus 59 to Giesing, not Bus 59 to Other
-    assert len(groups[0][1]) == 1
-    assert "Giesing" in groups[0][1][0].destination
+    assert len(groups[0].departures) == 1
+    assert "Giesing" in groups[0].departures[0].destination
 
 
 @pytest.mark.asyncio
@@ -813,8 +815,8 @@ async def test_direction_order_preserved() -> None:
 
     # Should preserve order from direction_mappings
     assert len(groups) == 2
-    assert groups[0][0] == "->First"
-    assert groups[1][0] == "->Second"
+    assert groups[0].direction_name == "->First"
+    assert groups[1].direction_name == "->Second"
 
 
 @pytest.mark.asyncio
@@ -866,8 +868,8 @@ async def test_show_ungrouped_false_hides_other() -> None:
 
     # Should only have ->East, not "Other"
     assert len(groups) == 1
-    assert groups[0][0] == "->East"
-    assert len(groups[0][1]) == 1
+    assert groups[0].direction_name == "->East"
+    assert len(groups[0].departures) == 1
 
 
 @pytest.mark.asyncio
@@ -919,10 +921,10 @@ async def test_show_ungrouped_true_shows_other() -> None:
 
     # Should have ->East and Other
     assert len(groups) == 2
-    assert groups[0][0] == "->East"
-    assert groups[1][0] == "Other"
-    assert len(groups[1][1]) == 1
-    assert groups[1][1][0].destination == "Unknown"
+    assert groups[0].direction_name == "->East"
+    assert groups[1].direction_name == "Other"
+    assert len(groups[1].departures) == 1
+    assert groups[1].departures[0].destination == "Unknown"
 
 
 @pytest.mark.asyncio
@@ -962,9 +964,9 @@ async def test_ungrouped_also_filtered_by_route() -> None:
     groups = await service.get_grouped_departures(stop_config)
 
     assert len(groups) == 1
-    assert groups[0][0] == "Other"
+    assert groups[0].direction_name == "Other"
     # Should only have 2 (max_departures_per_route), not 5
-    assert len(groups[0][1]) == 2
+    assert len(groups[0].departures) == 2
 
 
 @pytest.mark.asyncio
@@ -1003,8 +1005,8 @@ async def test_empty_direction_mappings_shows_all_as_ungrouped() -> None:
 
     # Should have Other group if show_ungrouped is True
     assert len(groups) == 1
-    assert groups[0][0] == "Other"
-    assert len(groups[0][1]) == 1
+    assert groups[0].direction_name == "Other"
+    assert len(groups[0].departures) == 1
 
 
 @pytest.mark.asyncio
@@ -1044,9 +1046,9 @@ async def test_ungrouped_title_custom_label() -> None:
 
     # Should have ungrouped group with custom title
     assert len(groups) == 1
-    assert groups[0][0] == "Balanstr."
-    assert len(groups[0][1]) == 1
-    assert groups[0][1][0].destination == "Unknown Destination"
+    assert groups[0].direction_name == "Balanstr."
+    assert len(groups[0].departures) == 1
+    assert groups[0].departures[0].destination == "Unknown Destination"
 
 
 @pytest.mark.asyncio
@@ -1086,6 +1088,6 @@ async def test_ungrouped_title_defaults_to_other() -> None:
 
     # Should have ungrouped group with default "Other" label
     assert len(groups) == 1
-    assert groups[0][0] == "Other"
-    assert len(groups[0][1]) == 1
-    assert groups[0][1][0].destination == "Unknown Destination"
+    assert groups[0].direction_name == "Other"
+    assert len(groups[0].departures) == 1
+    assert groups[0].departures[0].destination == "Unknown Destination"

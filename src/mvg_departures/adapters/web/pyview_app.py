@@ -12,7 +12,12 @@ from pyview import LiveView, LiveViewSocket, is_connected
 from pyview.events import InfoEvent
 
 from mvg_departures.adapters.config import AppConfig
-from mvg_departures.domain.models import RouteConfiguration, StopConfiguration
+from mvg_departures.domain.models import (
+    DirectionGroupWithMetadata,
+    GroupedDepartures,
+    RouteConfiguration,
+    StopConfiguration,
+)
 from mvg_departures.domain.ports import (
     DepartureGroupingService,
     DepartureRepository,
@@ -1755,14 +1760,8 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         """
 
         # Prepare template data
-        # Extract (station_name, direction_name, departures) from the full tuple
-        # direction_groups is: list[tuple[str, str, str, list[Departure], bool | None, float | None, int | None]]
-        # We need: list[tuple[str, str, list[Departure]]] (station_name, direction_name, departures)
-        simplified_groups: list[tuple[str, str, list[Departure]]] = [
-            (station_name, direction_name, departures)
-            for station_name, direction_name, _, departures, _, _, _ in direction_groups
-        ]
-        template_data = self._prepare_template_data(simplified_groups)
+        # direction_groups is: list[DirectionGroupWithMetadata]
+        template_data = self._prepare_template_data(direction_groups)
 
         # Merge template data with config values for template
         template_assigns = {
@@ -1805,7 +1804,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         return LiveRender(live_template, template_assigns, meta)  # type: ignore[no-any-return]
 
     def _prepare_template_data(
-        self, direction_groups: list[tuple[str, str, list[Departure]]]
+        self, direction_groups: list[DirectionGroupWithMetadata]
     ) -> dict[str, Any]:
         """Prepare data structure for template rendering."""
         stop_configs = self.stop_configs
@@ -1815,18 +1814,18 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         stops_with_departures: set[str] = set()
         current_stop: str | None = None
 
-        for stop_name, direction_name, departures in direction_groups:
-            if departures:
-                direction_clean = direction_name.lstrip("->")
-                combined_header = f"{stop_name} → {direction_clean}"
+        for group in direction_groups:
+            if group.departures:
+                direction_clean = group.direction_name.lstrip("->")
+                combined_header = f"{group.stop_name} → {direction_clean}"
 
                 # Check if this is a new stop
-                is_new_stop = stop_name != current_stop
+                is_new_stop = group.stop_name != current_stop
                 if is_new_stop:
-                    current_stop = stop_name
+                    current_stop = group.stop_name
 
                 # Prepare departures for this group
-                sorted_departures = sorted(departures, key=lambda d: d.time)
+                sorted_departures = sorted(group.departures, key=lambda d: d.time)
                 departure_data = []
                 for departure in sorted_departures:
                     time_str = self._format_departure_time(departure)
@@ -1882,13 +1881,13 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
                 groups_with_departures.append(
                     {
-                        "stop_name": stop_name,
+                        "stop_name": group.stop_name,
                         "header": combined_header,
                         "departures": departure_data,
                         "is_new_stop": is_new_stop,
                     }
                 )
-                stops_with_departures.add(stop_name)
+                stops_with_departures.add(group.stop_name)
 
         # Mark first header and last group
         if groups_with_departures:
@@ -2031,7 +2030,7 @@ class PyViewWebAdapter(DisplayAdapter):
         self._shared_departure_cache = SharedDepartureCache()
         self._departure_fetcher: DepartureFetcher | None = None
 
-    async def display_departures(self, direction_groups: list[tuple[str, list[Departure]]]) -> None:
+    async def display_departures(self, direction_groups: list[GroupedDepartures]) -> None:
         """Display grouped departures (not used directly, handled by LiveView)."""
         # This is handled by the LiveView's periodic updates
 
