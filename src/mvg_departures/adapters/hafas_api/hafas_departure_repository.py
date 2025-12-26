@@ -128,16 +128,39 @@ class HafasDepartureRepository(DepartureRepository):
 
             from mvg_departures.adapters.hafas_api.ssl_context import run_with_ssl_disabled_kwargs
 
-            departures_data = await asyncio.to_thread(
-                run_with_ssl_disabled_kwargs,
-                (
-                    client.departures,
-                    {
-                        "station": station_id,
-                        "date": departure_time,
-                        "max_trips": limit,
-                    },
-                ),
+            try:
+                departures_data = await asyncio.to_thread(
+                    run_with_ssl_disabled_kwargs,
+                    (
+                        client.departures,
+                        {
+                            "station": station_id,
+                            "date": departure_time,
+                            "max_trips": limit,
+                        },
+                    ),
+                )
+            except Exception as e:
+                logger.error(
+                    f"Error calling HAFAS departures API for station '{station_id}' with profile '{profile_to_use}': {e}"
+                )
+                raise
+
+            if departures_data is None:
+                logger.warning(
+                    f"HAFAS API returned None for station '{station_id}' with profile '{profile_to_use}'"
+                )
+                return []
+
+            if len(departures_data) == 0:
+                logger.info(
+                    f"HAFAS API returned empty list for station '{station_id}' with profile '{profile_to_use}' "
+                    f"(this might be normal if there are no departures at this time)"
+                )
+                return []
+
+            logger.debug(
+                f"Got {len(departures_data)} raw departures for station '{station_id}' with profile '{profile_to_use}'"
             )
 
             departures = []

@@ -8,18 +8,28 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Check if venv exists
+# Determine Python and hafas-config command
 if [ -d "$PROJECT_ROOT/.venv" ]; then
+    PYTHON="$PROJECT_ROOT/.venv/bin/python"
     HAFAS_CONFIG="$PROJECT_ROOT/.venv/bin/hafas-config"
 else
+    PYTHON="python3"
     # Try to find hafas-config in PATH
     if command -v hafas-config >/dev/null 2>&1; then
         HAFAS_CONFIG="hafas-config"
     else
-        echo "Error: Virtual environment not found and hafas-config not in PATH" >&2
-        echo "Please run: ./scripts/setup.sh" >&2
-        exit 1
+        HAFAS_CONFIG=""
     fi
+fi
+
+# If hafas-config doesn't exist, use Python module directly
+if [ -z "$HAFAS_CONFIG" ] || [ ! -f "$HAFAS_CONFIG" ]; then
+    # Use Python module directly (requires package to be installed or PYTHONPATH set)
+    # Set PYTHONPATH to include the src directory if it's not already set
+    if [ -z "$PYTHONPATH" ] && [ -d "$PROJECT_ROOT/src" ]; then
+        export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
+    fi
+    HAFAS_CONFIG="$PYTHON -m mvg_departures.cli_hafas"
 fi
 
 # Check if query is provided
@@ -36,13 +46,16 @@ if [ $# -eq 0 ]; then
 fi
 
 QUERY="$1"
+shift  # Remove first argument, pass rest as additional args
 
 # Check if query looks like a station ID (numeric or alphanumeric without spaces)
 if [[ "$QUERY" =~ ^[0-9A-Za-z]+$ ]] && [[ ! "$QUERY" =~ [[:space:]] ]]; then
     # Treat as station ID - use detect command
-    exec "$HAFAS_CONFIG" detect "$QUERY"
+    # Pass all remaining arguments (like --profile) to the command
+    exec $HAFAS_CONFIG detect "$QUERY" "$@"
 else
     # Treat as station name - use search command
-    exec "$HAFAS_CONFIG" search "$QUERY"
+    # Pass all remaining arguments (like --profile) to the command
+    exec $HAFAS_CONFIG search "$QUERY" "$@"
 fi
 

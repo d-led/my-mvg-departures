@@ -201,7 +201,12 @@ async def get_station_details_hafas(
                 for line, destinations in routes.items()
             },
         }
-    except Exception:
+    except Exception as e:
+        # Log the error for debugging
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Error getting station details for {station_id} with profile {profile}: {e}")
         return None
 
 
@@ -244,12 +249,15 @@ show_ungrouped = true
     return snippet
 
 
-async def search_and_show_config(query: str) -> None:
+async def search_and_show_config(query: str, profile: str | None = None) -> None:
     """Search for HAFAS stations and show config snippets."""
     print(f"Searching HAFAS for: '{query}'\n")
-    print("Trying profiles: " + ", ".join(PROFILES.keys()) + "\n")
+    if profile:
+        print(f"Using profile: {profile}\n")
+    else:
+        print("Trying profiles: " + ", ".join(PROFILES.keys()) + "\n")
 
-    results = await search_stations_hafas(query)
+    results = await search_stations_hafas(query, profile=profile)
 
     if not results:
         print(f"No stations found for '{query}'", file=sys.stderr)
@@ -315,8 +323,23 @@ async def detect_and_show_config(station_id: str) -> None:
     # Get station details
     details = await get_station_details_hafas(station_id, profile, limit=50)
     if not details:
-        print(f"Could not get details for station '{station_id}'", file=sys.stderr)
-        sys.exit(1)
+        print(
+            f"⚠ Could not get details for station '{station_id}' with profile '{profile}'",
+            file=sys.stderr,
+        )
+        print("", file=sys.stderr)
+        print("This might mean:", file=sys.stderr)
+        print("  - No departures available at this time", file=sys.stderr)
+        print("  - The station ID is invalid for this profile", file=sys.stderr)
+        print("  - Network/API error occurred", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("However, you can still use this station ID in your config file:")
+        print("", file=sys.stderr)
+        print(f'station_id = "{station_id}"')
+        print('api_provider = "hafas"')
+        print(f'hafas_profile = "{profile}"')
+        print("", file=sys.stderr)
+        sys.exit(0)  # Exit with success since we detected the profile
 
     station_info = details.get("station", {})
     station_name = station_info.get("name", station_id)
@@ -373,6 +396,11 @@ Examples:
     # Detect command
     detect_parser = subparsers.add_parser("detect", help="Detect profile for a station ID")
     detect_parser.add_argument("station_id", help="Station ID (e.g., 9000589)")
+    detect_parser.add_argument(
+        "--profile",
+        choices=list(PROFILES.keys()),
+        help="Force a specific profile instead of auto-detecting",
+    )
 
     args = parser.parse_args()
 
@@ -382,10 +410,43 @@ Examples:
 
     try:
         if args.command == "search":
-            await search_and_show_config(args.query)
+            await search_and_show_config(args.query, profile=getattr(args, "profile", None))
 
         elif args.command == "detect":
-            await detect_and_show_config(args.station_id)
+            if hasattr(args, "profile") and args.profile:
+                # Force specific profile
+                print(f"Using profile '{args.profile}' for station ID: {args.station_id}\n")
+                details = await get_station_details_hafas(args.station_id, args.profile, limit=50)
+                if details:
+                    station_info = details.get("station", {})
+                    station_name = station_info.get("name", args.station_id)
+                    routes = details.get("routes", {})
+                    print(f"Station: {station_name}")
+                    print(f"Profile: {args.profile}")
+                    if routes:
+                        print(f"Routes: {len(routes)}")
+                        for line, route_data in sorted(list(routes.items())[:5]):
+                            destinations = route_data.get("destinations", [])
+                            print(f"  {line}: {', '.join(destinations[:3])}")
+                        if len(routes) > 5:
+                            print(f"  ... and {len(routes) - 5} more routes")
+                    config_snippet = generate_hafas_config_snippet(
+                        args.station_id, station_name, args.profile, routes
+                    )
+                    print("\n" + "=" * 70)
+                    print("Configuration Snippet:")
+                    print("=" * 70)
+                    print(config_snippet)
+                else:
+                    print(
+                        f"Could not get details for station '{args.station_id}' with profile '{args.profile}'",
+                        file=sys.stderr,
+                    )
+                    print(f"Station ID: {args.station_id}", file=sys.stderr)
+                    print(f"Profile: {args.profile}", file=sys.stderr)
+                    sys.exit(1)
+            else:
+                await detect_and_show_config(args.station_id)
 
     except KeyboardInterrupt:
         print("\nInterrupted.", file=sys.stderr)
