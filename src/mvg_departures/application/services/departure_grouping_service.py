@@ -47,10 +47,12 @@ class DepartureGroupingService:
 
         # Capture the time we're fetching at - this is the "now" we'll use for filtering
         fetch_time_utc = datetime.now(UTC)
-        
+
         # Pass offset_minutes if leeway is configured (repository will handle provider-specific behavior)
         # This ensures the API returns departures starting from "now + leeway" when applicable
-        offset_minutes = stop_config.departure_leeway_minutes if stop_config.departure_leeway_minutes > 0 else 0
+        offset_minutes = (
+            stop_config.departure_leeway_minutes if stop_config.departure_leeway_minutes > 0 else 0
+        )
 
         departures = await self._departure_repository.get_departures(
             base_station_id,
@@ -65,7 +67,10 @@ class DepartureGroupingService:
         return self.group_departures(departures, stop_config, reference_time_utc=fetch_time_utc)
 
     def group_departures(
-        self, departures: list[Departure], stop_config: StopConfiguration, reference_time_utc: datetime | None = None
+        self,
+        departures: list[Departure],
+        stop_config: StopConfiguration,
+        reference_time_utc: datetime | None = None,
     ) -> list[GroupedDepartures]:
         """Group pre-fetched departures by configured directions.
 
@@ -84,7 +89,7 @@ class DepartureGroupingService:
         # This ensures consistent comparisons when processing cached data
         if reference_time_utc is None:
             reference_time_utc = datetime.now(UTC)
-        
+
         # Group departures by direction first
         direction_groups: dict[str, list[Departure]] = {}
         ungrouped: list[Departure] = []
@@ -137,7 +142,9 @@ class DepartureGroupingService:
 
         if ungrouped:
             ungrouped.sort(key=lambda d: d.time)
-            ungrouped = self._filter_and_limit_departures(ungrouped, stop_config, reference_time_utc=reference_time_utc)
+            ungrouped = self._filter_and_limit_departures(
+                ungrouped, stop_config, reference_time_utc=reference_time_utc
+            )
 
         # Build result list with only directions that have departures
         # Preserve the order from the config file (direction_mappings)
@@ -162,7 +169,10 @@ class DepartureGroupingService:
         return result
 
     def _filter_and_limit_departures(
-        self, departures: list[Departure], stop_config: StopConfiguration, reference_time_utc: datetime | None = None
+        self,
+        departures: list[Departure],
+        stop_config: StopConfiguration,
+        reference_time_utc: datetime | None = None,
     ) -> list[Departure]:
         """Filter and limit departures based on leeway, max hours in advance, route limits, and direction limits.
 
@@ -247,9 +257,7 @@ class DepartureGroupingService:
         # Use reference_time_utc if provided to ensure consistent comparisons
         if stop_config.departure_leeway_minutes > 0:
             now_utc = reference_time_utc if reference_time_utc is not None else datetime.now(UTC)
-            cutoff_time = now_utc + timedelta(
-                minutes=stop_config.departure_leeway_minutes
-            )
+            cutoff_time = now_utc + timedelta(minutes=stop_config.departure_leeway_minutes)
             # Ensure all departure times are in UTC for comparison
             filtered_departures = []
             for d in departures:

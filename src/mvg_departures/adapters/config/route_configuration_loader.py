@@ -45,8 +45,8 @@ class RouteConfigurationLoader:
         platform_filter_routes = stop_data.get("platform_filter_routes", [])
         # Support new name and legacy names for backward compatibility
         fetch_max_minutes_in_advance = (
-            stop_data.get("fetch_max_minutes_in_advance") 
-            or stop_data.get("api_duration_minutes") 
+            stop_data.get("fetch_max_minutes_in_advance")
+            or stop_data.get("api_duration_minutes")
             or stop_data.get("vbb_api_duration_minutes", 60)
         )
 
