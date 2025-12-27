@@ -266,7 +266,7 @@ show_ungrouped = false
 [routes.stops.direction_mappings]
 # Direction mapping keys are displayed as headers - you can include custom meaning like walking time
 # This helps plan when to leave to catch specific departures
-"->HBf (in 8+ min)" = ["U2 Messestadt Ost", "U2 Giesing"]
+"->HBf (in 8+ min)" = ["U2 Messestadt Ost", "U2 Giesing", "U8 Neuperlach Zentrum"]
 "->Rotkreuzplatz" = ["53 Aidenbachstraße", "12 Romanplatz"]
 "->Scheidplatz" = ["U2 Feldmoching", "12 Schwabing Nord"]
 
