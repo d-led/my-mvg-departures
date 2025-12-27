@@ -130,12 +130,13 @@ async def check_stations(config_file: str, raw_output: bool = False) -> None:
                     print(f"  Current time (UTC): {now_utc.strftime('%Y-%m-%d %H:%M:%S')}")
                     print(f"  Current time (local): {now_local.strftime('%Y-%m-%d %H:%M:%S %Z')}")
                     print(f"  Raw departures (before grouping/filtering):")
-                    for dep in raw_departures:  # Show all raw departures
+                    print(f"  (Index shows position in API response - useful for adjusting fetch_max_minutes_in_advance)")
+                    for idx, dep in enumerate(raw_departures, start=0):  # Show all raw departures with index
                         # Departure time is in UTC (from API)
                         dep_time_utc = dep.time.astimezone(UTC) if dep.time.tzinfo else dep.time.replace(tzinfo=UTC)
                         dep_time_local = dep_time_utc.astimezone(local_tz)
                         time_diff = (dep_time_utc - now_utc).total_seconds() / 60
-                        print(f"    {dep_time_local.strftime('%H:%M:%S %Z')} ({dep_time_utc.strftime('%H:%M:%S UTC')}, {time_diff:+.1f} min) - "
+                        print(f"    [{idx:3d}] {dep_time_local.strftime('%H:%M:%S %Z')} ({dep_time_utc.strftime('%H:%M:%S UTC')}, {time_diff:+.1f} min) - "
                               f"{dep.transport_type} {dep.line} -> {dep.destination} "
                               f"[Platform: {dep.platform}, Delay: {dep.delay_seconds or 0}s]")
                 
