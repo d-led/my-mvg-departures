@@ -68,7 +68,7 @@ sleep_ms_between_calls = 500
 [[stops]]
 station_id = "de:09162:1110"
 station_name = "Giesing"
-max_departures_per_stop = 12
+max_departures_per_stop = 6
 max_departures_per_route = 2
 # Maximum number of departures to fetch from API before grouping/filtering
 # The API will fetch more data (e.g., 300 results over 120 minutes) but return up to this limit
