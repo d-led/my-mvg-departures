@@ -324,7 +324,7 @@ platform_filter_routes = ["249"]
 [routes.stops.direction_mappings]
 # U-Bahn and Bus routes from Zoologischer Garten
 "->Berliner Str." = ["U9 S+U Bundesplatz"]
-"->Uhlandstr." = ["249"]
+"->Uhlandstr. (in 15+ min)" = ["249"]
 
 [[routes.stops]]
 # Station ID for Ernst-Reuter-Platz (Berlin)
@@ -341,5 +341,5 @@ departure_leeway_minutes = 6
 [routes.stops.direction_mappings]
 # U-Bahn and Bus routes from Ernst-Reuter-Platz
 # Note: Include line name in match strings for more specific matching
-"->Bismarckstr." = ["U2 Ruhleben", "U Theodor"]
+"->Bismarckstr. (in 6+ min)" = ["U2 Ruhleben", "U Theodor"]
 
