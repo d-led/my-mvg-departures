@@ -142,7 +142,12 @@ class ApiPoller(ApiPollerProtocol):
 
         for stop_config in self.stop_configs:
             try:
-                if self.shared_cache is not None:
+                # When departure_leeway_minutes > 0, always fetch fresh to ensure correct reference_time_utc
+                # Cached data was fetched at a different time, and comparing against current "now" can filter out valid departures
+                if stop_config.departure_leeway_minutes > 0:
+                    # Always fetch fresh to ensure times are relative to current "now"
+                    groups = await self.grouping_service.get_grouped_departures(stop_config)
+                elif self.shared_cache is not None:
                     # Use shared cache - get raw departures and process them
                     raw_departures = self.shared_cache.get(stop_config.station_id, [])
                     if not raw_departures:

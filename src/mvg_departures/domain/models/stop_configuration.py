@@ -54,6 +54,6 @@ class StopConfiguration:
     platform_filter_routes: list[str] = field(
         default_factory=list
     )  # List of route/line names to apply platform_filter to (e.g., ["249"]). If empty, applies to all routes.
-    vbb_api_duration_minutes: int = (
-        60  # VBB API duration in minutes (how far ahead to fetch departures). Default: 60 minutes. Increase for infrequent routes.
+    fetch_max_minutes_in_advance: int = (
+        60  # Maximum minutes in advance to fetch departures from API. Default: 60 minutes. Increase for infrequent routes.
     )

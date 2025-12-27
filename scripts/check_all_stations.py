@@ -21,6 +21,7 @@ from mvg_departures.adapters.config import AppConfig
 from mvg_departures.adapters.config.route_configuration_loader import (
     RouteConfigurationLoader,
 )
+from mvg_departures.application.services import DepartureGroupingService
 
 
 async def check_stations(config_file: str, raw_output: bool = False) -> None:
@@ -72,12 +73,13 @@ async def check_stations(config_file: str, raw_output: bool = False) -> None:
 
     print(f"Found {len(all_stop_configs)} station(s) to check\n")
 
-    # Create composite repository
+    # Use the same code path as the server - DepartureGroupingService
     async with aiohttp.ClientSession() as session:
         departure_repo = CompositeDepartureRepository(
             stop_configs=all_stop_configs,
             session=session,
         )
+        grouping_service = DepartureGroupingService(departure_repo)
 
         results = []
         for stop_config in all_stop_configs:
@@ -90,10 +92,31 @@ async def check_stations(config_file: str, raw_output: bool = False) -> None:
             sys.stdout.flush()
 
             try:
-                departures = await departure_repo.get_departures(
-                    station_id, limit=20 if raw_output else 5
-                )
-                print(f"✓ OK ({len(departures)} departures)")
+                # For raw output, fetch raw departures first to see what API returns
+                raw_departures = None
+                if raw_output:
+                    # Fetch raw departures using same parameters as server
+                    raw_departures = await departure_repo.get_departures(
+                        station_id,
+                        limit=stop_config.max_departures_fetch or 200,
+                        duration_minutes=stop_config.fetch_max_minutes_in_advance,
+                        offset_minutes=stop_config.departure_leeway_minutes if stop_config.departure_leeway_minutes > 0 else 0,
+                    )
+                
+                # Use the same method as the server - get_grouped_departures
+                # This ensures we use the exact same code path and parameters as the server
+                grouped = await grouping_service.get_grouped_departures(stop_config)
+                
+                # Flatten grouped departures for display
+                departures = []
+                for group in grouped:
+                    departures.extend(group.departures)
+                
+                # Show counts
+                if raw_output and raw_departures:
+                    print(f"✓ OK ({len(departures)} grouped, {len(raw_departures)} raw departures)")
+                else:
+                    print(f"✓ OK ({len(departures)} departures)")
                 
                 if raw_output:
                     now_utc = datetime.now(UTC)
@@ -106,8 +129,8 @@ async def check_stations(config_file: str, raw_output: bool = False) -> None:
                     now_local = now_utc.astimezone(local_tz)
                     print(f"  Current time (UTC): {now_utc.strftime('%Y-%m-%d %H:%M:%S')}")
                     print(f"  Current time (local): {now_local.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-                    print(f"  Departures:")
-                    for dep in departures[:10]:  # Show first 10
+                    print(f"  Raw departures (before grouping/filtering):")
+                    for dep in raw_departures:  # Show all raw departures
                         # Departure time is in UTC (from API)
                         dep_time_utc = dep.time.astimezone(UTC) if dep.time.tzinfo else dep.time.replace(tzinfo=UTC)
                         dep_time_local = dep_time_utc.astimezone(local_tz)
@@ -115,8 +138,6 @@ async def check_stations(config_file: str, raw_output: bool = False) -> None:
                         print(f"    {dep_time_local.strftime('%H:%M:%S %Z')} ({dep_time_utc.strftime('%H:%M:%S UTC')}, {time_diff:+.1f} min) - "
                               f"{dep.transport_type} {dep.line} -> {dep.destination} "
                               f"[Platform: {dep.platform}, Delay: {dep.delay_seconds or 0}s]")
-                    if len(departures) > 10:
-                        print(f"    ... and {len(departures) - 10} more")
                 
                 results.append(
                     (station_id, station_name, api_provider, hafas_profile, True, len(departures), None)

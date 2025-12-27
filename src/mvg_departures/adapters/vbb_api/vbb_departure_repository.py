@@ -58,10 +58,17 @@ class VbbDepartureRepository(DepartureRepository):
             "results": 500,  # Get up to 500 departures to have enough for all routes
         }
 
+        # Always pass 'when' parameter in UTC to ensure consistent behavior
+        # The API may use local timezone as default "now", but we want UTC to match what it returns
+        now_utc = datetime.now(UTC)
         if offset_minutes > 0:
             # VBB API uses 'when' parameter for future departures (ISO 8601 string)
-            future_time = datetime.now(UTC) + timedelta(minutes=offset_minutes)
+            future_time = now_utc + timedelta(minutes=offset_minutes)
             params["when"] = future_time.isoformat()
+        else:
+            # Explicitly pass 'when' in UTC even when offset is 0
+            # This ensures the API uses UTC "now" instead of local timezone "now"
+            params["when"] = now_utc.isoformat()
 
         try:
             # Disable SSL verification for VBB API (similar to HAFAS)

@@ -42,23 +42,30 @@ class DepartureGroupingService:
         # The repository will fetch more data (e.g., 300 results over configurable duration) but return up to this limit
         fetch_limit = stop_config.max_departures_fetch
 
-        # Pass VBB API duration if this is a VBB stop
-        duration_minutes = 60  # Default
-        if stop_config.api_provider == "vbb":
-            duration_minutes = stop_config.vbb_api_duration_minutes
+        # Use configured fetch window (repository will handle provider-specific behavior)
+        duration_minutes = stop_config.fetch_max_minutes_in_advance
+
+        # Capture the time we're fetching at - this is the "now" we'll use for filtering
+        fetch_time_utc = datetime.now(UTC)
+        
+        # Pass offset_minutes if leeway is configured (repository will handle provider-specific behavior)
+        # This ensures the API returns departures starting from "now + leeway" when applicable
+        offset_minutes = stop_config.departure_leeway_minutes if stop_config.departure_leeway_minutes > 0 else 0
 
         departures = await self._departure_repository.get_departures(
             base_station_id,
             limit=fetch_limit,
-            offset_minutes=0,
+            offset_minutes=offset_minutes,
             transport_types=None,
             duration_minutes=duration_minutes,
         )
 
-        return self.group_departures(departures, stop_config)
+        # Pass the fetch time as reference time for consistent filtering
+        # This ensures we compare against the same "now" we used when calling the API
+        return self.group_departures(departures, stop_config, reference_time_utc=fetch_time_utc)
 
     def group_departures(
-        self, departures: list[Departure], stop_config: StopConfiguration
+        self, departures: list[Departure], stop_config: StopConfiguration, reference_time_utc: datetime | None = None
     ) -> list[GroupedDepartures]:
         """Group pre-fetched departures by configured directions.
 
@@ -68,10 +75,16 @@ class DepartureGroupingService:
         Args:
             departures: Pre-fetched list of departures to group.
             stop_config: Stop configuration with direction mappings and limits.
+            reference_time_utc: Optional reference time for filtering (defaults to current time).
 
         Returns:
             List of tuples (direction_name, departures) for this stop.
         """
+        # Use provided reference_time_utc if available, otherwise use current time
+        # This ensures consistent comparisons when processing cached data
+        if reference_time_utc is None:
+            reference_time_utc = datetime.now(UTC)
+        
         # Group departures by direction first
         direction_groups: dict[str, list[Departure]] = {}
         ungrouped: list[Departure] = []
@@ -119,12 +132,12 @@ class DepartureGroupingService:
         for direction_name in direction_groups:
             direction_groups[direction_name].sort(key=lambda d: d.time)
             direction_groups[direction_name] = self._filter_and_limit_departures(
-                direction_groups[direction_name], stop_config
+                direction_groups[direction_name], stop_config, reference_time_utc=reference_time_utc
             )
 
         if ungrouped:
             ungrouped.sort(key=lambda d: d.time)
-            ungrouped = self._filter_and_limit_departures(ungrouped, stop_config)
+            ungrouped = self._filter_and_limit_departures(ungrouped, stop_config, reference_time_utc=reference_time_utc)
 
         # Build result list with only directions that have departures
         # Preserve the order from the config file (direction_mappings)
@@ -149,7 +162,7 @@ class DepartureGroupingService:
         return result
 
     def _filter_and_limit_departures(
-        self, departures: list[Departure], stop_config: StopConfiguration
+        self, departures: list[Departure], stop_config: StopConfiguration, reference_time_utc: datetime | None = None
     ) -> list[Departure]:
         """Filter and limit departures based on leeway, max hours in advance, route limits, and direction limits.
 
@@ -231,11 +244,23 @@ class DepartureGroupingService:
                 )
 
         # Filter out departures that are too soon FIRST, so we only count departures that will be shown
+        # Use reference_time_utc if provided to ensure consistent comparisons
         if stop_config.departure_leeway_minutes > 0:
-            cutoff_time = datetime.now(UTC) + timedelta(
+            now_utc = reference_time_utc if reference_time_utc is not None else datetime.now(UTC)
+            cutoff_time = now_utc + timedelta(
                 minutes=stop_config.departure_leeway_minutes
             )
-            departures = [d for d in departures if d.time >= cutoff_time]
+            # Ensure all departure times are in UTC for comparison
+            filtered_departures = []
+            for d in departures:
+                dep_time = d.time
+                if dep_time.tzinfo is None:
+                    dep_time = dep_time.replace(tzinfo=UTC)
+                else:
+                    dep_time = dep_time.astimezone(UTC)
+                if dep_time >= cutoff_time:
+                    filtered_departures.append(d)
+            departures = filtered_departures
 
         # Filter out departures that are too far in the future
         # Only apply if >= 1 (values < 1 or None are treated as unfiltered)
