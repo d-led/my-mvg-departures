@@ -57,6 +57,7 @@ class State:
         stop_configs: list[StopConfiguration],
         config: AppConfig,
         shared_cache: dict[str, list[Departure]] | None = None,
+        refresh_interval_seconds: int | None = None,
     ) -> None:
         """Start the API poller task.
 
@@ -66,6 +67,8 @@ class State:
             config: Application configuration.
             shared_cache: Optional shared cache of raw departures by station_id.
                          If provided, will use cached data instead of fetching.
+            refresh_interval_seconds: Optional route-specific poller interval in seconds.
+                                    If None, uses config.refresh_interval_seconds.
         """
         # Runtime usage - these checks ensure Ruff detects runtime dependency
         if not isinstance(config, AppConfig):
@@ -100,6 +103,7 @@ class State:
             state_broadcaster=state_broadcaster,
             broadcast_topic=self.broadcast_topic,
             shared_cache=shared_cache,
+            refresh_interval_seconds=refresh_interval_seconds,
         )
 
         await self.api_poller.start()

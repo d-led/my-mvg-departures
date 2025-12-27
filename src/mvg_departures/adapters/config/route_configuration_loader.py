@@ -175,6 +175,7 @@ class RouteConfigurationLoader:
                 random_header_colors = False
                 header_background_brightness = 0.7
                 random_color_salt = 0
+                refresh_interval_seconds = None
                 display_data = route_data.get("display")
                 if display_data:
                     # Handle both dict (single display) and list (array of displays)
@@ -190,6 +191,7 @@ class RouteConfigurationLoader:
                             "header_background_brightness", 0.7
                         )
                         random_color_salt = display_data.get("random_color_salt", 0)
+                        refresh_interval_seconds = display_data.get("refresh_interval_seconds")
                     elif isinstance(display_data, list) and len(display_data) > 0:
                         # Get title, theme, fill_vertical_space, font_scaling_factor_when_filling, random_header_colors, and header_background_brightness from first display entry
                         first_display = display_data[0]
@@ -205,6 +207,7 @@ class RouteConfigurationLoader:
                                 "header_background_brightness", 0.7
                             )
                             random_color_salt = first_display.get("random_color_salt", 0)
+                            refresh_interval_seconds = first_display.get("refresh_interval_seconds")
 
                 # Validate title is a string, default to None if not found
                 route_title = route_title if route_title and isinstance(route_title, str) else None
@@ -252,6 +255,18 @@ class RouteConfigurationLoader:
                     )
                 except (ValueError, TypeError):
                     random_color_salt = 0
+                # Validate refresh_interval_seconds is an int (defaults to None if not specified)
+                try:
+                    refresh_interval_seconds = (
+                        int(refresh_interval_seconds)
+                        if refresh_interval_seconds is not None
+                        else None
+                    )
+                    # Ensure it's at least 1 second if provided
+                    if refresh_interval_seconds is not None and refresh_interval_seconds < 1:
+                        refresh_interval_seconds = None
+                except (ValueError, TypeError):
+                    refresh_interval_seconds = None
 
                 route_config = RouteConfiguration(
                     path=path,
@@ -263,6 +278,7 @@ class RouteConfigurationLoader:
                     random_header_colors=random_header_colors,
                     header_background_brightness=header_background_brightness,
                     random_color_salt=random_color_salt,
+                    refresh_interval_seconds=refresh_interval_seconds,
                 )
                 route_configs.append(route_config)
 

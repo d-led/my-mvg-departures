@@ -2277,6 +2277,7 @@ class PyViewWebAdapter(DisplayAdapter):
                 route_stop_configs,
                 self.config,
                 shared_cache=cache_dict,
+                refresh_interval_seconds=route_config.refresh_interval_seconds,
             )
 
         # --------------------------------------------------------------

@@ -66,6 +66,7 @@ class ApiPoller(ApiPollerProtocol):
         state_broadcaster: StateBroadcasterProtocol,
         broadcast_topic: str,
         shared_cache: dict[str, list[Departure]] | None = None,
+        refresh_interval_seconds: int | None = None,
     ) -> None:
         """Initialize the API poller.
 
@@ -77,6 +78,8 @@ class ApiPoller(ApiPollerProtocol):
             state_broadcaster: Broadcaster for state updates.
             broadcast_topic: The pub/sub topic to broadcast to.
             shared_cache: Optional shared cache of raw departures by station_id.
+            refresh_interval_seconds: Optional route-specific poller interval in seconds.
+                                    If None, uses config.refresh_interval_seconds.
         """
         self.grouping_service = grouping_service
         self.stop_configs = stop_configs
@@ -85,6 +88,11 @@ class ApiPoller(ApiPollerProtocol):
         self.state_broadcaster = state_broadcaster
         self.broadcast_topic = broadcast_topic
         self.shared_cache = shared_cache
+        self.refresh_interval_seconds = (
+            refresh_interval_seconds
+            if refresh_interval_seconds is not None
+            else config.refresh_interval_seconds
+        )
         self.cached_departures: dict[str, list[GroupedDepartures]] = {}
         self._task: asyncio.Task | None = None
 
@@ -121,7 +129,7 @@ class ApiPoller(ApiPollerProtocol):
         # If using shared cache, we still need to reprocess periodically as cache updates
         try:
             while True:
-                await asyncio.sleep(self.config.refresh_interval_seconds)
+                await asyncio.sleep(self.refresh_interval_seconds)
                 await self._process_and_broadcast()
         except asyncio.CancelledError:
             logger.info("API poller cancelled")

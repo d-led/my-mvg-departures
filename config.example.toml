@@ -298,6 +298,8 @@ theme = "light"
 fill_vertical_space = true
 random_header_colors = true
 font_scaling_factor_when_filling = 0.8
+# Poller interval: fetch departures every 60 seconds (1 minute)
+refresh_interval_seconds = 60
 
 
 [[routes.stops]]
