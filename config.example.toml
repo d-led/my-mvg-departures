@@ -118,6 +118,7 @@ exclude_destinations = [
 "->Balanstr." = [
     "139 Messestadt West",
     "139 Neuperlach Zentrum",
+    "59 Ackermannbogen",
 ]
 
 # Group destinations heading toward Klinikum (south)
