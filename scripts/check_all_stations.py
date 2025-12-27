@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Check if all stations in a TOML config file can be queried."""
 
+import argparse
 import asyncio
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import aiohttp
@@ -21,7 +23,7 @@ from mvg_departures.adapters.config.route_configuration_loader import (
 )
 
 
-async def check_stations(config_file: str) -> None:
+async def check_stations(config_file: str, raw_output: bool = False) -> None:
     """Check if all stations in config can be queried."""
     config_path = Path(config_file).resolve()
     
@@ -89,15 +91,43 @@ async def check_stations(config_file: str) -> None:
 
             try:
                 departures = await departure_repo.get_departures(
-                    station_id, limit=5
+                    station_id, limit=20 if raw_output else 5
                 )
                 print(f"✓ OK ({len(departures)} departures)")
+                
+                if raw_output:
+                    now_utc = datetime.now(UTC)
+                    # Get local timezone for display
+                    import zoneinfo
+                    try:
+                        local_tz = zoneinfo.ZoneInfo("Europe/Berlin")
+                    except Exception:
+                        local_tz = now_utc.astimezone().tzinfo
+                    now_local = now_utc.astimezone(local_tz)
+                    print(f"  Current time (UTC): {now_utc.strftime('%Y-%m-%d %H:%M:%S')}")
+                    print(f"  Current time (local): {now_local.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+                    print(f"  Departures:")
+                    for dep in departures[:10]:  # Show first 10
+                        # Departure time is in UTC (from API)
+                        dep_time_utc = dep.time.astimezone(UTC) if dep.time.tzinfo else dep.time.replace(tzinfo=UTC)
+                        dep_time_local = dep_time_utc.astimezone(local_tz)
+                        time_diff = (dep_time_utc - now_utc).total_seconds() / 60
+                        print(f"    {dep_time_local.strftime('%H:%M:%S %Z')} ({dep_time_utc.strftime('%H:%M:%S UTC')}, {time_diff:+.1f} min) - "
+                              f"{dep.transport_type} {dep.line} -> {dep.destination} "
+                              f"[Platform: {dep.platform}, Delay: {dep.delay_seconds or 0}s]")
+                    if len(departures) > 10:
+                        print(f"    ... and {len(departures) - 10} more")
+                
                 results.append(
                     (station_id, station_name, api_provider, hafas_profile, True, len(departures), None)
                 )
             except Exception as e:
                 error_msg = str(e)
                 print(f"✗ FAILED: {error_msg}")
+                if raw_output:
+                    import traceback
+                    print(f"  Traceback:")
+                    traceback.print_exc()
                 results.append(
                     (station_id, station_name, api_provider, hafas_profile, False, 0, error_msg)
                 )
@@ -128,10 +158,20 @@ async def check_stations(config_file: str) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} <config.toml>", file=sys.stderr)
-        print(f"Example: {sys.argv[0]} config.toml", file=sys.stderr)
-        sys.exit(1)
-
-    asyncio.run(check_stations(sys.argv[1]))
+    parser = argparse.ArgumentParser(
+        description="Check if all stations in a TOML config file can be queried"
+    )
+    parser.add_argument(
+        "config_file",
+        help="Path to the TOML configuration file",
+    )
+    parser.add_argument(
+        "--raw",
+        action="store_true",
+        help="Show raw departure data with timestamps and timezone information",
+    )
+    
+    args = parser.parse_args()
+    
+    asyncio.run(check_stations(args.config_file, raw_output=args.raw))
 

@@ -26,6 +26,12 @@ if [ -d ".venv" ]; then
     source .venv/bin/activate
 fi
 
+# Check for --raw flag
+RAW_FLAG=""
+if [ "$2" = "--raw" ]; then
+    RAW_FLAG="--raw"
+fi
+
 # Run Python script
-python3 "$SCRIPT_DIR/check_all_stations.py" "$CONFIG_FILE"
+python3 "$SCRIPT_DIR/check_all_stations.py" "$CONFIG_FILE" $RAW_FLAG
 
