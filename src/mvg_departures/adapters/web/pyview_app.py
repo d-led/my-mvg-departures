@@ -2267,10 +2267,21 @@ class PyViewWebAdapter(DisplayAdapter):
         for station_id in station_ids:
             cache_dict[station_id] = self._shared_departure_cache.get(station_id)
 
+        poller_count = 0
         for route_config in self.route_configs:
             route_path = route_config.path
             route_state = self.route_states[route_path]
             route_stop_configs = route_config.stop_configs
+            interval = (
+                route_config.refresh_interval_seconds
+                if route_config.refresh_interval_seconds is not None
+                else self.config.refresh_interval_seconds
+            )
+            stop_names = [stop.station_name for stop in route_stop_configs]
+            logger.info(
+                f"Starting API poller for route '{route_path}' "
+                f"(stops: {', '.join(stop_names)}, interval: {interval}s)"
+            )
 
             await route_state.start_api_poller(
                 self.grouping_service,
@@ -2279,6 +2290,9 @@ class PyViewWebAdapter(DisplayAdapter):
                 shared_cache=cache_dict,
                 refresh_interval_seconds=route_config.refresh_interval_seconds,
             )
+            poller_count += 1
+
+        logger.info(f"Started {poller_count} API poller(s) for {len(self.route_configs)} route(s)")
 
         # --------------------------------------------------------------
         # Optional server-start reload request

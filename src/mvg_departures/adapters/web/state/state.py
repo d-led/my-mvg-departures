@@ -107,7 +107,7 @@ class State:
         )
 
         await self.api_poller.start()
-        logger.info("Started API poller")
+        logger.info(f"Started API poller for route '{self.route_path}'")
 
     async def stop_api_poller(self) -> None:
         """Stop the API poller task."""
