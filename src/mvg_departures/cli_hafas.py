@@ -125,53 +125,30 @@ async def search_stations_hafas(query: str, profile: str | None = None) -> list[
     return all_results
 
 
-async def detect_profile_for_station(station_id: str) -> str | None:
-    """Detect which HAFAS profile works for a given station ID."""
+def _test_profile_for_station(station_id: str, profile_name: str, profile_class: type) -> bool:
+    """Test if a profile works for a given station ID. Returns True if profile works."""
     from datetime import UTC, datetime
 
+    try:
+        with hafas_ssl_context():
+            client = HafasClient(profile_class())
+            departures = client.departures(
+                station=station_id,
+                date=datetime.now(UTC),
+                max_trips=1,
+            )
+        return departures is not None
+    except Exception as e:
+        error_msg = _extract_error_message(e)
+        print(f"  Profile '{profile_name}' failed: {error_msg}", file=sys.stderr)
+        return False
+
+
+async def detect_profile_for_station(station_id: str) -> str | None:
+    """Detect which HAFAS profile works for a given station ID."""
     for profile_name, profile_class in PROFILES.items():
-        try:
-            # Create client and make request with SSL verification disabled
-            # (pyhafas may create connections during initialization)
-            # Note: pyhafas methods are synchronous, not async
-            with hafas_ssl_context():
-                client = HafasClient(profile_class())
-                # Try to get a single departure to test if this profile works
-                departures = client.departures(  # Not async
-                    station=station_id,
-                    date=datetime.now(UTC),
-                    max_trips=1,
-                )
-            # If we got results (even empty list means the station exists), this profile works
-            if departures is not None:
-                return profile_name
-        except Exception as e:
-            # Log the error for debugging but continue to next profile
-            import sys
-
-            # Try to extract more details from the exception
-            error_msg = str(e) if str(e) else f"{type(e).__name__}"
-
-            # For GeneralHafasError and other exceptions, try to get more details
-            if hasattr(e, "message") and e.message:
-                error_msg = f"{error_msg}: {e.message}"
-            elif hasattr(e, "args") and e.args:
-                # Show all args if available (often contains the actual error message)
-                if len(e.args) > 1:
-                    error_msg = f"{error_msg}: {e.args[1]}"
-                elif len(e.args) == 1 and str(e.args[0]) != error_msg:
-                    # If args[0] is different from str(e), include it
-                    error_msg = f"{error_msg}: {e.args[0]}"
-
-            # Check for underlying exception (__cause__ or __context__)
-            if hasattr(e, "__cause__") and e.__cause__:
-                error_msg = f"{error_msg} (caused by: {e.__cause__})"
-            elif hasattr(e, "__context__") and e.__context__:
-                error_msg = f"{error_msg} (context: {e.__context__})"
-
-            print(f"  Profile '{profile_name}' failed: {error_msg}", file=sys.stderr)
-            continue
-
+        if _test_profile_for_station(station_id, profile_name, profile_class):
+            return profile_name
     return None
 
 
@@ -323,6 +300,14 @@ async def search_and_show_config(query: str, profile: str | None = None) -> None
         if not profile:
             print("  - Try specifying a profile: --profile <profile_name>", file=sys.stderr)
             print("    Available profiles: " + ", ".join(PROFILES.keys()), file=sys.stderr)
+            print("\n    Profile regions:", file=sys.stderr)
+            print("      db    - Deutsche Bahn (Germany-wide)", file=sys.stderr)
+            print("      kvb   - Cologne", file=sys.stderr)
+            print("      nvv   - North Hesse (e.g., Kassel)", file=sys.stderr)
+            print("      vvv   - Vorarlberg, Austria", file=sys.stderr)
+            print("      vsn   - South Lower Saxony", file=sys.stderr)
+            print("      rkrp  - Rhine district Neuss", file=sys.stderr)
+            print("      nasa  - Augsburg", file=sys.stderr)
         sys.exit(1)
 
     print(f"Found {len(results)} station(s):\n")
@@ -432,13 +417,24 @@ def _setup_argparse() -> argparse.ArgumentParser:
         epilog="""
 Examples:
   # Search for stations (tries all profiles)
-  hafas-config search "Augsburg Hbf"
+  hafas-config search "München Hbf"
+  hafas-config search "Köln Hbf"
+
+  # Search with specific profile (faster and more reliable)
+  hafas-config search "Augsburg Hbf" --profile nasa
+  hafas-config search "Kassel Hbf" --profile nvv
 
   # Detect profile for a known station ID
   hafas-config detect 9000589
 
-  # Search with specific profile
-  hafas-config search "Augsburg" --profile nvv
+Available profiles and their regions:
+  db    - Deutsche Bahn (Germany-wide, most common)
+  kvb   - Kölner Verkehrs-Betriebe (Cologne)
+  nvv   - Nordhessischer VerkehrsVerbund (North Hesse, e.g., Kassel)
+  vvv   - Verkehrsverbund Vorarlberg (Vorarlberg, Austria)
+  vsn   - Verkehrsverbund Süd-Niedersachsen (South Lower Saxony)
+  rkrp  - Rhein-Kreis Neuss (Rhine district Neuss)
+  nasa  - Nahverkehrsservice Augsburg (Augsburg)
 
 Note: For Berlin stations, use the VBB REST API instead:
   curl "https://v6.bvg.transport.rest/locations?query=Zoologischer%20Garten"

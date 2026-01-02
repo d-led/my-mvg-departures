@@ -20,47 +20,74 @@ from mvg_departures.domain.models.cli_types import (
 )
 
 
+async def _try_direct_search(query: str, session: aiohttp.ClientSession) -> dict[str, Any] | None:
+    """Try direct search for a station."""
+    try:
+        result = await MvgApi.station_async(query, session=session)
+        return result if result else None
+    except Exception:
+        return None
+
+
+async def _try_search_with_munich(
+    query: str, session: aiohttp.ClientSession
+) -> dict[str, Any] | None:
+    """Try search with 'München' appended if not already present."""
+    if "München" in query or "Munich" in query:
+        return None
+
+    try:
+        result = await MvgApi.station_async(f"{query}, München", session=session)
+        return result if result else None
+    except Exception:
+        return None
+
+
+def _filter_stations_by_query(
+    all_stations: list[dict[str, Any]], query: str, existing_ids: set[str]
+) -> list[dict[str, Any]]:
+    """Filter stations by query string."""
+    query_lower = query.lower()
+    matches = [
+        s
+        for s in all_stations
+        if query_lower in s.get("name", "").lower() or query_lower in s.get("place", "").lower()
+    ]
+    return [match for match in matches[:20] if match.get("id") not in existing_ids]
+
+
+async def _try_search_all_stations(
+    query: str, session: aiohttp.ClientSession, existing_ids: set[str]
+) -> list[dict[str, Any]]:
+    """Try to get all stations and filter by query."""
+    if not hasattr(MvgApi, "stations_async"):
+        return []
+
+    try:
+        all_stations = await MvgApi.stations_async(session=session)
+        if not all_stations:
+            return []
+        return _filter_stations_by_query(all_stations, query, existing_ids)
+    except Exception:
+        return []
+
+
 async def search_stations(query: str) -> list[dict[str, Any]]:
     """Search for stations by name."""
     async with aiohttp.ClientSession() as session:
-        results = []
+        results: list[dict[str, Any]] = []
 
-        # Try direct search first
-        try:
-            result = await MvgApi.station_async(query, session=session)
-            if result:
-                results.append(result)
-        except Exception:
-            pass
+        direct_result = await _try_direct_search(query, session)
+        if direct_result:
+            results.append(direct_result)
 
-        # Try with "München" appended if not already there
-        if "München" not in query and "Munich" not in query:
-            try:
-                result = await MvgApi.station_async(f"{query}, München", session=session)
-                if result and result not in results:
-                    results.append(result)
-            except Exception:
-                pass
+        munich_result = await _try_search_with_munich(query, session)
+        if munich_result and munich_result not in results:
+            results.append(munich_result)
 
-        # Try to get all stations and filter (if API supports it)
-        try:
-            if hasattr(MvgApi, "stations_async"):
-                all_stations = await MvgApi.stations_async(session=session)
-                if all_stations:
-                    query_lower = query.lower()
-                    matches = [
-                        s
-                        for s in all_stations
-                        if query_lower in s.get("name", "").lower()
-                        or query_lower in s.get("place", "").lower()
-                    ]
-                    # Add unique matches
-                    existing_ids = {r.get("id") for r in results}
-                    for match in matches[:20]:
-                        if match.get("id") not in existing_ids:
-                            results.append(match)
-        except Exception:
-            pass
+        existing_ids: set[str] = {str(r.get("id", "")) for r in results if r.get("id")}
+        all_station_matches = await _try_search_all_stations(query, session, existing_ids)
+        results.extend(all_station_matches)
 
         return results
 
@@ -301,81 +328,113 @@ async def _get_stop_point_mapping(
     return stop_point_mapping
 
 
+def _extract_route_from_departure(dep: dict[str, Any]) -> tuple[str, str, str, str]:
+    """Extract route information from a departure."""
+    line = dep.get("line", "")
+    destination = dep.get("destination", "")
+    transport_type = dep.get("type", "")
+    icon = dep.get("icon", "")
+    return line, destination, transport_type, icon
+
+
+def _build_routes_from_departures(
+    departures: list[dict[str, Any]],
+) -> tuple[dict[str, set[str]], dict[str, dict[str, Any]]]:
+    """Build routes dictionary from departures."""
+    routes: dict[str, set[str]] = {}
+    route_details: dict[str, dict[str, Any]] = {}
+
+    for dep in departures:
+        line, destination, transport_type, icon = _extract_route_from_departure(dep)
+        route_key = f"{transport_type} {line}"
+
+        if route_key not in routes:
+            routes[route_key] = set()
+            route_details[route_key] = {
+                "line": line,
+                "transport_type": transport_type,
+                "icon": icon,
+            }
+        routes[route_key].add(destination)
+
+    return routes, route_details
+
+
+def _merge_route_details(
+    routes: dict[str, set[str]],
+    route_details: dict[str, dict[str, Any]],
+    routes_from_endpoint: dict[str, Any] | None,
+) -> None:
+    """Merge route details from endpoint while keeping destinations from departures."""
+    if not routes_from_endpoint:
+        return
+
+    routes_from_endpoint_data = routes_from_endpoint.get("routes", {})
+    for route_key, endpoint_route_data in routes_from_endpoint_data.items():
+        if route_key not in routes or not isinstance(endpoint_route_data, dict):
+            continue
+
+        route_details[route_key].update(
+            {
+                k: v
+                for k, v in endpoint_route_data.items()
+                if k != "destinations"  # Don't overwrite destinations
+            }
+        )
+
+
+def _build_station_result(
+    station_id: str,
+    routes: dict[str, set[str]],
+    route_details: dict[str, dict[str, Any]],
+    stop_point_mapping: dict[str, Any],
+    departures: list[dict[str, Any]],
+    routes_from_endpoint: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Build the final station result dictionary."""
+    source = "departures_sampling" + (" + routes_endpoint" if routes_from_endpoint else "")
+
+    return {
+        "station": {
+            "id": station_id,
+            "name": station_id,  # MVG API might not return station name in departures
+            "place": "München",
+        },
+        "routes": {
+            route: {
+                "destinations": sorted(destinations),
+                **route_details[route],
+            }
+            for route, destinations in routes.items()
+        },
+        "stop_point_mapping": stop_point_mapping,
+        "total_departures_found": len(departures),
+        "source": source,
+    }
+
+
 async def get_station_details(station_id: str, limit: int = 100) -> dict[str, Any] | None:
     """Get detailed information about a station."""
     async with aiohttp.ClientSession() as session:
         try:
-            # Always fetch stop point mapping from raw API
             stop_point_mapping = await _get_stop_point_mapping(station_id, session, limit)
-
-            # Try to get routes from routes endpoint (for route list)
             routes_from_endpoint = await _get_routes_from_endpoint(station_id, session)
 
-            # Always use departures sampling for destinations (more reliable)
-            # Get departures to infer station info and available routes
-            # Use a higher limit to capture all destinations for routes
             departures = await MvgApi.departures_async(station_id, limit=limit, session=session)
             if not departures:
                 return None
 
-            # Extract unique routes and destinations from departures
-            routes: dict[str, set[str]] = {}  # transport_type + line -> set of destinations
-            route_details: dict[str, dict[str, Any]] = {}  # route_key -> details
+            routes, route_details = _build_routes_from_departures(departures)
+            _merge_route_details(routes, route_details, routes_from_endpoint)
 
-            for dep in departures:
-                line = dep.get("line", "")
-                destination = dep.get("destination", "")
-                transport_type = dep.get("type", "")
-                icon = dep.get("icon", "")
-
-                route_key = f"{transport_type} {line}"
-                if route_key not in routes:
-                    routes[route_key] = set()
-                    route_details[route_key] = {
-                        "line": line,
-                        "transport_type": transport_type,
-                        "icon": icon,
-                    }
-                routes[route_key].add(destination)
-
-            # If routes endpoint provided route info, merge it (but keep destinations from departures)
-            if routes_from_endpoint:
-                routes_from_endpoint_data = routes_from_endpoint.get("routes", {})
-                # Update route details from endpoint if available, but keep destinations from departures
-                for route_key, endpoint_route_data in routes_from_endpoint_data.items():
-                    if route_key in routes and isinstance(endpoint_route_data, dict):
-                        # Merge route details (icon, etc.) but keep our destinations
-                        route_details[route_key].update(
-                            {
-                                k: v
-                                for k, v in endpoint_route_data.items()
-                                if k != "destinations"  # Don't overwrite destinations
-                            }
-                        )
-
-            # Try to get station name from first departure or use ID
-            station_name = station_id
-            # The MVG API might not return station name in departures
-            # We'll use the station_id as fallback
-
-            return {
-                "station": {
-                    "id": station_id,
-                    "name": station_name,
-                    "place": "München",
-                },
-                "routes": {
-                    route: {
-                        "destinations": sorted(destinations),
-                        **route_details[route],
-                    }
-                    for route, destinations in routes.items()
-                },
-                "stop_point_mapping": stop_point_mapping,
-                "total_departures_found": len(departures),
-                "source": "departures_sampling"
-                + (" + routes_endpoint" if routes_from_endpoint else ""),
-            }
+            return _build_station_result(
+                station_id,
+                routes,
+                route_details,
+                stop_point_mapping,
+                departures,
+                routes_from_endpoint,
+            )
         except Exception as e:
             print(f"Error fetching station details: {e}", file=sys.stderr)
             return None
