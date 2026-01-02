@@ -33,7 +33,7 @@ jobs:
       contents: read
       packages: read
     container:
-      image: cypress/included:latest
+      image: cypress/included:15.8.1
     services:
       app:
         image: ${{ inputs.docker_image != '' && inputs.docker_image || format('ghcr.io/{0}:main', github.repository) }}
@@ -52,12 +52,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_branch || github.ref }}
-          sha: ${{ github.event.workflow_run.head_sha || '' }}
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
       - name: Configure git safe directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Install JUnit reporter
-        run: npm install mocha-junit-reporter --no-save --no-package-lock
+      - name: Install dependencies
+        run: npm install --no-package-lock
       - name: Wait for service to be ready
         run: |
           echo "Waiting for app service to be healthy..."
@@ -72,7 +71,7 @@ jobs:
       - name: Run E2E tests (with JUnit reporter)
         run: |
           mkdir -p test-results
-          cypress run --e2e --browser chrome --config baseUrl=http://app:8000 --reporter mocha-junit-reporter --reporter-options mochaFile=test-results/junit-[hash].xml
+          npm run e2e -- --config baseUrl=http://app:8000 --reporter mocha-junit-reporter --reporter-options mochaFile=test-results/junit-[hash].xml
         env:
           CYPRESS_CI: true
       - name: Upload Cypress screenshots
