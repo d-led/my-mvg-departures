@@ -68,7 +68,7 @@ jobs:
       - name: Run E2E tests (with JUnit reporter)
         run: |
           mkdir -p test-results
-          npm run e2e -- --config baseUrl=http://app:8000 --reporter mocha-junit-reporter --reporter-options mochaFile=test-results/junit-[hash].xml
+          cypress run --e2e --browser chrome --config baseUrl=http://app:8000 --reporter mocha-junit-reporter --reporter-options mochaFile=test-results/junit-[hash].xml
         env:
           CYPRESS_CI: true
       - name: Upload Cypress screenshots
