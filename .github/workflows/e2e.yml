@@ -33,7 +33,7 @@ jobs:
       contents: read
       packages: read
     container:
-      image: cypress/included:latest
+      image: cypress/included:15.8.1
       options: --user 1001 --ipc=host --shm-size=2gb
     services:
       app:
