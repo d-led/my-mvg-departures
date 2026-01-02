@@ -8,6 +8,12 @@ from typing import Any
 import aiohttp
 from mvg import MvgApi
 
+from mvg_departures.domain.models.cli_types import (
+    ConfigPattern,
+    DestinationPlatformInfo,
+    StopPointRouteInfo,
+)
+
 
 async def search_stations(query: str) -> list[dict[str, Any]]:
     """Search for stations by name."""
@@ -335,7 +341,7 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
     print("=" * 70)
 
     # Collect patterns for config, grouped by route
-    config_patterns_by_route: dict[str, list[tuple[str, str, str]]] = {}
+    config_patterns_by_route: dict[str, list[ConfigPattern]] = {}
 
     for route_key, route_data in sorted(routes.items()):
         if isinstance(route_data, dict):
@@ -366,7 +372,9 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
             if isinstance(route_data, dict) and transport_type and line:
                 pattern = f"{line} {dest}"
                 full_pattern = f"{transport_type} {line} {dest}"
-                route_patterns.append((pattern, full_pattern, dest))
+                route_patterns.append(
+                    ConfigPattern(pattern=pattern, full_pattern=full_pattern, destination=dest)
+                )
 
         if route_patterns:
             config_patterns_by_route[route_key] = route_patterns
@@ -383,23 +391,25 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
         for route_key, patterns in sorted(config_patterns_by_route.items()):
             route_display = route_key.replace(" ", " ")
             print(f"\n# {route_display}:")
-            for pattern, _full_pattern, dest in patterns:
+            for config_pattern in patterns:
                 print(
-                    f'  "{pattern}"  # Matches: {route_key.split()[-1] if route_key.split() else ""} -> {dest}'
+                    f'  "{config_pattern.pattern}"  # Matches: {route_key.split()[-1] if route_key.split() else ""} -> {config_pattern.destination}'
                 )
 
         print("\n# Alternative format (transport type + line + destination):")
         for route_key, patterns in sorted(config_patterns_by_route.items()):
             route_display = route_key.replace(" ", " ")
             print(f"\n# {route_display}:")
-            for _pattern, full_pattern, dest in patterns:
-                print(f'  "{full_pattern}"  # Matches: {route_key} -> {dest}')
+            for config_pattern in patterns:
+                print(
+                    f'  "{config_pattern.full_pattern}"  # Matches: {route_key} -> {config_pattern.destination}'
+                )
 
         # Also show a flat list for easy copy-paste
         print("\n# Flat list (line + destination format) - ready to paste:")
         all_patterns = []
         for patterns in config_patterns_by_route.values():
-            all_patterns.extend([p[0] for p in patterns])
+            all_patterns.extend([p.pattern for p in patterns])
         pattern_str = ", ".join(f'"{p}"' for p in all_patterns)
         print(f"  [{pattern_str}]")
 
@@ -407,8 +417,8 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
         print("\n# Destination-only patterns (matches any route to that destination):")
         unique_destinations = set()
         for patterns in config_patterns_by_route.values():
-            for _pattern, _full_pattern, dest in patterns:
-                unique_destinations.add(dest)
+            for config_pattern in patterns:
+                unique_destinations.add(config_pattern.destination)
         dest_patterns = sorted(unique_destinations)
         dest_pattern_str = ", ".join(f'"{d}"' for d in dest_patterns)
         print(f"  [{dest_pattern_str}]")
@@ -424,12 +434,12 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
         print("\n# Stop points by route and destination:")
 
         # Group by stop point (reverse sorted)
-        stops_with_routes: dict[str, list[tuple[str, str, str | None]]] = (
+        stops_with_routes: dict[str, list[StopPointRouteInfo]] = (
             {}
-        )  # stop_point -> list of (route_key, destination, platform_info)
-        s_bahn_platforms: dict[str, dict[str, dict[int, list[tuple[str, str]]]]] = (
+        )  # stop_point -> list of StopPointRouteInfo
+        s_bahn_platforms: dict[str, dict[str, dict[int, list[DestinationPlatformInfo]]]] = (
             {}
-        )  # transport_type -> route_key -> platform -> list of (destination, platform_info)
+        )  # transport_type -> route_key -> platform -> list of DestinationPlatformInfo
 
         for mapping_key, mapping_data in sorted(stop_point_mapping.items()):
             if "|" in mapping_key:
@@ -450,7 +460,13 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
                             if stop_point in sp_set:
                                 platform_info = f"Platform {platform}"
                                 break
-                    stops_with_routes[stop_point].append((route_key, destination, platform_info))
+                    stops_with_routes[stop_point].append(
+                        StopPointRouteInfo(
+                            route_key=route_key,
+                            destination=destination,
+                            platform_info=platform_info,
+                        )
+                    )
 
                 # Handle platforms separately only if they don't have unique stopPointGlobalId
                 # If they have stopPointGlobalId values, they're already handled above
@@ -465,7 +481,9 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
                         if platform not in s_bahn_platforms[transport_type_key][route_key]:
                             s_bahn_platforms[transport_type_key][route_key][platform] = []
                         s_bahn_platforms[transport_type_key][route_key][platform].append(
-                            (destination, f"Platform {platform}")
+                            DestinationPlatformInfo(
+                                destination=destination, platform_info=f"Platform {platform}"
+                            )
                         )
 
         # Display regular stop points (all transport types with stopPointGlobalId)
@@ -475,23 +493,25 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
             print(f'# station_id = "{stop_point}"')
             # Check if this stop has platform info (S-Bahn/U-Bahn)
             has_platforms = any(
-                platform_info
-                for _, _, platform_info in stops_with_routes[stop_point]
-                if platform_info
+                route_info.platform_info
+                for route_info in stops_with_routes[stop_point]
+                if route_info.platform_info
             )
             if has_platforms:
                 print(
                     "# Note: You can use this stopPointGlobalId directly, or use base station_id with direction_mappings for additional filtering."
                 )
             # Sort routes and destinations for this stop point
-            for route_key, destination, platform_info in sorted(stops_with_routes[stop_point]):
+            for route_info in sorted(
+                stops_with_routes[stop_point], key=lambda r: (r.route_key, r.destination)
+            ):
                 # Extract line number from route_key (format: "Bus 139" -> "139")
-                line = route_key.split()[-1] if route_key.split() else ""
-                pattern = f"{line} {destination}" if line else destination
-                if platform_info:
-                    print(f'  {route_key} -> "{pattern}"  # {platform_info}')
+                line = route_info.route_key.split()[-1] if route_info.route_key.split() else ""
+                pattern = f"{line} {route_info.destination}" if line else route_info.destination
+                if route_info.platform_info:
+                    print(f'  {route_info.route_key} -> "{pattern}"  # {route_info.platform_info}')
                 else:
-                    print(f'  {route_key} -> "{pattern}"')
+                    print(f'  {route_info.route_key} -> "{pattern}"')
 
         # Display platforms without stopPointGlobalId (grouped by transport type)
         if s_bahn_platforms:
@@ -509,8 +529,10 @@ async def list_routes(station_id: str, show_patterns: bool = True) -> None:
                         print(f"\n# {route_key} - Platform {platform}:")
                         print(f'# station_id = "{station_id}"  # Use base station_id')
                         print("# Configure direction_mappings to filter by destination:")
-                        for destination, _platform_info in sorted(destinations):
-                            pattern = f"{line} {destination}" if line else destination
+                        for dest_info in sorted(destinations, key=lambda d: d.destination):
+                            pattern = (
+                                f"{line} {dest_info.destination}" if line else dest_info.destination
+                            )
                             print(f'  "{pattern}"')
                         print(
                             "# Then add these destinations to exclude_destinations in the main config."
@@ -566,7 +588,7 @@ async def search_and_list_routes(query: str, show_patterns: bool = True) -> None
         print(f"  Available Routes ({len(routes)}):")
 
         # Collect patterns for config, grouped by route
-        config_patterns_by_route: dict[str, list[tuple[str, str, str]]] = {}
+        config_patterns_by_route: dict[str, list[ConfigPattern]] = {}
 
         for route_key, route_data in sorted(routes.items()):
             if isinstance(route_data, dict):
@@ -598,7 +620,9 @@ async def search_and_list_routes(query: str, show_patterns: bool = True) -> None
                 if isinstance(route_data, dict) and transport_type and line:
                     pattern = f"{line} {dest}"
                     full_pattern = f"{transport_type} {line} {dest}"
-                    route_patterns.append((pattern, full_pattern, dest))
+                    route_patterns.append(
+                        ConfigPattern(pattern=pattern, full_pattern=full_pattern, destination=dest)
+                    )
 
             if route_patterns:
                 config_patterns_by_route[route_key] = route_patterns
@@ -615,14 +639,16 @@ async def search_and_list_routes(query: str, show_patterns: bool = True) -> None
             for route_key, patterns in sorted(config_patterns_by_route.items()):
                 route_display = route_key.replace(" ", " ")
                 print(f"\n  # {route_display}:")
-                for pattern, _full_pattern, dest in patterns:
+                for config_pattern in patterns:
                     route_line = route_key.split()[-1] if route_key.split() else ""
-                    print(f'    "{pattern}"  # Matches: {route_line} -> {dest}')
+                    print(
+                        f'    "{config_pattern.pattern}"  # Matches: {route_line} -> {config_pattern.destination}'
+                    )
 
             print("\n  # Flat list (line + destination format) - ready to paste:")
             all_patterns = []
             for patterns in config_patterns_by_route.values():
-                all_patterns.extend([p[0] for p in patterns])
+                all_patterns.extend([p.pattern for p in patterns])
             pattern_str = ", ".join(f'"{p}"' for p in all_patterns)
             print(f"    [{pattern_str}]")
 
@@ -630,8 +656,8 @@ async def search_and_list_routes(query: str, show_patterns: bool = True) -> None
             print("\n  # Destination-only patterns (matches any route to that destination):")
             unique_destinations = set()
             for patterns in config_patterns_by_route.values():
-                for _pattern, _full_pattern, dest in patterns:
-                    unique_destinations.add(dest)
+                for config_pattern in patterns:
+                    unique_destinations.add(config_pattern.destination)
             dest_patterns = sorted(unique_destinations)
             dest_pattern_str = ", ".join(f'"{d}"' for d in dest_patterns)
             print(f"    [{dest_pattern_str}]")
@@ -649,12 +675,12 @@ async def search_and_list_routes(query: str, show_patterns: bool = True) -> None
             print("\n  # Stop points by route and destination:")
 
             # Group by stop point (reverse sorted)
-            stops_with_routes: dict[str, list[tuple[str, str, str | None]]] = (
+            stops_with_routes: dict[str, list[StopPointRouteInfo]] = (
                 {}
-            )  # stop_point -> list of (route_key, destination, platform_info)
-            s_bahn_platforms: dict[str, dict[str, dict[int, list[tuple[str, str]]]]] = (
+            )  # stop_point -> list of StopPointRouteInfo
+            s_bahn_platforms: dict[str, dict[str, dict[int, list[DestinationPlatformInfo]]]] = (
                 {}
-            )  # transport_type -> route_key -> platform -> list of (destination, platform_info)
+            )  # transport_type -> route_key -> platform -> list of DestinationPlatformInfo
 
             for mapping_key, mapping_data in sorted(stop_point_mapping.items()):
                 if "|" in mapping_key:
@@ -676,7 +702,11 @@ async def search_and_list_routes(query: str, show_patterns: bool = True) -> None
                                     platform_info = f"Platform {platform}"
                                     break
                         stops_with_routes[stop_point].append(
-                            (route_key, destination, platform_info)
+                            StopPointRouteInfo(
+                                route_key=route_key,
+                                destination=destination,
+                                platform_info=platform_info,
+                            )
                         )
 
                     # Handle platforms without stopPointGlobalId separately
@@ -691,7 +721,9 @@ async def search_and_list_routes(query: str, show_patterns: bool = True) -> None
                             if platform not in s_bahn_platforms[transport_type_key][route_key]:
                                 s_bahn_platforms[transport_type_key][route_key][platform] = []
                             s_bahn_platforms[transport_type_key][route_key][platform].append(
-                                (destination, f"Platform {platform}")
+                                DestinationPlatformInfo(
+                                    destination=destination, platform_info=f"Platform {platform}"
+                                )
                             )
 
             # Display regular stop points (all transport types with stopPointGlobalId)
@@ -701,23 +733,27 @@ async def search_and_list_routes(query: str, show_patterns: bool = True) -> None
                 print(f'  # station_id = "{stop_point}"')
                 # Check if this stop has platform info (S-Bahn/U-Bahn)
                 has_platforms = any(
-                    platform_info
-                    for _, _, platform_info in stops_with_routes[stop_point]
-                    if platform_info
+                    route_info.platform_info
+                    for route_info in stops_with_routes[stop_point]
+                    if route_info.platform_info
                 )
                 if has_platforms:
                     print(
                         "  # Note: You can use this stopPointGlobalId directly, or use base station_id with direction_mappings for additional filtering."
                     )
                 # Sort routes and destinations for this stop point
-                for route_key, destination, platform_info in sorted(stops_with_routes[stop_point]):
+                for route_info in sorted(
+                    stops_with_routes[stop_point], key=lambda r: (r.route_key, r.destination)
+                ):
                     # Extract line number from route_key (format: "Bus 139" -> "139")
-                    line = route_key.split()[-1] if route_key.split() else ""
-                    pattern = f"{line} {destination}" if line else destination
-                    if platform_info:
-                        print(f'    {route_key} -> "{pattern}"  # {platform_info}')
+                    line = route_info.route_key.split()[-1] if route_info.route_key.split() else ""
+                    pattern = f"{line} {route_info.destination}" if line else route_info.destination
+                    if route_info.platform_info:
+                        print(
+                            f'    {route_info.route_key} -> "{pattern}"  # {route_info.platform_info}'
+                        )
                     else:
-                        print(f'    {route_key} -> "{pattern}"')
+                        print(f'    {route_info.route_key} -> "{pattern}"')
 
             # Display platforms without stopPointGlobalId (grouped by transport type)
             if s_bahn_platforms:
@@ -739,8 +775,12 @@ async def search_and_list_routes(query: str, show_patterns: bool = True) -> None
                             print(f"\n  # {route_key} - Platform {platform}:")
                             print(f'  # station_id = "{station_id}"  # Use base station_id')
                             print("  # Configure direction_mappings to filter by destination:")
-                            for destination, _platform_info in sorted(destinations):
-                                pattern = f"{line} {destination}" if line else destination
+                            for dest_info in sorted(destinations, key=lambda d: d.destination):
+                                pattern = (
+                                    f"{line} {dest_info.destination}"
+                                    if line
+                                    else dest_info.destination
+                                )
                                 print(f'    "{pattern}"')
                             print(
                                 "  # Then add these destinations to exclude_destinations in the main config."

@@ -23,3 +23,15 @@ class PresenceCounts(BaseModel):
 
     local_count: int
     total_count: int
+
+
+class PresenceSyncResult(BaseModel):
+    """Result of a presence synchronization operation.
+
+    Contains counts of users added and removed during sync.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    added_count: int
+    removed_count: int

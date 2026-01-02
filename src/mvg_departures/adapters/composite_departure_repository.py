@@ -4,6 +4,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from mvg_departures.adapters.hafas_api.profile_detector import ProfileDetector
+from mvg_departures.domain.models.repository_key import RepositoryKey
 from mvg_departures.domain.models.stop_configuration import StopConfiguration
 from mvg_departures.domain.ports.departure_repository import DepartureRepository
 
@@ -40,9 +41,9 @@ class CompositeDepartureRepository(DepartureRepository):
         from mvg_departures.adapters.mvg_api import MvgDepartureRepository
         from mvg_departures.adapters.vbb_api import VbbDepartureRepository
 
-        # Map of (api_provider, hafas_profile) -> repository instance
+        # Map of RepositoryKey -> repository instance
         # Use None for hafas_profile to indicate auto-detection
-        repo_cache: dict[tuple[str, str | None], DepartureRepository] = {}
+        repo_cache: dict[RepositoryKey, DepartureRepository] = {}
 
         for stop_config in self._stop_configs.values():
             api_provider = stop_config.api_provider.lower()
@@ -52,7 +53,7 @@ class CompositeDepartureRepository(DepartureRepository):
                 if stop_config.hafas_profile and stop_config.hafas_profile.strip()
                 else None
             )
-            repo_key = (api_provider, hafas_profile)
+            repo_key = RepositoryKey(api_provider=api_provider, hafas_profile=hafas_profile)
 
             # Create repository if we haven't seen this API/profile combination
             if repo_key not in repo_cache:

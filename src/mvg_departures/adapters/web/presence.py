@@ -7,7 +7,11 @@ if TYPE_CHECKING:
     from pyview import LiveViewSocket
 
 from mvg_departures.domain.contracts import PresenceTrackerProtocol
-from mvg_departures.domain.models.presence_result import PresenceCounts, PresenceResult
+from mvg_departures.domain.models.presence_result import (
+    PresenceCounts,
+    PresenceResult,
+    PresenceSyncResult,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -233,7 +237,7 @@ class PresenceTracker(PresenceTrackerProtocol):
 
     def sync_with_registered_sockets(
         self, route_sockets: dict[str, set["LiveViewSocket"]]
-    ) -> tuple[int, int]:  # Keep as tuple for backward compatibility with internal usage
+    ) -> PresenceSyncResult:
         """Sync presence tracking with registered sockets for all routes.
 
         This method ensures that presence tracking matches the actual registered sockets.
@@ -244,7 +248,7 @@ class PresenceTracker(PresenceTrackerProtocol):
             route_sockets: Dictionary mapping route paths to sets of registered sockets.
 
         Returns:
-            Tuple of (added_count, removed_count) - the number of users added and removed.
+            PresenceSyncResult with added_count and removed_count.
         """
         added_count = 0
         removed_count = 0
@@ -312,7 +316,7 @@ class PresenceTracker(PresenceTrackerProtocol):
                 f"Total users: {len(self._all_users)}"
             )
 
-        return added_count, removed_count
+        return PresenceSyncResult(added_count=added_count, removed_count=removed_count)
 
 
 # Global presence tracker instance

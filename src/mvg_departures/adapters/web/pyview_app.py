@@ -2201,7 +2201,8 @@ class PyViewWebAdapter(DisplayAdapter):
             # Drop all presence entries by syncing against an empty mapping of
             # registered sockets. PresenceTracker will remove users it no longer
             # sees as registered anywhere.
-            added, removed = presence_tracker.sync_with_registered_sockets({})
+            sync_result = presence_tracker.sync_with_registered_sockets({})
+            added, removed = sync_result.added_count, sync_result.removed_count
 
             # Broadcast state updates to all routes so that LiveViews receive
             # a phx:update with the new reload_request_id value.
