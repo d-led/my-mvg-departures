@@ -5,7 +5,7 @@ Uses v6.bvg.transport.rest API for real-time Berlin public transport data.
 
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from mvg_departures.domain.models.departure import Departure
 from mvg_departures.domain.ports.departure_repository import DepartureRepository
@@ -23,6 +23,202 @@ class VbbDepartureRepository(DepartureRepository):
         """Initialize with optional aiohttp session."""
         self._session = session
         self._base_url = "https://v6.bvg.transport.rest"
+
+    def _build_request_params(
+        self, offset_minutes: int, duration_minutes: int
+    ) -> dict[str, int | str]:
+        """Build request parameters for VBB API.
+
+        Args:
+            offset_minutes: Offset in minutes from now.
+            duration_minutes: Duration parameter for API.
+
+        Returns:
+            Dictionary of request parameters.
+        """
+        params: dict[str, int | str] = {
+            "duration": duration_minutes,
+            "results": 500,  # Get up to 500 departures to have enough for all routes
+        }
+
+        now_utc = datetime.now(UTC)
+        if offset_minutes > 0:
+            future_time = now_utc + timedelta(minutes=offset_minutes)
+            params["when"] = future_time.isoformat()
+        else:
+            params["when"] = now_utc.isoformat()
+
+        return params
+
+    async def _fetch_departures_data(
+        self, station_id: str, params: dict[str, int | str]
+    ) -> list[dict[str, Any]]:
+        """Fetch raw departure data from VBB API.
+
+        Args:
+            station_id: VBB station ID.
+            params: Request parameters.
+
+        Returns:
+            List of raw departure data dictionaries.
+
+        Raises:
+            RuntimeError: If the API call fails.
+        """
+        if not self._session:
+            raise RuntimeError("VBB API requires an aiohttp session")
+
+        url = f"{self._base_url}/stops/{station_id}/departures"
+
+        async with self._session.get(url, params=params, ssl=False) as response:
+            if response.status != 200:
+                response_text = await response.text()
+                raise RuntimeError(f"VBB API returned status {response.status}: {response_text}")
+
+            data = await response.json()
+            departures_data: list[dict[str, Any]] = data.get("departures", [])
+            return departures_data
+
+    def _parse_departure_time(self, dep_data: dict[str, Any]) -> tuple[datetime, datetime] | None:
+        """Parse departure time and planned time from VBB departure data.
+
+        Args:
+            dep_data: Raw departure data dictionary.
+
+        Returns:
+            Tuple of (when, planned_when) in UTC, or None if parsing fails.
+        """
+        when_str = dep_data.get("when") or dep_data.get("plannedWhen")
+        planned_when_str = dep_data.get("plannedWhen") or when_str
+
+        if not when_str or not planned_when_str:
+            return None
+
+        when = datetime.fromisoformat(when_str.replace("Z", "+00:00"))
+        planned_when = datetime.fromisoformat(planned_when_str.replace("Z", "+00:00"))
+
+        # Ensure UTC timezone
+        when = when.replace(tzinfo=UTC) if when.tzinfo is None else when.astimezone(UTC)
+        planned_when = (
+            planned_when.replace(tzinfo=UTC)
+            if planned_when.tzinfo is None
+            else planned_when.astimezone(UTC)
+        )
+
+        return when, planned_when
+
+    def _calculate_delay(self, when: datetime, planned_when: datetime) -> int | None:
+        """Calculate delay in seconds.
+
+        Args:
+            when: Actual departure time.
+            planned_when: Planned departure time.
+
+        Returns:
+            Delay in seconds, or None if no delay.
+        """
+        delay_seconds = int((when - planned_when).total_seconds())
+        return delay_seconds if delay_seconds > 0 else None
+
+    def _extract_line_info(self, dep_data: dict[str, Any]) -> tuple[str, str]:
+        """Extract line name and transport type from VBB departure data.
+
+        Args:
+            dep_data: Raw departure data dictionary.
+
+        Returns:
+            Tuple of (line_name, transport_type).
+        """
+        line_obj = dep_data.get("line", {})
+        line_name = line_obj.get("name", "") or line_obj.get("id", "")
+        product = line_obj.get("product", "")
+
+        transport_type_map = {
+            "subway": "U-Bahn",
+            "suburban": "S-Bahn",
+            "bus": "Bus",
+            "tram": "Tram",
+            "ferry": "Ferry",
+            "regional": "Regional",
+            "express": "Express",
+        }
+        transport_type = transport_type_map.get(product, product.capitalize())
+
+        return line_name, transport_type
+
+    def _extract_destination(self, dep_data: dict[str, Any]) -> str:
+        """Extract destination from VBB departure data.
+
+        Args:
+            dep_data: Raw departure data dictionary.
+
+        Returns:
+            Destination name.
+        """
+        direction = dep_data.get("direction", "") or ""
+        dest_obj = dep_data.get("destination")
+        dest_name = ""
+
+        if dest_obj and isinstance(dest_obj, dict):
+            dest_name = dest_obj.get("name", "") or ""
+
+        if direction:
+            return direction
+        if dest_name:
+            return dest_name
+        return ""
+
+    def _extract_messages(self, dep_data: dict[str, Any]) -> list[str]:
+        """Extract messages/remarks from VBB departure data.
+
+        Args:
+            dep_data: Raw departure data dictionary.
+
+        Returns:
+            List of message strings.
+        """
+        remarks = dep_data.get("remarks", [])
+        messages = [r.get("text", "") for r in remarks if isinstance(r, dict)]
+        if not messages:
+            messages = [r for r in remarks if isinstance(r, str)]
+        return messages
+
+    def _convert_departure(self, dep_data: dict[str, Any]) -> Departure | None:
+        """Convert VBB departure data to Departure model.
+
+        Args:
+            dep_data: Raw departure data dictionary.
+
+        Returns:
+            Departure object, or None if conversion fails.
+        """
+        time_data = self._parse_departure_time(dep_data)
+        if not time_data:
+            return None
+
+        when, planned_when = time_data
+        delay_seconds = self._calculate_delay(when, planned_when)
+        line_name, transport_type = self._extract_line_info(dep_data)
+        destination = self._extract_destination(dep_data)
+        messages = self._extract_messages(dep_data)
+
+        platform = dep_data.get("platform")
+        is_cancelled = dep_data.get("cancelled", False)
+        is_realtime = delay_seconds is not None or dep_data.get("realtime", False)
+
+        return Departure(
+            time=when,
+            planned_time=planned_when,
+            delay_seconds=delay_seconds,
+            platform=platform,
+            is_realtime=is_realtime,
+            line=line_name,
+            destination=destination,
+            transport_type=transport_type,
+            icon="",  # VBB API doesn't provide icons
+            is_cancelled=is_cancelled,
+            messages=messages,
+        )
 
     async def get_departures(
         self,
@@ -43,154 +239,21 @@ class VbbDepartureRepository(DepartureRepository):
         Returns:
             List of Departure objects
         """
-        if not self._session:
-            raise RuntimeError("VBB API requires an aiohttp session")
-
-        # VBB API uses HAFAS station IDs
-        # URL format: /stops/{stationId}/departures
-        url = f"{self._base_url}/stops/{station_id}/departures"
-        # Note: VBB API doesn't support filtering by route/line, so we must fetch all departures
-        # Use configurable duration and high results count to get many departures
-        # This ensures we capture infrequent routes like bus 249 that may only run every 20-30 minutes
-        # The limit parameter is applied after fetching to control how many we return
-        params: dict[str, int | str] = {
-            "duration": duration_minutes,  # Configurable duration (default: 60 minutes)
-            "results": 500,  # Get up to 500 departures to have enough for all routes
-        }
-
-        # Always pass 'when' parameter in UTC to ensure consistent behavior
-        # The API may use local timezone as default "now", but we want UTC to match what it returns
-        now_utc = datetime.now(UTC)
-        if offset_minutes > 0:
-            # VBB API uses 'when' parameter for future departures (ISO 8601 string)
-            future_time = now_utc + timedelta(minutes=offset_minutes)
-            params["when"] = future_time.isoformat()
-        else:
-            # Explicitly pass 'when' in UTC even when offset is 0
-            # This ensures the API uses UTC "now" instead of local timezone "now"
-            params["when"] = now_utc.isoformat()
-
         try:
-            # Disable SSL verification for VBB API (similar to HAFAS)
-            # The API may have certificate issues
-            async with self._session.get(url, params=params, ssl=False) as response:
-                if response.status != 200:
-                    response_text = await response.text()
-                    raise RuntimeError(
-                        f"VBB API returned status {response.status}: {response_text}"
-                    )
+            params = self._build_request_params(offset_minutes, duration_minutes)
+            departures_data = await self._fetch_departures_data(station_id, params)
 
-                data = await response.json()
-
-                # VBB API response structure:
-                # {
-                #   "departures": [
-                #     {
-                #       "tripId": "...",
-                #       "when": "2024-01-01T12:00:00+01:00",
-                #       "plannedWhen": "2024-01-01T12:00:00+01:00",
-                #       "delay": 0,
-                #       "platform": "1",
-                #       "line": {"name": "U2", "product": "subway", ...},
-                #       "direction": "...",
-                #       "cancelled": false,
-                #       ...
-                #     }
-                #   ]
-                # }
-
-                departures_data = data.get("departures", [])
-
-                departures = []
-                for dep_data in departures_data[:limit]:
-                    try:
-                        # Parse departure time
-                        when_str = dep_data.get("when") or dep_data.get("plannedWhen")
-                        planned_when_str = dep_data.get("plannedWhen") or when_str
-
-                        if not when_str:
-                            continue
-
-                        # Parse ISO 8601 datetime strings
-                        when = datetime.fromisoformat(when_str.replace("Z", "+00:00"))
-                        planned_when = datetime.fromisoformat(
-                            planned_when_str.replace("Z", "+00:00")
-                        )
-
-                        # Ensure UTC timezone
-                        if when.tzinfo is None:
-                            when = when.replace(tzinfo=UTC)
-                        else:
-                            when = when.astimezone(UTC)
-                        if planned_when.tzinfo is None:
-                            planned_when = planned_when.replace(tzinfo=UTC)
-                        else:
-                            planned_when = planned_when.astimezone(UTC)
-
-                        # Calculate delay
-                        delay_seconds = int((when - planned_when).total_seconds())
-
-                        # Extract line information
-                        line_obj = dep_data.get("line", {})
-                        line_name = line_obj.get("name", "") or line_obj.get("id", "")
-                        product = line_obj.get("product", "")
-
-                        # Map product to transport type
-                        transport_type_map = {
-                            "subway": "U-Bahn",
-                            "suburban": "S-Bahn",
-                            "bus": "Bus",
-                            "tram": "Tram",
-                            "ferry": "Ferry",
-                            "regional": "Regional",
-                            "express": "Express",
-                        }
-                        transport_type = transport_type_map.get(product, product.capitalize())
-
-                        # Extract other fields
-                        platform = dep_data.get("platform")
-                        # Prefer direction (more descriptive, includes district/area) for individual departures
-                        # direction often includes district info (e.g., "Schmargendorf, Elsterplatz")
-                        # while destination.name is just the stop name (e.g., "Elsterplatz (Berlin)")
-                        # For route listing (CLI), both are shown separately so users can find by either name
-                        direction = dep_data.get("direction", "") or ""
-                        dest_obj = dep_data.get("destination")
-                        dest_name = ""
-                        if dest_obj and isinstance(dest_obj, dict):
-                            dest_name = dest_obj.get("name", "") or ""
-
-                        # Use direction if available (more descriptive), otherwise use destination.name
-                        if direction:
-                            destination = direction
-                        elif dest_name:
-                            destination = dest_name
-                        else:
-                            destination = ""
-                        is_cancelled = dep_data.get("cancelled", False)
-                        remarks = dep_data.get("remarks", [])
-                        messages = [r.get("text", "") for r in remarks if isinstance(r, dict)]
-                        if not messages:
-                            messages = [r for r in remarks if isinstance(r, str)]
-
-                        departure = Departure(
-                            time=when,
-                            planned_time=planned_when,
-                            delay_seconds=delay_seconds if delay_seconds > 0 else None,
-                            platform=platform,
-                            is_realtime=delay_seconds != 0 or dep_data.get("realtime", False),
-                            line=line_name,
-                            destination=destination,
-                            transport_type=transport_type,
-                            icon="",  # VBB API doesn't provide icons
-                            is_cancelled=is_cancelled,
-                            messages=messages,
-                        )
+            departures = []
+            for dep_data in departures_data[:limit]:
+                try:
+                    departure = self._convert_departure(dep_data)
+                    if departure:
                         departures.append(departure)
-                    except Exception as e:
-                        logger.warning(f"Error processing VBB departure: {e}")
-                        continue
+                except Exception as e:
+                    logger.warning(f"Error processing VBB departure: {e}")
+                    continue
 
-                return departures
+            return departures
 
         except Exception as e:
             logger.error(f"Error fetching departures from VBB API for station '{station_id}': {e}")
