@@ -148,6 +148,176 @@ class RouteConfigurationLoader:
         )
 
     @staticmethod
+    def _parse_display_data(display_data: Any) -> dict[str, Any]:
+        """Parse display data from route configuration.
+
+        Args:
+            display_data: Display data (dict or list).
+
+        Returns:
+            Dictionary with parsed display values.
+        """
+        defaults = {
+            "title": None,
+            "theme": None,
+            "fill_vertical_space": False,
+            "font_scaling_factor_when_filling": 1.0,
+            "random_header_colors": False,
+            "header_background_brightness": 0.7,
+            "random_color_salt": 0,
+            "refresh_interval_seconds": None,
+        }
+
+        if not display_data:
+            return defaults
+
+        if isinstance(display_data, dict):
+            return {
+                "title": display_data.get("title"),
+                "theme": display_data.get("theme"),
+                "fill_vertical_space": display_data.get("fill_vertical_space", False),
+                "font_scaling_factor_when_filling": display_data.get(
+                    "font_scaling_factor_when_filling", 1.0
+                ),
+                "random_header_colors": display_data.get("random_header_colors", False),
+                "header_background_brightness": display_data.get(
+                    "header_background_brightness", 0.7
+                ),
+                "random_color_salt": display_data.get("random_color_salt", 0),
+                "refresh_interval_seconds": display_data.get("refresh_interval_seconds"),
+            }
+
+        if isinstance(display_data, list) and len(display_data) > 0:
+            first_display = display_data[0]
+            if isinstance(first_display, dict):
+                return {
+                    "title": first_display.get("title"),
+                    "theme": first_display.get("theme"),
+                    "fill_vertical_space": first_display.get("fill_vertical_space", False),
+                    "font_scaling_factor_when_filling": first_display.get(
+                        "font_scaling_factor_when_filling", 1.0
+                    ),
+                    "random_header_colors": first_display.get("random_header_colors", False),
+                    "header_background_brightness": first_display.get(
+                        "header_background_brightness", 0.7
+                    ),
+                    "random_color_salt": first_display.get("random_color_salt", 0),
+                    "refresh_interval_seconds": first_display.get("refresh_interval_seconds"),
+                }
+
+        return defaults
+
+    @staticmethod
+    def _validate_display_values(display_values: dict[str, Any]) -> dict[str, Any]:
+        """Validate and normalize display values.
+
+        Args:
+            display_values: Dictionary with raw display values.
+
+        Returns:
+            Dictionary with validated display values.
+        """
+        # Validate title
+        route_title = (
+            display_values["title"]
+            if display_values["title"] and isinstance(display_values["title"], str)
+            else None
+        )
+
+        # Validate theme
+        route_theme = None
+        if display_values["theme"] and isinstance(display_values["theme"], str):
+            theme_lower = display_values["theme"].lower()
+            if theme_lower in ("light", "dark", "auto"):
+                route_theme = theme_lower
+
+        # Validate fill_vertical_space
+        fill_vertical_space = (
+            bool(display_values["fill_vertical_space"])
+            if display_values["fill_vertical_space"] is not None
+            else False
+        )
+
+        # Validate font_scaling_factor_when_filling
+        try:
+            font_scaling_factor_when_filling = (
+                float(display_values["font_scaling_factor_when_filling"])
+                if display_values["font_scaling_factor_when_filling"] is not None
+                else 1.0
+            )
+        except (ValueError, TypeError):
+            font_scaling_factor_when_filling = 1.0
+
+        # Validate random_header_colors
+        random_header_colors = (
+            bool(display_values["random_header_colors"])
+            if display_values["random_header_colors"] is not None
+            else False
+        )
+
+        # Validate header_background_brightness
+        try:
+            header_background_brightness = (
+                float(display_values["header_background_brightness"])
+                if display_values["header_background_brightness"] is not None
+                else 0.7
+            )
+            header_background_brightness = max(0.0, min(1.0, header_background_brightness))
+        except (ValueError, TypeError):
+            header_background_brightness = 0.7
+
+        # Validate random_color_salt
+        try:
+            random_color_salt = (
+                int(display_values["random_color_salt"])
+                if display_values["random_color_salt"] is not None
+                else 0
+            )
+        except (ValueError, TypeError):
+            random_color_salt = 0
+
+        # Validate refresh_interval_seconds
+        try:
+            refresh_interval_seconds = (
+                int(display_values["refresh_interval_seconds"])
+                if display_values["refresh_interval_seconds"] is not None
+                else None
+            )
+            if refresh_interval_seconds is not None and refresh_interval_seconds < 1:
+                refresh_interval_seconds = None
+        except (ValueError, TypeError):
+            refresh_interval_seconds = None
+
+        return {
+            "title": route_title,
+            "theme": route_theme,
+            "fill_vertical_space": fill_vertical_space,
+            "font_scaling_factor_when_filling": font_scaling_factor_when_filling,
+            "random_header_colors": random_header_colors,
+            "header_background_brightness": header_background_brightness,
+            "random_color_salt": random_color_salt,
+            "refresh_interval_seconds": refresh_interval_seconds,
+        }
+
+    @staticmethod
+    def _load_stop_configs(stops_data: list[Any], config: AppConfig) -> list[StopConfiguration]:
+        """Load stop configurations from stops data.
+
+        Args:
+            stops_data: List of stop data dictionaries.
+            config: Application configuration.
+
+        Returns:
+            List of stop configurations.
+        """
+        stop_configs: list[StopConfiguration] = []
+        for stop_data in stops_data:
+            stop_config = RouteConfigurationLoader.load_stop_config_from_data(stop_data, config)
+            if stop_config:
+                stop_configs.append(stop_config)
+        return stop_configs
+
+    @staticmethod
     def load(config: AppConfig) -> list[RouteConfiguration]:
         """Load route configurations from app config."""
         routes_data = config.get_routes_config()
@@ -165,126 +335,28 @@ class RouteConfigurationLoader:
             if not isinstance(stops_data, list):
                 continue
 
-            stop_configs: list[StopConfiguration] = []
-            for stop_data in stops_data:
-                stop_config = RouteConfigurationLoader.load_stop_config_from_data(stop_data, config)
-                if stop_config:
-                    stop_configs.append(stop_config)
+            stop_configs = RouteConfigurationLoader._load_stop_configs(stops_data, config)
+            if not stop_configs:
+                continue
 
-            if stop_configs:
-                # Get optional route-specific title, theme, fill_vertical_space, font_scaling_factor_when_filling, random_header_colors, and header_background_brightness from routes.display
-                route_title = None
-                route_theme = None
-                fill_vertical_space = False
-                font_scaling_factor_when_filling = 1.0
-                random_header_colors = False
-                header_background_brightness = 0.7
-                random_color_salt = 0
-                refresh_interval_seconds = None
-                display_data = route_data.get("display")
-                if display_data:
-                    # Handle both dict (single display) and list (array of displays)
-                    if isinstance(display_data, dict):
-                        route_title = display_data.get("title")
-                        route_theme = display_data.get("theme")
-                        fill_vertical_space = display_data.get("fill_vertical_space", False)
-                        font_scaling_factor_when_filling = display_data.get(
-                            "font_scaling_factor_when_filling", 1.0
-                        )
-                        random_header_colors = display_data.get("random_header_colors", False)
-                        header_background_brightness = display_data.get(
-                            "header_background_brightness", 0.7
-                        )
-                        random_color_salt = display_data.get("random_color_salt", 0)
-                        refresh_interval_seconds = display_data.get("refresh_interval_seconds")
-                    elif isinstance(display_data, list) and len(display_data) > 0:
-                        # Get title, theme, fill_vertical_space, font_scaling_factor_when_filling, random_header_colors, and header_background_brightness from first display entry
-                        first_display = display_data[0]
-                        if isinstance(first_display, dict):
-                            route_title = first_display.get("title")
-                            route_theme = first_display.get("theme")
-                            fill_vertical_space = first_display.get("fill_vertical_space", False)
-                            font_scaling_factor_when_filling = first_display.get(
-                                "font_scaling_factor_when_filling", 1.0
-                            )
-                            random_header_colors = first_display.get("random_header_colors", False)
-                            header_background_brightness = first_display.get(
-                                "header_background_brightness", 0.7
-                            )
-                            random_color_salt = first_display.get("random_color_salt", 0)
-                            refresh_interval_seconds = first_display.get("refresh_interval_seconds")
+            display_data = route_data.get("display")
+            display_values = RouteConfigurationLoader._parse_display_data(display_data)
+            validated_values = RouteConfigurationLoader._validate_display_values(display_values)
 
-                # Validate title is a string, default to None if not found
-                route_title = route_title if route_title and isinstance(route_title, str) else None
-                # Validate theme is a string and one of the valid values, default to None if not found
-                if route_theme and isinstance(route_theme, str):
-                    route_theme_lower = route_theme.lower()
-                    if route_theme_lower not in ("light", "dark", "auto"):
-                        route_theme = None
-                    else:
-                        route_theme = route_theme_lower
-                else:
-                    route_theme = None
-                # Validate fill_vertical_space is a boolean (defaults to False if not specified)
-                fill_vertical_space = (
-                    bool(fill_vertical_space) if fill_vertical_space is not None else False
-                )
-                # Validate font_scaling_factor_when_filling is a float (defaults to 1.0 if not specified)
-                try:
-                    font_scaling_factor_when_filling = (
-                        float(font_scaling_factor_when_filling)
-                        if font_scaling_factor_when_filling is not None
-                        else 1.0
-                    )
-                except (ValueError, TypeError):
-                    font_scaling_factor_when_filling = 1.0
-                # Validate random_header_colors is a boolean (defaults to False if not specified)
-                random_header_colors = (
-                    bool(random_header_colors) if random_header_colors is not None else False
-                )
-                # Validate header_background_brightness is a float (defaults to 0.7 if not specified)
-                try:
-                    header_background_brightness = (
-                        float(header_background_brightness)
-                        if header_background_brightness is not None
-                        else 0.7
-                    )
-                    # Clamp to valid range [0.0, 1.0]
-                    header_background_brightness = max(0.0, min(1.0, header_background_brightness))
-                except (ValueError, TypeError):
-                    header_background_brightness = 0.7
-                # Validate random_color_salt is an int (defaults to 0 if not specified)
-                try:
-                    random_color_salt = (
-                        int(random_color_salt) if random_color_salt is not None else 0
-                    )
-                except (ValueError, TypeError):
-                    random_color_salt = 0
-                # Validate refresh_interval_seconds is an int (defaults to None if not specified)
-                try:
-                    refresh_interval_seconds = (
-                        int(refresh_interval_seconds)
-                        if refresh_interval_seconds is not None
-                        else None
-                    )
-                    # Ensure it's at least 1 second if provided
-                    if refresh_interval_seconds is not None and refresh_interval_seconds < 1:
-                        refresh_interval_seconds = None
-                except (ValueError, TypeError):
-                    refresh_interval_seconds = None
-
-                route_config = RouteConfiguration(
-                    path=path,
-                    stop_configs=stop_configs,
-                    title=route_title,
-                    theme=route_theme,
-                    fill_vertical_space=fill_vertical_space,
-                    font_scaling_factor_when_filling=font_scaling_factor_when_filling,
-                    random_header_colors=random_header_colors,
-                    header_background_brightness=header_background_brightness,
-                    random_color_salt=random_color_salt,
-                    refresh_interval_seconds=refresh_interval_seconds,
-                )
-                route_configs.append(route_config)
+            route_config = RouteConfiguration(
+                path=path,
+                stop_configs=stop_configs,
+                title=validated_values["title"],
+                theme=validated_values["theme"],
+                fill_vertical_space=validated_values["fill_vertical_space"],
+                font_scaling_factor_when_filling=validated_values[
+                    "font_scaling_factor_when_filling"
+                ],
+                random_header_colors=validated_values["random_header_colors"],
+                header_background_brightness=validated_values["header_background_brightness"],
+                random_color_salt=validated_values["random_color_salt"],
+                refresh_interval_seconds=validated_values["refresh_interval_seconds"],
+            )
+            route_configs.append(route_config)
 
         return route_configs
