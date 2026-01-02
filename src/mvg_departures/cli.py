@@ -132,6 +132,83 @@ def _parse_routes_response(data: Any) -> list[dict[str, Any]]:
     return []
 
 
+def _build_routes_dict(
+    lines: list[dict[str, Any]],
+) -> tuple[dict[str, set[str]], dict[str, dict[str, Any]]]:
+    """Build routes dictionary from parsed lines.
+
+    Args:
+        lines: List of line information dictionaries.
+
+    Returns:
+        Tuple of (routes, route_details).
+    """
+    routes: dict[str, set[str]] = {}
+    route_details: dict[str, dict[str, Any]] = {}
+
+    for line_info in lines:
+        if not isinstance(line_info, dict):
+            continue
+
+        line, transport_type, icon = _extract_line_info(line_info)
+        destinations_raw = _extract_destinations_from_line_info(line_info)
+
+        route_key = f"{transport_type} {line}"
+        if route_key not in routes:
+            routes[route_key] = set()
+            route_details[route_key] = {
+                "line": line,
+                "transport_type": transport_type,
+                "icon": icon,
+            }
+
+        for dest in destinations_raw:
+            dest_name = _normalize_destination_name(dest)
+            if dest_name:
+                routes[route_key].add(dest_name)
+
+    return routes, route_details
+
+
+def _build_routes_result(
+    station_id: str,
+    routes: dict[str, set[str]],
+    route_details: dict[str, dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Build final routes result dictionary.
+
+    Args:
+        station_id: Station ID.
+        routes: Dictionary mapping route keys to destination sets.
+        route_details: Dictionary mapping route keys to route metadata.
+
+    Returns:
+        Routes result dictionary, or None if invalid.
+    """
+    if not routes:
+        return None
+
+    total_destinations = sum(len(destinations) for destinations in routes.values())
+    if total_destinations == 0:
+        return None
+
+    return {
+        "station": {
+            "id": station_id,
+            "name": station_id,
+            "place": "München",
+        },
+        "routes": {
+            route: {
+                "destinations": sorted(destinations),
+                **route_details[route],
+            }
+            for route, destinations in routes.items()
+        },
+        "source": "routes_endpoint",
+    }
+
+
 async def _get_routes_from_endpoint(
     station_id: str, session: aiohttp.ClientSession
 ) -> dict[str, Any] | None:
@@ -154,52 +231,8 @@ async def _get_routes_from_endpoint(
             if not lines:
                 return None
 
-            routes: dict[str, set[str]] = {}
-            route_details: dict[str, dict[str, Any]] = {}
-
-            for line_info in lines:
-                if not isinstance(line_info, dict):
-                    continue
-
-                line, transport_type, icon = _extract_line_info(line_info)
-                destinations_raw = _extract_destinations_from_line_info(line_info)
-
-                route_key = f"{transport_type} {line}"
-                if route_key not in routes:
-                    routes[route_key] = set()
-                    route_details[route_key] = {
-                        "line": line,
-                        "transport_type": transport_type,
-                        "icon": icon,
-                    }
-
-                for dest in destinations_raw:
-                    dest_name = _normalize_destination_name(dest)
-                    if dest_name:
-                        routes[route_key].add(dest_name)
-
-            if not routes:
-                return None
-
-            total_destinations = sum(len(destinations) for destinations in routes.values())
-            if total_destinations == 0:
-                return None
-
-            return {
-                "station": {
-                    "id": station_id,
-                    "name": station_id,
-                    "place": "München",
-                },
-                "routes": {
-                    route: {
-                        "destinations": sorted(destinations),
-                        **route_details[route],
-                    }
-                    for route, destinations in routes.items()
-                },
-                "source": "routes_endpoint",
-            }
+            routes, route_details = _build_routes_dict(lines)
+            return _build_routes_result(station_id, routes, route_details)
     except Exception:
         return None
 
@@ -659,7 +692,7 @@ def _display_platforms_without_stop_points(
                 for dest_info in sorted(destinations, key=lambda d: d.destination):
                     pattern = f"{line} {dest_info.destination}" if line else dest_info.destination
                     print(f'    "{pattern}"')
-                print("  # Then add these destinations to exclude_destinations in the main config.")
+        print("  # Then add these destinations to exclude_destinations in the main config.")
 
 
 def _display_stop_point_hints(stop_point_mapping: dict[str, Any], station_id: str) -> None:

@@ -157,35 +157,33 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             f"groups: {len(self.state_manager.departures_state.direction_groups)}"
         )
 
-    def _build_template_assigns(
-        self, state: DeparturesState, template_data: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Build template assigns dictionary from state and template data.
-
-        Args:
-            state: The current departures state.
-            template_data: Pre-calculated template data from DepartureGroupingCalculator.
+    def _normalize_theme(self) -> str:
+        """Normalize theme value.
 
         Returns:
-            Dictionary of template variables for rendering.
+            Normalized theme string (light, dark, or auto).
         """
-        # Determine theme: use route-specific theme if available, otherwise fall back to config theme
         theme = self.route_theme if self.route_theme else self.config.theme
         theme = theme.lower()
         if theme not in ("light", "dark", "auto"):
             theme = "auto"
+        return theme
 
-        last_update = state.last_update
+    def _validate_template_data(self, template_data: dict[str, Any]) -> dict[str, Any]:
+        """Validate and ensure template data has required keys.
 
-        # Build assigns - keep it simple like the original
-        # Only ensure essential safety checks
+        Args:
+            template_data: Template data dictionary.
+
+        Returns:
+            Validated template data dictionary.
+        """
         if not isinstance(template_data, dict):
             logger.warning(
                 f"template_data is not a dict in _build_template_assigns, got {type(template_data)}"
             )
             template_data = {}
 
-        # Ensure groups_with_departures and stops_without_departures exist
         if (
             "groups_with_departures" not in template_data
             or template_data["groups_with_departures"] is None
@@ -199,22 +197,15 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         if "has_departures" not in template_data:
             template_data["has_departures"] = False
 
-        last_update = state.last_update
-        # Use route-specific title if available, otherwise fall back to config title
-        page_title = self.route_title or self.config.title or "My MVG Departures"
-        # Generate favicon path - use route-specific if route has custom title, otherwise default
-        favicon_path = "/favicon.svg"
-        if self.route_title:
-            route_path = self.state_manager.route_path.rstrip("/")
-            favicon_path = f"{route_path}/favicon.svg"
-        # Ensure all template variables are strings or numbers, never None
-        # This prevents "undefined" or "None" from appearing in the rendered HTML
+        return template_data
+
+    def _build_font_size_assigns(self) -> dict[str, str]:
+        """Build font size assigns from config.
+
+        Returns:
+            Dictionary with font size template variables.
+        """
         return {
-            **template_data,
-            "title": str(page_title),
-            "favicon_path": str(favicon_path),
-            "theme": str(theme),
-            "banner_color": str(self.config.banner_color or "#000000"),
             "font_size_route_number": str(self.config.font_size_route_number or "1.5rem"),
             "font_size_destination": str(self.config.font_size_destination or "1.2rem"),
             "font_size_platform": str(self.config.font_size_platform or "1rem"),
@@ -230,6 +221,15 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             "font_size_status_header": str(self.config.font_size_status_header or "1rem"),
             "font_size_delay_amount": str(self.config.font_size_delay_amount or "0.9rem"),
             "font_size_stop_header": str(self.config.font_size_stop_header or "1.1rem"),
+        }
+
+    def _build_config_assigns(self) -> dict[str, str]:
+        """Build configuration assigns from config.
+
+        Returns:
+            Dictionary with configuration template variables.
+        """
+        return {
             "pagination_enabled": (
                 str(self.config.pagination_enabled).lower()
                 if self.config.pagination_enabled is not None
@@ -255,7 +255,19 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 if self.config.time_format_toggle_seconds is not None
                 else "0"
             ),
-            # Server-initiated reload coordination
+        }
+
+    def _build_state_assigns(self, state: DeparturesState) -> dict[str, str]:
+        """Build state-related assigns from state.
+
+        Args:
+            state: Current departures state.
+
+        Returns:
+            Dictionary with state template variables.
+        """
+        last_update = state.last_update
+        return {
             "reload_request_id": str(getattr(state, "reload_request_id", 0) or 0),
             "api_status": str(state.api_status or "unknown"),
             "last_update_timestamp": (
@@ -274,12 +286,54 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 and isinstance(state.presence_total, (int, float))
                 else 0
             ),
+        }
+
+    def _build_route_assigns(self) -> dict[str, str]:
+        """Build route-specific assigns.
+
+        Returns:
+            Dictionary with route template variables.
+        """
+        page_title = self.route_title or self.config.title or "My MVG Departures"
+        favicon_path = "/favicon.svg"
+        if self.route_title:
+            route_path = self.state_manager.route_path.rstrip("/")
+            favicon_path = f"{route_path}/favicon.svg"
+
+        return {
+            "title": str(page_title),
+            "favicon_path": str(favicon_path),
             "fill_vertical_space": (
                 str(self.fill_vertical_space).lower()
                 if self.fill_vertical_space is not None
                 else "false"
             ),
             "font_scaling_factor_when_filling": str(self.font_scaling_factor_when_filling),
+        }
+
+    def _build_template_assigns(
+        self, state: DeparturesState, template_data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Build template assigns dictionary from state and template data.
+
+        Args:
+            state: The current departures state.
+            template_data: Pre-calculated template data from DepartureGroupingCalculator.
+
+        Returns:
+            Dictionary of template variables for rendering.
+        """
+        theme = self._normalize_theme()
+        template_data = self._validate_template_data(template_data)
+
+        return {
+            **template_data,
+            "theme": str(theme),
+            "banner_color": str(self.config.banner_color or "#000000"),
+            **self._build_font_size_assigns(),
+            **self._build_config_assigns(),
+            **self._build_state_assigns(state),
+            **self._build_route_assigns(),
             "static_version": self._static_version,
         }
 

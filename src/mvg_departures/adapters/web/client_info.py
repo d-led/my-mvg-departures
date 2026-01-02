@@ -22,6 +22,93 @@ def _decode_header_value(value: Any) -> str:
     return str(value)
 
 
+def _extract_user_agent(headers: list[tuple[Any, Any]]) -> str:
+    """Extract user agent from headers.
+
+    Args:
+        headers: List of header tuples.
+
+    Returns:
+        User agent string, or "unknown" if not found.
+    """
+    for name, value in headers:
+        decoded_name = _decode_header_value(name).lower()
+        if decoded_name == "user-agent":
+            user_agent = _decode_header_value(value)
+            if len(user_agent) > 200:
+                user_agent = f"{user_agent[:197]}..."
+            return user_agent
+    return "unknown"
+
+
+def _extract_ip_from_headers(headers: list[tuple[Any, Any]], scope: dict[str, Any]) -> str:
+    """Extract IP address from headers or scope.
+
+    Args:
+        headers: List of header tuples.
+        scope: ASGI scope dictionary.
+
+    Returns:
+        IP address string, or "unknown" if not found.
+    """
+    forwarded_for: str | None = None
+    fly_client_ip: str | None = None
+
+    for name, value in headers:
+        decoded_name = _decode_header_value(name).lower()
+        if decoded_name == "x-forwarded-for":
+            forwarded_for = _decode_header_value(value)
+        elif decoded_name == "fly-client-ip":
+            fly_client_ip = _decode_header_value(value)
+
+    if forwarded_for:
+        first = forwarded_for.split(",")[0].strip()
+        if first:
+            return first
+
+    if fly_client_ip:
+        return fly_client_ip
+
+    client = scope.get("client")
+    if isinstance(client, (list, tuple)) and client:
+        candidate = client[0]
+        if isinstance(candidate, (str, bytes)):
+            return _decode_header_value(candidate)
+
+    return "unknown"
+
+
+def _extract_browser_id(headers: list[tuple[Any, Any]]) -> str:
+    """Extract browser ID from cookie header.
+
+    Args:
+        headers: List of header tuples.
+
+    Returns:
+        Browser ID string, or "unknown" if not found.
+    """
+    cookie_header: str | None = None
+
+    for name, value in headers:
+        decoded_name = _decode_header_value(name).lower()
+        if decoded_name == "cookie":
+            cookie_header = _decode_header_value(value)
+            break
+
+    if not cookie_header:
+        return "unknown"
+
+    for part in cookie_header.split(";"):
+        name_value = part.strip().split("=", 1)
+        if len(name_value) == 2 and name_value[0] == "mvg_browser_id":
+            browser_id = name_value[1]
+            if len(browser_id) > 128:
+                browser_id = f"{browser_id[:125]}..."
+            return browser_id
+
+    return "unknown"
+
+
 def get_client_info_from_scope(scope: dict[str, Any] | None) -> ClientInfo:
     """Extract client IP, user agent, and browser ID from an ASGI scope-like mapping.
 
@@ -32,51 +119,10 @@ def get_client_info_from_scope(scope: dict[str, Any] | None) -> ClientInfo:
     if not isinstance(scope, dict):
         return ClientInfo(ip="unknown", user_agent="unknown", browser_id="unknown")
 
-    user_agent = "unknown"
-    browser_id = "unknown"
-    cookie_header: str | None = None
-    forwarded_for: str | None = None
-    fly_client_ip: str | None = None
-
     headers = scope.get("headers") or []
-    for name, value in headers:
-        decoded_name = _decode_header_value(name).lower()
-        if decoded_name == "user-agent":
-            user_agent = _decode_header_value(value)
-            # Avoid excessively long user agent strings in logs
-            if len(user_agent) > 200:
-                user_agent = f"{user_agent[:197]}..."
-        elif decoded_name == "cookie":
-            cookie_header = _decode_header_value(value)
-        elif decoded_name == "x-forwarded-for":
-            forwarded_for = _decode_header_value(value)
-        elif decoded_name == "fly-client-ip":
-            fly_client_ip = _decode_header_value(value)
-
-    # Prefer Fly/forwarded headers for IP if present, otherwise fall back to ASGI client.
-    ip = "unknown"
-    if forwarded_for:
-        # X-Forwarded-For may contain a list: client, proxy1, proxy2, ...
-        first = forwarded_for.split(",")[0].strip()
-        if first:
-            ip = first
-    elif fly_client_ip:
-        ip = fly_client_ip
-    else:
-        client = scope.get("client")
-        if isinstance(client, (list, tuple)) and client:
-            candidate = client[0]
-            if isinstance(candidate, (str, bytes)):
-                ip = _decode_header_value(candidate)
-
-    if cookie_header:
-        for part in cookie_header.split(";"):
-            name_value = part.strip().split("=", 1)
-            if len(name_value) == 2 and name_value[0] == "mvg_browser_id":
-                browser_id = name_value[1]
-                if len(browser_id) > 128:
-                    browser_id = f"{browser_id[:125]}..."
-                break
+    user_agent = _extract_user_agent(headers)
+    ip = _extract_ip_from_headers(headers, scope)
+    browser_id = _extract_browser_id(headers)
 
     return ClientInfo(ip=ip, user_agent=user_agent, browser_id=browser_id)
 
