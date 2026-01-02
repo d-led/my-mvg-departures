@@ -13,7 +13,7 @@ def test_format_departure_time_minutes_format() -> None:
     """Given a departure in minutes format, when formatting, then returns relative time."""
     with patch.dict(os.environ, {}, clear=True):
         # Use UTC timezone to avoid timezone conversion issues
-        config = AppConfig(config_file=None, time_format="minutes", timezone="UTC", _env_file=None)
+        config = AppConfig.for_testing(config_file=None, time_format="minutes", timezone="UTC")
         formatter = DepartureFormatter(config)
 
         # Use a large enough delta (10 minutes) to avoid timing issues
@@ -41,7 +41,7 @@ def test_format_departure_time_at_format() -> None:
     """Given a departure in 'at' format, when formatting, then returns absolute time."""
     with patch.dict(os.environ, {}, clear=True):
         # Use UTC timezone to avoid timezone conversion issues
-        config = AppConfig(config_file=None, time_format="at", timezone="UTC", _env_file=None)
+        config = AppConfig.for_testing(config_file=None, time_format="at", timezone="UTC")
         formatter = DepartureFormatter(config)
 
         # Use a fixed UTC time to avoid timezone conversion issues
@@ -68,7 +68,7 @@ def test_format_departure_time_relative() -> None:
     """Given a departure, when formatting relative time, then returns compact relative format."""
     with patch.dict(os.environ, {}, clear=True):
         # Use UTC timezone to avoid timezone conversion issues
-        config = AppConfig(config_file=None, timezone="UTC", _env_file=None)
+        config = AppConfig.for_testing(config_file=None, timezone="UTC")
         formatter = DepartureFormatter(config)
 
         # Use a large enough delta (20 minutes) to avoid timing issues
@@ -96,7 +96,7 @@ def test_format_departure_time_absolute() -> None:
     """Given a departure, when formatting absolute time, then returns HH:mm format."""
     with patch.dict(os.environ, {}, clear=True):
         # Use UTC timezone to avoid timezone conversion issues
-        config = AppConfig(config_file=None, timezone="UTC", _env_file=None)
+        config = AppConfig.for_testing(config_file=None, timezone="UTC")
         formatter = DepartureFormatter(config)
 
         # Use a fixed UTC time to avoid timezone conversion issues
@@ -122,7 +122,7 @@ def test_format_departure_time_absolute() -> None:
 def test_format_compact_duration_seconds() -> None:
     """Given a duration less than 60 seconds, when formatting, then returns '<1m'."""
     with patch.dict(os.environ, {}, clear=True):
-        config = AppConfig(config_file=None, _env_file=None)
+        config = AppConfig.for_testing(config_file=None)
         formatter = DepartureFormatter(config)
 
         delta = timedelta(seconds=30)
@@ -133,7 +133,7 @@ def test_format_compact_duration_seconds() -> None:
 def test_format_compact_duration_minutes() -> None:
     """Given a duration less than 60 minutes, when formatting, then returns minutes format."""
     with patch.dict(os.environ, {}, clear=True):
-        config = AppConfig(config_file=None, _env_file=None)
+        config = AppConfig.for_testing(config_file=None)
         formatter = DepartureFormatter(config)
 
         delta = timedelta(minutes=25)
@@ -144,7 +144,7 @@ def test_format_compact_duration_minutes() -> None:
 def test_format_compact_duration_hours_only() -> None:
     """Given a duration of exactly hours, when formatting, then returns hours only."""
     with patch.dict(os.environ, {}, clear=True):
-        config = AppConfig(config_file=None, _env_file=None)
+        config = AppConfig.for_testing(config_file=None)
         formatter = DepartureFormatter(config)
 
         delta = timedelta(hours=2)
@@ -155,7 +155,7 @@ def test_format_compact_duration_hours_only() -> None:
 def test_format_compact_duration_hours_and_minutes() -> None:
     """Given a duration with hours and minutes, when formatting, then returns both."""
     with patch.dict(os.environ, {}, clear=True):
-        config = AppConfig(config_file=None, _env_file=None)
+        config = AppConfig.for_testing(config_file=None)
         formatter = DepartureFormatter(config)
 
         delta = timedelta(hours=2, minutes=40)
@@ -166,7 +166,7 @@ def test_format_compact_duration_hours_and_minutes() -> None:
 def test_format_compact_duration_negative() -> None:
     """Given a negative duration, when formatting, then returns 'now'."""
     with patch.dict(os.environ, {}, clear=True):
-        config = AppConfig(config_file=None, _env_file=None)
+        config = AppConfig.for_testing(config_file=None)
         formatter = DepartureFormatter(config)
 
         delta = timedelta(seconds=-30)
@@ -177,7 +177,7 @@ def test_format_compact_duration_negative() -> None:
 def test_format_update_time_with_datetime() -> None:
     """Given a datetime, when formatting update time, then returns HH:MM:SS format."""
     with patch.dict(os.environ, {}, clear=True):
-        config = AppConfig(config_file=None, _env_file=None)
+        config = AppConfig.for_testing(config_file=None)
         formatter = DepartureFormatter(config)
 
         update_time = datetime(2024, 1, 15, 14, 30, 45, tzinfo=UTC)
@@ -188,7 +188,7 @@ def test_format_update_time_with_datetime() -> None:
 def test_format_update_time_none() -> None:
     """Given None, when formatting update time, then returns 'Never'."""
     with patch.dict(os.environ, {}, clear=True):
-        config = AppConfig(config_file=None, _env_file=None)
+        config = AppConfig.for_testing(config_file=None)
         formatter = DepartureFormatter(config)
 
         result = formatter.format_update_time(None)
@@ -199,7 +199,7 @@ def test_format_departure_time_past_departure() -> None:
     """Given a departure in the past, when formatting, then returns 'now'."""
     with patch.dict(os.environ, {}, clear=True):
         # Use UTC timezone to avoid timezone conversion issues
-        config = AppConfig(config_file=None, time_format="minutes", timezone="UTC", _env_file=None)
+        config = AppConfig.for_testing(config_file=None, time_format="minutes", timezone="UTC")
         formatter = DepartureFormatter(config)
 
         now = datetime.now(UTC)

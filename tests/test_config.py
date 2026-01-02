@@ -13,7 +13,7 @@ from mvg_departures.adapters.config.route_configuration_loader import (
 
 def test_config_loads_defaults() -> None:
     """Given no environment variables, when loading config, then defaults are used."""
-    config = AppConfig()
+    config = AppConfig.for_testing()
 
     assert config.host == "0.0.0.0"
     assert config.port == 8000
@@ -28,7 +28,7 @@ def test_config_loads_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PORT", "9000")
     monkeypatch.setenv("TIME_FORMAT", "at")
 
-    config = AppConfig()
+    config = AppConfig.for_testing()
 
     assert config.host == "127.0.0.1"
     assert config.port == 9000
@@ -40,7 +40,7 @@ def test_config_validates_time_format(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TIME_FORMAT", "invalid")
 
     with pytest.raises(ValueError, match="time_format must be either"):
-        AppConfig()
+        AppConfig.for_testing()
 
 
 def test_config_loads_title_from_toml() -> None:
@@ -58,7 +58,7 @@ station_name = "Universität"
         temp_path = f.name
 
     try:
-        config = AppConfig(config_file=temp_path)
+        config = AppConfig.for_testing(config_file=temp_path)
         # Trigger TOML loading by accessing a method that loads it
         _ = config.get_stops_config()
         assert config.title == "Giesing Departures"
@@ -81,7 +81,7 @@ station_name = "Universität"
         temp_path = f.name
 
     try:
-        config = AppConfig(config_file=temp_path)
+        config = AppConfig.for_testing(config_file=temp_path)
         parsed = config.get_stops_config()
         assert len(parsed) == 1
         assert parsed[0]["station_id"] == "de:09162:70"
@@ -92,7 +92,7 @@ station_name = "Universität"
 
 def test_config_raises_error_when_file_not_found() -> None:
     """Given non-existent config file, when loading config, then FileNotFoundError is raised."""
-    config = AppConfig(config_file="nonexistent.toml")
+    config = AppConfig.for_testing(config_file="nonexistent.toml")
 
     with pytest.raises(FileNotFoundError, match="Configuration file not found"):
         config.get_stops_config()
@@ -100,7 +100,7 @@ def test_config_raises_error_when_file_not_found() -> None:
 
 def test_config_raises_error_when_config_file_not_set() -> None:
     """Given config_file is None, when loading config, then ValueError is raised."""
-    config = AppConfig(config_file=None)
+    config = AppConfig.for_testing(config_file=None)
 
     with pytest.raises(ValueError, match="config_file must be set"):
         config.get_stops_config()
@@ -124,7 +124,7 @@ station_name = "Universität"
         temp_path = f.name
 
     try:
-        config = AppConfig(config_file=temp_path)
+        config = AppConfig.for_testing(config_file=temp_path)
         routes = config.get_routes_config()
         assert len(routes) == 1
         assert routes[0]["path"] == "/"
@@ -146,7 +146,7 @@ station_name = "Universität"
         temp_path = f.name
 
     try:
-        config = AppConfig(config_file=temp_path)
+        config = AppConfig.for_testing(config_file=temp_path)
         routes = config.get_routes_config()
         assert len(routes) == 1
         assert routes[0]["path"] == "/"
@@ -178,7 +178,7 @@ station_name = "Another"
         temp_path = f.name
 
     try:
-        config = AppConfig(config_file=temp_path)
+        config = AppConfig.for_testing(config_file=temp_path)
         with pytest.raises(ValueError, match="Route paths must be unique"):
             config.get_routes_config()
     finally:
@@ -200,7 +200,7 @@ station_name = "Universität"
         temp_path = f.name
 
     try:
-        config = AppConfig(config_file=temp_path)
+        config = AppConfig.for_testing(config_file=temp_path)
         with pytest.raises(ValueError, match="All routes must have a 'path' field"):
             config.get_routes_config()
     finally:
@@ -230,7 +230,7 @@ station_name = "Another"
         temp_path = f.name
 
     try:
-        config = AppConfig(config_file=temp_path)
+        config = AppConfig.for_testing(config_file=temp_path)
         route_configs = RouteConfigurationLoader.load(config)
         assert len(route_configs) == 2
         assert route_configs[0].path == "/route1"
@@ -262,7 +262,7 @@ station_name = "Additional Stop"
         temp_path = f.name
 
     try:
-        config = AppConfig(config_file=temp_path)
+        config = AppConfig.for_testing(config_file=temp_path)
         routes = config.get_routes_config()
         assert len(routes) == 2
         # Default route from stops should be first
@@ -296,7 +296,7 @@ station_name = "Additional Stop"
         temp_path = f.name
 
     try:
-        config = AppConfig(config_file=temp_path)
+        config = AppConfig.for_testing(config_file=temp_path)
         with pytest.raises(ValueError, match="Route paths must be unique"):
             config.get_routes_config()
     finally:

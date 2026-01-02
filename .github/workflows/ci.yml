@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -168,4 +168,3 @@ jobs:
       - name: Check built package
         run: |
           uv pip install dist/*.whl
-

@@ -1,0 +1,97 @@
+name: E2E Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_pages:
+        description: "Set to true to deploy to GitHub Pages after E2E"
+        required: false
+        default: "false"
+
+permissions:
+  contents: read
+  pages: write
+  checks: write
+  id-token: write
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    container:
+      image: cypress/included:latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Configure git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Cache npm (node_modules + npm cache)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+      - name: Install dependencies
+        run: npm ci --prefer-offline --no-audit --progress=false
+      - name: Start server in background
+        run: |
+          python -m mvg_departures.main &
+          sleep 5
+          # Wait for server to be ready
+          for i in {1..30}; do
+            if curl -f http://localhost:8000/healthz > /dev/null 2>&1; then
+              echo "Server is ready"
+              break
+            fi
+            echo "Waiting for server... ($i/30)"
+            sleep 1
+          done
+        env:
+          HOST: "127.0.0.1"
+          PORT: "8000"
+          CONFIG_FILE: config.example.toml
+      - name: Run E2E tests (with JUnit reporter)
+        run: |
+          mkdir -p test-results
+          npm run e2e -- --reporter mocha-junit-reporter --reporter-options mochaFile=test-results/junit-[hash].xml
+        env:
+          CYPRESS_CI: true
+      - name: Upload Cypress screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-screenshots
+          path: cypress/screenshots
+      - name: Upload Cypress videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-videos
+          path: cypress/videos
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: test-results
+      - name: Publish JUnit to GitHub Checks
+        uses: dorny/test-reporter@v2
+        if: ${{ !cancelled() }} # run this step even if previous step failed
+        with:
+          name: Test reports
+          path: test-results/*.xml
+          reporter: java-junit

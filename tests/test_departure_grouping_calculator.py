@@ -32,7 +32,7 @@ def _create_calculator() -> DepartureGroupingCalculator:
                 direction_mappings={},
             ),
         ]
-        config = AppConfig(config_file=None, _env_file=None)
+        config = AppConfig.for_testing(config_file=None)
         formatter = DepartureFormatter(config)
         return DepartureGroupingCalculator(stop_configs, config, formatter)
 
@@ -1081,7 +1081,7 @@ def test_when_stops_have_same_name_different_ids_then_uses_correct_config() -> N
                 random_header_colors=True,  # Second stop: random colors
             ),
         ]
-        config = AppConfig(config_file=None, _env_file=None)
+        config = AppConfig.for_testing(config_file=None)
         formatter = DepartureFormatter(config)
         calculator = DepartureGroupingCalculator(
             stop_configs, config, formatter, random_header_colors=False
@@ -1197,7 +1197,7 @@ def test_when_salt_used_in_calculator_then_affects_color() -> None:
                 random_color_salt=1,
             ),
         ]
-        config = AppConfig(config_file=None, _env_file=None)
+        config = AppConfig.for_testing(config_file=None)
         formatter = DepartureFormatter(config)
         calculator = DepartureGroupingCalculator(
             stop_configs, config, formatter, random_header_colors=True, random_color_salt=0

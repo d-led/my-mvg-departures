@@ -1,0 +1,26 @@
+# HTML template files with Jinja2 syntax (Prettier can't parse template syntax)
+src/**/*.html
+# Python files
+*.py
+# Lock files
+package-lock.json
+poetry.lock
+# Build artifacts
+dist/
+build/
+*.egg-info/
+# Dependencies
+node_modules/
+.venv/
+venv/
+# Coverage
+htmlcov/
+.coverage
+# IDE
+.vscode/
+.idea/
+# OS
+.DS_Store
+# Git
+.git/
+

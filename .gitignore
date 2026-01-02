@@ -298,3 +298,11 @@ fabric.properties
 !.python-version
 my.*
 complexity*.json
+
+# Cypress
+cypress/videos/
+cypress/screenshots/
+cypress/downloads/
+test-results/
+node_modules/
+package-lock.json

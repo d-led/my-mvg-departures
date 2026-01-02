@@ -189,12 +189,14 @@ ungrouped_title = "Tegernseer Str."
 The dashboard can be configured differently depending on the type of screen you're using:
 
 **For Touchable Screens (iPad, tablets, phones):**
+
 - Set `fill_vertical_space = false` (or omit it, as false is the default)
 - This allows natural scrolling if content exceeds the viewport
 - Better for interactive devices where users can scroll to see all content
 - Recommended for personal devices or when you want to see all departures
 
 **For Screen Height Filling Mode (Wall-mounted displays, kiosks):**
+
 - Set `fill_vertical_space = true`
 - This enables dynamic font sizing to fill the entire viewport height
 - Content automatically scales to use the full screen height
@@ -221,6 +223,7 @@ fill_vertical_space = false  # or omit this line
 Direction mapping keys (the text before the `=` sign) are displayed directly as headers in the UI. You can include any contextual information that helps you make decisions, such as walking time, transfer information, or other relevant details.
 
 **Common use cases:**
+
 - **Walking time to stops**: Include foot path minutes to help plan when to leave
 - **Transfer information**: Note connection points or transfer requirements
 - **Contextual notes**: Add any information that helps you understand the route better
@@ -235,6 +238,7 @@ Example with walking time:
 ```
 
 The walking time helps you:
+
 - Plan when to leave home to catch a specific departure
 - Account for the time needed to reach the stop
 - Coordinate multiple stops with different walking distances
@@ -355,12 +359,10 @@ This dashboard is perfect for deployment on an iPad as a permanent departure dis
    ```
 
 2. **Configure iPad Network:**
-
    - Connect iPad to the same network as your server
    - Note the server's IP address (e.g., `192.168.1.100:8000`)
 
 3. **Open Dashboard in Safari:**
-
    - Open Safari on the iPad
    - Navigate to `http://YOUR_SERVER_IP:8000` (replace with your server's IP)
    - Wait for the page to load completely
@@ -370,7 +372,6 @@ This dashboard is perfect for deployment on an iPad as a permanent departure dis
    - Tap "Add"
 
 4. **Enable Guided Access:**
-
    - Open iPad Settings → Accessibility → Guided Access
    - Toggle "Guided Access" to ON
    - Tap "Passcode Settings" → "Set Guided Access Passcode"
@@ -378,7 +379,6 @@ This dashboard is perfect for deployment on an iPad as a permanent departure dis
    - Optionally enable "Accessibility Shortcut" for quick access
 
 5. **Activate Guided Access:**
-
    - Open the "MVG Departures" app from the home screen
    - Triple-click the Home button (or Side button on newer iPads)
    - If prompted, enter your passcode
@@ -386,7 +386,6 @@ This dashboard is perfect for deployment on an iPad as a permanent departure dis
    - The iPad is now locked to this app
 
 6. **Configure Guided Access Options (Optional):**
-
    - While in Guided Access setup, you can:
      - Disable touch in certain areas (tap areas to disable)
      - Disable motion (prevent screen rotation)

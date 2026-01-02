@@ -79,7 +79,7 @@ async def test_when_cache_empty_then_fetches_fresh_from_api(
 
         # Create ApiPoller with empty shared cache
         empty_cache: dict[str, list[Departure]] = {}
-        config = AppConfig(config_file=None, _env_file=None)
+        config = AppConfig.for_testing(config_file=None)
         poller = ApiPoller(
             grouping_service=grouping_service,
             stop_configs=[stop_config],
@@ -131,7 +131,7 @@ async def test_when_api_fails_then_falls_back_to_cached_groups(
 
         # Create ApiPoller with empty shared cache
         empty_cache: dict[str, list[Departure]] = {}
-        config = AppConfig(config_file=None, _env_file=None)
+        config = AppConfig.for_testing(config_file=None)
         poller = ApiPoller(
             grouping_service=grouping_service,
             stop_configs=[stop_config],
@@ -195,7 +195,7 @@ async def test_when_cache_has_data_then_uses_cache(
 
         # Create ApiPoller with populated shared cache
         cache_with_data: dict[str, list[Departure]] = {stop_config.station_id: sample_departures}
-        config = AppConfig(config_file=None, _env_file=None)
+        config = AppConfig.for_testing(config_file=None)
         poller = ApiPoller(
             grouping_service=grouping_service,
             stop_configs=[stop_config],

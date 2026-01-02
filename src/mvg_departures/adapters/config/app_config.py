@@ -209,6 +209,32 @@ class AppConfig(BaseSettings):
             raise ValueError("api_provider must be either 'mvg' or 'hafas'")
         return v.lower()
 
+    @classmethod
+    def for_testing(cls, **kwargs: Any) -> "AppConfig":
+        """Create an AppConfig instance for testing without loading .env file.
+
+        This method creates an AppConfig instance with .env file loading disabled,
+        making tests environment-independent. All other parameters are passed through
+        to the constructor.
+
+        Args:
+            **kwargs: Any parameters to pass to AppConfig constructor
+
+        Returns:
+            AppConfig instance with .env file loading disabled
+        """
+
+        # Create a subclass with modified model_config to disable .env file loading
+        class TestAppConfig(cls):  # type: ignore[misc, valid-type]
+            model_config = SettingsConfigDict(
+                env_file=None,  # Disable .env file loading
+                env_file_encoding="utf-8",
+                case_sensitive=False,
+                extra="ignore",
+            )
+
+        return TestAppConfig(**kwargs)
+
     def _load_toml_data(self) -> dict[str, Any]:
         """Load and parse TOML file, updating display settings."""
         if not self.config_file:

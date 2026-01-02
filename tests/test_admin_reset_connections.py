@@ -22,7 +22,7 @@ def _make_adapter() -> PyViewWebAdapter:
             )
         ],
     )
-    config = AppConfig(config_file=None, _env_file=None, admin_command_token="test-token")
+    config = AppConfig.for_testing(config_file=None, admin_command_token="test-token")
     return PyViewWebAdapter(
         grouping_service=grouping_service,
         route_configs=[route_config],

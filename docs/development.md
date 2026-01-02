@@ -67,7 +67,6 @@ class MyDeviceAdapter(DisplayAdapter):
 The application uses a two-tier polling system:
 
 1. **Shared Departure Fetcher**: Single background task that fetches raw departures for all unique stations across all routes. Populates `SharedDepartureCache`. Runs on global `refresh_interval_seconds`.
-
    - See: `src/mvg_departures/adapters/web/pyview_app.py::_start_departure_fetcher()`
    - Implementation: `src/mvg_departures/adapters/web/fetchers/departure_fetcher.py`
 

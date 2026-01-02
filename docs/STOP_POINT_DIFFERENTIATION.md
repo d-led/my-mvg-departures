@@ -31,6 +31,7 @@ For station `de:09162:1108` (Chiemgaustraße), the following `stopPointGlobalId`
 ### Format
 
 The `stopPointGlobalId` format appears to be:
+
 ```
 {stationGlobalId}:{stopNumber}:{stopNumber}
 ```
@@ -88,6 +89,7 @@ mvg-config routes "Chiemgaustraße"
 ```
 
 The output includes a "Stop Point Differentiation Hints" section showing:
+
 - Which routes/destinations use each physical stop
 - The exact `station_id` value to copy/paste into your config (using the stop_point_global_id format)
 
@@ -127,6 +129,7 @@ GET https://www.mvg.de/api/bgw-pt/v3/lines/{stationGlobalId}
 ```
 
 **Benefits over departures sampling:**
+
 - More reliable: Returns all routes, not just those with upcoming departures
 - Complete: Shows all destinations, not just those in the current sample
 - Faster: Single API call instead of sampling many departures
@@ -136,6 +139,7 @@ GET https://www.mvg.de/api/bgw-pt/v3/lines/{stationGlobalId}
 ### Departures Endpoint
 
 The MVG API endpoint for departures:
+
 ```
 GET https://www.mvg.de/api/bgw-pt/v3/departures?globalId={stationGlobalId}&limit=100&transportTypes=...
 ```
@@ -153,6 +157,7 @@ GET https://www.mvg.de/.rest/aushang/stations?id={stationCode}
 Where `{stationCode}` is a short station identifier (e.g., `"CHI"` for Chiemgaustraße).
 
 This endpoint likely returns:
+
 - Different PDF URLs or identifiers for each physical stop point
 - Mapping between physical stops and their departure board information
 - Additional metadata about the physical stop locations
@@ -162,8 +167,8 @@ This endpoint likely returns:
 ### Potential Use Case
 
 The stop PDFs endpoint could be used to:
+
 1. Discover all physical stop points at a station
 2. Get human-readable information about each physical stop
 3. Map `stopPointGlobalId` values to actual stop locations/names
 4. Display stop-specific information in the UI
-

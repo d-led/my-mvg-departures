@@ -26,7 +26,7 @@ def _create_test_view() -> DeparturesLiveView:
                 direction_mappings={},
             )
         ]
-        config = AppConfig(config_file=None, _env_file=None)
+        config = AppConfig.for_testing(config_file=None)
         presence_tracker = PresenceTracker()
         return DeparturesLiveView(
             state_manager, grouping_service, stop_configs, config, presence_tracker

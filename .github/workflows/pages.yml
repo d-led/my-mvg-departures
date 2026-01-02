@@ -5,8 +5,8 @@ on:
     branches:
       - main
     paths:
-      - 'alternatives/**'
-      - '.github/workflows/pages.yml'
+      - "alternatives/**"
+      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
@@ -34,9 +34,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: 'alternatives'
+          path: "alternatives"
 
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-

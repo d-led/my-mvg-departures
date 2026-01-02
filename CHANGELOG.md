@@ -80,7 +80,6 @@
 ### Configuration Keys
 
 - **Environment variables**:
-
   - `CONFIG_FILE`: Path to TOML configuration file (default: `config.example.toml`)
   - `HOST`: Server host (default: `0.0.0.0`)
   - `PORT`: Server port (default: `8000`)
@@ -93,7 +92,6 @@
   - `MVG_API_OFFSET_MINUTES`: Offset in minutes for departure queries (default: `0`)
 
 - **TOML configuration** (`[display]` section):
-
   - `title`: Page title (default: `"My MVG Departures"`)
   - `departures_per_page`: Number of departures per page (default: `5`)
   - `page_rotation_seconds`: Seconds to display each page (default: `8`)
@@ -105,7 +103,6 @@
   - Font size settings: `font_size_route_number`, `font_size_destination`, `font_size_platform`, `font_size_time`, `font_size_stop_header`, `font_size_direction_header`, `font_size_pagination_indicator`, `font_size_countdown_text`, `font_size_delay_amount`, `font_size_no_departures`, `font_size_no_departures_available`, `font_size_status_header`
 
 - **TOML configuration** (`[[stops]]` section):
-
   - `station_id`: MVG station ID (e.g., `"de:09162:1110"`)
   - `station_name`: Display name for the station
   - `max_departures_per_stop`: Maximum departures to show per stop

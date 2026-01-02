@@ -1,0 +1,18 @@
+{
+  "name": "my-mvg-departures",
+  "version": "0.0.1",
+  "description": "MVG Departures Dashboard - E2E Tests",
+  "private": true,
+  "scripts": {
+    "e2e": "cypress run --e2e --browser chrome --spec 'cypress/e2e/!(screenshot).cy.js'",
+    "cy": "cypress open --e2e --browser chrome",
+    "prettier": "prettier -w ."
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "cypress": "^15.8.1",
+    "mocha-junit-reporter": "^2.2.1",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3"
+  }
+}
