@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     # Note: For workflow_dispatch (local testing with act), the needs dependency will be ignored if build-and-push doesn't exist
     # For CI (push/PR), this ensures the Docker image is built first
-    # needs: build-and-push
+    needs: build-and-push
     permissions:
       contents: read
       packages: read
