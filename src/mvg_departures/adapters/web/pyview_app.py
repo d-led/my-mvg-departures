@@ -93,31 +93,28 @@ class PyViewWebAdapter(DisplayAdapter):
         """Display grouped departures (not used directly, handled by LiveView)."""
         # This is handled by the LiveView's periodic updates
 
-    async def start(self) -> None:
-        """Start the web server."""
-        import time
+    def _setup_favicon_and_root_template(self, app: Any) -> None:
+        """Set up default favicon and root template for the app.
 
-        import uvicorn
+        Args:
+            app: The PyView application instance.
+        """
         from markupsafe import Markup
-        from pyview import PyView
         from pyview.playground.favicon import generate_favicon_svg
         from pyview.template import defaultRootTemplate
         from starlette.responses import Response
         from starlette.routing import Route
 
-        app = PyView()
-
         # Generate default favicon SVG from global title using banner color from config
         default_favicon_svg = generate_favicon_svg(
             self.config.title,
-            bg_color=self.config.banner_color or "#087BC4",  # Use banner color from config
-            text_color="#FFFFFF",  # White text for contrast
+            bg_color=self.config.banner_color or "#087BC4",
+            text_color="#FFFFFF",
         )
 
         # Add default favicon route
         async def default_favicon_route(_request: Any) -> Response:
             response = Response(content=default_favicon_svg, media_type="image/svg+xml")
-            # Add cache headers: cache for 1 minute
             response.headers["Cache-Control"] = "public, max-age=60, must-revalidate"
             return response
 
@@ -126,17 +123,51 @@ class PyViewWebAdapter(DisplayAdapter):
         # Add default favicon link to CSS/head content
         favicon_link = Markup('<link rel="icon" href="/favicon.svg" type="image/svg+xml">')
 
-        # Set rootTemplate with default title (LiveView template data will override via JavaScript)
+        # Set rootTemplate with default title
         app.rootTemplate = defaultRootTemplate(
-            title=self.config.title,  # Default title for main page
-            title_suffix="",  # Empty suffix to prevent " | LiveView" from appearing
-            css=favicon_link,  # Add default favicon link to head
+            title=self.config.title,
+            title_suffix="",
+            css=favicon_link,
         )
 
-        # Get the presence tracker instance (shared across all routes)
-        presence_tracker = get_presence_tracker()
+    def _add_route_favicon(self, app: Any, route_path: str, route_title: str) -> None:
+        """Add route-specific favicon if route has custom title.
 
-        # Create a LiveView for each route using the factory function
+        Args:
+            app: The PyView application instance.
+            route_path: The route path.
+            route_title: The route-specific title.
+        """
+        from pyview.playground.favicon import generate_favicon_svg
+        from starlette.responses import Response
+        from starlette.routing import Route
+
+        route_favicon_svg = generate_favicon_svg(
+            route_title,
+            bg_color=self.config.banner_color or "#087BC4",
+            text_color="#FFFFFF",
+        )
+
+        def create_favicon_handler(svg_content: str) -> Any:
+            async def favicon_handler(_request: Any) -> Response:
+                response = Response(content=svg_content, media_type="image/svg+xml")
+                response.headers["Cache-Control"] = "public, max-age=60, must-revalidate"
+                return response
+
+            return favicon_handler
+
+        favicon_path = route_path.rstrip("/") + "/favicon.svg"
+        route_favicon_handler = create_favicon_handler(route_favicon_svg)
+        app.routes.append(Route(favicon_path, route_favicon_handler, methods=["GET"]))
+        logger.info(f"Added route-specific favicon at {favicon_path} for '{route_title}'")
+
+    def _register_live_views(self, app: Any, presence_tracker: Any) -> None:
+        """Register LiveViews for all routes.
+
+        Args:
+            app: The PyView application instance.
+            presence_tracker: The presence tracker instance.
+        """
         for route_config in self.route_configs:
             route_path = route_config.path
             route_state = self.route_states[route_path]
@@ -151,28 +182,7 @@ class PyViewWebAdapter(DisplayAdapter):
 
             # Generate route-specific favicon if route has custom title
             if route_title:
-                route_favicon_svg = generate_favicon_svg(
-                    route_title,
-                    bg_color=self.config.banner_color or "#087BC4",
-                    text_color="#FFFFFF",
-                )
-
-                # Create favicon route handler (capture SVG in closure)
-                def create_favicon_handler(svg_content: str) -> Any:
-                    async def favicon_handler(_request: Any) -> Response:
-                        response = Response(content=svg_content, media_type="image/svg+xml")
-                        # Add cache headers: cache for 1 minute
-                        response.headers["Cache-Control"] = "public, max-age=60, must-revalidate"
-                        return response
-
-                    return favicon_handler
-
-                # Normalize path for favicon route
-                favicon_path = route_path.rstrip("/") + "/favicon.svg"
-
-                route_favicon_handler = create_favicon_handler(route_favicon_svg)
-                app.routes.append(Route(favicon_path, route_favicon_handler, methods=["GET"]))
-                logger.info(f"Added route-specific favicon at {favicon_path} for '{route_title}'")
+                self._add_route_favicon(app, route_path, route_title)
 
             logger.info(
                 f"Registering route at path '{route_path}' with {len(route_stop_configs)} stops"
@@ -196,27 +206,18 @@ class PyViewWebAdapter(DisplayAdapter):
             app.add_live_view(route_path, live_view_class)
             logger.info(f"Successfully registered route at path '{route_path}'")
 
-        # ------------------------------------------------------------------
-        # Admin maintenance endpoints
-        # ------------------------------------------------------------------
-        # These endpoints are intentionally minimal and guarded by a shared
-        # secret token provided via ADMIN_COMMAND_TOKEN. They are designed
-        # for operational use (e.g. from curl) and are not linked from the UI.
+    def _setup_admin_endpoints(self, app: Any, presence_tracker: Any) -> None:
+        """Set up admin maintenance endpoints.
+
+        Args:
+            app: The PyView application instance.
+            presence_tracker: The presence tracker instance.
+        """
+        from starlette.responses import JSONResponse, Response
+        from starlette.routing import Route
 
         async def reset_connections(request: Any) -> Any:
-            """Reset server-side connection and presence state.
-
-            This endpoint:
-            - Verifies the X-Admin-Token header against admin_command_token.
-            - Clears all registered sockets from all route states.
-            - Asks the presence tracker to sync against an empty set so that
-              all presence entries are removed.
-
-            It does not attempt to change behaviour of already-loaded client
-            JavaScript; it only resets the server's view of active sessions.
-            """
-            from starlette.responses import JSONResponse
-
+            """Reset server-side connection and presence state."""
             expected_token = self.config.admin_command_token
             if not expected_token:
                 return JSONResponse(
@@ -229,50 +230,11 @@ class PyViewWebAdapter(DisplayAdapter):
                 logger.warning("Unauthorized attempt to call reset_connections admin endpoint")
                 return JSONResponse({"error": "forbidden"}, status_code=403)
 
-            total_disconnected = 0
-
-            # Unregister all sockets from every route state.
-            for route_path, route_state in self.route_states.items():
-                # Work on a copy because unregister_socket mutates the set
-                sockets_to_unregister = list(route_state.connected_sockets)
-                if not sockets_to_unregister:
-                    continue
-
-                logger.info(
-                    f"Admin reset_connections: unregistering {len(sockets_to_unregister)} "
-                    f"sockets for route '{route_path}'"
-                )
-                for socket in sockets_to_unregister:
-                    route_state.unregister_socket(socket)
-                    total_disconnected += 1
-
-                # Bump reload_request_id for this route so connected clients
-                # can detect the change and perform a hard reload once.
-                try:
-                    route_state.departures_state.reload_request_id += 1
-                except Exception:
-                    # If state does not support reload_request_id for some reason,
-                    # do not fail the admin command.
-                    logger.exception(
-                        "Failed to increment reload_request_id for route '%s'", route_path
-                    )
-
-            # Drop all presence entries by syncing against an empty mapping of
-            # registered sockets. PresenceTracker will remove users it no longer
-            # sees as registered anywhere.
+            total_disconnected = self._reset_all_route_sockets()
             sync_result = presence_tracker.sync_with_registered_sockets({})
             added, removed = sync_result.added_count, sync_result.removed_count
 
-            # Broadcast state updates to all routes so that LiveViews receive
-            # a phx:update with the new reload_request_id value.
-            from .broadcasters import StateBroadcaster
-
-            state_broadcaster = StateBroadcaster()
-            for route_path, route_state in self.route_states.items():
-                try:
-                    await state_broadcaster.broadcast_update(route_state.broadcast_topic)
-                except Exception:
-                    logger.exception("Failed to broadcast reload update for route '%s'", route_path)
+            await self._broadcast_reload_updates()
 
             logger.info(
                 "Admin reset_connections completed: "
@@ -280,9 +242,6 @@ class PyViewWebAdapter(DisplayAdapter):
                 f"presence_added={added}, presence_removed={removed}"
             )
 
-            # Intentionally documented only in source; typical usage:
-            #   curl -X POST https://your-app.fly.dev/admin/reset-connections \
-            #        -H "X-Admin-Token: $ADMIN_COMMAND_TOKEN"
             return JSONResponse(
                 {
                     "status": "ok",
@@ -301,32 +260,77 @@ class PyViewWebAdapter(DisplayAdapter):
 
         app.routes.append(Route("/healthz", healthz, methods=["GET"]))
 
-        # Register static file routes
-        static_file_server = StaticFileServer()
-        static_file_server.register_routes(app)
+    def _reset_all_route_sockets(self) -> int:
+        """Unregister all sockets from all route states and bump reload_request_id.
 
-        # Add rate limiting middleware
-        # PyView is built on Starlette, so we wrap it with middleware
-        from .rate_limit_middleware import RateLimitMiddleware
+        Returns:
+            Total number of sockets disconnected.
+        """
+        total_disconnected = 0
 
-        # Wrap the app with rate limiting middleware
-        wrapped_app = RateLimitMiddleware(
-            app,
-            requests_per_minute=self.config.rate_limit_per_minute,
-        )
+        for route_path, route_state in self.route_states.items():
+            sockets_to_unregister = list(route_state.connected_sockets)
+            if not sockets_to_unregister:
+                continue
 
-        # Start the shared fetcher that populates the cache with raw departures
-        await self._start_departure_fetcher()
+            logger.info(
+                f"Admin reset_connections: unregistering {len(sockets_to_unregister)} "
+                f"sockets for route '{route_path}'"
+            )
+            for socket in sockets_to_unregister:
+                route_state.unregister_socket(socket)
+                total_disconnected += 1
 
-        # Start the API poller for each route immediately when server starts.
-        # Each route will process cached raw departures according to its own StopConfiguration.
-        # Convert cache to dict for API poller (it expects a dict).
-        # TODO: Refactor ApiPoller to use DepartureCacheProtocol instead.
+            # Bump reload_request_id for this route
+            try:
+                route_state.departures_state.reload_request_id += 1
+            except Exception:
+                logger.exception("Failed to increment reload_request_id for route '%s'", route_path)
+
+        return total_disconnected
+
+    async def _broadcast_reload_updates(self) -> None:
+        """Broadcast state updates to all routes for reload_request_id changes."""
+        from .broadcasters import StateBroadcaster
+
+        state_broadcaster = StateBroadcaster()
+        for route_path, route_state in self.route_states.items():
+            try:
+                await state_broadcaster.broadcast_update(route_state.broadcast_topic)
+            except Exception:
+                logger.exception("Failed to broadcast reload update for route '%s'", route_path)
+
+    def _setup_logging_filter(self) -> None:
+        """Set up logging filter to exclude /healthz from access logs."""
+
+        class HealthzFilter(logging.Filter):
+            """Filter to exclude /healthz requests from access logs."""
+
+            def filter(self, record: logging.LogRecord) -> bool:
+                message = record.getMessage()
+                return "/healthz" not in message
+
+        access_logger = logging.getLogger("uvicorn.access")
+        access_logger.addFilter(HealthzFilter())
+
+    def _prepare_cache_dict(self) -> dict[str, list[Departure]]:
+        """Convert shared departure cache to dict format for API poller.
+
+        Returns:
+            Dictionary mapping station_id to list of departures.
+        """
         cache_dict: dict[str, list[Departure]] = {}
         station_ids: set[str] = self._shared_departure_cache.get_all_station_ids()
         for station_id in station_ids:
             cache_dict[station_id] = self._shared_departure_cache.get(station_id)
+        return cache_dict
 
+    async def _start_api_pollers(self, cache_dict: dict[str, list[Departure]]) -> None:
+        """Start API pollers for all routes.
+
+        Args:
+            cache_dict: Dictionary mapping station_id to list of departures.
+        """
         poller_count = 0
         for route_config in self.route_configs:
             route_path = route_config.path
@@ -354,46 +358,74 @@ class PyViewWebAdapter(DisplayAdapter):
 
         logger.info(f"Started {poller_count} API poller(s) for {len(self.route_configs)} route(s)")
 
-        # --------------------------------------------------------------
-        # Optional server-start reload request
-        # --------------------------------------------------------------
-        # To ensure that long-lived browser tabs pick up newly deployed
-        # JavaScript, we can bump reload_request_id once per server start.
-        #
-        # The value is derived from the current UNIX timestamp, so each
-        # fresh process is very likely to have a different value. Clients
-        # remember the last seen id in sessionStorage and will perform at
-        # most one hard reload per distinct value (per tab).
-        if self.config.enable_server_start_reload:
-            server_start_reload_id = int(time.time())
-            for route_path, route_state in self.route_states.items():
-                try:
-                    if getattr(route_state.departures_state, "reload_request_id", 0) == 0:
-                        route_state.departures_state.reload_request_id = server_start_reload_id
-                        logger.info(
-                            "Initialized reload_request_id=%s for route '%s' on server start",
-                            server_start_reload_id,
-                            route_path,
-                        )
-                except Exception:  # pragma: no cover - defensive, should not happen in normal flow
-                    logger.exception(
-                        "Failed to initialize reload_request_id for route '%s' on server start",
+    def _initialize_reload_request_ids(self) -> None:
+        """Initialize reload_request_id for all routes on server start if enabled."""
+        import time
+
+        if not self.config.enable_server_start_reload:
+            return
+
+        server_start_reload_id = int(time.time())
+        for route_path, route_state in self.route_states.items():
+            try:
+                if getattr(route_state.departures_state, "reload_request_id", 0) == 0:
+                    route_state.departures_state.reload_request_id = server_start_reload_id
+                    logger.info(
+                        "Initialized reload_request_id=%s for route '%s' on server start",
+                        server_start_reload_id,
                         route_path,
                     )
+            except Exception:
+                logger.exception(
+                    "Failed to initialize reload_request_id for route '%s' on server start",
+                    route_path,
+                )
 
-        # Add logging filter to exclude /healthz from access logs
-        class HealthzFilter(logging.Filter):
-            """Filter to exclude /healthz requests from access logs."""
+    async def start(self) -> None:
+        """Start the web server."""
+        import uvicorn
+        from pyview import PyView
 
-            def filter(self, record: logging.LogRecord) -> bool:
-                # Filter out any log messages containing /healthz
-                message = record.getMessage()
-                return "/healthz" not in message
+        from mvg_departures.adapters.web.rate_limit_middleware import RateLimitMiddleware
 
-        # Apply filter to uvicorn.access logger
-        access_logger = logging.getLogger("uvicorn.access")
-        access_logger.addFilter(HealthzFilter())
+        app = PyView()
 
+        # Set up favicon and root template
+        self._setup_favicon_and_root_template(app)
+
+        # Get the presence tracker instance (shared across all routes)
+        presence_tracker = get_presence_tracker()
+
+        # Register LiveViews for all routes
+        self._register_live_views(app, presence_tracker)
+
+        # Set up admin endpoints and health check
+        self._setup_admin_endpoints(app, presence_tracker)
+
+        # Register static file routes
+        static_file_server = StaticFileServer()
+        static_file_server.register_routes(app)
+
+        # Wrap the app with rate limiting middleware
+        wrapped_app = RateLimitMiddleware(
+            app,
+            requests_per_minute=self.config.rate_limit_per_minute,
+        )
+
+        # Start the shared fetcher that populates the cache with raw departures
+        await self._start_departure_fetcher()
+
+        # Start API pollers for all routes
+        cache_dict = self._prepare_cache_dict()
+        await self._start_api_pollers(cache_dict)
+
+        # Initialize reload request IDs if enabled
+        self._initialize_reload_request_ids()
+
+        # Set up logging filter
+        self._setup_logging_filter()
+
+        # Configure and start uvicorn server
         config = uvicorn.Config(
             wrapped_app,
             host=self.config.host,
