@@ -36,6 +36,7 @@ dev = [
     "ruff>=0.8.0",
     "mypy>=1.13.0",
     "types-pytz>=2024.1.0",
+    "radon>=6.0.0",
 ]
 
 [project.scripts]
