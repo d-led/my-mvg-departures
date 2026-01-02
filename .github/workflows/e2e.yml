@@ -1,8 +1,11 @@
 name: E2E Pipeline
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Build and Publish Docker Image"]
     branches: [main]
+    types:
+      - completed
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -23,17 +26,9 @@ permissions:
   id-token: write
 
 jobs:
-  dummy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Dummy step
-        run: echo "Waiting for build to complete..."
-
   e2e:
     runs-on: ubuntu-latest
-    # Note: For workflow_dispatch (local testing with act), the needs dependency will be ignored if build-and-push doesn't exist
-    # For CI (push/PR), this ensures the Docker image is built first
-    needs: build-and-push
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name != 'workflow_run'
     permissions:
       contents: read
       packages: read
@@ -56,6 +51,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch || github.ref }}
+          sha: ${{ github.event.workflow_run.head_sha || '' }}
       - name: Configure git safe directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Install JUnit reporter
