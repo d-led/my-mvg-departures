@@ -6,192 +6,231 @@ from typing import Any
 
 import aiohttp
 
+_COMMON_WORDS = {
+    "berlin",
+    "platz",
+    "str",
+    "strasse",
+    "bahnhof",
+    "bhf",
+    "u",
+    "s",
+    "garten",
+    "der",
+    "die",
+    "das",
+}
 
-async def search_stations_vbb(query: str) -> list[dict[str, Any]]:
-    """Search for VBB stations using the VBB REST API."""
+
+def _extract_meaningful_words(query: str) -> list[str]:
+    """Extract meaningful words from query, filtering out common words."""
+    query_lower = query.lower().strip()
+    query_words = query_lower.split()
+    meaningful_words = [w for w in query_words if w not in _COMMON_WORDS and len(w) > 2]
+    return meaningful_words if meaningful_words else query_words
+
+
+def _calculate_relevance_score(
+    query_lower: str, location_name_lower: str, meaningful_words: list[str], query_words: list[str]
+) -> int | None:
+    """Calculate relevance score for a location. Returns None if location should be skipped."""
+    if query_lower == location_name_lower:
+        return 1000
+
+    if query_lower in location_name_lower:
+        return 500
+
+    matching_meaningful = sum(1 for word in meaningful_words if word in location_name_lower)
+    if matching_meaningful == 0:
+        return None
+
+    matching_all = sum(1 for word in query_words if word in location_name_lower)
+    return matching_meaningful * 100 + matching_all * 10
+
+
+def _process_location(
+    location: dict[str, Any], query_lower: str, meaningful_words: list[str], query_words: list[str]
+) -> dict[str, Any] | None:
+    """Process a single location and return result dict with relevance, or None if skipped."""
+    location_type = location.get("type", "")
+    if location_type not in ("stop", "station"):
+        return None
+
+    location_name = location.get("name", "")
+    location_name_lower = location_name.lower()
+    relevance = _calculate_relevance_score(
+        query_lower, location_name_lower, meaningful_words, query_words
+    )
+    if relevance is None:
+        return None
+
+    return {
+        "id": location.get("id", ""),
+        "name": location_name,
+        "type": location_type,
+        "place": location.get("location", {}).get("city", "Berlin"),
+        "relevance": relevance,
+    }
+
+
+async def _fetch_locations(session: aiohttp.ClientSession, query: str) -> list[dict[str, Any]]:
+    """Fetch locations from VBB API."""
     base_url = "https://v6.bvg.transport.rest"
     url = f"{base_url}/locations"
     params: dict[str, str | int] = {"query": query, "results": 20}
 
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url, params=params, ssl=False) as response:
-                if response.status != 200:
-                    response_text = await response.text()
-                    raise RuntimeError(
-                        f"VBB API returned status {response.status}: {response_text}"
-                    )
+    async with session.get(url, params=params, ssl=False) as response:
+        if response.status != 200:
+            response_text = await response.text()
+            raise RuntimeError(f"VBB API returned status {response.status}: {response_text}")
 
-                data = await response.json()
-                locations = data if isinstance(data, list) else data.get("locations", [])
-
-                results = []
-                query_lower = query.lower().strip()
-                query_words = query_lower.split()
-
-                # Filter out very common words that don't help with matching
-                # (like "berlin", "platz", "strasse", "garten", etc.)
-                common_words = {
-                    "berlin",
-                    "platz",
-                    "str",
-                    "strasse",
-                    "bahnhof",
-                    "bhf",
-                    "u",
-                    "s",
-                    "garten",
-                    "der",
-                    "die",
-                    "das",
-                }
-                meaningful_words = [w for w in query_words if w not in common_words and len(w) > 2]
-
-                # If no meaningful words after filtering, use all words
-                if not meaningful_words:
-                    meaningful_words = query_words
-
-                for location in locations:
-                    location_id = location.get("id", "")
-                    location_name = location.get("name", "")
-                    location_type = location.get("type", "")
-
-                    # Only include stops/stations, not POIs
-                    if location_type not in ("stop", "station"):
-                        continue
-
-                    location_name_lower = location_name.lower()
-
-                    # Calculate relevance score
-                    # 1. Exact match gets highest score
-                    if query_lower == location_name_lower:
-                        relevance = 1000
-                    # 2. Query is contained in station name (very relevant)
-                    elif query_lower in location_name_lower:
-                        relevance = 500
-                    # 3. Check if meaningful words match (require at least one meaningful word)
-                    else:
-                        matching_meaningful = sum(
-                            1 for word in meaningful_words if word in location_name_lower
-                        )
-                        matching_all = sum(1 for word in query_words if word in location_name_lower)
-
-                        # Require at least one meaningful word to match (not just common words)
-                        if matching_meaningful == 0:
-                            continue  # Skip if no meaningful words match
-
-                        # Score based on meaningful word matches (weighted higher)
-                        relevance = matching_meaningful * 100 + matching_all * 10
-
-                    results.append(
-                        {
-                            "id": location_id,
-                            "name": location_name,
-                            "type": location_type,
-                            "place": location.get("location", {}).get("city", "Berlin"),
-                            "relevance": relevance,  # For sorting
-                        }
-                    )
-
-                # Sort by relevance (higher first), then alphabetically
-                results.sort(key=lambda x: (-x.get("relevance", 0), x.get("name", "")))
-                # Remove relevance from output
-                for result in results:
-                    result.pop("relevance", None)
-
-                return results
-        except Exception as e:
-            print(f"Error searching VBB stations: {e}", file=sys.stderr)
+        data: dict[str, Any] | list[dict[str, Any]] = await response.json()
+        if isinstance(data, list):
+            return data
+        locations = data.get("locations", [])
+        if not isinstance(locations, list):
             return []
+        return locations
+
+
+async def search_stations_vbb(query: str) -> list[dict[str, Any]]:
+    """Search for VBB stations using the VBB REST API."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            locations = await _fetch_locations(session, query)
+
+            query_lower = query.lower().strip()
+            query_words = query_lower.split()
+            meaningful_words = _extract_meaningful_words(query)
+
+            results = []
+            for location in locations:
+                result = _process_location(location, query_lower, meaningful_words, query_words)
+                if result:
+                    results.append(result)
+
+            results.sort(key=lambda x: (-x.get("relevance", 0), x.get("name", "")))
+            for result in results:
+                result.pop("relevance", None)
+
+            return results
+    except Exception as e:
+        print(f"Error searching VBB stations: {e}", file=sys.stderr)
+        return []
+
+
+def _extract_line_info(dep: dict[str, Any]) -> tuple[str, str] | None:
+    """Extract line name and product from departure. Returns None if line_name is empty."""
+    line_obj = dep.get("line", {})
+    line_name = line_obj.get("name", "") or line_obj.get("id", "") or ""
+    if not line_name:
+        return None
+
+    product = line_obj.get("product", "") or line_obj.get("mode", "") or ""
+    return line_name, product
+
+
+def _extract_destinations(dep: dict[str, Any]) -> list[str]:
+    """Extract destinations from departure, handling both direction and destination.name."""
+    direction = dep.get("direction", "") or ""
+    dest_obj = dep.get("destination")
+    dest_name = ""
+    if dest_obj and isinstance(dest_obj, dict):
+        dest_name = dest_obj.get("name", "") or ""
+
+    if not direction and not dest_name:
+        return []
+
+    if not direction:
+        return [dest_name]
+
+    if not dest_name:
+        return [direction]
+
+    if direction == dest_name:
+        return [direction]
+
+    dest_name_clean = dest_name.replace(" (Berlin)", "")
+    if direction == dest_name_clean:
+        return [direction]
+
+    return [dest_name, direction]
+
+
+def _process_departures(
+    departures_data: list[dict[str, Any]],
+) -> tuple[dict[str, set[str]], dict[str, dict[str, Any]]]:
+    """Process departures and extract routes and destinations."""
+    routes: dict[str, set[str]] = {}
+    route_details: dict[str, dict[str, Any]] = {}
+
+    for dep in departures_data:
+        line_info = _extract_line_info(dep)
+        if not line_info:
+            continue
+
+        line_name, product = line_info
+        if line_name not in routes:
+            routes[line_name] = set()
+            route_details[line_name] = {
+                "line": line_name,
+                "transport_type": product or "Unknown",
+            }
+
+        destinations = _extract_destinations(dep)
+        routes[line_name].update(destinations)
+
+    return routes, route_details
+
+
+async def _fetch_departures(
+    session: aiohttp.ClientSession, station_id: str
+) -> list[dict[str, Any]] | None:
+    """Fetch departures from VBB API."""
+    base_url = "https://v6.bvg.transport.rest"
+    url = f"{base_url}/stops/{station_id}/departures"
+    params: dict[str, int] = {"duration": 120, "results": 300}
+
+    async with session.get(url, params=params, ssl=False) as response:
+        if response.status != 200:
+            return None
+
+        data: dict[str, Any] = await response.json()
+        departures = data.get("departures", [])
+        if not isinstance(departures, list):
+            return []
+        return departures
 
 
 async def get_station_details_vbb(station_id: str) -> dict[str, Any] | None:
     """Get detailed information about a VBB station including routes."""
-    base_url = "https://v6.bvg.transport.rest"
-    url = f"{base_url}/stops/{station_id}/departures"
-    # Get many departures to capture all unique destinations
-    # Use a longer duration (2 hours) and high result count to get all destinations
-    # This is especially important for lines like U2 which have many stops
-    params: dict[str, int] = {"duration": 120, "results": 300}
+    try:
+        async with aiohttp.ClientSession() as session:
+            departures_data = await _fetch_departures(session, station_id)
+            if not departures_data:
+                return None
 
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url, params=params, ssl=False) as response:
-                if response.status != 200:
-                    return None
+            routes, route_details = _process_departures(departures_data)
+            station_name = departures_data[0].get("stop", {}).get("name", "") or station_id
 
-                data = await response.json()
-                departures_data = data.get("departures", [])
-
-                if not departures_data:
-                    return None
-
-                # Extract unique routes and destinations
-                routes: dict[str, set[str]] = {}  # line -> set of destinations
-                route_details: dict[str, dict[str, Any]] = {}  # line -> details
-
-                for dep in departures_data:
-                    line_obj = dep.get("line", {})
-                    line_name = line_obj.get("name", "") or line_obj.get("id", "") or ""
-                    product = line_obj.get("product", "") or line_obj.get("mode", "") or ""
-
-                    if not line_name:
-                        continue
-
-                    # Extract destination - show both direction and destination.name as separate destinations
-                    # direction often includes district/area info (e.g., "Schmargendorf, Elsterplatz")
-                    # while destination.name is just the stop name (e.g., "Elsterplatz (Berlin)")
-                    # Show both separately so users can find by either name
-                    direction = dep.get("direction", "") or ""
-                    dest_obj = dep.get("destination")
-                    dest_name = ""
-                    if dest_obj and isinstance(dest_obj, dict):
-                        dest_name = dest_obj.get("name", "") or ""
-
-                    if line_name not in routes:
-                        routes[line_name] = set()
-                        route_details[line_name] = {
-                            "line": line_name,
-                            "transport_type": product or "Unknown",
-                        }
-
-                    # Add both direction and destination.name as separate destinations if they differ
-                    if direction and dest_name and direction != dest_name:
-                        # Remove "(Berlin)" suffix from dest_name to check if they're really different
-                        dest_name_clean = dest_name.replace(" (Berlin)", "")
-                        if direction != dest_name_clean:
-                            # Add both as separate destinations
-                            routes[line_name].add(dest_name)
-                            routes[line_name].add(direction)
-                        else:
-                            # They're the same, just add one
-                            routes[line_name].add(direction)
-                    elif direction:
-                        routes[line_name].add(direction)
-                    elif dest_name:
-                        routes[line_name].add(dest_name)
-
-                # Get station name from first departure or use station_id
-                station_name = departures_data[0].get("stop", {}).get("name", "") or station_id
-
-                return {
-                    "station": {
-                        "id": station_id,
-                        "name": station_name,
-                        "place": "Berlin",
-                        "api_provider": "vbb",
-                    },
-                    "routes": {
-                        line: {
-                            "destinations": sorted(destinations),
-                            "transport_type": route_details[line]["transport_type"],
-                        }
-                        for line, destinations in routes.items()
-                    },
-                }
-        except Exception as e:
-            print(f"Error getting station details: {e}", file=sys.stderr)
-            return None
+            return {
+                "station": {
+                    "id": station_id,
+                    "name": station_name,
+                    "place": "Berlin",
+                    "api_provider": "vbb",
+                },
+                "routes": {
+                    line: {
+                        "destinations": sorted(destinations),
+                        "transport_type": route_details[line]["transport_type"],
+                    }
+                    for line, destinations in routes.items()
+                },
+            }
+    except Exception as e:
+        print(f"Error getting station details: {e}", file=sys.stderr)
+        return None
 
 
 def generate_vbb_config_snippet(station_id: str, station_name: str, routes: dict[str, Any]) -> str:

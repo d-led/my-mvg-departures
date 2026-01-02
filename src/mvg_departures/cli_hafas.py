@@ -1,5 +1,6 @@
 """CLI helpers for configuring HAFAS departures."""
 
+import argparse
 import asyncio
 import sys
 from typing import Any
@@ -35,78 +36,93 @@ PROFILES = {
 }
 
 
+def _extract_error_message(e: Exception) -> str:
+    """Extract detailed error message from exception."""
+    error_msg = str(e) if str(e) else f"{type(e).__name__}"
+
+    if hasattr(e, "message") and e.message:
+        error_msg = f"{error_msg}: {e.message}"
+    elif hasattr(e, "args") and e.args:
+        if len(e.args) > 1:
+            error_msg = f"{error_msg}: {e.args[1]}"
+        elif len(e.args) == 1 and str(e.args[0]) != error_msg:
+            error_msg = f"{error_msg}: {e.args[0]}"
+
+    if hasattr(e, "__cause__") and e.__cause__:
+        error_msg = f"{error_msg} (caused by: {e.__cause__})"
+    elif hasattr(e, "__context__") and e.__context__:
+        error_msg = f"{error_msg} (context: {e.__context__})"
+
+    return error_msg
+
+
+def _process_location(
+    location: Any, profile_name: str, existing_ids: set[str]
+) -> dict[str, Any] | None:
+    """Process a single location and return station dict, or None if skipped."""
+    location_obj = getattr(location, "location", None)
+    if not location_obj:
+        return None
+
+    station_id = getattr(location, "id", "")
+    if station_id in existing_ids:
+        return None
+
+    station_name = getattr(location, "name", "")
+    city = getattr(location_obj, "city", None) or getattr(location_obj, "name", None) or ""
+
+    return {
+        "id": station_id,
+        "name": station_name,
+        "place": city,
+        "profile": profile_name,
+    }
+
+
+def _search_with_profile(query: str, profile_name: str) -> list[dict[str, Any]]:
+    """Search for stations using a specific HAFAS profile."""
+    if profile_name not in PROFILES:
+        return []
+
+    try:
+        profile_class = PROFILES[profile_name]
+        with hafas_ssl_context():
+            client = HafasClient(profile_class())
+            locations = client.locations(query)
+
+        if not locations:
+            return []
+
+        existing_ids: set[str] = set()
+        results = []
+        for location in locations:
+            station = _process_location(location, profile_name, existing_ids)
+            if station:
+                existing_ids.add(station["id"])
+                results.append(station)
+
+        return results
+    except Exception as e:
+        error_msg = _extract_error_message(e)
+        print(f"  Profile '{profile_name}' failed: {error_msg}", file=sys.stderr)
+        return []
+
+
 async def search_stations_hafas(query: str, profile: str | None = None) -> list[dict[str, Any]]:
     """Search for stations using HAFAS, trying different profiles if needed."""
-    results: list[dict[str, Any]] = []
-
-    # If profile specified, only try that one
     profiles_to_try = [profile] if profile else list(PROFILES.keys())
 
+    all_results: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+
     for profile_name in profiles_to_try:
-        if profile_name not in PROFILES:
-            continue
+        profile_results = _search_with_profile(query, profile_name)
+        for result in profile_results:
+            if result["id"] not in seen_ids:
+                seen_ids.add(result["id"])
+                all_results.append(result)
 
-        try:
-            profile_class = PROFILES[profile_name]
-            # Create client and make request with SSL verification disabled
-            # (pyhafas may create connections during initialization)
-            # Note: pyhafas methods are synchronous, not async
-            with hafas_ssl_context():
-                client = HafasClient(profile_class())
-                locations = client.locations(query)  # Not async
-            if locations:
-                for location in locations:
-                    location_obj = getattr(location, "location", None)
-                    if not location_obj:
-                        continue
-
-                    station_id = getattr(location, "id", "")
-                    station_name = getattr(location, "name", "")
-                    city = (
-                        getattr(location_obj, "city", None)
-                        or getattr(location_obj, "name", None)
-                        or ""
-                    )
-
-                    # Check if we already have this station
-                    existing = next((r for r in results if r.get("id") == station_id), None)
-                    if not existing:
-                        results.append(
-                            {
-                                "id": station_id,
-                                "name": station_name,
-                                "place": city,
-                                "profile": profile_name,
-                            }
-                        )
-        except Exception as e:
-            # Log the error for debugging but continue to next profile
-            import sys
-
-            # Try to extract more details from the exception
-            error_msg = str(e) if str(e) else f"{type(e).__name__}"
-
-            # For GeneralHafasError and other exceptions, try to get more details
-            if hasattr(e, "message") and e.message:
-                error_msg = f"{error_msg}: {e.message}"
-            elif hasattr(e, "args") and e.args:
-                # Show all args if available (often contains the actual error message)
-                if len(e.args) > 1:
-                    error_msg = f"{error_msg}: {e.args[1]}"
-                elif len(e.args) == 1 and str(e.args[0]) != error_msg:
-                    # If args[0] is different from str(e), include it
-                    error_msg = f"{error_msg}: {e.args[0]}"
-
-            # Check for underlying exception (__cause__ or __context__)
-            if hasattr(e, "__cause__") and e.__cause__:
-                error_msg = f"{error_msg} (caused by: {e.__cause__})"
-            elif hasattr(e, "__context__") and e.__context__:
-                error_msg = f"{error_msg} (context: {e.__context__})"
-
-            print(f"  Profile '{profile_name}' failed: {error_msg}", file=sys.stderr)
-            continue
-
-    return results
+    return all_results
 
 
 async def detect_profile_for_station(station_id: str) -> str | None:
@@ -408,10 +424,8 @@ async def detect_and_show_config(station_id: str) -> None:
     print(config_snippet)
 
 
-async def main() -> None:
-    """Main CLI entry point."""
-    import argparse
-
+def _setup_argparse() -> argparse.ArgumentParser:
+    """Set up and configure argument parser."""
     parser = argparse.ArgumentParser(
         description="HAFAS Departures Configuration Helper",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -434,7 +448,6 @@ Note: For Berlin stations, use the VBB REST API instead:
 
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
-    # Search command
     search_parser = subparsers.add_parser("search", help="Search for HAFAS stations")
     search_parser.add_argument("query", help="Station name to search for")
     search_parser.add_argument(
@@ -443,7 +456,6 @@ Note: For Berlin stations, use the VBB REST API instead:
         help="Specific profile to use (default: try all)",
     )
 
-    # Detect command
     detect_parser = subparsers.add_parser("detect", help="Detect profile for a station ID")
     detect_parser.add_argument("station_id", help="Station ID (e.g., 9000589)")
     detect_parser.add_argument(
@@ -452,6 +464,59 @@ Note: For Berlin stations, use the VBB REST API instead:
         help="Force a specific profile instead of auto-detecting",
     )
 
+    return parser
+
+
+def _display_station_details(station_name: str, profile: str, routes: dict[str, Any]) -> None:
+    """Display station details and routes."""
+    print(f"Station: {station_name}")
+    print(f"Profile: {profile}")
+    if routes:
+        print(f"Routes: {len(routes)}")
+        for line, route_data in sorted(list(routes.items())[:5]):
+            destinations = route_data.get("destinations", [])
+            print(f"  {line}: {', '.join(destinations[:3])}")
+        if len(routes) > 5:
+            print(f"  ... and {len(routes) - 5} more routes")
+
+
+async def _handle_detect_with_profile(station_id: str, profile: str) -> None:
+    """Handle detect command with forced profile."""
+    print(f"Using profile '{profile}' for station ID: {station_id}\n")
+    details = await get_station_details_hafas(station_id, profile, limit=50)
+    if not details:
+        print(
+            f"Could not get details for station '{station_id}' with profile '{profile}'",
+            file=sys.stderr,
+        )
+        print(f"Station ID: {station_id}", file=sys.stderr)
+        print(f"Profile: {profile}", file=sys.stderr)
+        sys.exit(1)
+
+    station_info = details.get("station", {})
+    station_name = station_info.get("name", station_id)
+    routes = details.get("routes", {})
+
+    _display_station_details(station_name, profile, routes)
+
+    config_snippet = generate_hafas_config_snippet(station_id, station_name, profile, routes)
+    print("\n" + "=" * 70)
+    print("Configuration Snippet:")
+    print("=" * 70)
+    print(config_snippet)
+
+
+async def _handle_detect_command(station_id: str, profile: str | None) -> None:
+    """Handle detect command, either with forced profile or auto-detection."""
+    if profile:
+        await _handle_detect_with_profile(station_id, profile)
+    else:
+        await detect_and_show_config(station_id)
+
+
+async def main() -> None:
+    """Main CLI entry point."""
+    parser = _setup_argparse()
     args = parser.parse_args()
 
     if not args.command:
@@ -461,43 +526,9 @@ Note: For Berlin stations, use the VBB REST API instead:
     try:
         if args.command == "search":
             await search_and_show_config(args.query, profile=getattr(args, "profile", None))
-
         elif args.command == "detect":
-            if hasattr(args, "profile") and args.profile:
-                # Force specific profile
-                print(f"Using profile '{args.profile}' for station ID: {args.station_id}\n")
-                details = await get_station_details_hafas(args.station_id, args.profile, limit=50)
-                if details:
-                    station_info = details.get("station", {})
-                    station_name = station_info.get("name", args.station_id)
-                    routes = details.get("routes", {})
-                    print(f"Station: {station_name}")
-                    print(f"Profile: {args.profile}")
-                    if routes:
-                        print(f"Routes: {len(routes)}")
-                        for line, route_data in sorted(list(routes.items())[:5]):
-                            destinations = route_data.get("destinations", [])
-                            print(f"  {line}: {', '.join(destinations[:3])}")
-                        if len(routes) > 5:
-                            print(f"  ... and {len(routes) - 5} more routes")
-                    config_snippet = generate_hafas_config_snippet(
-                        args.station_id, station_name, args.profile, routes
-                    )
-                    print("\n" + "=" * 70)
-                    print("Configuration Snippet:")
-                    print("=" * 70)
-                    print(config_snippet)
-                else:
-                    print(
-                        f"Could not get details for station '{args.station_id}' with profile '{args.profile}'",
-                        file=sys.stderr,
-                    )
-                    print(f"Station ID: {args.station_id}", file=sys.stderr)
-                    print(f"Profile: {args.profile}", file=sys.stderr)
-                    sys.exit(1)
-            else:
-                await detect_and_show_config(args.station_id)
-
+            profile = getattr(args, "profile", None)
+            await _handle_detect_command(args.station_id, profile)
     except KeyboardInterrupt:
         print("\nInterrupted.", file=sys.stderr)
         sys.exit(1)
