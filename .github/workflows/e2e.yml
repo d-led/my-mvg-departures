@@ -33,8 +33,7 @@ jobs:
       contents: read
       packages: read
     container:
-      image: cypress/included:15.8.1
-      options: --user 1001
+      image: cypress/included:latest
     services:
       app:
         image: ${{ inputs.docker_image != '' && inputs.docker_image || format('ghcr.io/{0}:main', github.repository) }}
@@ -54,23 +53,22 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.workflow_run && github.event.workflow_run.head_sha || github.ref }}
+      - name: Configure git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Install dependencies
         run: npm install --prefer-offline --no-audit --progress=false
       - name: Wait for service
         run: |
+          apt-get update && apt-get install -y curl
           for i in {1..60}; do
             curl -f http://app:8000/healthz > /dev/null 2>&1 && break || sleep 1
           done
-      - name: Verify service connectivity
+      - name: Run E2E tests (with JUnit reporter)
         run: |
-          echo "Testing connectivity to app:8000..."
-          curl -v http://app:8000/healthz || true
-          curl -v http://app:8000/ || true
-          echo "Service is accessible"
-      - name: Run E2E tests
-        run: npx cypress run --e2e --browser chrome --config baseUrl=http://app:8000 --spec 'cypress/e2e/!(screenshot).cy.js' --reporter mocha-junit-reporter --reporter-options mochaFile=test-results/junit-[hash].xml
+          mkdir -p test-results
+          npx cypress run --e2e --browser chrome --config baseUrl=http://app:8000 --spec 'cypress/e2e/!(screenshot).cy.js' --reporter mocha-junit-reporter --reporter-options mochaFile=test-results/junit-[hash].xml
         env:
-          CYPRESS_INSTALL_BINARY: 0
+          CYPRESS_CI: true
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
