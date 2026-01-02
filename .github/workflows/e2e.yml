@@ -11,6 +11,10 @@ on:
         description: "Set to true to deploy to GitHub Pages after E2E"
         required: false
         default: "false"
+      docker_image:
+        description: "Docker image to use for the app service (default: ghcr.io image)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -21,21 +25,33 @@ permissions:
 jobs:
   e2e:
     runs-on: ubuntu-latest
+    # Note: For workflow_dispatch (local testing with act), the needs dependency will be ignored if build-and-push doesn't exist
+    # For CI (push/PR), this ensures the Docker image is built first
+    # needs: build-and-push
+    permissions:
+      contents: read
+      packages: read
     container:
       image: cypress/included:latest
+    services:
+      app:
+        image: ${{ inputs.docker_image != '' && inputs.docker_image || format('ghcr.io/{0}:main', github.repository) }}
+        ports:
+          - 8000:8000
+        env:
+          HOST: "0.0.0.0"
+          PORT: "8000"
+          CONFIG_FILE: /app/config.example.toml
+        options: >-
+          --health-cmd "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')\""
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
       - name: Configure git safe directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
       - name: Cache npm (node_modules + npm cache)
         uses: actions/cache@v4
         with:
@@ -47,27 +63,21 @@ jobs:
             ${{ runner.os }}-node-
       - name: Install dependencies
         run: npm ci --prefer-offline --no-audit --progress=false
-      - name: Start server in background
+      - name: Wait for service to be ready
         run: |
-          python -m mvg_departures.main &
-          sleep 5
-          # Wait for server to be ready
-          for i in {1..30}; do
-            if curl -f http://localhost:8000/healthz > /dev/null 2>&1; then
-              echo "Server is ready"
+          echo "Waiting for app service to be healthy..."
+          for i in {1..60}; do
+            if curl -f http://app:8000/healthz > /dev/null 2>&1; then
+              echo "Service is ready!"
               break
             fi
-            echo "Waiting for server... ($i/30)"
+            echo "Waiting for service... ($i/60)"
             sleep 1
           done
-        env:
-          HOST: "127.0.0.1"
-          PORT: "8000"
-          CONFIG_FILE: config.example.toml
       - name: Run E2E tests (with JUnit reporter)
         run: |
           mkdir -p test-results
-          npm run e2e -- --reporter mocha-junit-reporter --reporter-options mochaFile=test-results/junit-[hash].xml
+          npm run e2e -- --config baseUrl=http://app:8000 --reporter mocha-junit-reporter --reporter-options mochaFile=test-results/junit-[hash].xml
         env:
           CYPRESS_CI: true
       - name: Upload Cypress screenshots
