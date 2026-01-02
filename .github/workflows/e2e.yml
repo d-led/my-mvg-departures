@@ -59,9 +59,8 @@ jobs:
         run: npm install --prefer-offline --no-audit --progress=false
       - name: Wait for service
         run: |
-          apt-get update && apt-get install -y curl
           for i in {1..60}; do
-            curl -f http://app:8000/healthz > /dev/null 2>&1 && break || sleep 1
+            node -e "require('http').get('http://app:8000/healthz', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))" && break || sleep 1
           done
       - name: Run E2E tests (with JUnit reporter)
         run: |
