@@ -135,6 +135,150 @@ class ApiPoller(ApiPollerProtocol):
             logger.info("API poller cancelled")
             raise
 
+    async def _fetch_groups_for_stop(
+        self, stop_config: StopConfiguration
+    ) -> list[GroupedDepartures]:
+        """Fetch grouped departures for a stop (from cache or API).
+
+        Args:
+            stop_config: Stop configuration.
+
+        Returns:
+            List of grouped departures.
+        """
+        if stop_config.departure_leeway_minutes > 0:
+            return await self.grouping_service.get_grouped_departures(stop_config)
+
+        if self.shared_cache is None:
+            return await self.grouping_service.get_grouped_departures(stop_config)
+
+        raw_departures = self.shared_cache.get(stop_config.station_id, [])
+        if not raw_departures:
+            logger.info(
+                f"Cache empty for {stop_config.station_name} "
+                f"(station_id: {stop_config.station_id}), fetching fresh from API"
+            )
+            return await self.grouping_service.get_grouped_departures(stop_config)
+
+        now = datetime.now(UTC)
+        max_age = timedelta(hours=1)
+        recent_departures = [d for d in raw_departures if d.time >= now - max_age]
+
+        if not recent_departures:
+            logger.warning(
+                f"Cached departures for {stop_config.station_name} are too old, "
+                f"fetching fresh from API"
+            )
+            return await self.grouping_service.get_grouped_departures(stop_config)
+
+        return self.grouping_service.group_departures(recent_departures, stop_config)
+
+    def _deduplicate_departures(self, groups: list[GroupedDepartures]) -> list[GroupedDepartures]:
+        """Deduplicate departures within groups.
+
+        Args:
+            groups: List of grouped departures.
+
+        Returns:
+            List of grouped departures with duplicates removed.
+        """
+        deduplicated: list[GroupedDepartures] = []
+        for group in groups:
+            seen = set()
+            unique_departures = []
+            for dep in group.departures:
+                dep_key = (dep.line, dep.destination, dep.time)
+                if dep_key not in seen:
+                    seen.add(dep_key)
+                    unique_departures.append(dep)
+                else:
+                    logger.warning(
+                        f"Duplicate departure detected and removed: {dep.line} to {dep.destination} at {dep.time}"
+                    )
+            deduplicated.append(
+                GroupedDepartures(direction_name=group.direction_name, departures=unique_departures)
+            )
+        return deduplicated
+
+    def _build_direction_groups_with_metadata(
+        self,
+        stop_config: StopConfiguration,
+        groups: list[GroupedDepartures],
+    ) -> list[DirectionGroupWithMetadata]:
+        """Build direction groups with metadata from grouped departures.
+
+        Args:
+            stop_config: Stop configuration.
+            groups: List of grouped departures.
+
+        Returns:
+            List of direction groups with metadata.
+        """
+        result: list[DirectionGroupWithMetadata] = []
+        for group in groups:
+            result.append(
+                DirectionGroupWithMetadata(
+                    station_id=stop_config.station_id,
+                    stop_name=stop_config.station_name,
+                    direction_name=group.direction_name,
+                    departures=group.departures,
+                    random_header_colors=stop_config.random_header_colors,
+                    header_background_brightness=stop_config.header_background_brightness,
+                    random_color_salt=stop_config.random_color_salt,
+                )
+            )
+        return result
+
+    def _build_stale_direction_groups_with_metadata(
+        self,
+        stop_config: StopConfiguration,
+        cached_groups: list[GroupedDepartures],
+    ) -> list[DirectionGroupWithMetadata]:
+        """Build direction groups with metadata from cached groups, marking as stale.
+
+        Args:
+            stop_config: Stop configuration.
+            cached_groups: List of cached grouped departures.
+
+        Returns:
+            List of direction groups with metadata (marked as stale).
+        """
+        result: list[DirectionGroupWithMetadata] = []
+        for cached_group in cached_groups:
+            stale_departures = [replace(dep, is_realtime=False) for dep in cached_group.departures]
+            result.append(
+                DirectionGroupWithMetadata(
+                    station_id=stop_config.station_id,
+                    stop_name=stop_config.station_name,
+                    direction_name=cached_group.direction_name,
+                    departures=stale_departures,
+                    random_header_colors=stop_config.random_header_colors,
+                    header_background_brightness=stop_config.header_background_brightness,
+                    random_color_salt=stop_config.random_color_salt,
+                )
+            )
+        return result
+
+    async def _process_stop_config(
+        self, stop_config: StopConfiguration
+    ) -> list[DirectionGroupWithMetadata]:
+        """Process a single stop configuration and return direction groups.
+
+        Args:
+            stop_config: Stop configuration.
+
+        Returns:
+            List of direction groups with metadata.
+        """
+        groups = await self._fetch_groups_for_stop(stop_config)
+        deduplicated_groups = self._deduplicate_departures(groups)
+        direction_groups = self._build_direction_groups_with_metadata(
+            stop_config, deduplicated_groups
+        )
+        self.cached_departures[stop_config.station_name] = deduplicated_groups
+        logger.debug(f"Successfully processed departures for {stop_config.station_name}")
+        return direction_groups
+
     async def _process_and_broadcast(self) -> None:
         """Process departures (from cache or API) and broadcast update."""
         all_groups: list[DirectionGroupWithMetadata] = []
@@ -142,99 +286,8 @@ class ApiPoller(ApiPollerProtocol):
 
         for stop_config in self.stop_configs:
             try:
-                # When departure_leeway_minutes > 0, always fetch fresh to ensure correct reference_time_utc
-                # Cached data was fetched at a different time, and comparing against current "now" can filter out valid departures
-                if stop_config.departure_leeway_minutes > 0:
-                    # Always fetch fresh to ensure times are relative to current "now"
-                    groups = await self.grouping_service.get_grouped_departures(stop_config)
-                elif self.shared_cache is not None:
-                    # Use shared cache - get raw departures and process them
-                    raw_departures = self.shared_cache.get(stop_config.station_id, [])
-                    if not raw_departures:
-                        # Cache is empty - fetch fresh data directly from API
-                        # This ensures we always have fresh data, per requirement
-                        logger.info(
-                            f"Cache empty for {stop_config.station_name} "
-                            f"(station_id: {stop_config.station_id}), fetching fresh from API"
-                        )
-                        # Fetch directly from API to get fresh data
-                        groups = await self.grouping_service.get_grouped_departures(stop_config)
-                    else:
-                        # Check if cached departures are too old (more than 1 hour old)
-                        # Filter out departures that are more than 1 hour in the past
-                        now = datetime.now(UTC)
-                        max_age = timedelta(hours=1)
-                        recent_departures = [d for d in raw_departures if d.time >= now - max_age]
-
-                        if not recent_departures:
-                            # All cached departures are too old - fetch fresh data
-                            logger.warning(
-                                f"Cached departures for {stop_config.station_name} are too old, "
-                                f"fetching fresh from API"
-                            )
-                            groups = await self.grouping_service.get_grouped_departures(stop_config)
-                        else:
-                            # Process cached raw departures using this route's stop configuration
-                            groups = self.grouping_service.group_departures(
-                                recent_departures, stop_config
-                            )
-                else:
-                    # Fetch from API (fallback if no shared cache)
-                    groups = await self.grouping_service.get_grouped_departures(stop_config)
-
-                # Convert to format with station_name and deduplicate departures
-                # Deduplication: same line + destination + time = same departure
-                stop_groups: list[GroupedDepartures] = []
-                for group in groups:
-                    # Deduplicate departures within this direction group
-                    seen = set()
-                    unique_departures = []
-                    for dep in group.departures:
-                        # Create a unique key: line + destination + time
-                        dep_key = (dep.line, dep.destination, dep.time)
-                        if dep_key not in seen:
-                            seen.add(dep_key)
-                            unique_departures.append(dep)
-                        else:
-                            logger.warning(
-                                f"Duplicate departure detected and removed: {dep.line} to {dep.destination} at {dep.time}"
-                            )
-                    stop_groups.append(
-                        GroupedDepartures(
-                            direction_name=group.direction_name, departures=unique_departures
-                        )
-                    )
-                    # Include config settings directly - no matching needed
-                    # Use stop-level settings if provided, otherwise use route-level defaults
-                    random_colors = (
-                        stop_config.random_header_colors
-                        if stop_config.random_header_colors is not None
-                        else None  # Will use route-level default in calculator
-                    )
-                    brightness = (
-                        stop_config.header_background_brightness
-                        if stop_config.header_background_brightness is not None
-                        else None  # Will use route-level default in calculator
-                    )
-                    salt = (
-                        stop_config.random_color_salt
-                        if stop_config.random_color_salt is not None
-                        else None  # Will use route-level default in calculator
-                    )
-                    all_groups.append(
-                        DirectionGroupWithMetadata(
-                            station_id=stop_config.station_id,
-                            stop_name=stop_config.station_name,
-                            direction_name=group.direction_name,
-                            departures=unique_departures,
-                            random_header_colors=random_colors,
-                            header_background_brightness=brightness,
-                            random_color_salt=salt,
-                        )
-                    )
-                # Cache successful processing - always replace with fresh data
-                self.cached_departures[stop_config.station_name] = stop_groups
-                logger.debug(f"Successfully processed departures for {stop_config.station_name}")
+                direction_groups = await self._process_stop_config(stop_config)
+                all_groups.extend(direction_groups)
             except Exception as e:
                 error_details = _extract_error_details(e)
                 logger.error(
@@ -248,48 +301,17 @@ class ApiPoller(ApiPollerProtocol):
                         "consider adding delays between API calls"
                     )
 
-                # Use cached processed groups if available, mark as stale
                 if stop_config.station_name in self.cached_departures:
                     cached_groups = self.cached_departures[stop_config.station_name]
                     logger.info(
                         f"Using cached processed departures for {stop_config.station_name} "
                         f"({len(cached_groups)} direction groups) due to {error_details.reason}"
                     )
-                    # Mark departures as stale (non-realtime)
-                    for cached_group in cached_groups:
-                        stale_departures = [
-                            replace(dep, is_realtime=False) for dep in cached_group.departures
-                        ]
-                        # Include config settings directly - no matching needed
-                        random_colors = (
-                            stop_config.random_header_colors
-                            if stop_config.random_header_colors is not None
-                            else None
-                        )
-                        brightness = (
-                            stop_config.header_background_brightness
-                            if stop_config.header_background_brightness is not None
-                            else None
-                        )
-                        salt = (
-                            stop_config.random_color_salt
-                            if stop_config.random_color_salt is not None
-                            else None
-                        )
-                        all_groups.append(
-                            DirectionGroupWithMetadata(
-                                station_id=stop_config.station_id,
-                                stop_name=stop_config.station_name,
-                                direction_name=cached_group.direction_name,
-                                departures=stale_departures,
-                                random_header_colors=random_colors,
-                                header_background_brightness=brightness,
-                                random_color_salt=salt,
-                            )
-                        )
-                # Continue with other stops even if one fails
+                    stale_groups = self._build_stale_direction_groups_with_metadata(
+                        stop_config, cached_groups
+                    )
+                    all_groups.extend(stale_groups)
 
-        # Update shared state (even if some stops failed, use what we got)
         self.state_updater.update_departures(all_groups)
         self.state_updater.update_last_update_time(datetime.now(UTC))
         self.state_updater.update_api_status("error" if has_errors else "success")
@@ -299,5 +321,4 @@ class ApiPoller(ApiPollerProtocol):
             f"groups: {len(all_groups)}, errors: {has_errors}"
         )
 
-        # Broadcast update via pubsub to all subscribed sockets
         await self.state_broadcaster.broadcast_update(self.broadcast_topic)
