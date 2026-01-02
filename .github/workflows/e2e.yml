@@ -52,17 +52,8 @@ jobs:
         uses: actions/checkout@v4
       - name: Configure git safe directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Cache npm (node_modules + npm cache)
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.npm
-            node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-      - name: Install dependencies
-        run: npm ci --prefer-offline --no-audit --progress=false
+      - name: Install JUnit reporter
+        run: npm install mocha-junit-reporter --no-save --no-package-lock
       - name: Wait for service to be ready
         run: |
           echo "Waiting for app service to be healthy..."
