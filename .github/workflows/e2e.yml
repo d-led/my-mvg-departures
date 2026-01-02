@@ -34,7 +34,7 @@ jobs:
       packages: read
     container:
       image: cypress/included:15.8.1
-      options: --user 1001 --ipc=host --shm-size=2gb
+      options: --user 1001
     services:
       app:
         image: ${{ inputs.docker_image != '' && inputs.docker_image || format('ghcr.io/{0}:main', github.repository) }}
@@ -56,18 +56,13 @@ jobs:
           ref: ${{ github.event.workflow_run && github.event.workflow_run.head_sha || github.ref }}
       - name: Install dependencies
         run: npm install --prefer-offline --no-audit --progress=false
-      - name: Wait for service to be ready
+      - name: Wait for service
         run: |
           for i in {1..60}; do
             curl -f http://app:8000/healthz > /dev/null 2>&1 && break || sleep 1
           done
       - name: Run E2E tests
-        uses: cypress-io/github-action@v6
-        with:
-          browser: chrome
-          config-file: cypress.config.ts
-          config: baseUrl=http://app:8000
-          spec: cypress/e2e/!(screenshot).cy.js
+        run: npx cypress run --e2e --browser chrome --config baseUrl=http://app:8000 --spec 'cypress/e2e/!(screenshot).cy.js' --reporter mocha-junit-reporter --reporter-options mochaFile=test-results/junit-[hash].xml
         env:
           CYPRESS_INSTALL_BINARY: 0
       - name: Upload test results
