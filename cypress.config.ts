@@ -16,6 +16,13 @@ export default defineConfig({
     setupNodeEvents(on, config) {
       // No server startup needed - server should be running on localhost:8000
       // For CI, use: npm run e2e -- --config baseUrl=http://your-ci-server-url
+      on("before:browser:launch", (browser, launchOptions) => {
+        if (browser.family === "chromium" && browser.name !== "electron") {
+          launchOptions.args.push("--no-sandbox");
+          launchOptions.args.push("--disable-dev-shm-usage");
+        }
+        return launchOptions;
+      });
       return config;
     },
   },
