@@ -23,6 +23,12 @@ permissions:
   id-token: write
 
 jobs:
+  dummy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dummy step
+        run: echo "Waiting for build to complete..."
+
   e2e:
     runs-on: ubuntu-latest
     # Note: For workflow_dispatch (local testing with act), the needs dependency will be ignored if build-and-push doesn't exist
