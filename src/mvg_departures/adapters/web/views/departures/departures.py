@@ -25,7 +25,10 @@ from mvg_departures.adapters.web.state import DeparturesState, State
 from mvg_departures.domain.contracts import (
     PresenceTrackerProtocol,  # noqa: TC001 - Runtime dependency: methods called at runtime
 )
-from mvg_departures.domain.models import StopConfiguration
+from mvg_departures.domain.models import (
+    DirectionGroupWithMetadata,
+    StopConfiguration,
+)
 from mvg_departures.domain.ports import (
     DepartureGroupingService,  # noqa: TC001 - Runtime dependency: methods called at runtime
 )
@@ -280,76 +283,73 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             "static_version": self._static_version,
         }
 
-    async def mount(self, socket: LiveViewSocket[DeparturesState], _session: dict) -> None:
-        """Mount the LiveView and register socket for updates."""
-        # Initialize context with current shared state
-        route_path = self.state_manager.route_path
+    def _ensure_presence_session_id(self, _session: dict) -> str:
+        """Create or get stable session ID for this connection.
 
-        # Create or get stable session ID for this connection
-        # This persists across reconnections, unlike socket object ID
+        Args:
+            _session: Session dictionary.
+
+        Returns:
+            Presence session ID.
+        """
         if "_presence_session_id" not in _session:
             _session["_presence_session_id"] = str(uuid.uuid4())
             logger.debug(f"Created new presence session ID: {_session['_presence_session_id']}")
+        session_id = _session["_presence_session_id"]
+        return str(session_id) if isinstance(session_id, str) else str(uuid.uuid4())
 
-        # Register socket first so we can use it for cleanup. We pass the stable
-        # presence session ID so that reconnects from the same client replace
-        # the previous socket instead of leaking additional entries.
-        presence_session_id = _session["_presence_session_id"]
-        if not self.state_manager.register_socket(socket, presence_session_id):
-            # Connection rejected due to per-browser session limits.
-            # Do not proceed with presence tracking or subscriptions.
-            return
+    async def _handle_presence_tracking(
+        self, route_path: str, socket: LiveViewSocket[DeparturesState], _session: dict
+    ) -> None:
+        """Handle presence tracking for connected socket.
 
-        # Only track presence if socket is actually connected
-        # Unconnected sockets (e.g., from load testing tools) should not be counted
-        if is_connected(socket):
-            # Join presence tracking - only track if connected
-            # Use get_or_create pattern: if already in presence, don't duplicate
-            # Use session dict to get stable user ID (persists across reconnections)
-            if not self.presence_tracker.is_user_tracked(socket, _session):
-                presence_result = self.presence_tracker.join_dashboard(route_path, socket, _session)
-                user_id = presence_result.user_id
-                local_count = presence_result.local_count
-                total_count = presence_result.total_count
-            else:
-                # Already in presence, just ensure it's in the right dashboard
-                presence_counts = self.presence_tracker.ensure_dashboard_membership(
-                    route_path, socket, _session
-                )
-                user_id = self.presence_tracker.get_user_id(socket, _session)
-                local_count = presence_counts.local_count
-                total_count = presence_counts.total_count
-                logger.debug(f"User {user_id} already in presence, ensured dashboard membership")
-
-            client_info = get_client_info_from_socket(socket)
-            logger.info(
-                (
-                    "Presence: user %s joined dashboard %s from ip=%s, agent=%s, "
-                    "browser_id=%s. Local: %s, Total: %s"
-                ),
-                user_id,
-                route_path,
-                client_info.ip,
-                client_info.user_agent,
-                client_info.browser_id,
-                local_count,
-                total_count,
-            )
-
-            # Update state with initial presence counts
-            self.state_manager.departures_state.presence_local = local_count
-            self.state_manager.departures_state.presence_total = total_count
-
-            # Broadcast presence update using PresenceBroadcaster
-            await self.presence_broadcaster.broadcast_join(
-                route_path, user_id, local_count, total_count, socket
-            )
+        Args:
+            route_path: Route path.
+            socket: LiveView socket.
+            _session: Session dictionary.
+        """
+        if not self.presence_tracker.is_user_tracked(socket, _session):
+            presence_result = self.presence_tracker.join_dashboard(route_path, socket, _session)
+            user_id = presence_result.user_id
+            local_count = presence_result.local_count
+            total_count = presence_result.total_count
         else:
-            logger.debug(
-                "Socket not connected during mount - skipping presence tracking. "
-                "User will be tracked when socket connects."
+            presence_counts = self.presence_tracker.ensure_dashboard_membership(
+                route_path, socket, _session
             )
+            user_id = self.presence_tracker.get_user_id(socket, _session)
+            local_count = presence_counts.local_count
+            total_count = presence_counts.total_count
+            logger.debug(f"User {user_id} already in presence, ensured dashboard membership")
 
+        client_info = get_client_info_from_socket(socket)
+        logger.info(
+            (
+                "Presence: user %s joined dashboard %s from ip=%s, agent=%s, "
+                "browser_id=%s. Local: %s, Total: %s"
+            ),
+            user_id,
+            route_path,
+            client_info.ip,
+            client_info.user_agent,
+            client_info.browser_id,
+            local_count,
+            total_count,
+        )
+
+        self.state_manager.departures_state.presence_local = local_count
+        self.state_manager.departures_state.presence_total = total_count
+
+        await self.presence_broadcaster.broadcast_join(
+            route_path, user_id, local_count, total_count, socket
+        )
+
+    def _set_socket_context(self, socket: LiveViewSocket[DeparturesState]) -> None:
+        """Set socket context with current state.
+
+        Args:
+            socket: LiveView socket.
+        """
         socket.context = DeparturesState(
             direction_groups=self.state_manager.departures_state.direction_groups,
             last_update=self.state_manager.departures_state.last_update,
@@ -366,54 +366,75 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             ),
         )
 
-        # Store session ID in socket for later use in unmount/disconnect
-        # This allows us to use the same stable ID even if session dict is not available
+    async def _subscribe_and_track_presence(
+        self, route_path: str, socket: LiveViewSocket[DeparturesState], _session: dict
+    ) -> None:
+        """Subscribe to broadcast topic and track presence if needed.
+
+        Args:
+            route_path: Route path.
+            socket: LiveView socket.
+            _session: Session dictionary.
+        """
+        try:
+            await socket.subscribe(self.state_manager.broadcast_topic)
+            logger.info(
+                f"Successfully subscribed socket to broadcast topic: {self.state_manager.broadcast_topic}"
+            )
+
+            if not self.presence_tracker.is_user_tracked(socket, _session):
+                presence_result = self.presence_tracker.join_dashboard(route_path, socket, _session)
+                user_id = presence_result.user_id
+                local_count = presence_result.local_count
+                total_count = presence_result.total_count
+                client_info = get_client_info_from_socket(socket)
+                logger.info(
+                    (
+                        "Presence: user %s joined dashboard %s (connected after mount) "
+                        "from ip=%s, agent=%s, browser_id=%s. Local: %s, Total: %s"
+                    ),
+                    user_id,
+                    route_path,
+                    client_info.ip,
+                    client_info.user_agent,
+                    client_info.browser_id,
+                    local_count,
+                    total_count,
+                )
+                self.state_manager.departures_state.presence_local = local_count
+                self.state_manager.departures_state.presence_total = total_count
+                await self.presence_broadcaster.broadcast_join(
+                    route_path, user_id, local_count, total_count, socket
+                )
+        except Exception as e:
+            logger.error(
+                f"Failed to subscribe to topic {self.state_manager.broadcast_topic}: {e}",
+                exc_info=True,
+            )
+
+    async def mount(self, socket: LiveViewSocket[DeparturesState], _session: dict) -> None:
+        """Mount the LiveView and register socket for updates."""
+        route_path = self.state_manager.route_path
+
+        presence_session_id = self._ensure_presence_session_id(_session)
+        if not self.state_manager.register_socket(socket, presence_session_id):
+            return
+
+        if is_connected(socket):
+            await self._handle_presence_tracking(route_path, socket, _session)
+        else:
+            logger.debug(
+                "Socket not connected during mount - skipping presence tracking. "
+                "User will be tracked when socket connects."
+            )
+
+        self._set_socket_context(socket)
+
         if not hasattr(socket, "_presence_session_id"):
             socket._presence_session_id = _session.get("_presence_session_id")
 
-        # Socket already registered above for cleanup purposes
-
-        # Subscribe to broadcast topic for receiving updates
         if is_connected(socket):
-            try:
-                await socket.subscribe(self.state_manager.broadcast_topic)
-                logger.info(
-                    f"Successfully subscribed socket to broadcast topic: {self.state_manager.broadcast_topic}"
-                )
-                # If socket wasn't connected at mount but is now, track presence
-                if not self.presence_tracker.is_user_tracked(socket, _session):
-                    presence_result = self.presence_tracker.join_dashboard(
-                        route_path, socket, _session
-                    )
-                    user_id = presence_result.user_id
-                    local_count = presence_result.local_count
-                    total_count = presence_result.total_count
-                    client_info = get_client_info_from_socket(socket)
-                    logger.info(
-                        (
-                            "Presence: user %s joined dashboard %s (connected after mount) "
-                            "from ip=%s, agent=%s, browser_id=%s. Local: %s, Total: %s"
-                        ),
-                        user_id,
-                        route_path,
-                        client_info.ip,
-                        client_info.user_agent,
-                        client_info.browser_id,
-                        local_count,
-                        total_count,
-                    )
-                    # Update state with presence counts
-                    self.state_manager.departures_state.presence_local = local_count
-                    self.state_manager.departures_state.presence_total = total_count
-                    # Broadcast presence update
-                    await self.presence_broadcaster.broadcast_join(
-                        route_path, user_id, local_count, total_count, socket
-                    )
-            except Exception as e:
-                logger.error(
-                    f"Failed to subscribe to topic {self.state_manager.broadcast_topic}: {e}",
-                    exc_info=True,
-                )
+            await self._subscribe_and_track_presence(route_path, socket, _session)
         else:
             logger.warning("Socket not connected during mount, will receive updates when connected")
 
@@ -575,115 +596,143 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         # This ensures cache is busted on redeployment
         return hashlib.md5(str(datetime.now(UTC).timestamp()).encode()).hexdigest()[:8]
 
+    def _extract_state_from_assigns(self, assigns: DeparturesState | dict) -> DeparturesState:
+        """Extract DeparturesState from assigns.
+
+        Args:
+            assigns: Assigns object (DeparturesState or dict).
+
+        Returns:
+            DeparturesState object.
+        """
+        if isinstance(assigns, DeparturesState):
+            return assigns
+
+        if isinstance(assigns, dict):
+            state = assigns.get("context", self.state_manager.departures_state)
+            if isinstance(state, DeparturesState):
+                return state
+
+        return self.state_manager.departures_state
+
+    def _normalize_presence_values(self, state: DeparturesState) -> None:
+        """Normalize presence values to ensure they're integers.
+
+        Args:
+            state: DeparturesState to normalize.
+        """
+        if not hasattr(state, "presence_local") or state.presence_local is None:
+            state.presence_local = 0
+        if not hasattr(state, "presence_total") or state.presence_total is None:
+            state.presence_total = 0
+
+        state.presence_local = (
+            int(state.presence_local) if isinstance(state.presence_local, (int, float)) else 0
+        )
+        state.presence_total = (
+            int(state.presence_total) if isinstance(state.presence_total, (int, float)) else 0
+        )
+
+    def _calculate_template_data(
+        self, direction_groups: list[DirectionGroupWithMetadata]
+    ) -> dict[str, Any]:
+        """Calculate and validate template data.
+
+        Args:
+            direction_groups: List of direction groups.
+
+        Returns:
+            Dictionary with template data.
+        """
+        try:
+            template_data = self.departure_grouping_calculator.calculate_display_data(
+                direction_groups
+            )
+            if not isinstance(template_data, dict):
+                logger.warning(
+                    f"template_data is not a dict, got {type(template_data)}, using empty dict"
+                )
+                template_data = {}
+
+            if (
+                "groups_with_departures" not in template_data
+                or template_data["groups_with_departures"] is None
+            ):
+                template_data["groups_with_departures"] = []
+            if (
+                "stops_without_departures" not in template_data
+                or template_data["stops_without_departures"] is None
+            ):
+                template_data["stops_without_departures"] = []
+            if "has_departures" not in template_data:
+                template_data["has_departures"] = False
+
+            return template_data
+        except Exception as e:
+            logger.error(f"Error calculating template data: {e}", exc_info=True)
+            return {
+                "groups_with_departures": [],
+                "stops_without_departures": [],
+                "has_departures": False,
+            }
+
+    def _load_template(self) -> LiveTemplate:
+        """Load and prepare template for rendering.
+
+        Returns:
+            LiveTemplate object.
+        """
+        current_file_dir = os.path.dirname(os.path.abspath(__file__))
+        views_dir = os.path.dirname(current_file_dir)
+
+        if not hasattr(ibis, "loader") or not isinstance(ibis.loader, FileReloader):
+            ibis.loader = FileReloader(views_dir)
+
+        template_path = "departures/departures.html"
+        template_file = os.path.join(views_dir, template_path)
+        with open(template_file, encoding="utf-8") as f:
+            template_content = f.read()
+
+        template = ibis.Template(template_content)
+        return LiveTemplate(template)
+
+    def _create_error_template(self, error: Exception, meta: Any) -> LiveRender:
+        """Create error template for rendering failures.
+
+        Args:
+            error: Exception that occurred.
+            meta: Template metadata.
+
+        Returns:
+            LiveRender object with error template.
+        """
+        try:
+            error_template = ibis.Template("<div>Error rendering template: {{ error }}</div>")
+            error_live_template = LiveTemplate(error_template)
+            error_assigns = {"error": str(error)}
+            return LiveRender(error_live_template, error_assigns, meta)
+        except Exception:
+            minimal_template = ibis.Template("<div>Error: Failed to render</div>")
+            minimal_live_template = LiveTemplate(minimal_template)
+            return LiveRender(minimal_live_template, {}, meta)
+
     async def render(self, assigns: DeparturesState | dict, meta: Any) -> str:
         """Render the HTML template."""
         logger.debug(f"Render called at {datetime.now(UTC)}, assigns type: {type(assigns)}")
 
         try:
-            # Get state from assigns (which is socket.context, a DeparturesState object)
-            if isinstance(assigns, DeparturesState):
-                state = assigns
-            elif isinstance(assigns, dict):
-                # Fallback: if it's a dict, try to get context or use shared state
-                state = assigns.get("context", self.state_manager.departures_state)
-                if not isinstance(state, DeparturesState):
-                    state = self.state_manager.departures_state
-            else:
-                # Fallback to shared state
-                state = self.state_manager.departures_state
-
-            # Ensure direction_groups is never None - default to empty list
-            # This prevents "Cannot read properties of undefined" errors
+            state = self._extract_state_from_assigns(assigns)
             direction_groups = state.direction_groups if state.direction_groups is not None else []
 
-            # Ensure presence values are never None - default to 0
-            # This prevents "undefined" from appearing in the template
-            # CRITICAL: Do this BEFORE building template assigns to ensure template engine never sees None
-            if not hasattr(state, "presence_local") or state.presence_local is None:
-                state.presence_local = 0
-            if not hasattr(state, "presence_total") or state.presence_total is None:
-                state.presence_total = 0
-            # Also ensure they're integers, not floats or strings
-            state.presence_local = (
-                int(state.presence_local) if isinstance(state.presence_local, (int, float)) else 0
-            )
-            state.presence_total = (
-                int(state.presence_total) if isinstance(state.presence_total, (int, float)) else 0
-            )
-
-            # Prepare template data and build assigns
-            # Ensure template_data is always a dict with safe defaults
-            try:
-                template_data = self.departure_grouping_calculator.calculate_display_data(
-                    direction_groups
-                )
-                # Ensure template_data is a dict and has required keys
-                if not isinstance(template_data, dict):
-                    logger.warning(
-                        f"template_data is not a dict, got {type(template_data)}, using empty dict"
-                    )
-                    template_data = {}
-                # Ensure required keys exist with safe defaults
-                if (
-                    "groups_with_departures" not in template_data
-                    or template_data["groups_with_departures"] is None
-                ):
-                    template_data["groups_with_departures"] = []
-                if (
-                    "stops_without_departures" not in template_data
-                    or template_data["stops_without_departures"] is None
-                ):
-                    template_data["stops_without_departures"] = []
-                if "has_departures" not in template_data:
-                    template_data["has_departures"] = False
-            except Exception as e:
-                logger.error(f"Error calculating template data: {e}", exc_info=True)
-                # Fallback to safe defaults
-                template_data = {
-                    "groups_with_departures": [],
-                    "stops_without_departures": [],
-                    "has_departures": False,
-                }
-
+            self._normalize_presence_values(state)
+            template_data = self._calculate_template_data(direction_groups)
             template_assigns = self._build_template_assigns(state, template_data)
 
-            # Use pyview's LiveTemplate system with FileReloader
-            # Set up template loader if not already configured
-            current_file_dir = os.path.dirname(os.path.abspath(__file__))
-            views_dir = os.path.dirname(
-                current_file_dir
-            )  # Go up one level from departures/ to views/
-            if not hasattr(ibis, "loader") or not isinstance(ibis.loader, FileReloader):
-                ibis.loader = FileReloader(views_dir)
-
-            # Load template from file (relative to views directory)
-            # FileReloader uses the template name as a key, and we access it via ibis.loader
-            template_path = "departures/departures.html"
-            # Read the template file content
-            template_file = os.path.join(views_dir, template_path)
-            with open(template_file, encoding="utf-8") as f:
-                template_content = f.read()
-
-            # Create ibis Template from content
-            template = ibis.Template(template_content)
-            live_template = LiveTemplate(template)
-            # LiveRender returns an object with .text() method, not a string
-            # Return it directly - pyview will call .text() on it
+            live_template = self._load_template()
             return LiveRender(live_template, template_assigns, meta)  # type: ignore[no-any-return]
         except Exception as e:
             logger.error(f"Error rendering template: {e}", exc_info=True)
-            # On error, we still need to return a LiveRender object, not a string
-            # Create a minimal error template
-            try:
-                error_template = ibis.Template("<div>Error rendering template: {{ error }}</div>")
-                error_live_template = LiveTemplate(error_template)
-                error_assigns = {"error": str(e)}
-                return LiveRender(error_live_template, error_assigns, meta)  # type: ignore[no-any-return]
-            except Exception:
-                # Last resort: return a simple LiveRender with minimal content
-                minimal_template = ibis.Template("<div>Error: Failed to render</div>")
-                minimal_live_template = LiveTemplate(minimal_template)
-                return LiveRender(minimal_live_template, {}, meta)  # type: ignore[no-any-return]
+            return self._create_error_template(e, meta)  # type: ignore[no-any-return]
 
 
 def create_departures_live_view(

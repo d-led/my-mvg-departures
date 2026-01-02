@@ -235,6 +235,53 @@ class AppConfig(BaseSettings):
 
         return TestAppConfig(**kwargs)
 
+    def _update_display_settings(self, display: dict[str, Any]) -> None:
+        """Update display settings from TOML display section.
+
+        Args:
+            display: Display settings dictionary from TOML.
+        """
+        display_mappings = {
+            "departures_per_page": "departures_per_page",
+            "page_rotation_seconds": "page_rotation_seconds",
+            "pagination_enabled": "pagination_enabled",
+            "theme": "theme",
+            "banner_color": "banner_color",
+            "refresh_interval_seconds": "refresh_interval_seconds",
+            "time_format_toggle_seconds": "time_format_toggle_seconds",
+            "title": "title",
+            "font_size_route_number": "font_size_route_number",
+            "font_size_destination": "font_size_destination",
+            "font_size_platform": "font_size_platform",
+            "font_size_time": "font_size_time",
+            "font_size_stop_header": "font_size_stop_header",
+            "font_size_direction_header": "font_size_direction_header",
+            "font_size_pagination_indicator": "font_size_pagination_indicator",
+            "font_size_countdown_text": "font_size_countdown_text",
+            "font_size_delay_amount": "font_size_delay_amount",
+            "font_size_no_departures": "font_size_no_departures",
+            "font_size_no_departures_available": "font_size_no_departures_available",
+            "font_size_status_header": "font_size_status_header",
+        }
+
+        for toml_key, attr_name in display_mappings.items():
+            if toml_key in display:
+                setattr(self, attr_name, display[toml_key])
+
+    def _update_api_settings(self, api_config: dict[str, Any]) -> None:
+        """Update API settings from TOML api/client section.
+
+        Args:
+            api_config: API settings dictionary from TOML.
+        """
+        if "sleep_ms_between_calls" in api_config:
+            self.sleep_ms_between_calls = api_config["sleep_ms_between_calls"]
+        if "api_provider" in api_config:
+            self.api_provider = api_config["api_provider"]
+        if "hafas_profile" in api_config:
+            hafas_profile_value = api_config["hafas_profile"]
+            self.hafas_profile = hafas_profile_value if hafas_profile_value else None
+
     def _load_toml_data(self) -> dict[str, Any]:
         """Load and parse TOML file, updating display settings."""
         if not self.config_file:
@@ -247,66 +294,114 @@ class AppConfig(BaseSettings):
         with open(config_path, "rb") as f:
             toml_data = tomllib.load(f)
 
-            # Update display settings from TOML if present
             if "display" in toml_data:
                 display = toml_data["display"]
-                if "departures_per_page" in display:
-                    self.departures_per_page = display["departures_per_page"]
-                if "page_rotation_seconds" in display:
-                    self.page_rotation_seconds = display["page_rotation_seconds"]
-                if "pagination_enabled" in display:
-                    self.pagination_enabled = display["pagination_enabled"]
-                if "theme" in display:
-                    self.theme = display["theme"]
-                if "banner_color" in display:
-                    self.banner_color = display["banner_color"]
-                if "refresh_interval_seconds" in display:
-                    self.refresh_interval_seconds = display["refresh_interval_seconds"]
-                if "time_format_toggle_seconds" in display:
-                    self.time_format_toggle_seconds = display["time_format_toggle_seconds"]
-                if "title" in display:
-                    self.title = display["title"]
-                # Font sizes
-                if "font_size_route_number" in display:
-                    self.font_size_route_number = display["font_size_route_number"]
-                if "font_size_destination" in display:
-                    self.font_size_destination = display["font_size_destination"]
-                if "font_size_platform" in display:
-                    self.font_size_platform = display["font_size_platform"]
-                if "font_size_time" in display:
-                    self.font_size_time = display["font_size_time"]
-                if "font_size_stop_header" in display:
-                    self.font_size_stop_header = display["font_size_stop_header"]
-                if "font_size_direction_header" in display:
-                    self.font_size_direction_header = display["font_size_direction_header"]
-                if "font_size_pagination_indicator" in display:
-                    self.font_size_pagination_indicator = display["font_size_pagination_indicator"]
-                if "font_size_countdown_text" in display:
-                    self.font_size_countdown_text = display["font_size_countdown_text"]
-                if "font_size_delay_amount" in display:
-                    self.font_size_delay_amount = display["font_size_delay_amount"]
-                if "font_size_no_departures" in display:
-                    self.font_size_no_departures = display["font_size_no_departures"]
-                if "font_size_no_departures_available" in display:
-                    self.font_size_no_departures_available = display[
-                        "font_size_no_departures_available"
-                    ]
-                if "font_size_status_header" in display:
-                    self.font_size_status_header = display["font_size_status_header"]
+                if isinstance(display, dict):
+                    self._update_display_settings(display)
 
-            # Update API settings from TOML if present
-            # Support both [api] and [client] sections for backward compatibility
             api_config = toml_data.get("api") or toml_data.get("client", {})
-            if "sleep_ms_between_calls" in api_config:
-                self.sleep_ms_between_calls = api_config["sleep_ms_between_calls"]
-            if "api_provider" in api_config:
-                self.api_provider = api_config["api_provider"]
-            if "hafas_profile" in api_config:
-                hafas_profile_value = api_config["hafas_profile"]
-                # Convert empty string to None for auto-detection
-                self.hafas_profile = hafas_profile_value if hafas_profile_value else None
+            if isinstance(api_config, dict):
+                self._update_api_settings(api_config)
 
             return toml_data
+
+    def _extract_display_settings(self, toml_data: dict[str, Any]) -> dict[str, Any]:
+        """Extract display settings from TOML data.
+
+        Args:
+            toml_data: TOML data dictionary.
+
+        Returns:
+            Dictionary with display settings.
+        """
+        if "display" not in toml_data:
+            return {}
+
+        display = toml_data["display"]
+        if not isinstance(display, dict):
+            return {}
+
+        display_settings: dict[str, Any] = {}
+        display_keys = [
+            "fill_vertical_space",
+            "font_scaling_factor_when_filling",
+            "random_header_colors",
+            "header_background_brightness",
+            "random_color_salt",
+        ]
+
+        for key in display_keys:
+            if key in display:
+                display_settings[key] = display[key]
+
+        return display_settings
+
+    def _create_default_route(
+        self, stops: list[dict[str, Any]], toml_data: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Create default route from stops configuration.
+
+        Args:
+            stops: List of stop configurations.
+            toml_data: TOML data dictionary.
+
+        Returns:
+            Default route dictionary, or None if no valid stops.
+        """
+        if not isinstance(stops, list):
+            raise ValueError("TOML config 'stops' must be a list")
+
+        filtered_stops = [s for s in stops if s.get("station_id", "").find("XXX") == -1]
+        if not filtered_stops:
+            return None
+
+        default_route: dict[str, Any] = {"path": "/", "stops": filtered_stops}
+        display_settings = self._extract_display_settings(toml_data)
+        if display_settings:
+            default_route["display"] = display_settings
+
+        return default_route
+
+    def _validate_and_add_routes(
+        self, routes: list[dict[str, Any]], result_routes: list[dict[str, Any]]
+    ) -> None:
+        """Validate and add routes to result list.
+
+        Args:
+            routes: List of route configurations.
+            result_routes: Result list to append to.
+
+        Raises:
+            ValueError: If routes are invalid.
+        """
+        if not isinstance(routes, list):
+            raise ValueError("TOML config 'routes' must be a list")
+
+        for route in routes:
+            if not isinstance(route, dict):
+                continue
+            if "path" not in route:
+                raise ValueError("All routes must have a 'path' field")
+            result_routes.append(route)
+
+    def _validate_unique_paths(self, result_routes: list[dict[str, Any]]) -> None:
+        """Validate that all route paths are unique.
+
+        Args:
+            result_routes: List of route configurations.
+
+        Raises:
+            ValueError: If duplicate paths are found.
+        """
+        if not result_routes:
+            return
+
+        paths = [route.get("path") for route in result_routes if isinstance(route, dict)]
+        if len(paths) != len(set(paths)):
+            duplicates = [p for p in paths if paths.count(p) > 1]
+            raise ValueError(
+                f"Route paths must be unique. Duplicate paths found: {set(duplicates)}"
+            )
 
     def get_routes_config(self) -> list[dict[str, Any]]:
         """Parse and return routes configuration as a list of dicts from TOML file.
@@ -320,68 +415,20 @@ class AppConfig(BaseSettings):
         Raises ValueError if route paths are not unique (including conflict with default "/").
         """
         toml_data = self._load_toml_data()
-
         routes = toml_data.get("routes", [])
         stops = toml_data.get("stops", [])
 
         result_routes: list[dict[str, Any]] = []
 
-        # If stops are defined, create default route at "/"
         if stops:
-            if not isinstance(stops, list):
-                raise ValueError("TOML config 'stops' must be a list")
-            # Filter out stops with placeholder IDs
-            filtered_stops = [s for s in stops if s.get("station_id", "").find("XXX") == -1]
-            if filtered_stops:
-                # Include display settings from [display] section for the main route
-                default_route: dict[str, Any] = {"path": "/", "stops": filtered_stops}
-                if "display" in toml_data:
-                    display = toml_data["display"]
-                    # Include fill_vertical_space, font_scaling_factor_when_filling, and random_header_colors if set
-                    # display is a dict from [display] section, not a list
-                    if isinstance(display, dict):
-                        display_settings: dict[str, Any] = {}
-                        if "fill_vertical_space" in display:
-                            display_settings["fill_vertical_space"] = display["fill_vertical_space"]
-                        if "font_scaling_factor_when_filling" in display:
-                            display_settings["font_scaling_factor_when_filling"] = display[
-                                "font_scaling_factor_when_filling"
-                            ]
-                        if "random_header_colors" in display:
-                            display_settings["random_header_colors"] = display[
-                                "random_header_colors"
-                            ]
-                        if "header_background_brightness" in display:
-                            display_settings["header_background_brightness"] = display[
-                                "header_background_brightness"
-                            ]
-                        if "random_color_salt" in display:
-                            display_settings["random_color_salt"] = display["random_color_salt"]
-                        if display_settings:
-                            default_route["display"] = display_settings
+            default_route = self._create_default_route(stops, toml_data)
+            if default_route:
                 result_routes.append(default_route)
 
-        # If routes are defined, add them
         if routes:
-            if not isinstance(routes, list):
-                raise ValueError("TOML config 'routes' must be a list")
+            self._validate_and_add_routes(routes, result_routes)
 
-            # Validate all routes have paths
-            for route in routes:
-                if not isinstance(route, dict):
-                    continue
-                if "path" not in route:
-                    raise ValueError("All routes must have a 'path' field")
-                result_routes.append(route)
-
-        # Validate unique paths (including checking for "/" conflict)
-        if result_routes:
-            paths = [route.get("path") for route in result_routes if isinstance(route, dict)]
-            if len(paths) != len(set(paths)):
-                duplicates = [p for p in paths if paths.count(p) > 1]
-                raise ValueError(
-                    f"Route paths must be unique. Duplicate paths found: {set(duplicates)}"
-                )
+        self._validate_unique_paths(result_routes)
 
         return result_routes
 

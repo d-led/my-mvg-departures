@@ -1,7 +1,7 @@
 """MVG departure repository adapter."""
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from mvg import MvgApi, TransportType
 
@@ -19,6 +19,160 @@ class MvgDepartureRepository(DepartureRepository):
         """Initialize with optional aiohttp session."""
         self._session = session
 
+    def _map_transport_types(self, transport_types: list[str] | None) -> list[TransportType] | None:
+        """Map string transport types to MVG TransportType enum.
+
+        Args:
+            transport_types: List of transport type strings.
+
+        Returns:
+            List of TransportType enums, or None if no mapping needed.
+        """
+        if not transport_types:
+            return None
+
+        type_map = {
+            "U-Bahn": TransportType.UBAHN,
+            "S-Bahn": TransportType.SBAHN,
+            "Bus": TransportType.BUS,
+            "Tram": TransportType.TRAM,
+        }
+        return [type_map[t] for t in transport_types if t in type_map]
+
+    async def _fetch_raw_api_response(
+        self, station_id: str, limit: int
+    ) -> list[dict[str, Any]] | None:
+        """Fetch raw API response to get stopPointGlobalId.
+
+        Args:
+            station_id: Station ID.
+            limit: Maximum number of departures.
+
+        Returns:
+            Raw API response as list, or None if fetch fails.
+        """
+        if not self._session:
+            return None
+
+        try:
+            transport_types_str = ",".join(
+                ["UBAHN", "TRAM", "SBAHN", "BUS", "REGIONAL_BUS", "BAHN"]
+            )
+            url = f"https://www.mvg.de/api/bgw-pt/v3/departures?globalId={station_id}&limit={limit}&transportTypes={transport_types_str}"
+            headers = {
+                "accept": "application/json",
+                "user-agent": "Mozilla/5.0",
+            }
+            async with self._session.get(url, headers=headers, ssl=False) as response:
+                if response.status == 200:
+                    raw_results = await response.json()
+                    if isinstance(raw_results, list):
+                        return raw_results
+        except Exception:
+            pass
+
+        return None
+
+    def _parse_raw_api_format(self, result: dict[str, Any]) -> dict[str, Any]:
+        """Parse raw API format response.
+
+        Args:
+            result: Raw API response dictionary.
+
+        Returns:
+            Dictionary with parsed departure data.
+        """
+        time = datetime.fromtimestamp(result["realtimeDepartureTime"] / 1000, tz=UTC)
+        planned_time = datetime.fromtimestamp(result["plannedDepartureTime"] / 1000, tz=UTC)
+        delay_seconds = result.get("delayInMinutes", 0) * 60 if result.get("delayInMinutes") else 0
+
+        transport_type_enum = result.get("transportType", "")
+        transport_type_map = {
+            "UBAHN": "U-Bahn",
+            "SBAHN": "S-Bahn",
+            "BUS": "Bus",
+            "TRAM": "Tram",
+            "BAHN": "Bahn",
+            "REGIONAL_BUS": "Regionalbus",
+        }
+        transport_type = transport_type_map.get(transport_type_enum, transport_type_enum)
+
+        icon_map = {
+            "UBAHN": "mdi:subway",
+            "SBAHN": "mdi:subway-variant",
+            "BUS": "mdi:bus",
+            "TRAM": "mdi:tram",
+            "BAHN": "mdi:train",
+            "REGIONAL_BUS": "mdi:bus",
+        }
+        icon = icon_map.get(transport_type_enum, "")
+
+        return {
+            "time": time,
+            "planned_time": planned_time,
+            "delay_seconds": delay_seconds,
+            "platform": result.get("platform"),
+            "is_realtime": result.get("realtime", False),
+            "line": result.get("label", ""),
+            "destination": result.get("destination", ""),
+            "transport_type": transport_type,
+            "icon": icon,
+            "is_cancelled": result.get("cancelled", False),
+            "messages": result.get("messages", []),
+        }
+
+    def _parse_mvg_library_format(self, result: dict[str, Any]) -> dict[str, Any]:
+        """Parse mvg library format response.
+
+        Args:
+            result: mvg library response dictionary.
+
+        Returns:
+            Dictionary with parsed departure data.
+        """
+        return {
+            "time": datetime.fromtimestamp(result["time"], tz=UTC),
+            "planned_time": datetime.fromtimestamp(result["planned"], tz=UTC),
+            "delay_seconds": result.get("delay", 0),
+            "platform": result.get("platform"),
+            "is_realtime": result.get("realtime", False),
+            "line": result.get("line", ""),
+            "destination": result.get("destination", ""),
+            "transport_type": result.get("type", ""),
+            "icon": result.get("icon", ""),
+            "is_cancelled": result.get("cancelled", False),
+            "messages": result.get("messages", []),
+        }
+
+    def _convert_to_departure(
+        self, result: dict[str, Any], parsed_data: dict[str, Any]
+    ) -> Departure:
+        """Convert parsed data to Departure model.
+
+        Args:
+            result: Original result dictionary (for stop_point_global_id).
+            parsed_data: Parsed departure data.
+
+        Returns:
+            Departure object.
+        """
+        stop_point_global_id = result.get("stopPointGlobalId") or result.get("stop_point_global_id")
+
+        return Departure(
+            time=parsed_data["time"],
+            planned_time=parsed_data["planned_time"],
+            delay_seconds=parsed_data["delay_seconds"],
+            platform=parsed_data["platform"],
+            is_realtime=parsed_data["is_realtime"],
+            line=parsed_data["line"],
+            destination=parsed_data["destination"],
+            transport_type=parsed_data["transport_type"],
+            icon=parsed_data["icon"],
+            is_cancelled=parsed_data["is_cancelled"],
+            messages=parsed_data["messages"],
+            stop_point_global_id=stop_point_global_id,
+        )
+
     async def get_departures(
         self,
         station_id: str,
@@ -28,44 +182,13 @@ class MvgDepartureRepository(DepartureRepository):
         duration_minutes: int = 60,  # noqa: ARG002  # Not used by MVG API
     ) -> list[Departure]:
         """Get departures for a station."""
-        mvg_transport_types = None
-        if transport_types:
-            # Map string transport types to MVG TransportType enum
-            type_map = {
-                "U-Bahn": TransportType.UBAHN,
-                "S-Bahn": TransportType.SBAHN,
-                "Bus": TransportType.BUS,
-                "Tram": TransportType.TRAM,
-            }
-            mvg_transport_types = [type_map[t] for t in transport_types if t in type_map]
+        mvg_transport_types = self._map_transport_types(transport_types)
 
-        # Always fetch raw API response to get stopPointGlobalId
-        # The mvg library may not include stopPointGlobalId in its transformed response
-        raw_results = None
-        if self._session:
-            try:
-                transport_types_str = ",".join(
-                    ["UBAHN", "TRAM", "SBAHN", "BUS", "REGIONAL_BUS", "BAHN"]
-                )
-                url = f"https://www.mvg.de/api/bgw-pt/v3/departures?globalId={station_id}&limit={limit}&transportTypes={transport_types_str}"
-                headers = {
-                    "accept": "application/json",
-                    "user-agent": "Mozilla/5.0",
-                }
-                # Disable SSL verification for MVG API (may have certificate issues in some environments)
-                async with self._session.get(url, headers=headers, ssl=False) as response:
-                    if response.status == 200:
-                        raw_results = await response.json()
-            except Exception:
-                # If raw API fetch fails, fall back to mvg library
-                pass
+        raw_results = await self._fetch_raw_api_response(station_id, limit)
 
-        # Use raw results if available (they have stopPointGlobalId), otherwise use mvg library results
-        if raw_results and isinstance(raw_results, list):
-            # Use raw API response directly
+        if raw_results:
             results = raw_results
         else:
-            # Fall back to mvg library
             results = await MvgApi.departures_async(
                 station_id,
                 limit=limit,
@@ -76,81 +199,12 @@ class MvgDepartureRepository(DepartureRepository):
 
         departures = []
         for result in results:
-            # Extract stopPointGlobalId from raw API response
-            # The raw API uses camelCase: stopPointGlobalId
-            # The mvg library transforms the response and doesn't include stopPointGlobalId
-            stop_point_global_id = result.get("stopPointGlobalId") or result.get(
-                "stop_point_global_id"
-            )
-
-            # Handle both raw API format and mvg library transformed format
-            # Raw API format has: realtimeDepartureTime (ms), plannedDepartureTime (ms), delayInMinutes,
-            #                     label, transportType, etc.
-            # mvg library format has: time (s), planned (s), delay, line, type, etc.
-
-            # Check if this is raw API format (has realtimeDepartureTime) or mvg library format (has time)
             if "realtimeDepartureTime" in result:
-                # Raw API format - convert from milliseconds to seconds
-                time = datetime.fromtimestamp(result["realtimeDepartureTime"] / 1000, tz=UTC)
-                planned_time = datetime.fromtimestamp(result["plannedDepartureTime"] / 1000, tz=UTC)
-                delay_seconds = (
-                    result.get("delayInMinutes", 0) * 60 if result.get("delayInMinutes") else 0
-                )
-                platform = result.get("platform")
-                is_realtime = result.get("realtime", False)
-                line = result.get("label", "")
-                destination = result.get("destination", "")
-                # Map transportType to display name
-                transport_type_enum = result.get("transportType", "")
-                transport_type_map = {
-                    "UBAHN": "U-Bahn",
-                    "SBAHN": "S-Bahn",
-                    "BUS": "Bus",
-                    "TRAM": "Tram",
-                    "BAHN": "Bahn",
-                    "REGIONAL_BUS": "Regionalbus",
-                }
-                transport_type = transport_type_map.get(transport_type_enum, transport_type_enum)
-                # Get icon from transport type
-                icon_map = {
-                    "UBAHN": "mdi:subway",
-                    "SBAHN": "mdi:subway-variant",
-                    "BUS": "mdi:bus",
-                    "TRAM": "mdi:tram",
-                    "BAHN": "mdi:train",
-                    "REGIONAL_BUS": "mdi:bus",
-                }
-                icon = icon_map.get(transport_type_enum, "")
-                is_cancelled = result.get("cancelled", False)
-                messages = result.get("messages", [])
+                parsed_data = self._parse_raw_api_format(result)
             else:
-                # mvg library format - already transformed
-                time = datetime.fromtimestamp(result["time"], tz=UTC)
-                planned_time = datetime.fromtimestamp(result["planned"], tz=UTC)
-                delay_seconds = result.get("delay", 0)
-                platform = result.get("platform")
-                is_realtime = result.get("realtime", False)
-                line = result.get("line", "")
-                destination = result.get("destination", "")
-                transport_type = result.get("type", "")
-                icon = result.get("icon", "")
-                is_cancelled = result.get("cancelled", False)
-                messages = result.get("messages", [])
+                parsed_data = self._parse_mvg_library_format(result)
 
-            departure = Departure(
-                time=time,
-                planned_time=planned_time,
-                delay_seconds=delay_seconds,
-                platform=platform,
-                is_realtime=is_realtime,
-                line=line,
-                destination=destination,
-                transport_type=transport_type,
-                icon=icon,
-                is_cancelled=is_cancelled,
-                messages=messages,
-                stop_point_global_id=stop_point_global_id,
-            )
+            departure = self._convert_to_departure(result, parsed_data)
             departures.append(departure)
 
         return departures

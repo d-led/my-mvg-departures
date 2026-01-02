@@ -125,6 +125,201 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
         self.header_background_brightness = header_background_brightness
         self.random_color_salt = random_color_salt
 
+    def _format_departure_data(self, departure: Any) -> dict[str, Any]:
+        """Format a single departure for display.
+
+        Args:
+            departure: Departure object to format.
+
+        Returns:
+            Dictionary with formatted departure data.
+        """
+        time_str = self.formatter.format_departure_time(departure)
+        time_str_relative = self.formatter.format_departure_time_relative(departure)
+        time_str_absolute = self.formatter.format_departure_time_absolute(departure)
+
+        platform_display = str(departure.platform) if departure.platform is not None else None
+        platform_aria = f", Platform {platform_display}" if platform_display else ""
+
+        delay_display, delay_aria, has_delay = self._format_delay(departure)
+        aria_label = self._build_aria_label(departure, time_str, platform_aria, delay_aria)
+
+        return {
+            "line": departure.line,
+            "destination": departure.destination,
+            "platform": platform_display,
+            "time_str": time_str,
+            "time_str_relative": time_str_relative,
+            "time_str_absolute": time_str_absolute,
+            "cancelled": departure.is_cancelled,
+            "has_delay": has_delay,
+            "delay_display": delay_display,
+            "is_realtime": departure.is_realtime,
+            "aria_label": aria_label,
+        }
+
+    def _format_delay(self, departure: Any) -> tuple[str | None, str, bool]:
+        """Format delay information for a departure.
+
+        Args:
+            departure: Departure object.
+
+        Returns:
+            Tuple of (delay_display, delay_aria, has_delay).
+        """
+        has_delay = departure.delay_seconds is not None and departure.delay_seconds > 60
+        if not has_delay or departure.delay_seconds is None:
+            return None, "", False
+
+        delay_minutes = departure.delay_seconds // 60
+        delay_display = f'<span class="delay-amount" aria-hidden="true">{delay_minutes}m 😞</span>'
+        delay_aria = f", delayed by {delay_minutes} minutes"
+        return delay_display, delay_aria, True
+
+    def _build_aria_label(
+        self, departure: Any, time_str: str, platform_aria: str, delay_aria: str
+    ) -> str:
+        """Build ARIA label for a departure.
+
+        Args:
+            departure: Departure object.
+            time_str: Formatted time string.
+            platform_aria: Platform ARIA text.
+            delay_aria: Delay ARIA text.
+
+        Returns:
+            ARIA label string.
+        """
+        status_parts = []
+        if departure.is_cancelled:
+            status_parts.append("cancelled")
+        if departure.is_realtime:
+            status_parts.append("real-time")
+        status_text = ", ".join(status_parts) if status_parts else "scheduled"
+
+        return (
+            f"Line {departure.line} to {departure.destination}"
+            f"{platform_aria}"
+            f", departing in {time_str}"
+            f"{delay_aria}"
+            f", {status_text}"
+        )
+
+    def _process_direction_groups(
+        self, direction_groups: list[DirectionGroupWithMetadata]
+    ) -> tuple[list[dict[str, Any]], set[str]]:
+        """Process direction groups and build groups_with_departures.
+
+        Args:
+            direction_groups: List of direction groups with metadata.
+
+        Returns:
+            Tuple of (groups_with_departures, stops_with_departures).
+        """
+        groups_with_departures: list[dict[str, Any]] = []
+        stops_with_departures: set[str] = set()
+        current_stop: str | None = None
+
+        for group in direction_groups:
+            if not group.departures:
+                continue
+
+            direction_clean = group.direction_name.lstrip("->")
+            combined_header = f"{group.stop_name} → {direction_clean}"
+
+            is_new_stop = group.stop_name != current_stop
+            if is_new_stop:
+                current_stop = group.stop_name
+
+            sorted_departures = sorted(group.departures, key=lambda d: d.time)
+            departure_data = [self._format_departure_data(dep) for dep in sorted_departures]
+
+            group_data: dict[str, Any] = {
+                "station_id": group.station_id,
+                "stop_name": group.stop_name,
+                "header": combined_header,
+                "departures": departure_data,
+                "is_new_stop": is_new_stop,
+                "random_header_colors": group.random_header_colors,
+                "header_background_brightness": group.header_background_brightness,
+                "random_color_salt": group.random_color_salt,
+            }
+
+            groups_with_departures.append(group_data)
+            stops_with_departures.add(group.stop_name)
+
+        return groups_with_departures, stops_with_departures
+
+    def _mark_first_last_headers(self, groups_with_departures: list[dict[str, Any]]) -> None:
+        """Mark first and last headers in groups_with_departures.
+
+        Args:
+            groups_with_departures: List of group dictionaries to modify.
+        """
+        if not groups_with_departures:
+            return
+
+        groups_with_departures[0]["is_first_header"] = True
+        groups_with_departures[0]["is_first_group"] = True
+        groups_with_departures[-1]["is_last_group"] = True
+
+        for i in range(1, len(groups_with_departures) - 1):
+            groups_with_departures[i]["is_first_header"] = False
+            groups_with_departures[i]["is_first_group"] = False
+            groups_with_departures[i]["is_last_group"] = False
+
+        if len(groups_with_departures) > 1:
+            groups_with_departures[0]["is_last_group"] = False
+            groups_with_departures[-1]["is_first_header"] = False
+            groups_with_departures[-1]["is_first_group"] = False
+
+    def _generate_header_colors(self, groups_with_departures: list[dict[str, Any]]) -> None:
+        """Generate header colors for non-first headers if enabled.
+
+        Args:
+            groups_with_departures: List of group dictionaries to modify.
+        """
+        for group_dict in groups_with_departures:
+            if group_dict.get("is_first_header", False):
+                continue
+
+            header_text = group_dict.get("header", "")
+            if not header_text:
+                continue
+
+            group_random_colors = group_dict.get("random_header_colors")
+            group_brightness = group_dict.get("header_background_brightness")
+            group_salt = group_dict.get("random_color_salt")
+
+            use_random_colors = (
+                group_random_colors
+                if group_random_colors is not None
+                else self.random_header_colors
+            )
+            brightness = (
+                group_brightness
+                if group_brightness is not None
+                else self.header_background_brightness
+            )
+            salt = group_salt if group_salt is not None else self.random_color_salt
+
+            if use_random_colors:
+                group_dict["header_color"] = generate_pastel_color_from_text(
+                    header_text, brightness, 0, salt
+                )
+
+    def _find_stops_without_departures(self, stops_with_departures: set[str]) -> list[str]:
+        """Find stops that have no departures.
+
+        Args:
+            stops_with_departures: Set of stop names that have departures.
+
+        Returns:
+            Sorted list of stop names without departures.
+        """
+        configured_stops = {stop_config.station_name for stop_config in self.stop_configs}
+        return sorted(configured_stops - stops_with_departures)
+
     def calculate_display_data(
         self,
         direction_groups: list[DirectionGroupWithMetadata],
@@ -138,140 +333,14 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
             Dictionary with display data including groups_with_departures,
             stops_without_departures, has_departures, and font_size_no_departures.
         """
-        # Separate groups with departures from stops that have no departures
-        groups_with_departures: list[dict[str, Any]] = []
-        stops_with_departures: set[str] = set()
-        current_stop: str | None = None
+        groups_with_departures, stops_with_departures = self._process_direction_groups(
+            direction_groups
+        )
 
-        for group in direction_groups:
-            if group.departures:
-                direction_clean = group.direction_name.lstrip("->")
-                combined_header = f"{group.stop_name} → {direction_clean}"
+        self._mark_first_last_headers(groups_with_departures)
+        self._generate_header_colors(groups_with_departures)
 
-                # Check if this is a new stop
-                is_new_stop = group.stop_name != current_stop
-                if is_new_stop:
-                    current_stop = group.stop_name
-
-                # Prepare departures for this group
-                sorted_departures = sorted(group.departures, key=lambda d: d.time)
-                departure_data = []
-                for departure in sorted_departures:
-                    time_str = self.formatter.format_departure_time(departure)
-                    time_str_relative = self.formatter.format_departure_time_relative(departure)
-                    time_str_absolute = self.formatter.format_departure_time_absolute(departure)
-
-                    # Format platform
-                    platform_display = (
-                        str(departure.platform) if departure.platform is not None else None
-                    )
-                    platform_aria = f", Platform {platform_display}" if platform_display else ""
-
-                    # Format delay
-                    delay_display = None
-                    delay_aria = ""
-                    has_delay = departure.delay_seconds is not None and departure.delay_seconds > 60
-                    if has_delay and departure.delay_seconds is not None:
-                        delay_minutes = departure.delay_seconds // 60
-                        delay_display = f'<span class="delay-amount" aria-hidden="true">{delay_minutes}m 😞</span>'
-                        delay_aria = f", delayed by {delay_minutes} minutes"
-
-                    # Build ARIA label
-                    status_parts = []
-                    if departure.is_cancelled:
-                        status_parts.append("cancelled")
-                    if departure.is_realtime:
-                        status_parts.append("real-time")
-                    status_text = ", ".join(status_parts) if status_parts else "scheduled"
-
-                    aria_label = (
-                        f"Line {departure.line} to {departure.destination}"
-                        f"{platform_aria}"
-                        f", departing in {time_str}"
-                        f"{delay_aria}"
-                        f", {status_text}"
-                    )
-
-                    departure_data.append(
-                        {
-                            "line": departure.line,
-                            "destination": departure.destination,
-                            "platform": platform_display,
-                            "time_str": time_str,
-                            "time_str_relative": time_str_relative,
-                            "time_str_absolute": time_str_absolute,
-                            "cancelled": departure.is_cancelled,
-                            "has_delay": has_delay,
-                            "delay_display": delay_display,
-                            "is_realtime": departure.is_realtime,
-                            "aria_label": aria_label,
-                        }
-                    )
-
-                group_data: dict[str, Any] = {
-                    "station_id": group.station_id,
-                    "stop_name": group.stop_name,
-                    "header": combined_header,
-                    "departures": departure_data,
-                    "is_new_stop": is_new_stop,
-                    "random_header_colors": group.random_header_colors,
-                    "header_background_brightness": group.header_background_brightness,
-                    "random_color_salt": group.random_color_salt,
-                }
-
-                groups_with_departures.append(group_data)
-                stops_with_departures.add(group.stop_name)
-
-        # Mark first header and last group
-        if groups_with_departures:
-            groups_with_departures[0]["is_first_header"] = True
-            groups_with_departures[0]["is_first_group"] = True
-            groups_with_departures[-1]["is_last_group"] = True
-            # Set flags for middle groups (if any)
-            for i in range(1, len(groups_with_departures) - 1):
-                groups_with_departures[i]["is_first_header"] = False
-                groups_with_departures[i]["is_first_group"] = False
-                groups_with_departures[i]["is_last_group"] = False
-            # If more than one group, first is not last, and last is not first
-            if len(groups_with_departures) > 1:
-                groups_with_departures[0]["is_last_group"] = False
-                groups_with_departures[-1]["is_first_header"] = False
-                groups_with_departures[-1]["is_first_group"] = False
-
-        # Generate header colors for non-first headers if random_header_colors is enabled
-        # First header uses the configured banner_color, so skip it
-        # Use config settings from group data (passed directly, no matching needed)
-        # Color depends only on header text and salt, not on position
-        for group_dict in groups_with_departures:
-            if not group_dict.get("is_first_header", False):
-                header_text = group_dict.get("header", "")
-                # Get settings from group data (stop-level if provided, None means use route-level)
-                group_random_colors = group_dict.get("random_header_colors")
-                group_brightness = group_dict.get("header_background_brightness")
-
-                if header_text:
-                    # Use stop-level setting if provided, otherwise use route-level default
-                    use_random_colors = (
-                        group_random_colors
-                        if group_random_colors is not None
-                        else self.random_header_colors
-                    )
-                    brightness = (
-                        group_brightness
-                        if group_brightness is not None
-                        else self.header_background_brightness
-                    )
-                    group_salt = group_dict.get("random_color_salt")
-                    salt = group_salt if group_salt is not None else self.random_color_salt
-
-                    if use_random_colors:
-                        group_dict["header_color"] = generate_pastel_color_from_text(
-                            header_text, brightness, 0, salt
-                        )
-
-        # Find stops without departures
-        configured_stops = {stop_config.station_name for stop_config in self.stop_configs}
-        stops_without_departures = sorted(configured_stops - stops_with_departures)
+        stops_without_departures = self._find_stops_without_departures(stops_with_departures)
 
         return {
             "groups_with_departures": groups_with_departures,

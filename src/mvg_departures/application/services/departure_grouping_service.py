@@ -4,6 +4,7 @@ import logging
 import re
 import unicodedata
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from mvg_departures.domain.models.departure import Departure
 from mvg_departures.domain.models.grouped_departures import GroupedDepartures
@@ -66,6 +67,131 @@ class DepartureGroupingService:
         # This ensures we compare against the same "now" we used when calling the API
         return self.group_departures(departures, stop_config, reference_time_utc=fetch_time_utc)
 
+    def _filter_blacklisted_departures(
+        self, departures: list[Departure], stop_config: StopConfiguration
+    ) -> list[Departure]:
+        """Filter out blacklisted departures.
+
+        Args:
+            departures: List of departures to filter.
+            stop_config: Stop configuration.
+
+        Returns:
+            Filtered list of departures.
+        """
+        if not stop_config.exclude_destinations:
+            return departures
+
+        initial_count = len(departures)
+        filtered = [
+            d
+            for d in departures
+            if not self._matches_departure(d, stop_config.exclude_destinations)
+        ]
+        filtered_count = initial_count - len(filtered)
+
+        if filtered_count > 0:
+            logger.debug(
+                f"Filtered out {filtered_count} blacklisted departures for {stop_config.station_name}"
+            )
+
+        return filtered
+
+    def _group_by_direction(
+        self,
+        departures: list[Departure],
+        stop_config: StopConfiguration,
+    ) -> tuple[dict[str, list[Departure]], list[Departure]]:
+        """Group departures by configured directions.
+
+        Args:
+            departures: List of departures to group.
+            stop_config: Stop configuration.
+
+        Returns:
+            Tuple of (direction_groups, ungrouped).
+        """
+        direction_groups: dict[str, list[Departure]] = {}
+        ungrouped: list[Departure] = []
+
+        if not stop_config.direction_mappings:
+            logger.warning(f"No direction_mappings configured for {stop_config.station_name}")
+        logger.debug(
+            f"Processing {len(departures)} departures for {stop_config.station_name} with {len(stop_config.direction_mappings)} direction mappings"
+        )
+
+        for departure in departures:
+            matched = False
+            for direction_name, patterns in stop_config.direction_mappings.items():
+                if self._matches_departure(departure, patterns):
+                    if direction_name not in direction_groups:
+                        direction_groups[direction_name] = []
+                    direction_groups[direction_name].append(departure)
+                    matched = True
+                    break
+
+            if not matched:
+                ungrouped.append(departure)
+                logger.debug(
+                    f"Unmatched departure for {stop_config.station_name}: {departure.transport_type} {departure.line} -> {departure.destination}"
+                )
+
+        return direction_groups, ungrouped
+
+    def _process_direction_groups(
+        self,
+        direction_groups: dict[str, list[Departure]],
+        stop_config: StopConfiguration,
+        reference_time_utc: datetime,
+    ) -> dict[str, list[Departure]]:
+        """Sort and filter departures in each direction group.
+
+        Args:
+            direction_groups: Dictionary mapping direction names to departures.
+            stop_config: Stop configuration.
+            reference_time_utc: Reference time for filtering.
+
+        Returns:
+            Processed direction groups.
+        """
+        for direction_name in direction_groups:
+            direction_groups[direction_name].sort(key=lambda d: d.time)
+            direction_groups[direction_name] = self._filter_and_limit_departures(
+                direction_groups[direction_name], stop_config, reference_time_utc=reference_time_utc
+            )
+        return direction_groups
+
+    def _build_result_list(
+        self,
+        direction_groups: dict[str, list[Departure]],
+        ungrouped: list[Departure],
+        stop_config: StopConfiguration,
+    ) -> list[GroupedDepartures]:
+        """Build result list from direction groups and ungrouped departures.
+
+        Args:
+            direction_groups: Dictionary mapping direction names to departures.
+            ungrouped: List of ungrouped departures.
+            stop_config: Stop configuration.
+
+        Returns:
+            List of GroupedDepartures.
+        """
+        result = []
+        for direction_name in stop_config.direction_mappings:
+            if direction_name in direction_groups:
+                result.append(
+                    GroupedDepartures(
+                        direction_name=direction_name, departures=direction_groups[direction_name]
+                    )
+                )
+
+        if stop_config.show_ungrouped and ungrouped:
+            ungrouped_label = stop_config.ungrouped_title or "Other"
+            result.append(GroupedDepartures(direction_name=ungrouped_label, departures=ungrouped))
+
+        return result
+
     def group_departures(
         self,
         departures: list[Departure],
@@ -85,60 +211,15 @@ class DepartureGroupingService:
         Returns:
             List of tuples (direction_name, departures) for this stop.
         """
-        # Use provided reference_time_utc if available, otherwise use current time
-        # This ensures consistent comparisons when processing cached data
         if reference_time_utc is None:
             reference_time_utc = datetime.now(UTC)
 
-        # Group departures by direction first
-        direction_groups: dict[str, list[Departure]] = {}
-        ungrouped: list[Departure] = []
+        departures = self._filter_blacklisted_departures(departures, stop_config)
+        direction_groups, ungrouped = self._group_by_direction(departures, stop_config)
 
-        # Filter out blacklisted departures first
-        if stop_config.exclude_destinations:
-            initial_count = len(departures)
-            departures = [
-                d
-                for d in departures
-                if not self._matches_departure(d, stop_config.exclude_destinations)
-            ]
-            filtered_count = initial_count - len(departures)
-            if filtered_count > 0:
-                logger.debug(
-                    f"Filtered out {filtered_count} blacklisted departures for {stop_config.station_name}"
-                )
-
-        # Log what we're trying to match
-        if not stop_config.direction_mappings:
-            logger.warning(f"No direction_mappings configured for {stop_config.station_name}")
-        logger.debug(
-            f"Processing {len(departures)} departures for {stop_config.station_name} with {len(stop_config.direction_mappings)} direction mappings"
+        direction_groups = self._process_direction_groups(
+            direction_groups, stop_config, reference_time_utc
         )
-
-        for departure in departures:
-            matched = False
-            for direction_name, patterns in stop_config.direction_mappings.items():
-                if self._matches_departure(departure, patterns):
-                    if direction_name not in direction_groups:
-                        direction_groups[direction_name] = []
-                    direction_groups[direction_name].append(departure)
-                    matched = True
-                    break
-
-            if not matched:
-                ungrouped.append(departure)
-                # Log unmatched departures
-                logger.debug(
-                    f"Unmatched departure for {stop_config.station_name}: {departure.transport_type} {departure.line} -> {departure.destination}"
-                )
-
-        # Sort departures within each group by time (datetime objects, not display strings)
-        # This ensures "<1m" (0-59 seconds) sorts before "1m" (60-119 seconds), etc.
-        for direction_name in direction_groups:
-            direction_groups[direction_name].sort(key=lambda d: d.time)
-            direction_groups[direction_name] = self._filter_and_limit_departures(
-                direction_groups[direction_name], stop_config, reference_time_utc=reference_time_utc
-            )
 
         if ungrouped:
             ungrouped.sort(key=lambda d: d.time)
@@ -146,27 +227,199 @@ class DepartureGroupingService:
                 ungrouped, stop_config, reference_time_utc=reference_time_utc
             )
 
-        # Build result list with only directions that have departures
-        # Preserve the order from the config file (direction_mappings)
-        # Don't show empty direction groups - if show_ungrouped is false and no matches,
-        # the stop will be shown as "no departures" at the bottom
-        result = []
-        # Iterate through direction_mappings in config order
-        for direction_name in stop_config.direction_mappings:
-            if direction_name in direction_groups:
-                result.append(
-                    GroupedDepartures(
-                        direction_name=direction_name, departures=direction_groups[direction_name]
-                    )
+        return self._build_result_list(direction_groups, ungrouped, stop_config)
+
+    def _filter_by_stop_point(
+        self, departures: list[Departure], stop_config: StopConfiguration
+    ) -> list[Departure]:
+        """Filter departures by stop point if station_id is a stop_point_global_id.
+
+        Args:
+            departures: List of departures to filter.
+            stop_config: Stop configuration.
+
+        Returns:
+            Filtered list of departures.
+        """
+        station_id_parts = stop_config.station_id.split(":")
+        if len(station_id_parts) < 5 or station_id_parts[-1] != station_id_parts[-2]:
+            return departures
+
+        stop_point_global_id = stop_config.station_id
+        initial_count = len(departures)
+        available_stop_points = {
+            d.stop_point_global_id for d in departures if d.stop_point_global_id is not None
+        }
+        filtered = [
+            d
+            for d in departures
+            if d.stop_point_global_id is not None and d.stop_point_global_id == stop_point_global_id
+        ]
+
+        if initial_count > 0 and len(filtered) == 0:
+            logger.warning(
+                f"Filtered {initial_count} departures by stop_point_global_id={stop_point_global_id}, "
+                f"but none matched. Available stop_point_global_ids: {available_stop_points}"
+            )
+
+        return filtered
+
+    def _filter_by_platform(
+        self, departures: list[Departure], stop_config: StopConfiguration
+    ) -> list[Departure]:
+        """Filter departures by platform if platform_filter is set.
+
+        Args:
+            departures: List of departures to filter.
+            stop_config: Stop configuration.
+
+        Returns:
+            Filtered list of departures.
+        """
+        if stop_config.platform_filter is None:
+            return departures
+
+        import re
+
+        initial_count = len(departures)
+        available_platforms = {d.platform for d in departures if d.platform is not None}
+        platform_filter_str = str(stop_config.platform_filter)
+        platform_pattern = re.compile(
+            r"(?:^|\s|Pos\.|Platform\s)" + re.escape(platform_filter_str) + r"(?:\s|$|\)|,)"
+        )
+
+        filtered = []
+        for d in departures:
+            should_filter = (
+                not stop_config.platform_filter_routes
+                or d.line in stop_config.platform_filter_routes
+            )
+
+            if not should_filter or (
+                d.platform is not None
+                and self._platform_matches(
+                    d.platform, stop_config.platform_filter, platform_filter_str, platform_pattern
                 )
+            ):
+                filtered.append(d)
 
-        # Add ungrouped departures if configured to show them (whitelist mode)
-        # Only add ungrouped group if show_ungrouped is True AND there are ungrouped departures
-        if stop_config.show_ungrouped and ungrouped:
-            ungrouped_label = stop_config.ungrouped_title or "Other"
-            result.append(GroupedDepartures(direction_name=ungrouped_label, departures=ungrouped))
+        if initial_count > 0 and len(filtered) == 0:
+            logger.warning(
+                f"Filtered {initial_count} departures by platform={stop_config.platform_filter}, "
+                f"but none matched. Available platforms: {available_platforms}"
+            )
 
-        return result
+        return filtered
+
+    def _platform_matches(
+        self, platform: int | str, platform_filter: int, platform_filter_str: str, pattern: Any
+    ) -> bool:
+        """Check if platform matches the filter.
+
+        Args:
+            platform: Platform value to check.
+            platform_filter: Filter value (int).
+            platform_filter_str: Filter value (str).
+            pattern: Compiled regex pattern.
+
+        Returns:
+            True if platform matches, False otherwise.
+        """
+        return platform in (platform_filter, platform_filter_str) or (
+            isinstance(platform, str) and pattern.search(platform)
+        )
+
+    def _filter_by_leeway(
+        self,
+        departures: list[Departure],
+        stop_config: StopConfiguration,
+        reference_time_utc: datetime | None = None,
+    ) -> list[Departure]:
+        """Filter departures by departure leeway.
+
+        Args:
+            departures: List of departures to filter.
+            stop_config: Stop configuration.
+            reference_time_utc: Reference time for comparison.
+
+        Returns:
+            Filtered list of departures.
+        """
+        if stop_config.departure_leeway_minutes <= 0:
+            return departures
+
+        now_utc = reference_time_utc if reference_time_utc is not None else datetime.now(UTC)
+        cutoff_time = now_utc + timedelta(minutes=stop_config.departure_leeway_minutes)
+
+        filtered = []
+        for d in departures:
+            dep_time = d.time
+            if dep_time.tzinfo is None:
+                dep_time = dep_time.replace(tzinfo=UTC)
+            else:
+                dep_time = dep_time.astimezone(UTC)
+            if dep_time >= cutoff_time:
+                filtered.append(d)
+
+        return filtered
+
+    def _filter_by_max_hours(
+        self, departures: list[Departure], stop_config: StopConfiguration
+    ) -> list[Departure]:
+        """Filter departures by max hours in advance.
+
+        Args:
+            departures: List of departures to filter.
+            stop_config: Stop configuration.
+
+        Returns:
+            Filtered list of departures.
+        """
+        if stop_config.max_hours_in_advance is None or stop_config.max_hours_in_advance < 1:
+            return departures
+
+        max_time = datetime.now(UTC) + timedelta(hours=stop_config.max_hours_in_advance)
+        return [d for d in departures if d.time <= max_time]
+
+    def _limit_by_route(
+        self, departures: list[Departure], stop_config: StopConfiguration
+    ) -> list[Departure]:
+        """Limit departures per route.
+
+        Args:
+            departures: List of departures to limit.
+            stop_config: Stop configuration.
+
+        Returns:
+            Limited list of departures.
+        """
+        max_per_route = stop_config.max_departures_per_route or 2
+        route_counts: dict[str, int] = {}
+        limited: list[Departure] = []
+
+        for departure in departures:
+            route_key = departure.line
+            count = route_counts.get(route_key, 0)
+            if count < max_per_route:
+                limited.append(departure)
+                route_counts[route_key] = count + 1
+
+        return limited
+
+    def _limit_by_stop(
+        self, departures: list[Departure], stop_config: StopConfiguration
+    ) -> list[Departure]:
+        """Limit departures per stop.
+
+        Args:
+            departures: List of departures to limit.
+            stop_config: Stop configuration.
+
+        Returns:
+            Limited list of departures.
+        """
+        max_per_direction = stop_config.max_departures_per_stop or 20
+        return departures[:max_per_direction]
 
     def _filter_and_limit_departures(
         self,
@@ -179,119 +432,17 @@ class DepartureGroupingService:
         Args:
             departures: List of departures to filter and limit.
             stop_config: Stop configuration with filtering and limiting parameters.
+            reference_time_utc: Reference time for leeway filtering.
 
         Returns:
             Filtered and limited list of departures.
         """
-        # Filter by stop point if station_id is a stop_point_global_id (format: de:09162:1108:X:X)
-        # Check if station_id has the stop point format (contains :X:X pattern)
-        station_id_parts = stop_config.station_id.split(":")
-        if len(station_id_parts) >= 5 and station_id_parts[-1] == station_id_parts[-2]:
-            # station_id is a stop_point_global_id (e.g., "de:09162:1108:1:1")
-            # Filter to only show departures from this specific stop point
-            stop_point_global_id = stop_config.station_id
-            initial_count = len(departures)
-            available_stop_points = {
-                d.stop_point_global_id for d in departures if d.stop_point_global_id is not None
-            }
-            departures = [
-                d
-                for d in departures
-                if d.stop_point_global_id is not None
-                and d.stop_point_global_id == stop_point_global_id
-            ]
-            filtered_count = len(departures)
-            if initial_count > 0 and filtered_count == 0:
-                logger.warning(
-                    f"Filtered {initial_count} departures by stop_point_global_id={stop_point_global_id}, "
-                    f"but none matched. Available stop_point_global_ids: {available_stop_points}"
-                )
-
-        # Filter by platform if platform_filter is set
-        # Platform can be stored as int or str (e.g., 9, "9", "Pos. 9", "2 (U9)")
-        # We match if the platform string contains the filter number as a standalone word or after "Pos."/"Platform"
-        # But NOT as part of a line name like "U9" (e.g., "Platform 2 (U9)" should NOT match platform_filter=9)
-        # If platform_filter_routes is set, only apply to those specific routes
-        if stop_config.platform_filter is not None:
-            initial_count = len(departures)
-            available_platforms = {d.platform for d in departures if d.platform is not None}
-            platform_filter_str = str(stop_config.platform_filter)
-            # Pattern to match: "Pos. 9", "Platform 9", "9", or standalone "9" (with word boundaries)
-            # But NOT "U9" or "2 (U9)" where 9 is part of a line name
-            import re
-
-            platform_pattern = re.compile(
-                r"(?:^|\s|Pos\.|Platform\s)" + re.escape(platform_filter_str) + r"(?:\s|$|\)|,)"
-            )
-
-            filtered_departures = []
-            for d in departures:
-                # Check if this route should be filtered
-                should_filter = (
-                    not stop_config.platform_filter_routes  # Empty list = filter all routes
-                    or d.line in stop_config.platform_filter_routes  # Filter only specified routes
-                )
-
-                if not should_filter:
-                    # Don't filter this route, include it
-                    filtered_departures.append(d)
-                elif d.platform is not None and (
-                    # Exact match (int or str)
-                    d.platform == stop_config.platform_filter
-                    or d.platform == platform_filter_str
-                    # String matches pattern (e.g., "Pos. 9", "Platform 9", but not "U9")
-                    or (isinstance(d.platform, str) and platform_pattern.search(d.platform))
-                ):
-                    # Platform matches, include it
-                    filtered_departures.append(d)
-
-            departures = filtered_departures
-            filtered_count = len(departures)
-            if initial_count > 0 and filtered_count == 0:
-                logger.warning(
-                    f"Filtered {initial_count} departures by platform={stop_config.platform_filter}, "
-                    f"but none matched. Available platforms: {available_platforms}"
-                )
-
-        # Filter out departures that are too soon FIRST, so we only count departures that will be shown
-        # Use reference_time_utc if provided to ensure consistent comparisons
-        if stop_config.departure_leeway_minutes > 0:
-            now_utc = reference_time_utc if reference_time_utc is not None else datetime.now(UTC)
-            cutoff_time = now_utc + timedelta(minutes=stop_config.departure_leeway_minutes)
-            # Ensure all departure times are in UTC for comparison
-            filtered_departures = []
-            for d in departures:
-                dep_time = d.time
-                if dep_time.tzinfo is None:
-                    dep_time = dep_time.replace(tzinfo=UTC)
-                else:
-                    dep_time = dep_time.astimezone(UTC)
-                if dep_time >= cutoff_time:
-                    filtered_departures.append(d)
-            departures = filtered_departures
-
-        # Filter out departures that are too far in the future
-        # Only apply if >= 1 (values < 1 or None are treated as unfiltered)
-        if stop_config.max_hours_in_advance is not None and stop_config.max_hours_in_advance >= 1:
-            max_time = datetime.now(UTC) + timedelta(hours=stop_config.max_hours_in_advance)
-            departures = [d for d in departures if d.time <= max_time]
-
-        # Limit each route to max_departures_per_route
-        # (only counting departures that passed the leeway filter)
-        max_per_route = stop_config.max_departures_per_route or 2
-        route_counts: dict[str, int] = {}
-        route_limited_departures: list[Departure] = []
-        for departure in departures:
-            route_key = departure.line
-            count = route_counts.get(route_key, 0)
-            if count < max_per_route:
-                route_limited_departures.append(departure)
-                route_counts[route_key] = count + 1
-
-        # Limit to max_departures_per_stop
-        # (only counting departures that passed the leeway filter)
-        max_per_direction = stop_config.max_departures_per_stop or 20
-        return route_limited_departures[:max_per_direction]
+        departures = self._filter_by_stop_point(departures, stop_config)
+        departures = self._filter_by_platform(departures, stop_config)
+        departures = self._filter_by_leeway(departures, stop_config, reference_time_utc)
+        departures = self._filter_by_max_hours(departures, stop_config)
+        departures = self._limit_by_route(departures, stop_config)
+        return self._limit_by_stop(departures, stop_config)
 
     def _normalize_unicode(self, text: str) -> str:
         """Normalize Unicode text for consistent matching (handles ä, ö, ü, ß, etc.)."""
@@ -299,6 +450,92 @@ class DepartureGroupingService:
         # This handles cases where the same character might be represented differently
         # (e.g., ä as single character vs a + combining diaeresis)
         return unicodedata.normalize("NFC", text).lower()
+
+    def _normalize_departure_data(self, departure: Departure) -> tuple[str, str, str, str]:
+        """Normalize departure data for matching.
+
+        Args:
+            departure: Departure to normalize.
+
+        Returns:
+            Tuple of (destination_normalized, transport_type_normalized,
+                     route_line, route_full).
+        """
+        destination_normalized = self._normalize_unicode(departure.destination)
+        line_normalized = self._normalize_unicode(departure.line)
+        transport_type_normalized = self._normalize_unicode(departure.transport_type)
+        route_line = line_normalized
+        route_full = f"{transport_type_normalized} {line_normalized}"
+        return (
+            destination_normalized,
+            transport_type_normalized,
+            route_line,
+            route_full,
+        )
+
+    def _match_multi_word_pattern(
+        self,
+        pattern_words: list[str],
+        route_line: str,
+        route_full: str,
+        transport_type_normalized: str,
+        destination_normalized: str,
+    ) -> bool:
+        """Match a multi-word pattern against route and destination.
+
+        Args:
+            pattern_words: List of pattern words.
+            route_line: Normalized line identifier.
+            route_full: Normalized full route identifier.
+            transport_type_normalized: Normalized transport type.
+            destination_normalized: Normalized destination.
+
+        Returns:
+            True if pattern matches, False otherwise.
+        """
+        route_matched = False
+        dest_start_idx = 1
+
+        if pattern_words[0] == route_line:
+            route_matched = True
+            dest_start_idx = 1
+        elif len(pattern_words) >= 2:
+            first_two = " ".join(pattern_words[0:2])
+            if first_two == route_full or (
+                pattern_words[1] == route_line and pattern_words[0] in transport_type_normalized
+            ):
+                route_matched = True
+                dest_start_idx = 2
+
+        if route_matched and dest_start_idx < len(pattern_words):
+            dest_part = " ".join(pattern_words[dest_start_idx:])
+            return self._matches_text_normalized(destination_normalized, dest_part)
+
+        return False
+
+    def _match_single_word_pattern(
+        self,
+        pattern_single: str,
+        route_line: str,
+        route_full: str,
+        destination_normalized: str,
+    ) -> bool:
+        """Match a single-word pattern against route or destination.
+
+        Args:
+            pattern_single: Single pattern word.
+            route_line: Normalized line identifier.
+            route_full: Normalized full route identifier.
+            destination_normalized: Normalized destination.
+
+        Returns:
+            True if pattern matches, False otherwise.
+        """
+        route_matches = pattern_single in (route_line, route_full)
+        if route_matches:
+            return True
+
+        return self._matches_text_normalized(destination_normalized, pattern_single)
 
     def _matches_departure(self, departure: Departure, patterns: list[str]) -> bool:
         """Check if a departure matches any of the given patterns.
@@ -312,75 +549,31 @@ class DepartureGroupingService:
         - Route only: "U2" (matches any destination for U2 route)
         - Destination only: "Messestadt" (matches any route going to Messestadt)
         """
-        # Normalize Unicode for consistent matching
-        destination_normalized = self._normalize_unicode(departure.destination)
-        line_normalized = self._normalize_unicode(departure.line)
-        transport_type_normalized = self._normalize_unicode(departure.transport_type)
-
-        # Create route identifiers for matching (using normalized values)
-        route_line = line_normalized  # e.g., "u2", "59", "s5"
-        route_full = f"{transport_type_normalized} {line_normalized}"  # e.g., "u-bahn u2", "bus 59", "s-bahn s5"
+        (
+            destination_normalized,
+            transport_type_normalized,
+            route_line,
+            route_full,
+        ) = self._normalize_departure_data(departure)
 
         for pattern in patterns:
             pattern_normalized = self._normalize_unicode(pattern.strip())
-
-            # Split pattern into words to handle different formats
             pattern_words = pattern_normalized.split()
 
             if len(pattern_words) >= 2:
-                # Pattern has multiple parts - try to match as route + destination
-                # Need to identify where route ends and destination begins
-                # Patterns can be:
-                # 1. "U2 Messestadt" -> route="u2", dest="messestadt"
-                # 2. "Bus 59 Giesing" -> route="bus 59", dest="giesing"
-                # 3. "139 Messestadt West" -> route="139", dest="messestadt west"
-                # 4. "Bus 54 Lorettoplatz" -> route="bus 54", dest="lorettoplatz"
-                # 5. "S5 Aying" -> route="s5", dest="aying"
-                # 6. "S-Bahn S5 Aying" -> route="s-bahn s5", dest="aying"
-
-                # Try to match route from the beginning
-                # Check if first word matches line number
-                route_matched = False
-                dest_start_idx = 1
-
-                # Case 1: First word is the line number (e.g., "139 Messestadt West", "S5 Aying")
-                if pattern_words[0] == route_line:
-                    route_matched = True
-                    dest_start_idx = 1
-                # Case 2: First two words are transport type + line (e.g., "Bus 54 Lorettoplatz", "S-Bahn S5 Aying")
-                elif len(pattern_words) >= 2:
-                    first_two = " ".join(pattern_words[0:2])
-                    if first_two == route_full or (
-                        pattern_words[1] == route_line
-                        and pattern_words[0] in transport_type_normalized
-                    ):
-                        route_matched = True
-                        dest_start_idx = 2
-
-                if route_matched and dest_start_idx < len(pattern_words):
-                    # Destination is everything after the route
-                    dest_part = " ".join(pattern_words[dest_start_idx:])
-                    # Use Unicode-normalized matching for destinations
-                    if self._matches_text_normalized(destination_normalized, dest_part):
-                        return True
-                # Don't fall back to destination-only matching when route doesn't match!
-                # This prevents false matches like "N75 Ostbahnhof" matching "59 Giesing Bahnhof"
-                # If route doesn't match, the pattern doesn't match
-            else:
-                # Single word - try as route-only or destination-only
-                pattern_single = pattern_words[0]
-
-                # Try matching as route only - EXACT match only (no substring matching)
-                # Use normalized values for comparison
-                route_matches = pattern_single in (route_line, route_full)
-
-                if route_matches:
-                    # Route matches exactly - match any destination for this route
+                if self._match_multi_word_pattern(
+                    pattern_words,
+                    route_line,
+                    route_full,
+                    transport_type_normalized,
+                    destination_normalized,
+                ):
                     return True
-
-                # Try matching as destination only - use word-boundary matching with Unicode normalization
-                if self._matches_text_normalized(destination_normalized, pattern_single):
-                    # Destination matches - match any route to this destination
+            else:
+                pattern_single = pattern_words[0]
+                if self._match_single_word_pattern(
+                    pattern_single, route_line, route_full, destination_normalized
+                ):
                     return True
 
         return False
