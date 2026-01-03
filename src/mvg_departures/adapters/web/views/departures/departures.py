@@ -19,7 +19,10 @@ from pyview.vendor.ibis.loaders import FileReloader
 
 from mvg_departures.adapters.config import AppConfig
 from mvg_departures.adapters.web.broadcasters import PresenceBroadcaster
-from mvg_departures.adapters.web.builders import DepartureGroupingCalculator
+from mvg_departures.adapters.web.builders import (
+    DepartureGroupingCalculator,
+    HeaderDisplaySettings,
+)
 from mvg_departures.adapters.web.client_info import get_client_info_from_socket
 from mvg_departures.adapters.web.formatters import DepartureFormatter
 from mvg_departures.adapters.web.state import DeparturesState, State
@@ -76,6 +79,18 @@ class DisplayConfiguration:
     random_color_salt: int = 0
 
 
+@dataclass(frozen=True)
+class ComponentInitializationConfig:
+    """Configuration for initializing LiveView components.
+
+    Groups together configuration needed to initialize formatter, broadcaster, and calculator.
+    """
+
+    stop_configs: list[StopConfiguration]
+    config: AppConfig
+    header_display: HeaderDisplaySettings
+
+
 class DeparturesLiveView(LiveView[DeparturesState]):
     """LiveView for displaying MVG departures."""
 
@@ -101,34 +116,25 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         if not callable(grouping_service.group_departures):
             raise TypeError("grouping_service must implement DepartureGroupingService protocol")
 
-    def _initialize_components(
-        self,
-        stop_configs: list[StopConfiguration],
-        config: AppConfig,
-        random_header_colors: bool,
-        header_background_brightness: float,
-        random_color_salt: int,
-    ) -> None:
-        """Initialize formatter, broadcaster, and calculator components."""
+    def _initialize_components(self, init_config: ComponentInitializationConfig) -> None:
+        """Initialize formatter, broadcaster, and calculator components.
+
+        Args:
+            init_config: Configuration for component initialization.
+        """
         from mvg_departures.adapters.web.builders.departure_grouping_calculator import (
             DepartureGroupingCalculatorConfig,
-            HeaderDisplaySettings,
         )
 
-        self.formatter = DepartureFormatter(config)
+        self.formatter = DepartureFormatter(init_config.config)
         self.presence_broadcaster = PresenceBroadcaster()
         calculator_config = DepartureGroupingCalculatorConfig(
-            stop_configs=stop_configs, config=config
-        )
-        header_display = HeaderDisplaySettings(
-            random_header_colors=random_header_colors,
-            header_background_brightness=header_background_brightness,
-            random_color_salt=random_color_salt,
+            stop_configs=init_config.stop_configs, config=init_config.config
         )
         self.departure_grouping_calculator = DepartureGroupingCalculator(
             config=calculator_config,
             formatter=self.formatter,
-            header_display=header_display,
+            header_display=init_config.header_display,
         )
 
     def _assign_instance_variables(
@@ -177,13 +183,17 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             dependencies.grouping_service,
         )
         self._assign_instance_variables(dependencies, route_display, display_config)
-        self._initialize_components(
-            dependencies.stop_configs,
-            dependencies.config,
-            display_config.random_header_colors,
-            display_config.header_background_brightness,
-            display_config.random_color_salt,
+        header_display = HeaderDisplaySettings(
+            random_header_colors=display_config.random_header_colors,
+            header_background_brightness=display_config.header_background_brightness,
+            random_color_salt=display_config.random_color_salt,
         )
+        init_config = ComponentInitializationConfig(
+            stop_configs=dependencies.stop_configs,
+            config=dependencies.config,
+            header_display=header_display,
+        )
+        self._initialize_components(init_config)
         self._static_version = self._get_static_version()
 
     def _update_presence_from_event(
