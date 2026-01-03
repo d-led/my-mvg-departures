@@ -285,7 +285,7 @@ show_ungrouped = false
 "->Stachus (in 15+ min)" = ["27 Sendlinger Tor", "28 Sendlinger Tor"]
 
 # Example: Berlin Hardenbergstraße using VBB REST API
-# Berlin stations use the VBB REST API (v6.bvg.transport.rest) which is more reliable than HAFAS
+# Berlin stations use the VBB REST API
 # API documentation: https://github.com/derhuerst/vbb-rest/blob/master/docs/index.md
 [[routes]]
 path = "/berlin-hardenbergstrasse"
