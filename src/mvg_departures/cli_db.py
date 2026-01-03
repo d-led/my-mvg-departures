@@ -75,6 +75,19 @@ def _score_and_sort_results(
     return results
 
 
+def _process_db_search_results(
+    api_results: list[dict[str, Any]], query_lower: str, query_words: list[str]
+) -> list[dict[str, Any]]:
+    """Process and score DB search results."""
+    results = []
+    for api_result in api_results:
+        result = _convert_api_result_to_cli_format(api_result)
+        if result:
+            results.append(result)
+
+    return _score_and_sort_results(results, query_lower, query_words)
+
+
 async def search_stations_db(query: str) -> list[dict[str, Any]]:
     """Search for DB stations using the DB API."""
     try:
@@ -85,13 +98,7 @@ async def search_stations_db(query: str) -> list[dict[str, Any]]:
             query_lower = query.lower().strip()
             query_words = query_lower.split()
 
-            results = []
-            for api_result in api_results:
-                result = _convert_api_result_to_cli_format(api_result)
-                if result:
-                    results.append(result)
-
-            return _score_and_sort_results(results, query_lower, query_words)
+            return _process_db_search_results(api_results, query_lower, query_words)
     except Exception as e:
         print(f"Error searching DB stations: {e}", file=sys.stderr)
         return []
@@ -161,6 +168,25 @@ def _normalize_sets_to_lists(
             route["destinations"] = sorted(route["destinations"])
 
 
+def _process_departures_for_details(
+    departures: list[Any], routes: dict[str, dict[str, Any]], sub_stops: dict[str, dict[str, Any]]
+) -> None:
+    """Process departures to extract routes and sub-stops."""
+    for dep in departures:
+        line = dep.line
+        if not line:
+            continue
+
+        transport_type = dep.transport_type
+        destination = dep.destination
+        stop_point_id = dep.stop_point_global_id
+
+        if stop_point_id:
+            _process_sub_stop(stop_point_id, line, transport_type, destination, sub_stops)
+
+        _process_route(line, transport_type, destination, stop_point_id, routes)
+
+
 async def get_station_details_db(
     station_id: str, limit: int = 100, duration_minutes: int = 120
 ) -> dict[str, Any] | None:
@@ -178,20 +204,7 @@ async def get_station_details_db(
             routes: dict[str, dict[str, Any]] = {}
             sub_stops: dict[str, dict[str, Any]] = {}
 
-            for dep in departures:
-                line = dep.line
-                if not line:
-                    continue
-
-                transport_type = dep.transport_type
-                destination = dep.destination
-                stop_point_id = dep.stop_point_global_id
-
-                if stop_point_id:
-                    _process_sub_stop(stop_point_id, line, transport_type, destination, sub_stops)
-
-                _process_route(line, transport_type, destination, stop_point_id, routes)
-
+            _process_departures_for_details(departures, routes, sub_stops)
             _normalize_sets_to_lists(routes, sub_stops)
 
             return {
@@ -517,14 +530,16 @@ API: https://v6.db.transport.rest/api.html (100 req/min, no auth)
 
 async def _execute_command(args: Any) -> None:
     """Execute the appropriate command based on args."""
-    if args.command == "search":
-        await _handle_search_command(args.query, args.json)
-    elif args.command == "info":
-        await _handle_info_command(args.station_id, args.json)
-    elif args.command == "routes":
-        await _handle_routes_command(args.query, not args.no_patterns)
-    elif args.command == "generate":
-        await _handle_generate_command(args.station_id, args.station_name)
+    command_handlers: dict[str, Any] = {
+        "search": lambda: _handle_search_command(args.query, args.json),
+        "info": lambda: _handle_info_command(args.station_id, args.json),
+        "routes": lambda: _handle_routes_command(args.query, not args.no_patterns),
+        "generate": lambda: _handle_generate_command(args.station_id, args.station_name),
+    }
+
+    handler = command_handlers.get(args.command)
+    if handler:
+        await handler()
     else:
         import argparse
 

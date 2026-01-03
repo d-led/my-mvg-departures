@@ -93,6 +93,26 @@ async def _fetch_locations(session: aiohttp.ClientSession, query: str) -> list[d
         return locations
 
 
+def _process_search_results(
+    locations: list[dict[str, Any]],
+    query_lower: str,
+    meaningful_words: list[str],
+    query_words: list[str],
+) -> list[dict[str, Any]]:
+    """Process and sort search results."""
+    results = []
+    for location in locations:
+        result = _process_location(location, query_lower, meaningful_words, query_words)
+        if result:
+            results.append(result)
+
+    results.sort(key=lambda x: (-x.get("relevance", 0), x.get("name", "")))
+    for result in results:
+        result.pop("relevance", None)
+
+    return results
+
+
 async def search_stations_vbb(query: str) -> list[dict[str, Any]]:
     """Search for VBB stations using the VBB REST API."""
     try:
@@ -103,17 +123,7 @@ async def search_stations_vbb(query: str) -> list[dict[str, Any]]:
             query_words = query_lower.split()
             meaningful_words = _extract_meaningful_words(query)
 
-            results = []
-            for location in locations:
-                result = _process_location(location, query_lower, meaningful_words, query_words)
-                if result:
-                    results.append(result)
-
-            results.sort(key=lambda x: (-x.get("relevance", 0), x.get("name", "")))
-            for result in results:
-                result.pop("relevance", None)
-
-            return results
+            return _process_search_results(locations, query_lower, meaningful_words, query_words)
     except Exception as e:
         print(f"Error searching VBB stations: {e}", file=sys.stderr)
         return []

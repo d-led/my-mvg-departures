@@ -16,7 +16,7 @@ from mvg_departures.adapters.db_api.constants import (
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from aiohttp import ClientSession
+    from aiohttp import ClientResponse, ClientSession
 
 # Minimum delay between DB API requests (in seconds)
 # DB API rate limit is 100 requests/minute, so ~0.6s minimum
@@ -119,6 +119,16 @@ class DbHttpClient:
             "products": data.get("products", {}),
         }
 
+    async def _parse_station_response(
+        self, response: "ClientResponse", station_id: str
+    ) -> dict[str, Any] | None:
+        """Parse station info from API response."""
+        if response.status == 200:
+            data = await response.json()
+            if isinstance(data, dict):
+                return self._parse_station_data(data, station_id)
+        return None
+
     async def _fetch_station_info_direct(self, station_id: str) -> dict[str, Any] | None:
         """Fetch station info directly from the API endpoint."""
         if not self._session:
@@ -127,10 +137,7 @@ class DbHttpClient:
         try:
             url = f"{DB_STOPS_URL}/{station_id}"
             async with self._session.get(url, ssl=False) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    if isinstance(data, dict):
-                        return self._parse_station_data(data, station_id)
+                return await self._parse_station_response(response, station_id)
         except Exception as e:
             logger.warning(f"Error getting station info: {e}")
 
@@ -185,6 +192,19 @@ class DbHttpClient:
             f"{error_body} (Content-Type: {content_type}, Server: {server}){extra_info_str}"
         )
 
+    async def _handle_departures_response(
+        self, response: "ClientResponse", url: str
+    ) -> list[dict[str, Any]] | None:
+        """Handle departures API response."""
+        if response.status == 200:
+            data = await response.json()
+            departures = self._extract_departures_from_response(data)
+            if departures is not None:
+                return departures
+
+        await self._log_error_response(response, url)
+        return None
+
     async def fetch_departures(self, station_id: str, duration: int = 60) -> list[dict[str, Any]]:
         """Fetch departures from v6.db.transport.rest/stops/{id}/departures.
 
@@ -206,13 +226,9 @@ class DbHttpClient:
 
         try:
             async with self._session.get(url, params=params, ssl=False) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    departures = self._extract_departures_from_response(data)
-                    if departures is not None:
-                        return departures
-
-                await self._log_error_response(response, url)
+                result = await self._handle_departures_response(response, url)
+                if result is not None:
+                    return result
         except Exception as e:
             logger.warning(f"Error fetching DB departures for {url}: {e}")
 

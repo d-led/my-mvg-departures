@@ -1039,14 +1039,16 @@ async def _handle_generate_command(station_id: str, station_name: str) -> None:
 
 async def _execute_cli_command(args: Any) -> None:
     """Execute the appropriate CLI command based on args."""
-    if args.command == "search":
-        await _handle_search_command(args.query, args.json)
-    elif args.command == "info":
-        await show_station_info(args.station_id, format_json=args.json)
-    elif args.command == "routes":
-        await _handle_routes_command(args.query, show_patterns=not args.no_patterns)
-    elif args.command == "generate":
-        await _handle_generate_command(args.station_id, args.station_name)
+    command_handlers: dict[str, Any] = {
+        "search": lambda: _handle_search_command(args.query, args.json),
+        "info": lambda: show_station_info(args.station_id, format_json=args.json),
+        "routes": lambda: _handle_routes_command(args.query, show_patterns=not args.no_patterns),
+        "generate": lambda: _handle_generate_command(args.station_id, args.station_name),
+    }
+
+    handler = command_handlers.get(args.command)
+    if handler:
+        await handler()
 
 
 async def main() -> None:
