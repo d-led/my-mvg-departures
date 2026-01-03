@@ -20,19 +20,19 @@ if [ -z "${COMMON_ENV_LOADED:-}" ]; then
     
     # Detect virtual environment and command runner
     if [ -d ".venv" ]; then
-        PYTHON=".venv/bin/python"
-        PIP=".venv/bin/pip"
-        RUN_CMD=""
+        export PYTHON=".venv/bin/python"
+        export PIP=".venv/bin/pip"
+        export RUN_CMD=""
         echo "Using existing .venv" >&2
     elif command -v uv &> /dev/null; then
-        PYTHON="python3"
-        PIP="uv pip"
-        RUN_CMD="uv run"
+        export PYTHON="python3"
+        export PIP="uv pip"
+        export RUN_CMD="uv run"
         echo "Using uv" >&2
     else
-        PYTHON="python3"
-        PIP="pip3"
-        RUN_CMD=""
+        export PYTHON="python3"
+        export PIP="pip3"
+        export RUN_CMD=""
         echo "Using system Python (ensure dependencies are installed)" >&2
     fi
 

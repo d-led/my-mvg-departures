@@ -25,6 +25,12 @@ from .presence import get_presence_tracker
 from .servers import StaticFileServer
 from .state import State
 from .views.departures import create_departures_live_view
+from .views.departures.departures import (
+    DisplayConfiguration,
+    LiveViewConfiguration,
+    LiveViewDependencies,
+    RouteDisplaySettings,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -178,64 +184,54 @@ class PyViewWebAdapter(DisplayAdapter):
         app.routes.append(Route(favicon_path, route_favicon_handler, methods=["GET"]))
         logger.info(f"Added route-specific favicon at {favicon_path} for '{route_title}'")
 
+    def _build_live_view_config(
+        self, route_config: RouteConfiguration, presence_tracker: Any
+    ) -> LiveViewConfiguration:
+        """Build LiveViewConfiguration for a route."""
+        route_state = self.route_states[route_config.path]
+        dependencies = LiveViewDependencies(
+            state_manager=route_state,
+            grouping_service=self.grouping_service,
+            stop_configs=route_config.stop_configs,
+            config=self.config,
+            presence_tracker=presence_tracker,
+        )
+        route_display = RouteDisplaySettings(title=route_config.title, theme=route_config.theme)
+        display_config = DisplayConfiguration(
+            fill_vertical_space=route_config.fill_vertical_space,
+            font_scaling_factor_when_filling=route_config.font_scaling_factor_when_filling,
+            random_header_colors=route_config.random_header_colors,
+            header_background_brightness=route_config.header_background_brightness,
+            random_color_salt=route_config.random_color_salt,
+        )
+        return LiveViewConfiguration(
+            dependencies=dependencies,
+            route_display=route_display,
+            display_config=display_config,
+        )
+
+    def _log_route_registration(self, route_config: RouteConfiguration) -> None:
+        """Log route registration details."""
+        parts = [
+            f"Registering route at path '{route_config.path}' with {len(route_config.stop_configs)} stops"
+        ]
+        if route_config.title:
+            parts.append(f" and title '{route_config.title}'")
+        if route_config.fill_vertical_space:
+            parts.append(f" (fill_vertical_space={route_config.fill_vertical_space})")
+        logger.info("".join(parts))
+
     def _register_live_views(self, app: Any, presence_tracker: Any) -> None:
-        """Register LiveViews for all routes.
-
-        Args:
-            app: The PyView application instance.
-            presence_tracker: The presence tracker instance.
-        """
+        """Register LiveViews for all routes."""
         for route_config in self.route_configs:
-            route_path = route_config.path
-            route_state = self.route_states[route_path]
-            route_stop_configs = route_config.stop_configs
-            route_title = route_config.title
-            route_theme = route_config.theme
-            fill_vertical_space = route_config.fill_vertical_space
-            font_scaling_factor_when_filling = route_config.font_scaling_factor_when_filling
-            random_header_colors = route_config.random_header_colors
-            header_background_brightness = route_config.header_background_brightness
-            random_color_salt = route_config.random_color_salt
+            if route_config.title:
+                self._add_route_favicon(app, route_config.path, route_config.title)
 
-            # Generate route-specific favicon if route has custom title
-            if route_title:
-                self._add_route_favicon(app, route_path, route_title)
-
-            logger.info(
-                f"Registering route at path '{route_path}' with {len(route_stop_configs)} stops"
-                + (f" and title '{route_title}'" if route_title else "")
-                + (f" (fill_vertical_space={fill_vertical_space})" if fill_vertical_space else "")
-            )
-            from mvg_departures.adapters.web.views.departures.departures import (
-                DisplayConfiguration,
-                LiveViewConfiguration,
-                LiveViewDependencies,
-                RouteDisplaySettings,
-            )
-
-            dependencies = LiveViewDependencies(
-                state_manager=route_state,
-                grouping_service=self.grouping_service,
-                stop_configs=route_stop_configs,
-                config=self.config,
-                presence_tracker=presence_tracker,
-            )
-            route_display = RouteDisplaySettings(title=route_title, theme=route_theme)
-            display_config = DisplayConfiguration(
-                fill_vertical_space=fill_vertical_space,
-                font_scaling_factor_when_filling=font_scaling_factor_when_filling,
-                random_header_colors=random_header_colors,
-                header_background_brightness=header_background_brightness,
-                random_color_salt=random_color_salt,
-            )
-            live_view_config = LiveViewConfiguration(
-                dependencies=dependencies,
-                route_display=route_display,
-                display_config=display_config,
-            )
+            self._log_route_registration(route_config)
+            live_view_config = self._build_live_view_config(route_config, presence_tracker)
             live_view_class = create_departures_live_view(live_view_config)
-            app.add_live_view(route_path, live_view_class)
-            logger.info(f"Successfully registered route at path '{route_path}'")
+            app.add_live_view(route_config.path, live_view_class)
+            logger.info(f"Successfully registered route at path '{route_config.path}'")
 
     async def _handle_reset_connections(self, request: Any, presence_tracker: Any) -> Any:
         """Handle reset connections admin endpoint."""
