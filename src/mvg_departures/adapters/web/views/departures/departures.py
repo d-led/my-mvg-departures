@@ -110,15 +110,25 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         random_color_salt: int,
     ) -> None:
         """Initialize formatter, broadcaster, and calculator components."""
+        from mvg_departures.adapters.web.builders.departure_grouping_calculator import (
+            DepartureGroupingCalculatorConfig,
+            HeaderDisplaySettings,
+        )
+
         self.formatter = DepartureFormatter(config)
         self.presence_broadcaster = PresenceBroadcaster()
+        calculator_config = DepartureGroupingCalculatorConfig(
+            stop_configs=stop_configs, config=config
+        )
+        header_display = HeaderDisplaySettings(
+            random_header_colors=random_header_colors,
+            header_background_brightness=header_background_brightness,
+            random_color_salt=random_color_salt,
+        )
         self.departure_grouping_calculator = DepartureGroupingCalculator(
-            stop_configs,
-            config,
-            self.formatter,
-            random_header_colors,
-            header_background_brightness,
-            random_color_salt,
+            config=calculator_config,
+            formatter=self.formatter,
+            header_display=header_display,
         )
 
     def _assign_instance_variables(

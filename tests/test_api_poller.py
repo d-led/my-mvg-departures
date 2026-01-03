@@ -8,7 +8,12 @@ import pytest
 
 from mvg_departures.adapters.config import AppConfig
 from mvg_departures.adapters.web.broadcasters import StateBroadcaster
-from mvg_departures.adapters.web.pollers import ApiPoller
+from mvg_departures.adapters.web.pollers import (
+    ApiPoller,
+    ApiPollerConfiguration,
+    ApiPollerServices,
+    ApiPollerSettings,
+)
 from mvg_departures.adapters.web.state import DeparturesState
 from mvg_departures.adapters.web.updaters import StateUpdater
 from mvg_departures.application.services import DepartureGroupingService
@@ -80,15 +85,21 @@ async def test_when_cache_empty_then_fetches_fresh_from_api(
         # Create ApiPoller with empty shared cache
         empty_cache: dict[str, list[Departure]] = {}
         config = AppConfig.for_testing(config_file=None)
-        poller = ApiPoller(
+        services = ApiPollerServices(
             grouping_service=grouping_service,
-            stop_configs=[stop_config],
-            config=config,
             state_updater=mock_state_updater,
             state_broadcaster=mock_state_broadcaster,
+        )
+        configuration = ApiPollerConfiguration(
+            stop_configs=[stop_config],
+            config=config,
+            refresh_interval_seconds=None,
+        )
+        settings = ApiPollerSettings(
             broadcast_topic="test",
             shared_cache=empty_cache,
         )
+        poller = ApiPoller(services=services, configuration=configuration, settings=settings)
 
         # Mock the broadcaster to avoid actual pubsub calls
         mock_state_broadcaster.broadcast_update = AsyncMock()
@@ -132,15 +143,21 @@ async def test_when_api_fails_then_falls_back_to_cached_groups(
         # Create ApiPoller with empty shared cache
         empty_cache: dict[str, list[Departure]] = {}
         config = AppConfig.for_testing(config_file=None)
-        poller = ApiPoller(
+        services = ApiPollerServices(
             grouping_service=grouping_service,
-            stop_configs=[stop_config],
-            config=config,
             state_updater=mock_state_updater,
             state_broadcaster=mock_state_broadcaster,
+        )
+        configuration = ApiPollerConfiguration(
+            stop_configs=[stop_config],
+            config=config,
+            refresh_interval_seconds=None,
+        )
+        settings = ApiPollerSettings(
             broadcast_topic="test",
             shared_cache=empty_cache,
         )
+        poller = ApiPoller(services=services, configuration=configuration, settings=settings)
 
         # Pre-populate cached groups (simulating a previous successful fetch)
         cached_departure = Departure(
@@ -196,15 +213,21 @@ async def test_when_cache_has_data_then_uses_cache(
         # Create ApiPoller with populated shared cache
         cache_with_data: dict[str, list[Departure]] = {stop_config.station_id: sample_departures}
         config = AppConfig.for_testing(config_file=None)
-        poller = ApiPoller(
+        services = ApiPollerServices(
             grouping_service=grouping_service,
-            stop_configs=[stop_config],
-            config=config,
             state_updater=mock_state_updater,
             state_broadcaster=mock_state_broadcaster,
+        )
+        configuration = ApiPollerConfiguration(
+            stop_configs=[stop_config],
+            config=config,
+            refresh_interval_seconds=None,
+        )
+        settings = ApiPollerSettings(
             broadcast_topic="test",
             shared_cache=cache_with_data,
         )
+        poller = ApiPoller(services=services, configuration=configuration, settings=settings)
 
         # Mock the broadcaster to avoid actual pubsub calls
         mock_state_broadcaster.broadcast_update = AsyncMock()

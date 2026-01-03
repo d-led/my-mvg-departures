@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -25,6 +25,33 @@ if TYPE_CHECKING:
     from mvg_departures.domain.models.departure import Departure
     from mvg_departures.domain.models.stop_configuration import StopConfiguration
     from mvg_departures.domain.ports import DepartureGroupingService
+
+
+@dataclass(frozen=True)
+class ApiPollerServices:
+    """Service dependencies for API poller."""
+
+    grouping_service: DepartureGroupingService
+    state_updater: StateUpdaterProtocol
+    state_broadcaster: StateBroadcasterProtocol
+
+
+@dataclass(frozen=True)
+class ApiPollerConfiguration:
+    """Configuration for API poller."""
+
+    stop_configs: list[StopConfiguration]
+    config: AppConfig
+    refresh_interval_seconds: int | None
+
+
+@dataclass(frozen=True)
+class ApiPollerSettings:
+    """Runtime settings for API poller."""
+
+    broadcast_topic: str
+    shared_cache: dict[str, list[Departure]] | None = None
+
 
 logger = logging.getLogger(__name__)
 
@@ -63,40 +90,29 @@ class ApiPoller(ApiPollerProtocol):
 
     def __init__(
         self,
-        grouping_service: DepartureGroupingService,
-        stop_configs: list[StopConfiguration],
-        config: AppConfig,
-        state_updater: StateUpdaterProtocol,
-        state_broadcaster: StateBroadcasterProtocol,
-        broadcast_topic: str,
-        shared_cache: dict[str, list[Departure]] | None = None,
-        refresh_interval_seconds: int | None = None,
+        services: ApiPollerServices,
+        configuration: ApiPollerConfiguration,
+        settings: ApiPollerSettings,
     ) -> None:
         """Initialize the API poller.
 
         Args:
-            grouping_service: Service for grouping departures.
-            stop_configs: List of stop configurations for this route.
-            config: Application configuration.
-            state_updater: Updater for state.
-            state_broadcaster: Broadcaster for state updates.
-            broadcast_topic: The pub/sub topic to broadcast to.
-            shared_cache: Optional shared cache of raw departures by station_id.
-            refresh_interval_seconds: Optional route-specific poller interval in seconds.
-                                    If None, uses config.refresh_interval_seconds.
+            services: Service dependencies for the poller.
+            configuration: Configuration for what to poll and how.
+            settings: Runtime settings for broadcasting and caching.
         """
-        self.grouping_service = grouping_service
-        self.stop_configs = stop_configs
-        self.config = config
-        self.state_updater = state_updater
-        self.state_broadcaster = state_broadcaster
-        self.broadcast_topic = broadcast_topic
-        self.shared_cache = shared_cache
+        self.grouping_service = services.grouping_service
+        self.state_updater = services.state_updater
+        self.state_broadcaster = services.state_broadcaster
+        self.stop_configs = configuration.stop_configs
+        self.config = configuration.config
         self.refresh_interval_seconds = (
-            refresh_interval_seconds
-            if refresh_interval_seconds is not None
-            else config.refresh_interval_seconds
+            configuration.refresh_interval_seconds
+            if configuration.refresh_interval_seconds is not None
+            else configuration.config.refresh_interval_seconds
         )
+        self.broadcast_topic = settings.broadcast_topic
+        self.shared_cache = settings.shared_cache
         self.cached_departures: dict[str, list[GroupedDepartures]] = {}
         self._task: asyncio.Task | None = None
 

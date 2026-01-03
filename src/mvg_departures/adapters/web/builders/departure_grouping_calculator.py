@@ -1,6 +1,7 @@
 """Calculator for departure grouping display data."""
 
 import hashlib
+from dataclasses import dataclass
 from typing import Any
 
 from mvg_departures.adapters.config.app_config import AppConfig
@@ -10,6 +11,23 @@ from mvg_departures.domain.contracts.departure_grouping_calculator import (
 )
 from mvg_departures.domain.models.direction_group_with_metadata import DirectionGroupWithMetadata
 from mvg_departures.domain.models.stop_configuration import StopConfiguration
+
+
+@dataclass(frozen=True)
+class HeaderDisplaySettings:
+    """Settings for header color display."""
+
+    random_header_colors: bool = False
+    header_background_brightness: float = 0.7
+    random_color_salt: int = 0
+
+
+@dataclass(frozen=True)
+class DepartureGroupingCalculatorConfig:
+    """Configuration for departure grouping calculator."""
+
+    stop_configs: list[StopConfiguration]
+    config: AppConfig
 
 
 def _calculate_hsl_from_hash(hash_int: int, brightness: float) -> tuple[float, float, float]:
@@ -104,29 +122,24 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
 
     def __init__(
         self,
-        stop_configs: list[StopConfiguration],
-        config: AppConfig,
+        config: DepartureGroupingCalculatorConfig,
         formatter: DepartureFormatterProtocol,
-        random_header_colors: bool = False,
-        header_background_brightness: float = 0.7,
-        random_color_salt: int = 0,
+        header_display: HeaderDisplaySettings | None = None,
     ) -> None:
         """Initialize the departure grouping calculator.
 
         Args:
-            stop_configs: List of stop configurations.
-            config: Application configuration.
+            config: Configuration for the calculator.
             formatter: Departure formatter for time formatting.
-            random_header_colors: If True, generate hash-based pastel colors for headers.
-            header_background_brightness: Brightness adjustment for random header colors (0.0-1.0).
-            random_color_salt: Salt value for hash-based color generation (default 0).
+            header_display: Settings for header color display. If None, uses defaults.
         """
-        self.stop_configs = stop_configs
-        self.config = config
+        self.stop_configs = config.stop_configs
+        self.config = config.config
         self.formatter = formatter
-        self.random_header_colors = random_header_colors
-        self.header_background_brightness = header_background_brightness
-        self.random_color_salt = random_color_salt
+        header_settings = header_display or HeaderDisplaySettings()
+        self.random_header_colors = header_settings.random_header_colors
+        self.header_background_brightness = header_settings.header_background_brightness
+        self.random_color_salt = header_settings.random_color_salt
 
     def _format_departure_data(self, departure: Any) -> dict[str, Any]:
         """Format a single departure for display.

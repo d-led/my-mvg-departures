@@ -7,6 +7,8 @@ from unittest.mock import patch
 from mvg_departures.adapters.config import AppConfig
 from mvg_departures.adapters.web.builders import (
     DepartureGroupingCalculator,
+    DepartureGroupingCalculatorConfig,
+    HeaderDisplaySettings,
     generate_pastel_color_from_text,
 )
 from mvg_departures.adapters.web.formatters import DepartureFormatter
@@ -34,7 +36,12 @@ def _create_calculator() -> DepartureGroupingCalculator:
         ]
         config = AppConfig.for_testing(config_file=None)
         formatter = DepartureFormatter(config)
-        return DepartureGroupingCalculator(stop_configs, config, formatter)
+        calculator_config = DepartureGroupingCalculatorConfig(
+            stop_configs=stop_configs, config=config
+        )
+        return DepartureGroupingCalculator(
+            config=calculator_config, formatter=formatter, header_display=None
+        )
 
 
 def test_when_no_departures_available_then_shows_no_departures() -> None:
@@ -1083,8 +1090,12 @@ def test_when_stops_have_same_name_different_ids_then_uses_correct_config() -> N
         ]
         config = AppConfig.for_testing(config_file=None)
         formatter = DepartureFormatter(config)
+        calculator_config = DepartureGroupingCalculatorConfig(
+            stop_configs=stop_configs, config=config
+        )
+        header_display = HeaderDisplaySettings(random_header_colors=False)
         calculator = DepartureGroupingCalculator(
-            stop_configs, config, formatter, random_header_colors=False
+            config=calculator_config, formatter=formatter, header_display=header_display
         )
 
     # Create direction groups with station_id, stop_name, direction_name, departures, random_header_colors, header_background_brightness, random_color_salt
@@ -1199,8 +1210,12 @@ def test_when_salt_used_in_calculator_then_affects_color() -> None:
         ]
         config = AppConfig.for_testing(config_file=None)
         formatter = DepartureFormatter(config)
+        calculator_config = DepartureGroupingCalculatorConfig(
+            stop_configs=stop_configs, config=config
+        )
+        header_display = HeaderDisplaySettings(random_header_colors=True, random_color_salt=0)
         calculator = DepartureGroupingCalculator(
-            stop_configs, config, formatter, random_header_colors=True, random_color_salt=0
+            config=calculator_config, formatter=formatter, header_display=header_display
         )
 
     # Create direction groups with same header text but different salt values

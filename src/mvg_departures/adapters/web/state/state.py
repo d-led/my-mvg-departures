@@ -83,18 +83,31 @@ class State:
         refresh_interval_seconds: int | None,
     ) -> ApiPoller:
         """Create and configure API poller instance."""
+        from mvg_departures.adapters.web.pollers.api_poller import (
+            ApiPollerConfiguration,
+            ApiPollerServices,
+            ApiPollerSettings,
+        )
+
         state_updater = StateUpdater(self.departures_state)
         state_broadcaster = StateBroadcaster()
-        return ApiPoller(
+
+        services = ApiPollerServices(
             grouping_service=grouping_service,
-            stop_configs=stop_configs,
-            config=config,
             state_updater=state_updater,
             state_broadcaster=state_broadcaster,
-            broadcast_topic=self.broadcast_topic,
-            shared_cache=shared_cache,
+        )
+        configuration = ApiPollerConfiguration(
+            stop_configs=stop_configs,
+            config=config,
             refresh_interval_seconds=refresh_interval_seconds,
         )
+        settings = ApiPollerSettings(
+            broadcast_topic=self.broadcast_topic,
+            shared_cache=shared_cache,
+        )
+
+        return ApiPoller(services=services, configuration=configuration, settings=settings)
 
     async def start_api_poller(
         self,
