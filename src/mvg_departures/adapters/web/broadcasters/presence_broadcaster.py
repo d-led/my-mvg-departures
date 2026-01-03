@@ -20,6 +20,45 @@ logger = logging.getLogger(__name__)
 class PresenceBroadcaster(PresenceBroadcasterProtocol):
     """Broadcasts presence updates via PubSub."""
 
+    async def _subscribe_socket_to_topics(
+        self, socket: LiveViewSocket, dashboard_topic: str, global_topic: str
+    ) -> None:
+        """Subscribe socket to presence topics."""
+        try:
+            await socket.subscribe(dashboard_topic)
+            await socket.subscribe(global_topic)
+        except Exception as e:
+            logger.warning(f"Failed to subscribe socket to presence topics: {e}", exc_info=True)
+
+    async def _broadcast_to_dashboard_topic(
+        self, dashboard_topic: str, user_id: str, local_count: int, total_count: int
+    ) -> None:
+        """Broadcast join message to dashboard topic."""
+        dashboard_pubsub = PubSub(pub_sub_hub, dashboard_topic)
+        await dashboard_pubsub.send_all_on_topic_async(
+            dashboard_topic,
+            {
+                "user_id": user_id,
+                "action": "joined",
+                "local_count": local_count,
+                "total_count": total_count,
+            },
+        )
+
+    async def _broadcast_to_global_topic(
+        self, global_topic: str, user_id: str, total_count: int
+    ) -> None:
+        """Broadcast join message to global topic."""
+        global_pubsub = PubSub(pub_sub_hub, global_topic)
+        await global_pubsub.send_all_on_topic_async(
+            global_topic,
+            {
+                "user_id": user_id,
+                "action": "joined",
+                "total_count": total_count,
+            },
+        )
+
     async def broadcast_join(
         self,
         route_path: str,
@@ -38,38 +77,13 @@ class PresenceBroadcaster(PresenceBroadcasterProtocol):
         global_topic = "presence:global"
 
         try:
-            # Subscribe the joining user to topics if socket is provided and connected
             if socket is not None and is_connected(socket):
-                try:
-                    await socket.subscribe(dashboard_topic)
-                    await socket.subscribe(global_topic)
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to subscribe socket to presence topics: {e}", exc_info=True
-                    )
+                await self._subscribe_socket_to_topics(socket, dashboard_topic, global_topic)
 
-            # Always broadcast to all subscribers on the topic (regardless of socket state)
-            dashboard_pubsub = PubSub(pub_sub_hub, dashboard_topic)
-            await dashboard_pubsub.send_all_on_topic_async(
-                dashboard_topic,
-                {
-                    "user_id": user_id,
-                    "action": "joined",
-                    "local_count": local_count,
-                    "total_count": total_count,
-                },
+            await self._broadcast_to_dashboard_topic(
+                dashboard_topic, user_id, local_count, total_count
             )
-
-            # Broadcast to global topic
-            global_pubsub = PubSub(pub_sub_hub, global_topic)
-            await global_pubsub.send_all_on_topic_async(
-                global_topic,
-                {
-                    "user_id": user_id,
-                    "action": "joined",
-                    "total_count": total_count,
-                },
-            )
+            await self._broadcast_to_global_topic(global_topic, user_id, total_count)
         except Exception as e:
             logger.error(f"Failed to broadcast/subscribe to presence topic: {e}", exc_info=True)
 

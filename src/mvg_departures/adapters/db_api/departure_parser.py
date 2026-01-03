@@ -196,6 +196,13 @@ class DepartureParser:
             return None
 
     @staticmethod
+    @staticmethod
+    def _extract_message_from_dict(remark: dict[str, Any]) -> str | None:
+        """Extract message text from dictionary remark."""
+        text = remark.get("text", "")
+        return str(text) if text else None
+
+    @staticmethod
     def _extract_messages(remarks: list[Any]) -> list[str]:
         """Extract message texts from remarks."""
         messages = []
@@ -204,9 +211,9 @@ class DepartureParser:
 
         for remark in remarks:
             if isinstance(remark, dict):
-                text = remark.get("text", "")
-                if text:
-                    messages.append(str(text))
+                message = DepartureParser._extract_message_from_dict(remark)
+                if message:
+                    messages.append(message)
             elif isinstance(remark, str):
                 messages.append(remark)
 

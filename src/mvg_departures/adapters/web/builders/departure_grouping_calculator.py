@@ -12,6 +12,66 @@ from mvg_departures.domain.models.direction_group_with_metadata import Direction
 from mvg_departures.domain.models.stop_configuration import StopConfiguration
 
 
+def _calculate_hsl_from_hash(hash_int: int, brightness: float) -> tuple[float, float, float]:
+    """Calculate HSL values from hash and brightness."""
+    hash_part1 = (hash_int >> 16) & 0xFFFF  # Upper 16 bits
+    hash_part2 = hash_int & 0xFFFF  # Lower 16 bits
+    hue_base = hash_part1 % 360
+    hue_variation = (hash_part2 % 60) - 30  # -30 to +30 degrees
+    hue = (hue_base + hue_variation) % 360
+
+    saturation = 55 + (hash_int % 26)  # 55-80%
+
+    brightness_adjusted = brightness**1.5
+    base_lightness_min = 30 + (brightness_adjusted * 45)  # 30-75
+    base_lightness_max = 40 + (brightness_adjusted * 45)  # 40-85
+    lightness_range = int(base_lightness_max - base_lightness_min)
+    lightness = int(base_lightness_min) + (hash_int % max(1, lightness_range))
+
+    return hue, saturation, lightness
+
+
+def _hue_to_rgb(p: float, q: float, t: float) -> float:
+    """Convert hue component to RGB value."""
+    if t < 0:
+        t += 1
+    if t > 1:
+        t -= 1
+    if t < 1 / 6:
+        return p + (q - p) * 6 * t
+    if t < 1 / 2:
+        return q
+    if t < 2 / 3:
+        return p + (q - p) * (2 / 3 - t) * 6
+    return p
+
+
+def _hsl_to_rgb(hue: float, saturation: float, lightness: float) -> tuple[float, float, float]:
+    """Convert HSL to RGB values."""
+    h = hue / 360.0
+    s = saturation / 100.0
+    light = lightness / 100.0
+
+    if s == 0:
+        return light, light, light
+
+    q = light * (1 + s) if light < 0.5 else light + s - light * s
+    p = 2 * light - q
+    r = _hue_to_rgb(p, q, h + 1 / 3)
+    g = _hue_to_rgb(p, q, h)
+    b = _hue_to_rgb(p, q, h - 1 / 3)
+
+    return r, g, b
+
+
+def _rgb_to_hex(r: float, g: float, b: float) -> str:
+    """Convert RGB values to hex color code."""
+    r_hex = f"{int(r * 255):02x}"
+    g_hex = f"{int(g * 255):02x}"
+    b_hex = f"{int(b * 255):02x}"
+    return f"#{r_hex}{g_hex}{b_hex}"
+
+
 def generate_pastel_color_from_text(
     text: str, brightness: float = 0.7, _index: int = 0, salt: int = 0
 ) -> str:
@@ -31,69 +91,12 @@ def generate_pastel_color_from_text(
     Returns:
         A hex color code (e.g., "#A8D5E2").
     """
-    # Create a stable hash from the text and salt
-    # Color depends only on text and salt, not on position/index
     hash_obj = hashlib.md5(f"{text}:{salt}".encode())
     hash_int = int(hash_obj.hexdigest(), 16)
 
-    # Use the hash to generate HSL values
-    # Use different parts of the hash for base hue and variation
-    hash_part1 = (hash_int >> 16) & 0xFFFF  # Upper 16 bits
-    hash_part2 = hash_int & 0xFFFF  # Lower 16 bits
-    hue_base = hash_part1 % 360
-    # Add some variation from the second hash part
-    hue_variation = (hash_part2 % 60) - 30  # -30 to +30 degrees
-    hue = (hue_base + hue_variation) % 360
-
-    # Saturation: Increased range (55-80%) for more vibrant, distinct colors
-    # Higher saturation makes colors more distinguishable
-    saturation = 55 + (hash_int % 26)  # 55-80%
-
-    # Lightness: base range adjusted by brightness parameter
-    # brightness 0.0 = very dark (30-40%), 0.2 = dark (40-50%), 0.7 = medium (65-75%), 1.0 = light (75-85%)
-    # Use a non-linear mapping for better control: brightness^1.5 gives smoother transitions
-    brightness_adjusted = brightness**1.5
-    base_lightness_min = 30 + (brightness_adjusted * 45)  # 30-75
-    base_lightness_max = 40 + (brightness_adjusted * 45)  # 40-85
-    lightness_range = int(base_lightness_max - base_lightness_min)
-    lightness = int(base_lightness_min) + (hash_int % max(1, lightness_range))
-
-    # Convert HSL to RGB
-    # Normalize values
-    h = hue / 360.0
-    s = saturation / 100.0
-    light = lightness / 100.0
-
-    # HSL to RGB conversion
-    if s == 0:
-        r = g = b = light
-    else:
-
-        def hue_to_rgb(p: float, q: float, t: float) -> float:
-            if t < 0:
-                t += 1
-            if t > 1:
-                t -= 1
-            if t < 1 / 6:
-                return p + (q - p) * 6 * t
-            if t < 1 / 2:
-                return q
-            if t < 2 / 3:
-                return p + (q - p) * (2 / 3 - t) * 6
-            return p
-
-        q = light * (1 + s) if light < 0.5 else light + s - light * s
-        p = 2 * light - q
-        r = hue_to_rgb(p, q, h + 1 / 3)
-        g = hue_to_rgb(p, q, h)
-        b = hue_to_rgb(p, q, h - 1 / 3)
-
-    # Convert to 0-255 range and format as hex
-    r_hex = f"{int(r * 255):02x}"
-    g_hex = f"{int(g * 255):02x}"
-    b_hex = f"{int(b * 255):02x}"
-
-    return f"#{r_hex}{g_hex}{b_hex}"
+    hue, saturation, lightness = _calculate_hsl_from_hash(hash_int, brightness)
+    r, g, b = _hsl_to_rgb(hue, saturation, lightness)
+    return _rgb_to_hex(r, g, b)
 
 
 class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):

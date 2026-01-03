@@ -107,22 +107,31 @@ def _normalize_transport_type(transport_type: str) -> str:
     return type_map.get(transport_type, transport_type)
 
 
+def _extract_list_field(line_info: dict[str, Any], field_name: str) -> list[str]:
+    """Extract and convert list field to string list."""
+    field_value = line_info.get(field_name)
+    if isinstance(field_value, list):
+        return [str(d) for d in field_value]
+    return []
+
+
+def _extract_single_field(line_info: dict[str, Any], field_name: str) -> list[str]:
+    """Extract single field and return as list."""
+    if field_name in line_info:
+        return [str(line_info[field_name])]
+    return []
+
+
 def _extract_destinations_from_line_info(line_info: dict[str, Any]) -> list[str]:
     """Extract destinations from line info in various possible formats."""
-    if "destinations" in line_info:
-        destinations = line_info["destinations"]
-        if isinstance(destinations, list):
-            return [str(d) for d in destinations]
-        return []
-    if "destination" in line_info:
-        return [str(line_info["destination"])]
-    if "directions" in line_info:
-        directions = line_info["directions"]
-        if isinstance(directions, list):
-            return [str(d) for d in directions]
-        return []
-    if "direction" in line_info:
-        return [str(line_info["direction"])]
+    if result := _extract_list_field(line_info, "destinations"):
+        return result
+    if result := _extract_single_field(line_info, "destination"):
+        return result
+    if result := _extract_list_field(line_info, "directions"):
+        return result
+    if result := _extract_single_field(line_info, "direction"):
+        return result
     return []
 
 
@@ -143,20 +152,53 @@ def _extract_line_info(line_info: dict[str, Any]) -> tuple[str, str, str]:
     return line, transport_type, icon
 
 
+def _extract_lines_from_dict(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract lines list from dictionary response."""
+    lines = data.get("lines", [])
+    if not lines:
+        lines = data.get("routes", data.get("data", []))
+    if isinstance(lines, list):
+        return [item for item in lines if isinstance(item, dict)]
+    return []
+
+
 def _parse_routes_response(data: Any) -> list[dict[str, Any]]:
     """Parse routes response and extract lines list."""
     if isinstance(data, list):
         return [item for item in data if isinstance(item, dict)]
 
     if isinstance(data, dict):
-        lines = data.get("lines", [])
-        if not lines:
-            lines = data.get("routes", data.get("data", []))
-        if isinstance(lines, list):
-            return [item for item in lines if isinstance(item, dict)]
-        return []
+        return _extract_lines_from_dict(data)
 
     return []
+
+
+def _initialize_route_entry(
+    routes: dict[str, set[str]],
+    route_details: dict[str, dict[str, Any]],
+    route_key: str,
+    line: str,
+    transport_type: str,
+    icon: str,
+) -> None:
+    """Initialize a new route entry."""
+    if route_key not in routes:
+        routes[route_key] = set()
+        route_details[route_key] = {
+            "line": line,
+            "transport_type": transport_type,
+            "icon": icon,
+        }
+
+
+def _add_destinations_to_route(
+    routes: dict[str, set[str]], route_key: str, destinations_raw: list[str]
+) -> None:
+    """Add destinations to a route."""
+    for dest in destinations_raw:
+        dest_name = _normalize_destination_name(dest)
+        if dest_name:
+            routes[route_key].add(dest_name)
 
 
 def _build_routes_dict(
@@ -181,18 +223,8 @@ def _build_routes_dict(
         destinations_raw = _extract_destinations_from_line_info(line_info)
 
         route_key = f"{transport_type} {line}"
-        if route_key not in routes:
-            routes[route_key] = set()
-            route_details[route_key] = {
-                "line": line,
-                "transport_type": transport_type,
-                "icon": icon,
-            }
-
-        for dest in destinations_raw:
-            dest_name = _normalize_destination_name(dest)
-            if dest_name:
-                routes[route_key].add(dest_name)
+        _initialize_route_entry(routes, route_details, route_key, line, transport_type, icon)
+        _add_destinations_to_route(routes, route_key, destinations_raw)
 
     return routes, route_details
 
@@ -236,6 +268,19 @@ def _build_routes_result(
     }
 
 
+async def _process_routes_response(data: Any, station_id: str) -> dict[str, Any] | None:
+    """Process routes API response and build result."""
+    if not data:
+        return None
+
+    lines = _parse_routes_response(data)
+    if not lines:
+        return None
+
+    routes, route_details = _build_routes_dict(lines)
+    return _build_routes_result(station_id, routes, route_details)
+
+
 async def _get_routes_from_endpoint(
     station_id: str, session: aiohttp.ClientSession
 ) -> dict[str, Any] | None:
@@ -251,15 +296,7 @@ async def _get_routes_from_endpoint(
                 return None
 
             data = await response.json()
-            if not data:
-                return None
-
-            lines = _parse_routes_response(data)
-            if not lines:
-                return None
-
-            routes, route_details = _build_routes_dict(lines)
-            return _build_routes_result(station_id, routes, route_details)
+            return await _process_routes_response(data, station_id)
     except Exception:
         return None
 
@@ -300,6 +337,14 @@ def _process_departure_for_stop_point_mapping(
             platform_map[platform].add(stop_point_id)
 
 
+def _process_departures_for_mapping(
+    data: list[dict[str, Any]], stop_point_mapping: dict[str, dict[str, Any]]
+) -> None:
+    """Process departures list to build stop point mapping."""
+    for dep in data:
+        _process_departure_for_stop_point_mapping(dep, stop_point_mapping)
+
+
 async def _get_stop_point_mapping(
     station_id: str, session: aiohttp.ClientSession, limit: int = 100
 ) -> dict[str, dict[str, Any]]:
@@ -317,11 +362,8 @@ async def _get_stop_point_mapping(
                 return stop_point_mapping
 
             data = await response.json()
-            if not isinstance(data, list):
-                return stop_point_mapping
-
-            for dep in data:
-                _process_departure_for_stop_point_mapping(dep, stop_point_mapping)
+            if isinstance(data, list):
+                _process_departures_for_mapping(data, stop_point_mapping)
     except Exception:
         pass
 

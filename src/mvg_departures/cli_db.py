@@ -258,23 +258,27 @@ def _format_destinations(destinations: list[str]) -> str:
     return dest_str
 
 
+def _display_routes_for_type(
+    transport_type: str, route_list: list[tuple[str, dict[str, Any]]]
+) -> None:
+    """Display routes for a specific transport type."""
+    print(f"\n  {transport_type}:")
+    for route_name, route_data in sorted(route_list):
+        destinations = route_data.get("destinations", [])
+        print(f"    {route_name}: {_format_destinations(destinations)}")
+
+
 def _display_routes_by_type(by_type: dict[str, list[tuple[str, dict[str, Any]]]]) -> None:
     """Display routes grouped by transport type."""
     type_order = ["Bus", "Tram", "S-Bahn", "U-Bahn", "RE", "RB", "IC/EC", "ICE"]
 
     for transport_type in type_order:
         if transport_type in by_type:
-            print(f"\n  {transport_type}:")
-            for route_name, route_data in sorted(by_type[transport_type]):
-                destinations = route_data.get("destinations", [])
-                print(f"    {route_name}: {_format_destinations(destinations)}")
+            _display_routes_for_type(transport_type, by_type[transport_type])
 
     for transport_type, route_list in sorted(by_type.items()):
         if transport_type not in type_order:
-            print(f"\n  {transport_type}:")
-            for route_name, route_data in sorted(route_list):
-                destinations = route_data.get("destinations", [])
-                print(f"    {route_name}: {_format_destinations(destinations)}")
+            _display_routes_for_type(transport_type, route_list)
 
 
 async def _handle_info_command(station_id: str, output_json: bool) -> None:
@@ -329,23 +333,27 @@ def _display_route_destinations(route_name: str, destinations: list[str]) -> Non
         print(f"    ... and {len(destinations) - 5} more")
 
 
+def _display_routes_for_type_grouped(
+    transport_type: str, route_list: list[tuple[str, dict[str, Any]]]
+) -> None:
+    """Display routes for a specific transport type (grouped format)."""
+    print(f"\n{transport_type}:")
+    for route_name, route_data in sorted(route_list):
+        destinations = route_data.get("destinations", [])
+        _display_route_destinations(route_name, destinations)
+
+
 def _display_routes_grouped(by_type: dict[str, list[tuple[str, dict[str, Any]]]]) -> None:
     """Display routes grouped by transport type."""
     type_order = ["Bus", "Tram", "S-Bahn", "U-Bahn", "RE", "RB", "IC/EC", "ICE"]
 
     for transport_type in type_order:
         if transport_type in by_type:
-            print(f"\n{transport_type}:")
-            for route_name, route_data in sorted(by_type[transport_type]):
-                destinations = route_data.get("destinations", [])
-                _display_route_destinations(route_name, destinations)
+            _display_routes_for_type_grouped(transport_type, by_type[transport_type])
 
     for transport_type, route_list in sorted(by_type.items()):
         if transport_type not in type_order:
-            print(f"\n{transport_type}:")
-            for route_name, route_data in sorted(route_list):
-                destinations = route_data.get("destinations", [])
-                _display_route_destinations(route_name, destinations)
+            _display_routes_for_type_grouped(transport_type, route_list)
 
 
 def _display_single_sub_stop(stop_id: str, sub_stop: dict[str, Any]) -> None:

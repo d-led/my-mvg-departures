@@ -245,6 +245,22 @@ class PresenceTracker(PresenceTrackerProtocol):
             route_path: user_set.copy() for route_path, user_set in self._dashboard_users.items()
         }
 
+    def _add_user_to_all_users(self, user_id: str) -> int:
+        """Add user to all_users set. Returns 1 if added, 0 if already present."""
+        if user_id not in self._all_users:
+            self._all_users.add(user_id)
+            return 1
+        return 0
+
+    def _add_user_to_dashboard(self, normalized_path: str, user_id: str) -> int:
+        """Add user to dashboard users. Returns 1 if added, 0 if already present."""
+        if normalized_path not in self._dashboard_users:
+            self._dashboard_users[normalized_path] = set()
+        if user_id not in self._dashboard_users[normalized_path]:
+            self._dashboard_users[normalized_path].add(user_id)
+            return 1
+        return 0
+
     def _add_registered_users(self, route_sockets: dict[str, set["LiveViewSocket"]]) -> int:
         """Add users for registered sockets that aren't tracked. Returns count of added users."""
         added_count = 0
@@ -252,14 +268,8 @@ class PresenceTracker(PresenceTrackerProtocol):
             normalized_path = self._normalize_route_path(route_path)
             for socket in sockets:
                 user_id = self._get_user_id(socket)
-                if user_id not in self._all_users:
-                    self._all_users.add(user_id)
-                    added_count += 1
-                if normalized_path not in self._dashboard_users:
-                    self._dashboard_users[normalized_path] = set()
-                if user_id not in self._dashboard_users[normalized_path]:
-                    self._dashboard_users[normalized_path].add(user_id)
-                    added_count += 1
+                added_count += self._add_user_to_all_users(user_id)
+                added_count += self._add_user_to_dashboard(normalized_path, user_id)
         return added_count
 
     def _find_matching_route(

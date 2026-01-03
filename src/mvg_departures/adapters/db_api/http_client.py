@@ -40,6 +40,18 @@ class DbHttpClient:
             )
         return self._rate_limiter
 
+    async def _handle_search_response(self, response: "ClientResponse") -> list[dict[str, Any]]:
+        """Handle search stations API response."""
+        if response.status != 200:
+            response_text = await response.text()
+            logger.warning(f"DB API returned status {response.status}: {response_text[:200]}")
+            return []
+
+        data = await response.json()
+        if isinstance(data, list):
+            return self._parse_locations(data)
+        return []
+
     async def search_stations(self, query: str) -> list[dict[str, Any]]:
         """Search for stations using v6.db.transport.rest/locations.
 
@@ -56,17 +68,7 @@ class DbHttpClient:
 
         try:
             async with self._session.get(DB_LOCATIONS_URL, params=params, ssl=False) as response:
-                if response.status != 200:
-                    response_text = await response.text()
-                    logger.warning(
-                        f"DB API returned status {response.status}: {response_text[:200]}"
-                    )
-                    return []
-
-                data = await response.json()
-                if isinstance(data, list):
-                    return self._parse_locations(data)
-                return []
+                return await self._handle_search_response(response)
         except Exception as e:
             logger.warning(f"Error searching DB stations: {e}")
             return []

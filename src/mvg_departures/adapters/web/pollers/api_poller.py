@@ -283,6 +283,43 @@ class ApiPoller(ApiPollerProtocol):
         logger.debug(f"Successfully processed departures for {stop_config.station_name}")
         return direction_groups
 
+    def _handle_processing_error(
+        self,
+        stop_config: StopConfiguration,
+        error: Exception,
+        all_groups: list[DirectionGroupWithMetadata],
+    ) -> None:
+        """Handle error during stop config processing."""
+        error_details = _extract_error_details(error)
+        logger.error(
+            f"API poller failed to process departures for {stop_config.station_name}: "
+            f"{error_details.reason} (status: {error_details.status_code}, error: {error})"
+        )
+        if error_details.status_code == 429:
+            logger.warning(
+                f"Rate limit (429) detected for {stop_config.station_name} - "
+                "consider adding delays between API calls"
+            )
+
+        if stop_config.station_name in self.cached_departures:
+            cached_groups = self.cached_departures[stop_config.station_name]
+            logger.info(
+                f"Using cached processed departures for {stop_config.station_name} "
+                f"({len(cached_groups)} direction groups) due to {error_details.reason}"
+            )
+            stale_groups = self._build_stale_direction_groups_with_metadata(
+                stop_config, cached_groups
+            )
+            all_groups.extend(stale_groups)
+
+    def _determine_api_status(self, success_count: int, error_count: int) -> str:
+        """Determine API status based on success/error counts."""
+        if error_count == 0:
+            return "success"
+        if success_count > 0:
+            return "degraded"
+        return "error"
+
     async def _process_and_broadcast(self) -> None:
         """Process departures (from cache or API) and broadcast update."""
         all_groups: list[DirectionGroupWithMetadata] = []
@@ -295,38 +332,12 @@ class ApiPoller(ApiPollerProtocol):
                 all_groups.extend(direction_groups)
                 success_count += 1
             except Exception as e:
-                error_details = _extract_error_details(e)
-                logger.error(
-                    f"API poller failed to process departures for {stop_config.station_name}: "
-                    f"{error_details.reason} (status: {error_details.status_code}, error: {e})"
-                )
                 error_count += 1
-                if error_details.status_code == 429:
-                    logger.warning(
-                        f"Rate limit (429) detected for {stop_config.station_name} - "
-                        "consider adding delays between API calls"
-                    )
-
-                if stop_config.station_name in self.cached_departures:
-                    cached_groups = self.cached_departures[stop_config.station_name]
-                    logger.info(
-                        f"Using cached processed departures for {stop_config.station_name} "
-                        f"({len(cached_groups)} direction groups) due to {error_details.reason}"
-                    )
-                    stale_groups = self._build_stale_direction_groups_with_metadata(
-                        stop_config, cached_groups
-                    )
-                    all_groups.extend(stale_groups)
+                self._handle_processing_error(stop_config, e, all_groups)
 
         self.state_updater.update_departures(all_groups)
         self.state_updater.update_last_update_time(datetime.now(UTC))
-        # Determine API status: success (all worked), degraded (some failed), error (all failed)
-        if error_count == 0:
-            api_status = "success"
-        elif success_count > 0:
-            api_status = "degraded"
-        else:
-            api_status = "error"
+        api_status = self._determine_api_status(success_count, error_count)
         self.state_updater.update_api_status(api_status)
 
         logger.debug(
