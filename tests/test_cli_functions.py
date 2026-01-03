@@ -8,6 +8,8 @@ from mvg_departures.cli import (
     RouteEntryConfig,
     StationResultData,
     _build_station_result,
+    _collect_all_patterns,
+    _collect_unique_destinations,
     _initialize_route_entry,
 )
 from mvg_departures.cli_db import (
@@ -16,6 +18,13 @@ from mvg_departures.cli_db import (
     _process_route,
     _process_sub_stop,
 )
+from mvg_departures.cli_vbb import (
+    _are_destinations_equivalent,
+    _extract_destinations,
+    _get_destination_name,
+    _normalize_destination_name,
+)
+from mvg_departures.domain.models.cli_types import ConfigPattern
 
 
 def test_route_entry_config_creation() -> None:
@@ -389,3 +398,158 @@ def test_process_route_with_none_stop_point() -> None:
 
     assert "Giesing" in routes["U3"]["destinations"]
     assert routes["U3"]["stop_points"] == set()
+
+
+# Tests for refactored CLI helper functions
+
+
+def test_collect_all_patterns_returns_all_patterns() -> None:
+    """Given config patterns by route, when collecting all patterns, then returns all pattern strings."""
+    patterns_by_route = {
+        "U-Bahn U3": [
+            ConfigPattern(
+                pattern="U3 Giesing", full_pattern="U-Bahn U3 Giesing", destination="Giesing"
+            ),
+            ConfigPattern(
+                pattern="U3 Olympiazentrum",
+                full_pattern="U-Bahn U3 Olympiazentrum",
+                destination="Olympiazentrum",
+            ),
+        ],
+        "Bus 139": [
+            ConfigPattern(
+                pattern="139 Messestadt",
+                full_pattern="Bus 139 Messestadt",
+                destination="Messestadt",
+            ),
+        ],
+    }
+
+    result = _collect_all_patterns(patterns_by_route)
+
+    assert len(result) == 3
+    assert "U3 Giesing" in result
+    assert "U3 Olympiazentrum" in result
+    assert "139 Messestadt" in result
+
+
+def test_collect_all_patterns_handles_empty_dict() -> None:
+    """Given empty patterns dict, when collecting all patterns, then returns empty list."""
+    result = _collect_all_patterns({})
+    assert result == []
+
+
+def test_collect_unique_destinations_returns_sorted_unique_destinations() -> None:
+    """Given config patterns by route, when collecting unique destinations, then returns sorted unique list."""
+    patterns_by_route = {
+        "U-Bahn U3": [
+            ConfigPattern(
+                pattern="U3 Giesing", full_pattern="U-Bahn U3 Giesing", destination="Giesing"
+            ),
+            ConfigPattern(
+                pattern="U3 Olympiazentrum",
+                full_pattern="U-Bahn U3 Olympiazentrum",
+                destination="Olympiazentrum",
+            ),
+        ],
+        "Bus 139": [
+            ConfigPattern(
+                pattern="139 Messestadt",
+                full_pattern="Bus 139 Messestadt",
+                destination="Messestadt",
+            ),
+            ConfigPattern(
+                pattern="139 Giesing", full_pattern="Bus 139 Giesing", destination="Giesing"
+            ),  # Duplicate
+        ],
+    }
+
+    result = _collect_unique_destinations(patterns_by_route)
+
+    assert result == ["Giesing", "Messestadt", "Olympiazentrum"]
+
+
+def test_collect_unique_destinations_handles_empty_dict() -> None:
+    """Given empty patterns dict, when collecting unique destinations, then returns empty list."""
+    result = _collect_unique_destinations({})
+    assert result == []
+
+
+# Tests for refactored VBB CLI helper functions
+
+
+def test_get_destination_name_extracts_from_dict() -> None:
+    """Given departure with destination dict, when getting destination name, then returns name."""
+    dep = {"destination": {"name": "Alexanderplatz"}}
+    assert _get_destination_name(dep) == "Alexanderplatz"
+
+
+def test_get_destination_name_handles_missing_destination() -> None:
+    """Given departure without destination, when getting destination name, then returns empty string."""
+    dep = {}
+    assert _get_destination_name(dep) == ""
+
+
+def test_get_destination_name_handles_non_dict_destination() -> None:
+    """Given departure with non-dict destination, when getting destination name, then returns empty string."""
+    dep = {"destination": "Alexanderplatz"}
+    assert _get_destination_name(dep) == ""
+
+
+def test_normalize_destination_name_removes_berlin_suffix() -> None:
+    """Given destination name with Berlin suffix, when normalizing, then removes suffix."""
+    assert _normalize_destination_name("Alexanderplatz (Berlin)") == "Alexanderplatz"
+    assert _normalize_destination_name("Hauptbahnhof (Berlin)") == "Hauptbahnhof"
+
+
+def test_normalize_destination_name_handles_no_suffix() -> None:
+    """Given destination name without suffix, when normalizing, then returns unchanged."""
+    assert _normalize_destination_name("Alexanderplatz") == "Alexanderplatz"
+
+
+def test_are_destinations_equivalent_returns_true_for_exact_match() -> None:
+    """Given identical direction and destination name, when checking equivalence, then returns True."""
+    assert _are_destinations_equivalent("Alexanderplatz", "Alexanderplatz") is True
+
+
+def test_are_destinations_equivalent_returns_true_after_normalization() -> None:
+    """Given direction matching normalized destination, when checking equivalence, then returns True."""
+    assert _are_destinations_equivalent("Alexanderplatz", "Alexanderplatz (Berlin)") is True
+
+
+def test_are_destinations_equivalent_returns_false_for_different() -> None:
+    """Given different direction and destination, when checking equivalence, then returns False."""
+    assert _are_destinations_equivalent("Alexanderplatz", "Hauptbahnhof") is False
+
+
+def test_extract_destinations_returns_empty_for_no_data() -> None:
+    """Given departure with no direction or destination, when extracting destinations, then returns empty list."""
+    dep = {}
+    assert _extract_destinations(dep) == []
+
+
+def test_extract_destinations_returns_destination_when_no_direction() -> None:
+    """Given departure with only destination, when extracting destinations, then returns destination."""
+    dep = {"destination": {"name": "Alexanderplatz"}}
+    assert _extract_destinations(dep) == ["Alexanderplatz"]
+
+
+def test_extract_destinations_returns_direction_when_no_destination() -> None:
+    """Given departure with only direction, when extracting destinations, then returns direction."""
+    dep = {"direction": "Alexanderplatz"}
+    assert _extract_destinations(dep) == ["Alexanderplatz"]
+
+
+def test_extract_destinations_returns_single_when_equivalent() -> None:
+    """Given departure with equivalent direction and destination, when extracting, then returns single value."""
+    dep = {"direction": "Alexanderplatz", "destination": {"name": "Alexanderplatz (Berlin)"}}
+    assert _extract_destinations(dep) == ["Alexanderplatz"]
+
+
+def test_extract_destinations_returns_both_when_different() -> None:
+    """Given departure with different direction and destination, when extracting, then returns both."""
+    dep = {"direction": "Alexanderplatz", "destination": {"name": "Hauptbahnhof"}}
+    result = _extract_destinations(dep)
+    assert len(result) == 2
+    assert "Hauptbahnhof" in result
+    assert "Alexanderplatz" in result

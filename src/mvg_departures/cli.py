@@ -543,6 +543,25 @@ async def get_station_details(station_id: str, limit: int = 100) -> dict[str, An
             return None
 
 
+def _collect_all_patterns(config_patterns_by_route: dict[str, list[ConfigPattern]]) -> list[str]:
+    """Collect all patterns from all routes."""
+    all_patterns = []
+    for patterns in config_patterns_by_route.values():
+        all_patterns.extend([p.pattern for p in patterns])
+    return all_patterns
+
+
+def _collect_unique_destinations(
+    config_patterns_by_route: dict[str, list[ConfigPattern]],
+) -> list[str]:
+    """Collect unique destinations from all patterns."""
+    unique_destinations = set()
+    for patterns in config_patterns_by_route.values():
+        for config_pattern in patterns:
+            unique_destinations.add(config_pattern.destination)
+    return sorted(unique_destinations)
+
+
 def _display_config_patterns_detailed(
     config_patterns_by_route: dict[str, list[ConfigPattern]],
 ) -> None:
@@ -576,19 +595,13 @@ def _display_config_patterns_detailed(
             )
 
     print("\n# Flat list (line + destination format) - ready to paste:")
-    all_patterns = []
-    for patterns in config_patterns_by_route.values():
-        all_patterns.extend([p.pattern for p in patterns])
+    all_patterns = _collect_all_patterns(config_patterns_by_route)
     pattern_str = ", ".join(f'"{p}"' for p in all_patterns)
     print(f"  [{pattern_str}]")
 
     print("\n# Destination-only patterns (matches any route to that destination):")
-    unique_destinations = set()
-    for patterns in config_patterns_by_route.values():
-        for config_pattern in patterns:
-            unique_destinations.add(config_pattern.destination)
-    dest_patterns = sorted(unique_destinations)
-    dest_pattern_str = ", ".join(f'"{d}"' for d in dest_patterns)
+    unique_destinations = _collect_unique_destinations(config_patterns_by_route)
+    dest_pattern_str = ", ".join(f'"{d}"' for d in unique_destinations)
     print(f"  [{dest_pattern_str}]")
 
 
@@ -686,18 +699,20 @@ def _display_route_info(route_display: str, destinations: list[str]) -> None:
         print(f"    → {dest}")
 
 
-def _display_config_patterns(config_patterns_by_route: dict[str, list[ConfigPattern]]) -> None:
-    """Display config patterns for copying into configuration."""
-    if not config_patterns_by_route:
-        return
-
+def _print_pattern_header_indented() -> None:
+    """Print indented header for config patterns section."""
     print("\n  " + "-" * 68)
     print("  Config patterns (copy into your direction_mappings):")
     print("  " + "-" * 68)
     print("\n  # Format: Patterns match 'line destination' or 'transport_type line destination'")
     print("  # Examples: '139 Messestadt West' or 'Bus 139 Messestadt West'")
-    print("\n  # Grouped by route (recommended format: line + destination):")
 
+
+def _print_route_patterns_indented(
+    config_patterns_by_route: dict[str, list[ConfigPattern]],
+) -> None:
+    """Print indented patterns grouped by route."""
+    print("\n  # Grouped by route (recommended format: line + destination):")
     for route_key, patterns in sorted(config_patterns_by_route.items()):
         route_display = route_key.replace(" ", " ")
         print(f"\n  # {route_display}:")
@@ -707,21 +722,34 @@ def _display_config_patterns(config_patterns_by_route: dict[str, list[ConfigPatt
                 f'    "{config_pattern.pattern}"  # Matches: {route_line} -> {config_pattern.destination}'
             )
 
+
+def _print_flat_pattern_list_indented(all_patterns: list[str]) -> None:
+    """Print indented flat list of patterns."""
     print("\n  # Flat list (line + destination format) - ready to paste:")
-    all_patterns = []
-    for patterns in config_patterns_by_route.values():
-        all_patterns.extend([p.pattern for p in patterns])
     pattern_str = ", ".join(f'"{p}"' for p in all_patterns)
     print(f"    [{pattern_str}]")
 
+
+def _print_destination_patterns_indented(destinations: list[str]) -> None:
+    """Print indented destination-only patterns."""
     print("\n  # Destination-only patterns (matches any route to that destination):")
-    unique_destinations = set()
-    for patterns in config_patterns_by_route.values():
-        for config_pattern in patterns:
-            unique_destinations.add(config_pattern.destination)
-    dest_patterns = sorted(unique_destinations)
-    dest_pattern_str = ", ".join(f'"{d}"' for d in dest_patterns)
+    dest_pattern_str = ", ".join(f'"{d}"' for d in destinations)
     print(f"    [{dest_pattern_str}]")
+
+
+def _display_config_patterns(config_patterns_by_route: dict[str, list[ConfigPattern]]) -> None:
+    """Display config patterns for copying into configuration."""
+    if not config_patterns_by_route:
+        return
+
+    _print_pattern_header_indented()
+    _print_route_patterns_indented(config_patterns_by_route)
+
+    all_patterns = _collect_all_patterns(config_patterns_by_route)
+    _print_flat_pattern_list_indented(all_patterns)
+
+    unique_destinations = _collect_unique_destinations(config_patterns_by_route)
+    _print_destination_patterns_indented(unique_destinations)
 
 
 def _process_station_routes(routes: dict[str, Any]) -> dict[str, list[ConfigPattern]]:

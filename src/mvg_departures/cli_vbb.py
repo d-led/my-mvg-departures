@@ -140,28 +140,39 @@ def _extract_line_info(dep: dict[str, Any]) -> tuple[str, str] | None:
     return line_name, product
 
 
+def _get_destination_name(dep: dict[str, Any]) -> str:
+    """Extract destination name from departure dict."""
+    dest_obj = dep.get("destination")
+    if not dest_obj or not isinstance(dest_obj, dict):
+        return ""
+    return dest_obj.get("name", "") or ""
+
+
+def _normalize_destination_name(dest_name: str) -> str:
+    """Normalize destination name by removing common suffixes."""
+    return dest_name.replace(" (Berlin)", "")
+
+
+def _are_destinations_equivalent(direction: str, dest_name: str) -> bool:
+    """Check if direction and destination name refer to the same place."""
+    if direction == dest_name:
+        return True
+    dest_name_clean = _normalize_destination_name(dest_name)
+    return direction == dest_name_clean
+
+
 def _extract_destinations(dep: dict[str, Any]) -> list[str]:
     """Extract destinations from departure, handling both direction and destination.name."""
     direction = dep.get("direction", "") or ""
-    dest_obj = dep.get("destination")
-    dest_name = ""
-    if dest_obj and isinstance(dest_obj, dict):
-        dest_name = dest_obj.get("name", "") or ""
+    dest_name = _get_destination_name(dep)
 
     if not direction and not dest_name:
         return []
-
     if not direction:
         return [dest_name]
-
     if not dest_name:
         return [direction]
-
-    if direction == dest_name:
-        return [direction]
-
-    dest_name_clean = dest_name.replace(" (Berlin)", "")
-    if direction == dest_name_clean:
+    if _are_destinations_equivalent(direction, dest_name):
         return [direction]
 
     return [dest_name, direction]

@@ -283,28 +283,43 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
         return template_data
 
+    def _format_font_size(self, value: str | None, default: str) -> str:
+        """Format font size value with default fallback."""
+        return str(value or default)
+
     def _build_font_size_assigns(self) -> dict[str, str]:
         """Build font size assigns from config.
 
         Returns:
             Dictionary with font size template variables.
         """
+        config = self.config
         return {
-            "font_size_route_number": str(self.config.font_size_route_number or "1.5rem"),
-            "font_size_destination": str(self.config.font_size_destination or "1.2rem"),
-            "font_size_platform": str(self.config.font_size_platform or "1rem"),
-            "font_size_time": str(self.config.font_size_time or "1.5rem"),
-            "font_size_no_departures": str(
-                self.config.font_size_no_departures_available or "1.2rem"
+            "font_size_route_number": self._format_font_size(
+                config.font_size_route_number, "1.5rem"
             ),
-            "font_size_direction_header": str(self.config.font_size_direction_header or "1.3rem"),
-            "font_size_pagination_indicator": str(
-                self.config.font_size_pagination_indicator or "0.9rem"
+            "font_size_destination": self._format_font_size(config.font_size_destination, "1.2rem"),
+            "font_size_platform": self._format_font_size(config.font_size_platform, "1rem"),
+            "font_size_time": self._format_font_size(config.font_size_time, "1.5rem"),
+            "font_size_no_departures": self._format_font_size(
+                config.font_size_no_departures_available, "1.2rem"
             ),
-            "font_size_countdown_text": str(self.config.font_size_countdown_text or "0.9rem"),
-            "font_size_status_header": str(self.config.font_size_status_header or "1rem"),
-            "font_size_delay_amount": str(self.config.font_size_delay_amount or "0.9rem"),
-            "font_size_stop_header": str(self.config.font_size_stop_header or "1.1rem"),
+            "font_size_direction_header": self._format_font_size(
+                config.font_size_direction_header, "1.3rem"
+            ),
+            "font_size_pagination_indicator": self._format_font_size(
+                config.font_size_pagination_indicator, "0.9rem"
+            ),
+            "font_size_countdown_text": self._format_font_size(
+                config.font_size_countdown_text, "0.9rem"
+            ),
+            "font_size_status_header": self._format_font_size(
+                config.font_size_status_header, "1rem"
+            ),
+            "font_size_delay_amount": self._format_font_size(
+                config.font_size_delay_amount, "0.9rem"
+            ),
+            "font_size_stop_header": self._format_font_size(config.font_size_stop_header, "1.1rem"),
         }
 
     def _build_config_assigns(self) -> dict[str, str]:

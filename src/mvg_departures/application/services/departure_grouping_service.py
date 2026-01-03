@@ -280,6 +280,28 @@ class DepartureGroupingService:
 
         return filtered
 
+    def _should_apply_platform_filter(
+        self, departure: Departure, stop_config: StopConfiguration
+    ) -> bool:
+        """Check if platform filter should be applied to this departure."""
+        if not stop_config.platform_filter_routes:
+            return True
+        return departure.line in stop_config.platform_filter_routes
+
+    def _matches_platform_filter(
+        self,
+        departure: Departure,
+        platform_filter: int,
+        platform_filter_str: str,
+        platform_pattern: re.Pattern[str],
+    ) -> bool:
+        """Check if departure matches platform filter."""
+        if departure.platform is None:
+            return False
+        return self._platform_matches(
+            departure.platform, platform_filter, platform_filter_str, platform_pattern
+        )
+
     def _filter_by_platform(
         self, departures: list[Departure], stop_config: StopConfiguration
     ) -> list[Departure]:
@@ -303,19 +325,15 @@ class DepartureGroupingService:
         )
 
         filtered = []
-        for d in departures:
-            should_filter = (
-                not stop_config.platform_filter_routes
-                or d.line in stop_config.platform_filter_routes
-            )
-
-            if not should_filter or (
-                d.platform is not None
-                and self._platform_matches(
-                    d.platform, stop_config.platform_filter, platform_filter_str, platform_pattern
-                )
+        for departure in departures:
+            should_filter = self._should_apply_platform_filter(departure, stop_config)
+            if not should_filter or self._matches_platform_filter(
+                departure,
+                stop_config.platform_filter,
+                platform_filter_str,
+                platform_pattern,
             ):
-                filtered.append(d)
+                filtered.append(departure)
 
         if initial_count > 0 and len(filtered) == 0:
             logger.warning(

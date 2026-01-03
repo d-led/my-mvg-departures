@@ -87,42 +87,57 @@ class FunctionMetrics:
             max_allowed += 1
         return max(0, self.parameter_count - max_allowed)
 
+    def _calculate_nesting_penalty(self) -> float:
+        """Calculate penalty for nesting violations."""
+        return max(0, (self.max_nesting_level - 2) * 10)
+
+    def _calculate_complexity_penalty(self) -> float:
+        """Calculate penalty for complexity violations."""
+        return max(0, (self.cyclomatic_complexity - 10) * 2)
+
+    def _calculate_length_penalty(self) -> float:
+        """Calculate penalty for function length violations."""
+        return max(0, (self.function_length - 50) * 0.5)
+
+    def _calculate_parameter_penalty(self) -> float:
+        """Calculate penalty for parameter count violations."""
+        return self.parameter_violation * 3
+
+    def _calculate_mi_penalty(self) -> float:
+        """Calculate penalty based on Maintainability Index.
+        
+        MI ranges from 0-100:
+        - 20-100: Maintainable (no penalty)
+        - 10-19: Difficult to maintain (penalty 2.5-5)
+        - 0-9: Very difficult to maintain (penalty 5.5-10)
+        - 0 or unavailable: Default penalty 2.5
+        """
+        if self.maintainability_index <= 0:
+            return 2.5
+        if self.maintainability_index < 10:
+            return 10 - (self.maintainability_index * 0.5)
+        if self.maintainability_index < 20:
+            return 5 - ((self.maintainability_index - 10) * 0.25)
+        return 0.0
+
     @property
     def priority_score(self) -> float:
         """Calculate priority score for refactoring (higher = more urgent).
         
-        Maintainability Index (MI) ranges from 0-100:
-        - 20-100: Maintainable
-        - 10-19: Difficult to maintain
-        - 0-9: Very difficult to maintain
-        Lower MI = higher priority (more urgent to refactor).
+        Combines penalties from:
+        - Nesting violations (max 2 allowed): heavy weight
+        - Complexity: medium weight
+        - Function length: light weight
+        - Parameter count: medium weight
+        - Maintainability Index: medium weight (lower MI = higher penalty)
         """
-        # Weight factors:
-        # - Nesting violations (max 2 allowed): heavy weight
-        # - Complexity: medium weight
-        # - Function length: light weight
-        # - Parameter count: medium weight
-        # - Maintainability Index: medium weight (lower MI = higher penalty)
-        nesting_penalty = max(0, (self.max_nesting_level - 2) * 10)
-        complexity_penalty = max(0, (self.cyclomatic_complexity - 10) * 2)
-        length_penalty = max(0, (self.function_length - 50) * 0.5)
-        parameter_penalty = self.parameter_violation * 3
-        
-        # MI penalty: lower MI = higher penalty
-        # MI < 20 is considered difficult to maintain
-        # Scale: MI 0-9 (very difficult) = penalty 5-10, MI 10-19 (difficult) = penalty 2.5-5
-        if self.maintainability_index > 0:
-            if self.maintainability_index < 10:
-                mi_penalty = 10 - (self.maintainability_index * 0.5)  # 5.5 to 10
-            elif self.maintainability_index < 20:
-                mi_penalty = 5 - ((self.maintainability_index - 10) * 0.25)  # 2.5 to 5
-            else:
-                mi_penalty = 0
-        else:
-            # If MI is 0 or not available, use default penalty
-            mi_penalty = 2.5
-
-        return nesting_penalty + complexity_penalty + length_penalty + parameter_penalty + mi_penalty
+        return (
+            self._calculate_nesting_penalty()
+            + self._calculate_complexity_penalty()
+            + self._calculate_length_penalty()
+            + self._calculate_parameter_penalty()
+            + self._calculate_mi_penalty()
+        )
 
 
 class NestingLevelVisitor(ast.NodeVisitor):
@@ -800,17 +815,40 @@ def print_detailed_file_view(regular_metrics: list[FunctionMetrics], project_roo
         _print_file_metrics(file_metrics)
 
 
+def _has_nesting_violation(metric: FunctionMetrics) -> bool:
+    """Check if metric has nesting violation."""
+    return metric.max_nesting_level > 2
+
+
+def _has_complexity_violation(metric: FunctionMetrics) -> bool:
+    """Check if metric has complexity violation."""
+    return metric.cyclomatic_complexity > 10
+
+
+def _has_length_violation(metric: FunctionMetrics) -> bool:
+    """Check if metric has length violation."""
+    return metric.function_length > 50
+
+
+def _has_parameter_violation(metric: FunctionMetrics) -> bool:
+    """Check if metric has parameter violation."""
+    return metric.parameter_violation > 0
+
+
+_VIOLATION_CHECKERS: dict[str, callable] = {
+    "nesting": _has_nesting_violation,
+    "complexity": _has_complexity_violation,
+    "length": _has_length_violation,
+    "parameters": _has_parameter_violation,
+}
+
+
 def _count_violations(metrics: list[FunctionMetrics], violation_type: str) -> int:
     """Count violations of a specific type."""
-    if violation_type == "nesting":
-        return sum(1 for m in metrics if m.max_nesting_level > 2)
-    if violation_type == "complexity":
-        return sum(1 for m in metrics if m.cyclomatic_complexity > 10)
-    if violation_type == "length":
-        return sum(1 for m in metrics if m.function_length > 50)
-    if violation_type == "parameters":
-        return sum(1 for m in metrics if m.parameter_violation > 0)
-    return 0
+    checker = _VIOLATION_CHECKERS.get(violation_type)
+    if checker is None:
+        return 0
+    return sum(1 for m in metrics if checker(m))
 
 
 def _build_summary_data(
