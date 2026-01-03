@@ -150,17 +150,8 @@ class DepartureParser:
             return None
 
     @staticmethod
-    def _get_transport_type(mode: str, product: str, line_name: str) -> str:
-        """Determine transport type from mode, product, and line name."""
-        # Use mode if available
-        if mode and mode in MODE_DISPLAY_NAMES:
-            return MODE_DISPLAY_NAMES[mode]
-
-        # Use product as fallback
-        if product and product in MODE_DISPLAY_NAMES:
-            return MODE_DISPLAY_NAMES[product]
-
-        # Infer from line name
+    def _infer_transport_type_from_line_name(line_name: str) -> str:
+        """Infer transport type from line name patterns."""
         line_upper = line_name.upper()
         if "ICE" in line_upper:
             return "ICE"
@@ -178,8 +169,18 @@ class DepartureParser:
             return "Tram"
         if line_upper.startswith("U"):
             return "U-Bahn"
-
         return "Train"
+
+    @staticmethod
+    def _get_transport_type(mode: str, product: str, line_name: str) -> str:
+        """Determine transport type from mode, product, and line name."""
+        if mode and mode in MODE_DISPLAY_NAMES:
+            return MODE_DISPLAY_NAMES[mode]
+
+        if product and product in MODE_DISPLAY_NAMES:
+            return MODE_DISPLAY_NAMES[product]
+
+        return DepartureParser._infer_transport_type_from_line_name(line_name)
 
     @staticmethod
     def _parse_platform(platform: str | int | None) -> int | None:
