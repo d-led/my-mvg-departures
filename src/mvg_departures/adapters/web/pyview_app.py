@@ -360,6 +360,24 @@ class PyViewWebAdapter(DisplayAdapter):
 
         logger.info(f"Started {poller_count} API poller(s) for {len(self.route_configs)} route(s)")
 
+    def _initialize_route_reload_id(
+        self, route_path: str, route_state: State, server_start_reload_id: int
+    ) -> None:
+        """Initialize reload_request_id for a single route."""
+        try:
+            if getattr(route_state.departures_state, "reload_request_id", 0) == 0:
+                route_state.departures_state.reload_request_id = server_start_reload_id
+                logger.info(
+                    "Initialized reload_request_id=%s for route '%s' on server start",
+                    server_start_reload_id,
+                    route_path,
+                )
+        except Exception:
+            logger.exception(
+                "Failed to initialize reload_request_id for route '%s' on server start",
+                route_path,
+            )
+
     def _initialize_reload_request_ids(self) -> None:
         """Initialize reload_request_id for all routes on server start if enabled."""
         import time
@@ -369,19 +387,7 @@ class PyViewWebAdapter(DisplayAdapter):
 
         server_start_reload_id = int(time.time())
         for route_path, route_state in self.route_states.items():
-            try:
-                if getattr(route_state.departures_state, "reload_request_id", 0) == 0:
-                    route_state.departures_state.reload_request_id = server_start_reload_id
-                    logger.info(
-                        "Initialized reload_request_id=%s for route '%s' on server start",
-                        server_start_reload_id,
-                        route_path,
-                    )
-            except Exception:
-                logger.exception(
-                    "Failed to initialize reload_request_id for route '%s' on server start",
-                    route_path,
-                )
+            self._initialize_route_reload_id(route_path, route_state, server_start_reload_id)
 
     async def start(self) -> None:
         """Start the web server."""
@@ -458,6 +464,29 @@ class PyViewWebAdapter(DisplayAdapter):
                 stale_departures.append(stale_dep)
         return stale_departures
 
+    async def _fetch_single_station(self, station_id: str, fetch_limit: int) -> None:
+        """Fetch departures for a single station."""
+        departures = await self.departure_repository.get_departures(station_id, limit=fetch_limit)
+        self._shared_departure_cache.set(station_id, departures)
+        logger.debug(f"Fetched {len(departures)} raw departures for station {station_id}")
+
+    def _handle_fetch_error(self, station_id: str, error: Exception) -> None:
+        """Handle error when fetching departures for a station."""
+        logger.error(
+            f"Failed to fetch departures for station {station_id}: {error}",
+            exc_info=True,
+        )
+        # Keep stale cached data: filter out departed entries and mark as stale
+        cached = self._shared_departure_cache.get(station_id)
+        if cached:
+            stale_departures = self._filter_and_mark_stale(cached)
+            self._shared_departure_cache.set(station_id, stale_departures)
+            logger.info(
+                f"Using {len(stale_departures)} stale departures for station {station_id} "
+                f"(filtered from {len(cached)} cached entries)"
+            )
+        # If no cached data at all, leave cache empty (don't set empty list)
+
     async def _fetch_all_stations(self, unique_station_ids: set[str]) -> None:
         """Fetch raw departures for all unique stations."""
         fetch_limit = 50  # Same as in DepartureGroupingService
@@ -466,26 +495,9 @@ class PyViewWebAdapter(DisplayAdapter):
 
         for i, station_id in enumerate(station_list):
             try:
-                departures = await self.departure_repository.get_departures(
-                    station_id, limit=fetch_limit
-                )
-                self._shared_departure_cache.set(station_id, departures)
-                logger.debug(f"Fetched {len(departures)} raw departures for station {station_id}")
+                await self._fetch_single_station(station_id, fetch_limit)
             except Exception as e:
-                logger.error(
-                    f"Failed to fetch departures for station {station_id}: {e}",
-                    exc_info=True,
-                )
-                # Keep stale cached data: filter out departed entries and mark as stale
-                cached = self._shared_departure_cache.get(station_id)
-                if cached:
-                    stale_departures = self._filter_and_mark_stale(cached)
-                    self._shared_departure_cache.set(station_id, stale_departures)
-                    logger.info(
-                        f"Using {len(stale_departures)} stale departures for station {station_id} "
-                        f"(filtered from {len(cached)} cached entries)"
-                    )
-                # If no cached data at all, leave cache empty (don't set empty list)
+                self._handle_fetch_error(station_id, e)
 
             # Add delay between calls (except after the last one)
             if sleep_ms > 0 and i < len(station_list) - 1:

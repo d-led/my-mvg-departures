@@ -2,6 +2,7 @@
 
 import logging
 from collections.abc import Awaitable, Callable
+from typing import Any
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -59,6 +60,26 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.rate_limiter_store = store.MemoryStore()
         logger.info(f"Rate limiting enabled: {requests_per_minute} requests per minute per IP")
 
+    def _extract_retry_after(self, result: Any) -> float:
+        """Extract retry_after value from rate limit result."""
+        retry_after: float = 60.0  # Default retry after 60 seconds
+        if hasattr(result, "state"):
+            state = getattr(result, "state", None)
+            if state and hasattr(state, "retry_after"):
+                retry_after = float(getattr(state, "retry_after", 60.0))
+        elif hasattr(result, "retry_after"):
+            retry_after = float(getattr(result, "retry_after", 60.0))
+        return retry_after
+
+    def _create_rate_limit_response(self, client_ip: str, retry_after: float) -> Response:
+        """Create rate limit exceeded response."""
+        logger.warning(f"Rate limit exceeded for IP {client_ip}, retry after {retry_after} seconds")
+        return Response(
+            content="Rate limit exceeded. Please try again later.",
+            status_code=429,
+            headers={"Retry-After": str(int(retry_after))},
+        )
+
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
@@ -77,23 +98,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Check rate limit using limit() method - returns result object without raising exceptions
         result = throttle.limit()
         if result.limited:
-            # Rate limit exceeded - extract retry_after from result
-            retry_after: float = 60.0  # Default retry after 60 seconds
-            if hasattr(result, "state"):
-                state = getattr(result, "state", None)
-                if state and hasattr(state, "retry_after"):
-                    retry_after = float(getattr(state, "retry_after", 60.0))
-            elif hasattr(result, "retry_after"):
-                retry_after = float(getattr(result, "retry_after", 60.0))
-
-            logger.warning(
-                f"Rate limit exceeded for IP {client_ip}, retry after {retry_after} seconds"
-            )
-            return Response(
-                content="Rate limit exceeded. Please try again later.",
-                status_code=429,
-                headers={"Retry-After": str(int(retry_after))},
-            )
+            retry_after = self._extract_retry_after(result)
+            return self._create_rate_limit_response(client_ip, retry_after)
 
         # Rate limit check passed, proceed with the request
         response: Response = await call_next(request)

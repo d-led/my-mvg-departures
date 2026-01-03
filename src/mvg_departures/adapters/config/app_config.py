@@ -275,6 +275,19 @@ class AppConfig(BaseSettings):
         if "api_provider" in api_config:
             self.api_provider = api_config["api_provider"]
 
+    def _process_display_settings(self, toml_data: dict[str, Any]) -> None:
+        """Process and update display settings from TOML data."""
+        if "display" in toml_data:
+            display = toml_data["display"]
+            if isinstance(display, dict):
+                self._update_display_settings(display)
+
+    def _process_api_settings(self, toml_data: dict[str, Any]) -> None:
+        """Process and update API settings from TOML data."""
+        api_config = toml_data.get("api") or toml_data.get("client", {})
+        if isinstance(api_config, dict):
+            self._update_api_settings(api_config)
+
     def _load_toml_data(self) -> dict[str, Any]:
         """Load and parse TOML file, updating display settings."""
         if not self.config_file:
@@ -287,14 +300,8 @@ class AppConfig(BaseSettings):
         with open(config_path, "rb") as f:
             toml_data = tomllib.load(f)
 
-            if "display" in toml_data:
-                display = toml_data["display"]
-                if isinstance(display, dict):
-                    self._update_display_settings(display)
-
-            api_config = toml_data.get("api") or toml_data.get("client", {})
-            if isinstance(api_config, dict):
-                self._update_api_settings(api_config)
+            self._process_display_settings(toml_data)
+            self._process_api_settings(toml_data)
 
             return toml_data
 

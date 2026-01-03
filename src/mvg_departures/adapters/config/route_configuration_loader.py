@@ -140,6 +140,39 @@ class RouteConfigurationLoader:
         }
 
     @staticmethod
+    @staticmethod
+    def _validate_max_hours_in_advance(value: Any) -> float | None:
+        """Validate max_hours_in_advance field."""
+        if value is None:
+            return None
+        try:
+            max_hours = float(value)
+            return None if max_hours < 1 else max_hours
+        except (ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def _validate_platform_filter(value: Any) -> int | None:
+        """Validate platform_filter field."""
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def _validate_fetch_max_minutes_in_advance(value: Any) -> int:
+        """Validate fetch_max_minutes_in_advance field."""
+        if value is None:
+            return 60
+        try:
+            minutes = int(value)
+            return 60 if minutes < 1 else minutes
+        except (ValueError, TypeError):
+            return 60
+
+    @staticmethod
     def _validate_stop_numeric_fields(fields: dict[str, Any]) -> dict[str, Any]:
         """Validate numeric fields for stop configuration.
 
@@ -149,41 +182,16 @@ class RouteConfigurationLoader:
         Returns:
             Dictionary with validated numeric fields.
         """
-        max_hours_in_advance = fields.get("max_hours_in_advance")
-        if max_hours_in_advance is not None:
-            try:
-                max_hours_in_advance = float(max_hours_in_advance)
-                if max_hours_in_advance < 1:
-                    max_hours_in_advance = None
-            except (ValueError, TypeError):
-                max_hours_in_advance = None
-        else:
-            max_hours_in_advance = None
-
-        platform_filter = fields.get("platform_filter")
-        if platform_filter is not None:
-            try:
-                platform_filter = int(platform_filter)
-            except (ValueError, TypeError):
-                platform_filter = None
-        else:
-            platform_filter = None
-
-        fetch_max_minutes_in_advance_raw = fields.get("fetch_max_minutes_in_advance")
-        try:
-            if fetch_max_minutes_in_advance_raw is not None:
-                fetch_max_minutes_in_advance = int(fetch_max_minutes_in_advance_raw)
-                if fetch_max_minutes_in_advance < 1:
-                    fetch_max_minutes_in_advance = 60
-            else:
-                fetch_max_minutes_in_advance = 60
-        except (ValueError, TypeError):
-            fetch_max_minutes_in_advance = 60
-
         return {
-            "max_hours_in_advance": max_hours_in_advance,
-            "platform_filter": platform_filter,
-            "fetch_max_minutes_in_advance": fetch_max_minutes_in_advance,
+            "max_hours_in_advance": RouteConfigurationLoader._validate_max_hours_in_advance(
+                fields.get("max_hours_in_advance")
+            ),
+            "platform_filter": RouteConfigurationLoader._validate_platform_filter(
+                fields.get("platform_filter")
+            ),
+            "fetch_max_minutes_in_advance": RouteConfigurationLoader._validate_fetch_max_minutes_in_advance(
+                fields.get("fetch_max_minutes_in_advance")
+            ),
         }
 
     @staticmethod
