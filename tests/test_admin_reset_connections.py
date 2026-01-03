@@ -3,7 +3,10 @@
 from unittest.mock import MagicMock
 
 from mvg_departures.adapters.config import AppConfig
-from mvg_departures.adapters.web.pyview_app import PyViewWebAdapter
+from mvg_departures.adapters.web.pyview_app import (
+    PyViewWebAdapter,
+    PyViewWebAdapterConfig,
+)
 from mvg_departures.domain.models import RouteConfiguration, StopConfiguration
 from mvg_departures.domain.ports import DepartureGroupingService, DepartureRepository
 
@@ -23,12 +26,13 @@ def _make_adapter() -> PyViewWebAdapter:
         ],
     )
     config = AppConfig.for_testing(config_file=None, admin_command_token="test-token")
-    return PyViewWebAdapter(
+    adapter_config = PyViewWebAdapterConfig(
         grouping_service=grouping_service,
         route_configs=[route_config],
         config=config,
         departure_repository=departure_repo,
     )
+    return PyViewWebAdapter(adapter_config)
 
 
 def test_route_states_initially_empty() -> None:

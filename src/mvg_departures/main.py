@@ -14,6 +14,7 @@ from mvg_departures.adapters.config.route_configuration_loader import (
     RouteConfigurationLoader,
 )
 from mvg_departures.adapters.web import PyViewWebAdapter
+from mvg_departures.adapters.web.pyview_app import PyViewWebAdapterConfig
 from mvg_departures.application.services import DepartureGroupingService
 from mvg_departures.domain.models.route_configuration import RouteConfiguration
 from mvg_departures.domain.models.stop_configuration import StopConfiguration
@@ -82,21 +83,16 @@ def _initialize_services(
     return departure_repo, grouping_service
 
 
-def _initialize_display_adapter(
-    grouping_service: DepartureGroupingService,
-    route_configs: list[RouteConfiguration],
-    config: AppConfig,
-    departure_repo: CompositeDepartureRepository,
-    session: aiohttp.ClientSession,
-) -> PyViewWebAdapter:
-    """Initialize display adapter."""
-    return PyViewWebAdapter(
-        grouping_service,
-        route_configs,
-        config,
-        departure_repository=departure_repo,
-        session=session,
-    )
+def _initialize_display_adapter(adapter_config: PyViewWebAdapterConfig) -> PyViewWebAdapter:
+    """Initialize display adapter.
+
+    Args:
+        adapter_config: Complete configuration for the adapter.
+
+    Returns:
+        Initialized PyViewWebAdapter instance.
+    """
+    return PyViewWebAdapter(adapter_config)
 
 
 async def main() -> None:
@@ -109,9 +105,14 @@ async def main() -> None:
     async with aiohttp.ClientSession() as session:
         all_stop_configs = _collect_all_stop_configs(route_configs)
         departure_repo, grouping_service = _initialize_services(all_stop_configs, session)
-        display_adapter = _initialize_display_adapter(
-            grouping_service, route_configs, config, departure_repo, session
+        adapter_config = PyViewWebAdapterConfig(
+            grouping_service=grouping_service,
+            route_configs=route_configs,
+            config=config,
+            departure_repository=departure_repo,
+            session=session,
         )
+        display_adapter = _initialize_display_adapter(adapter_config)
 
         try:
             await display_adapter.start()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from mvg_departures.adapters.config.app_config import AppConfig
@@ -27,6 +28,17 @@ from mvg_departures.domain.ports import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ApiPollerStartConfig:
+    """Configuration for starting an API poller."""
+
+    grouping_service: DepartureGroupingService
+    stop_configs: list[StopConfiguration]
+    config: AppConfig
+    shared_cache: dict[str, list[Departure]] | None = None
+    refresh_interval_seconds: int | None = None
 
 
 class State:
@@ -54,34 +66,25 @@ class State:
         normalized_path = route_path.strip("/").replace("/", ":") or "root"
         self.broadcast_topic: str = f"departures:updates:{normalized_path}"
 
-    def _validate_api_poller_parameters(
-        self,
-        grouping_service: DepartureGroupingService,
-        stop_configs: list[StopConfiguration],
-        config: AppConfig,
-        shared_cache: dict[str, list[Departure]] | None,
-    ) -> None:
+    def _validate_api_poller_parameters(self, start_config: ApiPollerStartConfig) -> None:
         """Validate parameters for API poller startup."""
-        if not isinstance(config, AppConfig):
+        if not isinstance(start_config.config, AppConfig):
             raise TypeError("config must be an AppConfig instance")
-        if not isinstance(stop_configs, list) or not all(
-            isinstance(sc, StopConfiguration) for sc in stop_configs
+        if not isinstance(start_config.stop_configs, list) or not all(
+            isinstance(sc, StopConfiguration) for sc in start_config.stop_configs
         ):
             raise TypeError("stop_configs must be a list of StopConfiguration instances")
-        _ = grouping_service.group_departures  # Runtime usage - ensures Ruff detects dependency
-        if not callable(grouping_service.group_departures):
+        _ = (
+            start_config.grouping_service.group_departures
+        )  # Runtime usage - ensures Ruff detects dependency
+        if not callable(start_config.grouping_service.group_departures):
             raise TypeError("grouping_service must implement DepartureGroupingService protocol")
-        if shared_cache is not None and not isinstance(shared_cache, dict):
+        if start_config.shared_cache is not None and not isinstance(
+            start_config.shared_cache, dict
+        ):
             raise TypeError("shared_cache must be a dict or None")
 
-    def _create_api_poller(
-        self,
-        grouping_service: DepartureGroupingService,
-        stop_configs: list[StopConfiguration],
-        config: AppConfig,
-        shared_cache: dict[str, list[Departure]] | None,
-        refresh_interval_seconds: int | None,
-    ) -> ApiPoller:
+    def _create_api_poller(self, start_config: ApiPollerStartConfig) -> ApiPoller:
         """Create and configure API poller instance."""
         from mvg_departures.adapters.web.pollers.api_poller import (
             ApiPollerConfiguration,
@@ -93,50 +96,36 @@ class State:
         state_broadcaster = StateBroadcaster()
 
         services = ApiPollerServices(
-            grouping_service=grouping_service,
+            grouping_service=start_config.grouping_service,
             state_updater=state_updater,
             state_broadcaster=state_broadcaster,
         )
         configuration = ApiPollerConfiguration(
-            stop_configs=stop_configs,
-            config=config,
-            refresh_interval_seconds=refresh_interval_seconds,
+            stop_configs=start_config.stop_configs,
+            config=start_config.config,
+            refresh_interval_seconds=start_config.refresh_interval_seconds,
         )
         settings = ApiPollerSettings(
             broadcast_topic=self.broadcast_topic,
-            shared_cache=shared_cache,
+            shared_cache=start_config.shared_cache,
         )
 
         return ApiPoller(services=services, configuration=configuration, settings=settings)
 
-    async def start_api_poller(
-        self,
-        grouping_service: DepartureGroupingService,
-        stop_configs: list[StopConfiguration],
-        config: AppConfig,
-        shared_cache: dict[str, list[Departure]] | None = None,
-        refresh_interval_seconds: int | None = None,
-    ) -> None:
+    async def start_api_poller(self, start_config: ApiPollerStartConfig) -> None:
         """Start the API poller task.
 
         Args:
-            grouping_service: Service for grouping departures.
-            stop_configs: List of stop configurations for this route.
-            config: Application configuration.
-            shared_cache: Optional shared cache of raw departures by station_id.
-                         If provided, will use cached data instead of fetching.
-            refresh_interval_seconds: Optional route-specific poller interval in seconds.
-                                    If None, uses config.refresh_interval_seconds.
+            start_config: Complete configuration for starting the API poller including
+                         services, stop configurations, and optional cache/interval settings.
         """
-        self._validate_api_poller_parameters(grouping_service, stop_configs, config, shared_cache)
+        self._validate_api_poller_parameters(start_config)
 
         if self.api_poller is not None:
             logger.warning("API poller already running")
             return
 
-        self.api_poller = self._create_api_poller(
-            grouping_service, stop_configs, config, shared_cache, refresh_interval_seconds
-        )
+        self.api_poller = self._create_api_poller(start_config)
         await self.api_poller.start()
         logger.info(f"Started API poller for route '{self.route_path}'")
 

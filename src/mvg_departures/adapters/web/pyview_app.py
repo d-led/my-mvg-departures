@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -32,6 +32,17 @@ if TYPE_CHECKING:
     from aiohttp import ClientSession
 
     from mvg_departures.domain.models import Departure
+
+
+@dataclass(frozen=True)
+class PyViewWebAdapterConfig:
+    """Configuration for PyViewWebAdapter initialization."""
+
+    grouping_service: DepartureGroupingService
+    route_configs: list[RouteConfiguration]
+    config: AppConfig
+    departure_repository: DepartureRepository
+    session: ClientSession | None = None
 
 
 class PyViewWebAdapter(DisplayAdapter):
@@ -70,35 +81,28 @@ class PyViewWebAdapter(DisplayAdapter):
             for route_config in route_configs
         }
 
-    def __init__(
-        self,
-        grouping_service: DepartureGroupingService,
-        route_configs: list[RouteConfiguration],
-        config: AppConfig,
-        departure_repository: DepartureRepository,
-        session: ClientSession | None = None,
-    ) -> None:
+    def __init__(self, adapter_config: PyViewWebAdapterConfig) -> None:
         """Initialize the web adapter.
 
         Args:
-            grouping_service: Service for grouping departures.
-            route_configs: List of route configurations, each with a path and stops.
-            config: Application configuration.
-            departure_repository: Repository for fetching raw departures (used for shared caching).
-            session: Optional aiohttp session.
+            adapter_config: Complete configuration for the adapter including services,
+                           route configurations, and optional session.
         """
         self._validate_init_parameters(
-            grouping_service, route_configs, config, departure_repository
+            adapter_config.grouping_service,
+            adapter_config.route_configs,
+            adapter_config.config,
+            adapter_config.departure_repository,
         )
 
-        self.grouping_service = grouping_service
-        self.route_configs = route_configs
-        self.config = config
-        self.departure_repository = departure_repository
-        self.session = session
+        self.grouping_service = adapter_config.grouping_service
+        self.route_configs = adapter_config.route_configs
+        self.config = adapter_config.config
+        self.departure_repository = adapter_config.departure_repository
+        self.session = adapter_config.session
         self._update_task: asyncio.Task | None = None
         self._server: Any | None = None
-        self.route_states = self._initialize_route_states(route_configs)
+        self.route_states = self._initialize_route_states(adapter_config.route_configs)
         self._shared_departure_cache = SharedDepartureCache()
         self._departure_fetcher: DepartureFetcher | None = None
 
@@ -378,13 +382,16 @@ class PyViewWebAdapter(DisplayAdapter):
                 f"(stops: {', '.join(stop_names)}, interval: {interval}s)"
             )
 
-            await route_state.start_api_poller(
-                self.grouping_service,
-                route_stop_configs,
-                self.config,
+            from mvg_departures.adapters.web.state.state import ApiPollerStartConfig
+
+            start_config = ApiPollerStartConfig(
+                grouping_service=self.grouping_service,
+                stop_configs=route_stop_configs,
+                config=self.config,
                 shared_cache=cache_dict,
                 refresh_interval_seconds=route_config.refresh_interval_seconds,
             )
+            await route_state.start_api_poller(start_config)
             poller_count += 1
 
         logger.info(f"Started {poller_count} API poller(s) for {len(self.route_configs)} route(s)")
