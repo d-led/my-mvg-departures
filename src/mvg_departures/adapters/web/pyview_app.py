@@ -202,20 +202,34 @@ class PyViewWebAdapter(DisplayAdapter):
                 + (f" and title '{route_title}'" if route_title else "")
                 + (f" (fill_vertical_space={fill_vertical_space})" if fill_vertical_space else "")
             )
-            live_view_class = create_departures_live_view(
-                route_state,
-                self.grouping_service,
-                route_stop_configs,
-                self.config,
-                presence_tracker,
-                route_title,
-                route_theme,
-                fill_vertical_space,
-                font_scaling_factor_when_filling,
-                random_header_colors,
-                header_background_brightness,
-                random_color_salt,
+            from mvg_departures.adapters.web.views.departures.departures import (
+                DisplayConfiguration,
+                LiveViewConfiguration,
+                LiveViewDependencies,
+                RouteDisplaySettings,
             )
+
+            dependencies = LiveViewDependencies(
+                state_manager=route_state,
+                grouping_service=self.grouping_service,
+                stop_configs=route_stop_configs,
+                config=self.config,
+                presence_tracker=presence_tracker,
+            )
+            route_display = RouteDisplaySettings(title=route_title, theme=route_theme)
+            display_config = DisplayConfiguration(
+                fill_vertical_space=fill_vertical_space,
+                font_scaling_factor_when_filling=font_scaling_factor_when_filling,
+                random_header_colors=random_header_colors,
+                header_background_brightness=header_background_brightness,
+                random_color_salt=random_color_salt,
+            )
+            live_view_config = LiveViewConfiguration(
+                dependencies=dependencies,
+                route_display=route_display,
+                display_config=display_config,
+            )
+            live_view_class = create_departures_live_view(live_view_config)
             app.add_live_view(route_path, live_view_class)
             logger.info(f"Successfully registered route at path '{route_path}'")
 

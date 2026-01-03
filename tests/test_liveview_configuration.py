@@ -257,7 +257,7 @@ def test_assign_instance_variables() -> None:
 
 
 def test_create_departures_live_view_factory() -> None:
-    """Given individual parameters, when creating LiveView via factory, then returns configured class."""
+    """Given LiveViewConfiguration, when creating LiveView via factory, then returns configured class."""
     with patch.dict(os.environ, {}, clear=True):
         state_manager = State()
         grouping_service = MagicMock(spec=DepartureGroupingService)
@@ -267,20 +267,28 @@ def test_create_departures_live_view_factory() -> None:
         config = AppConfig.for_testing()
         presence_tracker = PresenceTracker()
 
-        live_view_class = create_departures_live_view(
+        dependencies = LiveViewDependencies(
             state_manager=state_manager,
             grouping_service=grouping_service,
             stop_configs=stop_configs,
             config=config,
             presence_tracker=presence_tracker,
-            route_title="Factory Title",
-            route_theme="light",
+        )
+        route_display = RouteDisplaySettings(title="Factory Title", theme="light")
+        display_config = DisplayConfiguration(
             fill_vertical_space=True,
             font_scaling_factor_when_filling=1.2,
             random_header_colors=True,
             header_background_brightness=0.9,
             random_color_salt=10,
         )
+        live_view_config = LiveViewConfiguration(
+            dependencies=dependencies,
+            route_display=route_display,
+            display_config=display_config,
+        )
+
+        live_view_class = create_departures_live_view(live_view_config)
 
         assert issubclass(live_view_class, DeparturesLiveView)
 
@@ -306,13 +314,22 @@ def test_create_departures_live_view_with_defaults() -> None:
         config = AppConfig.for_testing()
         presence_tracker = PresenceTracker()
 
-        live_view_class = create_departures_live_view(
+        dependencies = LiveViewDependencies(
             state_manager=state_manager,
             grouping_service=grouping_service,
             stop_configs=stop_configs,
             config=config,
             presence_tracker=presence_tracker,
         )
+        route_display = RouteDisplaySettings()  # Defaults: title=None, theme=None
+        display_config = DisplayConfiguration()  # All defaults
+        live_view_config = LiveViewConfiguration(
+            dependencies=dependencies,
+            route_display=route_display,
+            display_config=display_config,
+        )
+
+        live_view_class = create_departures_live_view(live_view_config)
 
         instance = live_view_class()
         assert instance.route_title is None
@@ -335,23 +352,27 @@ def test_create_departures_live_view_creates_unique_classes() -> None:
         config = AppConfig.for_testing()
         presence_tracker = PresenceTracker()
 
-        class1 = create_departures_live_view(
+        dependencies = LiveViewDependencies(
             state_manager=state_manager,
             grouping_service=grouping_service,
             stop_configs=stop_configs,
             config=config,
             presence_tracker=presence_tracker,
-            route_title="Title 1",
         )
 
-        class2 = create_departures_live_view(
-            state_manager=state_manager,
-            grouping_service=grouping_service,
-            stop_configs=stop_configs,
-            config=config,
-            presence_tracker=presence_tracker,
-            route_title="Title 2",
+        config1 = LiveViewConfiguration(
+            dependencies=dependencies,
+            route_display=RouteDisplaySettings(title="Title 1"),
+            display_config=DisplayConfiguration(),
         )
+        class1 = create_departures_live_view(config1)
+
+        config2 = LiveViewConfiguration(
+            dependencies=dependencies,
+            route_display=RouteDisplaySettings(title="Title 2"),
+            display_config=DisplayConfiguration(),
+        )
+        class2 = create_departures_live_view(config2)
 
         # Each factory call creates a new class (even if names might be similar)
         assert class1 is not class2
@@ -362,3 +383,68 @@ def test_create_departures_live_view_creates_unique_classes() -> None:
 
         assert instance1.route_title == "Title 1"
         assert instance2.route_title == "Title 2"
+
+
+def test_when_creating_live_view_with_config_then_returns_configured_class() -> None:
+    """Given LiveViewConfiguration, when creating LiveView, then returns a class that can be instantiated."""
+    with patch.dict(os.environ, {}, clear=True):
+        state_manager = State()
+        grouping_service = MagicMock(spec=DepartureGroupingService)
+        stop_configs = [
+            StopConfiguration(station_id="de:09162:70", station_name="Test", direction_mappings={})
+        ]
+        config = AppConfig.for_testing()
+        presence_tracker = PresenceTracker()
+
+        dependencies = LiveViewDependencies(
+            state_manager=state_manager,
+            grouping_service=grouping_service,
+            stop_configs=stop_configs,
+            config=config,
+            presence_tracker=presence_tracker,
+        )
+        live_view_config = LiveViewConfiguration(
+            dependencies=dependencies,
+            route_display=RouteDisplaySettings(),
+            display_config=DisplayConfiguration(),
+        )
+
+        live_view_class = create_departures_live_view(live_view_config)
+
+        assert issubclass(live_view_class, DeparturesLiveView)
+        # Should be able to instantiate the class
+        instance = live_view_class()
+        assert instance is not None
+
+
+def test_when_creating_live_view_then_instance_has_correct_dependencies() -> None:
+    """Given LiveViewConfiguration with dependencies, when creating instance, then has access to all dependencies."""
+    with patch.dict(os.environ, {}, clear=True):
+        state_manager = State()
+        grouping_service = MagicMock(spec=DepartureGroupingService)
+        stop_configs = [
+            StopConfiguration(station_id="de:09162:70", station_name="Test", direction_mappings={})
+        ]
+        config = AppConfig.for_testing()
+        presence_tracker = PresenceTracker()
+
+        dependencies = LiveViewDependencies(
+            state_manager=state_manager,
+            grouping_service=grouping_service,
+            stop_configs=stop_configs,
+            config=config,
+            presence_tracker=presence_tracker,
+        )
+        live_view_config = LiveViewConfiguration(
+            dependencies=dependencies,
+            route_display=RouteDisplaySettings(),
+            display_config=DisplayConfiguration(),
+        )
+
+        live_view_class = create_departures_live_view(live_view_config)
+        instance = live_view_class()
+
+        # Verify instance has access to dependencies through state_manager
+        assert instance.state_manager is state_manager
+        assert instance.grouping_service is grouping_service
+        assert instance.stop_configs == stop_configs

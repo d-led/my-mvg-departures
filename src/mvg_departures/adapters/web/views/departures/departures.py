@@ -910,20 +910,7 @@ def _create_configured_live_view_class(config: LiveViewConfiguration) -> type[De
     return ConfiguredDeparturesLiveView
 
 
-def create_departures_live_view(
-    state_manager: State,
-    grouping_service: DepartureGroupingService,
-    stop_configs: list[StopConfiguration],
-    config: AppConfig,
-    presence_tracker: PresenceTrackerProtocol,
-    route_title: str | None = None,
-    route_theme: str | None = None,
-    fill_vertical_space: bool = False,
-    font_scaling_factor_when_filling: float = 1.0,
-    random_header_colors: bool = False,
-    header_background_brightness: float = 0.7,
-    random_color_salt: int = 0,
-) -> type[DeparturesLiveView]:
+def create_departures_live_view(config: LiveViewConfiguration) -> type[DeparturesLiveView]:
     """Create a configured DeparturesLiveView class for a specific route.
 
     This factory function creates a LiveView class that is configured with
@@ -931,40 +918,10 @@ def create_departures_live_view(
     an instance, so we return a configured class.
 
     Args:
-        state_manager: State manager for this route.
-        grouping_service: Service for grouping departures.
-        stop_configs: List of stop configurations for this route.
-        config: Application configuration.
-        presence_tracker: Presence tracker for tracking user connections.
-        route_title: Optional route-specific title (overrides config title).
-        route_theme: Optional route-specific theme (overrides config theme).
-        fill_vertical_space: Enable dynamic font sizing to fill viewport.
-        font_scaling_factor_when_filling: Scale factor for all fonts when fill_vertical_space is enabled.
-        random_header_colors: Enable hash-based pastel colors for headers.
-        header_background_brightness: Brightness adjustment for random header colors (0.0-1.0).
-        random_color_salt: Salt value for hash-based color generation (default 0).
+        config: Complete LiveView configuration including dependencies, route display,
+                and display settings.
 
     Returns:
         A configured DeparturesLiveView class that can be registered with PyView.
     """
-    dependencies = LiveViewDependencies(
-        state_manager=state_manager,
-        grouping_service=grouping_service,
-        stop_configs=stop_configs,
-        config=config,
-        presence_tracker=presence_tracker,
-    )
-    route_display = RouteDisplaySettings(title=route_title, theme=route_theme)
-    display_config = DisplayConfiguration(
-        fill_vertical_space=fill_vertical_space,
-        font_scaling_factor_when_filling=font_scaling_factor_when_filling,
-        random_header_colors=random_header_colors,
-        header_background_brightness=header_background_brightness,
-        random_color_salt=random_color_salt,
-    )
-    live_view_config = LiveViewConfiguration(
-        dependencies=dependencies,
-        route_display=route_display,
-        display_config=display_config,
-    )
-    return _create_configured_live_view_class(live_view_config)
+    return _create_configured_live_view_class(config)
