@@ -638,6 +638,67 @@ def _process_station_routes(routes: dict[str, Any]) -> dict[str, list[ConfigPatt
     return config_patterns_by_route
 
 
+def _find_platform_for_stop_point(
+    stop_point: str, platform_to_stop_point: dict[int, set[str]]
+) -> str | None:
+    """Find platform info for a stop point."""
+    for platform, sp_set in platform_to_stop_point.items():
+        if stop_point in sp_set:
+            return f"Platform {platform}"
+    return None
+
+
+def _process_stop_points_for_mapping(
+    mapping_key: str,
+    mapping_data: dict[str, Any],
+    stops_with_routes: dict[str, list[StopPointRouteInfo]],
+) -> None:
+    """Process stop points for a single mapping entry."""
+    route_key, destination = mapping_key.split("|", 1)
+    stop_points = mapping_data.get("stop_points", set())
+    platform_to_stop_point = mapping_data.get("platform_to_stop_point", {})
+
+    for stop_point in stop_points:
+        if stop_point not in stops_with_routes:
+            stops_with_routes[stop_point] = []
+
+        platform_info = _find_platform_for_stop_point(stop_point, platform_to_stop_point)
+        stops_with_routes[stop_point].append(
+            StopPointRouteInfo(
+                route_key=route_key,
+                destination=destination,
+                platform_info=platform_info,
+            )
+        )
+
+
+def _get_transport_type_key(route_key: str) -> str:
+    """Extract transport type key from route key."""
+    return route_key.split()[0] if route_key.split() else "Other"
+
+
+def _process_platforms_without_stop_points(
+    route_key: str,
+    destination: str,
+    platforms: set[int],
+    s_bahn_platforms: dict[str, dict[str, dict[int, list[DestinationPlatformInfo]]]],
+) -> None:
+    """Process platforms that don't have stop points."""
+    transport_type_key = _get_transport_type_key(route_key)
+
+    if transport_type_key not in s_bahn_platforms:
+        s_bahn_platforms[transport_type_key] = {}
+    if route_key not in s_bahn_platforms[transport_type_key]:
+        s_bahn_platforms[transport_type_key][route_key] = {}
+
+    for platform in platforms:
+        if platform not in s_bahn_platforms[transport_type_key][route_key]:
+            s_bahn_platforms[transport_type_key][route_key][platform] = []
+        s_bahn_platforms[transport_type_key][route_key][platform].append(
+            DestinationPlatformInfo(destination=destination, platform_info=f"Platform {platform}")
+        )
+
+
 def _group_stop_points(
     stop_point_mapping: dict[str, Any],
 ) -> tuple[
@@ -655,42 +716,14 @@ def _group_stop_points(
         route_key, destination = mapping_key.split("|", 1)
         stop_points = mapping_data.get("stop_points", set())
         platforms = mapping_data.get("platforms", set())
-        platform_to_stop_point = mapping_data.get("platform_to_stop_point", {})
 
-        for stop_point in stop_points:
-            if stop_point not in stops_with_routes:
-                stops_with_routes[stop_point] = []
-
-            platform_info = None
-            if platform_to_stop_point:
-                for platform, sp_set in platform_to_stop_point.items():
-                    if stop_point in sp_set:
-                        platform_info = f"Platform {platform}"
-                        break
-
-            stops_with_routes[stop_point].append(
-                StopPointRouteInfo(
-                    route_key=route_key,
-                    destination=destination,
-                    platform_info=platform_info,
-                )
-            )
+        if stop_points:
+            _process_stop_points_for_mapping(mapping_key, mapping_data, stops_with_routes)
 
         if platforms and not stop_points:
-            transport_type_key = route_key.split()[0] if route_key.split() else "Other"
-            if transport_type_key not in s_bahn_platforms:
-                s_bahn_platforms[transport_type_key] = {}
-            if route_key not in s_bahn_platforms[transport_type_key]:
-                s_bahn_platforms[transport_type_key][route_key] = {}
-
-            for platform in platforms:
-                if platform not in s_bahn_platforms[transport_type_key][route_key]:
-                    s_bahn_platforms[transport_type_key][route_key][platform] = []
-                s_bahn_platforms[transport_type_key][route_key][platform].append(
-                    DestinationPlatformInfo(
-                        destination=destination, platform_info=f"Platform {platform}"
-                    )
-                )
+            _process_platforms_without_stop_points(
+                route_key, destination, platforms, s_bahn_platforms
+            )
 
     return stops_with_routes, s_bahn_platforms
 

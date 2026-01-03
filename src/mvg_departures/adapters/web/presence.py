@@ -235,6 +235,93 @@ class PresenceTracker(PresenceTrackerProtocol):
 
         return removed_count
 
+    def _normalize_route_path(self, route_path: str) -> str:
+        """Normalize route path for internal tracking."""
+        return route_path.strip("/").replace("/", ":") or "root"
+
+    def _get_tracked_route_users(self) -> dict[str, set[str]]:
+        """Get all currently tracked user IDs per route."""
+        return {
+            route_path: user_set.copy() for route_path, user_set in self._dashboard_users.items()
+        }
+
+    def _add_registered_users(self, route_sockets: dict[str, set["LiveViewSocket"]]) -> int:
+        """Add users for registered sockets that aren't tracked. Returns count of added users."""
+        added_count = 0
+        for route_path, sockets in route_sockets.items():
+            normalized_path = self._normalize_route_path(route_path)
+            for socket in sockets:
+                user_id = self._get_user_id(socket)
+                if user_id not in self._all_users:
+                    self._all_users.add(user_id)
+                    added_count += 1
+                if normalized_path not in self._dashboard_users:
+                    self._dashboard_users[normalized_path] = set()
+                if user_id not in self._dashboard_users[normalized_path]:
+                    self._dashboard_users[normalized_path].add(user_id)
+                    added_count += 1
+        return added_count
+
+    def _find_matching_route(
+        self, normalized_path: str, route_sockets: dict[str, set["LiveViewSocket"]]
+    ) -> str | None:
+        """Find matching route in route_sockets for a normalized path."""
+        for registered_route in route_sockets:
+            normalized_registered = self._normalize_route_path(registered_route)
+            if normalized_registered == normalized_path:
+                return registered_route
+        return None
+
+    def _remove_users_for_route(self, route_path: str, user_set: set[str]) -> int:
+        """Remove all users for a route. Returns count of removed users."""
+        removed_count = 0
+        for user_id in user_set:
+            self._all_users.discard(user_id)
+            removed_count += 1
+        if route_path in self._dashboard_users:
+            del self._dashboard_users[route_path]
+        return removed_count
+
+    def _remove_inactive_users(
+        self,
+        route_path: str,
+        user_set: set[str],
+        active_user_ids: set[str],
+    ) -> int:
+        """Remove users that are no longer active. Returns count of removed users."""
+        removed_count = 0
+        for user_id in user_set:
+            if user_id not in active_user_ids:
+                self._dashboard_users[route_path].discard(user_id)
+                self._all_users.discard(user_id)
+                removed_count += 1
+
+        if route_path in self._dashboard_users and not self._dashboard_users[route_path]:
+            del self._dashboard_users[route_path]
+
+        return removed_count
+
+    def _remove_tracked_users_not_registered(
+        self,
+        tracked_route_users: dict[str, set[str]],
+        route_sockets: dict[str, set["LiveViewSocket"]],
+    ) -> int:
+        """Remove users that are tracked but no longer registered. Returns count of removed users."""
+        removed_count = 0
+        for route_path, user_set in tracked_route_users.items():
+            matching_route = self._find_matching_route(route_path, route_sockets)
+
+            if matching_route is None:
+                removed_count += self._remove_users_for_route(route_path, user_set)
+                continue
+
+            active_user_ids = {
+                self._get_user_id(socket) for socket in route_sockets[matching_route]
+            }
+            removed_count += self._remove_inactive_users(route_path, user_set, active_user_ids)
+
+        return removed_count
+
     def sync_with_registered_sockets(
         self, route_sockets: dict[str, set["LiveViewSocket"]]
     ) -> PresenceSyncResult:
@@ -250,65 +337,11 @@ class PresenceTracker(PresenceTrackerProtocol):
         Returns:
             PresenceSyncResult with added_count and removed_count.
         """
-        added_count = 0
-        removed_count = 0
-
-        # Get all currently tracked user IDs per route
-        tracked_route_users: dict[str, set[str]] = {}
-        for route_path, user_set in self._dashboard_users.items():
-            # Convert normalized path back to route path format for comparison
-            # (this is approximate, but should work for most cases)
-            tracked_route_users[route_path] = user_set.copy()
-
-        # Add users for registered sockets that aren't tracked
-        for route_path, sockets in route_sockets.items():
-            normalized_path = route_path.strip("/").replace("/", ":") or "root"
-            for socket in sockets:
-                user_id = self._get_user_id(socket)
-                if user_id not in self._all_users:
-                    self._all_users.add(user_id)
-                    added_count += 1
-                if normalized_path not in self._dashboard_users:
-                    self._dashboard_users[normalized_path] = set()
-                if user_id not in self._dashboard_users[normalized_path]:
-                    self._dashboard_users[normalized_path].add(user_id)
-                    added_count += 1
-
-        # Remove users that are tracked but no longer registered
-        for route_path, user_set in tracked_route_users.items():
-            # Try to find matching route in route_sockets
-            # Since we're using normalized paths, we need to match carefully
-            matching_route = None
-            for registered_route in route_sockets:
-                normalized_registered = registered_route.strip("/").replace("/", ":") or "root"
-                if normalized_registered == route_path:
-                    matching_route = registered_route
-                    break
-
-            if matching_route is None:
-                # No matching route found, remove all users for this route
-                for user_id in user_set:
-                    self._all_users.discard(user_id)
-                    removed_count += 1
-                if route_path in self._dashboard_users:
-                    del self._dashboard_users[route_path]
-                continue
-
-            # Get active user IDs for this route
-            active_user_ids = {
-                self._get_user_id(socket) for socket in route_sockets[matching_route]
-            }
-
-            # Remove users that are no longer active
-            for user_id in user_set:
-                if user_id not in active_user_ids:
-                    self._dashboard_users[route_path].discard(user_id)
-                    self._all_users.discard(user_id)
-                    removed_count += 1
-
-            # Clean up empty dashboard sets
-            if route_path in self._dashboard_users and not self._dashboard_users[route_path]:
-                del self._dashboard_users[route_path]
+        tracked_route_users = self._get_tracked_route_users()
+        added_count = self._add_registered_users(route_sockets)
+        removed_count = self._remove_tracked_users_not_registered(
+            tracked_route_users, route_sockets
+        )
 
         if added_count > 0 or removed_count > 0:
             logger.info(
