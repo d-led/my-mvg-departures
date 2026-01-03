@@ -296,6 +296,57 @@ class RouteConfigurationLoader:
         return defaults
 
     @staticmethod
+    @staticmethod
+    def _validate_title(title: Any) -> str | None:
+        """Validate title field."""
+        return title if title and isinstance(title, str) else None
+
+    @staticmethod
+    def _validate_theme(theme: Any) -> str | None:
+        """Validate theme field."""
+        if not theme or not isinstance(theme, str):
+            return None
+        theme_lower = theme.lower()
+        return theme_lower if theme_lower in ("light", "dark", "auto") else None
+
+    @staticmethod
+    def _validate_bool_field(value: Any, default: bool = False) -> bool:
+        """Validate boolean field."""
+        return bool(value) if value is not None else default
+
+    @staticmethod
+    def _validate_float_field(
+        value: Any, default: float, min_val: float | None = None, max_val: float | None = None
+    ) -> float:
+        """Validate float field with optional min/max clamping."""
+        try:
+            result = float(value) if value is not None else default
+            if min_val is not None:
+                result = max(min_val, result)
+            if max_val is not None:
+                result = min(max_val, result)
+            return result
+        except (ValueError, TypeError):
+            return default
+
+    @staticmethod
+    def _validate_int_field(value: Any, default: int) -> int:
+        """Validate integer field."""
+        try:
+            return int(value) if value is not None else default
+        except (ValueError, TypeError):
+            return default
+
+    @staticmethod
+    def _validate_refresh_interval(value: Any) -> int | None:
+        """Validate refresh interval field."""
+        try:
+            result = int(value) if value is not None else None
+            return result if result is not None and result >= 1 else None
+        except (ValueError, TypeError):
+            return None
+
+    @staticmethod
     def _validate_display_values(display_values: dict[str, Any]) -> dict[str, Any]:
         """Validate and normalize display values.
 
@@ -305,86 +356,30 @@ class RouteConfigurationLoader:
         Returns:
             Dictionary with validated display values.
         """
-        # Validate title
-        route_title = (
-            display_values["title"]
-            if display_values["title"] and isinstance(display_values["title"], str)
-            else None
-        )
-
-        # Validate theme
-        route_theme = None
-        if display_values["theme"] and isinstance(display_values["theme"], str):
-            theme_lower = display_values["theme"].lower()
-            if theme_lower in ("light", "dark", "auto"):
-                route_theme = theme_lower
-
-        # Validate fill_vertical_space
-        fill_vertical_space = (
-            bool(display_values["fill_vertical_space"])
-            if display_values["fill_vertical_space"] is not None
-            else False
-        )
-
-        # Validate font_scaling_factor_when_filling
-        try:
-            font_scaling_factor_when_filling = (
-                float(display_values["font_scaling_factor_when_filling"])
-                if display_values["font_scaling_factor_when_filling"] is not None
-                else 1.0
-            )
-        except (ValueError, TypeError):
-            font_scaling_factor_when_filling = 1.0
-
-        # Validate random_header_colors
-        random_header_colors = (
-            bool(display_values["random_header_colors"])
-            if display_values["random_header_colors"] is not None
-            else False
-        )
-
-        # Validate header_background_brightness
-        try:
-            header_background_brightness = (
-                float(display_values["header_background_brightness"])
-                if display_values["header_background_brightness"] is not None
-                else 0.7
-            )
-            header_background_brightness = max(0.0, min(1.0, header_background_brightness))
-        except (ValueError, TypeError):
-            header_background_brightness = 0.7
-
-        # Validate random_color_salt
-        try:
-            random_color_salt = (
-                int(display_values["random_color_salt"])
-                if display_values["random_color_salt"] is not None
-                else 0
-            )
-        except (ValueError, TypeError):
-            random_color_salt = 0
-
-        # Validate refresh_interval_seconds
-        try:
-            refresh_interval_seconds = (
-                int(display_values["refresh_interval_seconds"])
-                if display_values["refresh_interval_seconds"] is not None
-                else None
-            )
-            if refresh_interval_seconds is not None and refresh_interval_seconds < 1:
-                refresh_interval_seconds = None
-        except (ValueError, TypeError):
-            refresh_interval_seconds = None
-
         return {
-            "title": route_title,
-            "theme": route_theme,
-            "fill_vertical_space": fill_vertical_space,
-            "font_scaling_factor_when_filling": font_scaling_factor_when_filling,
-            "random_header_colors": random_header_colors,
-            "header_background_brightness": header_background_brightness,
-            "random_color_salt": random_color_salt,
-            "refresh_interval_seconds": refresh_interval_seconds,
+            "title": RouteConfigurationLoader._validate_title(display_values["title"]),
+            "theme": RouteConfigurationLoader._validate_theme(display_values["theme"]),
+            "fill_vertical_space": RouteConfigurationLoader._validate_bool_field(
+                display_values["fill_vertical_space"], default=False
+            ),
+            "font_scaling_factor_when_filling": RouteConfigurationLoader._validate_float_field(
+                display_values["font_scaling_factor_when_filling"], default=1.0
+            ),
+            "random_header_colors": RouteConfigurationLoader._validate_bool_field(
+                display_values["random_header_colors"], default=False
+            ),
+            "header_background_brightness": RouteConfigurationLoader._validate_float_field(
+                display_values["header_background_brightness"],
+                default=0.7,
+                min_val=0.0,
+                max_val=1.0,
+            ),
+            "random_color_salt": RouteConfigurationLoader._validate_int_field(
+                display_values["random_color_salt"], default=0
+            ),
+            "refresh_interval_seconds": RouteConfigurationLoader._validate_refresh_interval(
+                display_values["refresh_interval_seconds"]
+            ),
         }
 
     @staticmethod

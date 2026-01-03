@@ -756,6 +756,43 @@ def _display_stop_points(stops_with_routes: dict[str, list[StopPointRouteInfo]])
                 print(f'    {route_info.route_key} -> "{pattern}"')
 
 
+def _display_platform_for_route(
+    route_key: str,
+    platform: int,
+    destinations: list[DestinationPlatformInfo],
+    station_id: str,
+) -> None:
+    """Display platform information for a specific route."""
+    route_parts = route_key.split()
+    line = route_parts[-1] if route_parts else ""
+
+    print(f"\n  # {route_key} - Platform {platform}:")
+    print(f'  # station_id = "{station_id}"  # Use base station_id')
+    print("  # Configure direction_mappings to filter by destination:")
+
+    for dest_info in sorted(destinations, key=lambda d: d.destination):
+        pattern = f"{line} {dest_info.destination}" if line else dest_info.destination
+        print(f'    "{pattern}"')
+
+
+def _display_platforms_for_transport_type(
+    transport_type_key: str,
+    platforms_by_route: dict[str, dict[int, list[DestinationPlatformInfo]]],
+    station_id: str,
+) -> None:
+    """Display platforms for a specific transport type."""
+    print(f"\n  # {transport_type_key} platforms by route and destination:")
+    print(f"  # Note: These {transport_type_key} platforms don't have stopPointGlobalId values.")
+    print("  # Use base station_id with direction_mappings to filter by destination.")
+
+    for route_key in sorted(platforms_by_route.keys()):
+        for platform in sorted(platforms_by_route[route_key].keys()):
+            destinations = platforms_by_route[route_key][platform]
+            _display_platform_for_route(route_key, platform, destinations, station_id)
+
+    print("  # Then add these destinations to exclude_destinations in the main config.")
+
+
 def _display_platforms_without_stop_points(
     s_bahn_platforms: dict[str, dict[str, dict[int, list[DestinationPlatformInfo]]]],
     station_id: str,
@@ -765,26 +802,9 @@ def _display_platforms_without_stop_points(
         return
 
     for transport_type_key in sorted(s_bahn_platforms.keys()):
-        print(f"\n  # {transport_type_key} platforms by route and destination:")
-        print(
-            f"  # Note: These {transport_type_key} platforms don't have stopPointGlobalId values."
+        _display_platforms_for_transport_type(
+            transport_type_key, s_bahn_platforms[transport_type_key], station_id
         )
-        print("  # Use base station_id with direction_mappings to filter by destination.")
-
-        for route_key in sorted(s_bahn_platforms[transport_type_key].keys()):
-            route_parts = route_key.split()
-            line = route_parts[-1] if route_parts else ""
-
-            for platform in sorted(s_bahn_platforms[transport_type_key][route_key].keys()):
-                destinations = s_bahn_platforms[transport_type_key][route_key][platform]
-                print(f"\n  # {route_key} - Platform {platform}:")
-                print(f'  # station_id = "{station_id}"  # Use base station_id')
-                print("  # Configure direction_mappings to filter by destination:")
-
-                for dest_info in sorted(destinations, key=lambda d: d.destination):
-                    pattern = f"{line} {dest_info.destination}" if line else dest_info.destination
-                    print(f'    "{pattern}"')
-        print("  # Then add these destinations to exclude_destinations in the main config.")
 
 
 def _display_stop_point_hints(stop_point_mapping: dict[str, Any], station_id: str) -> None:
@@ -1017,6 +1037,18 @@ async def _handle_generate_command(station_id: str, station_name: str) -> None:
     print(snippet)
 
 
+async def _execute_cli_command(args: Any) -> None:
+    """Execute the appropriate CLI command based on args."""
+    if args.command == "search":
+        await _handle_search_command(args.query, args.json)
+    elif args.command == "info":
+        await show_station_info(args.station_id, format_json=args.json)
+    elif args.command == "routes":
+        await _handle_routes_command(args.query, show_patterns=not args.no_patterns)
+    elif args.command == "generate":
+        await _handle_generate_command(args.station_id, args.station_name)
+
+
 async def main() -> None:
     """Main CLI entry point."""
     parser = _setup_argparse()
@@ -1027,14 +1059,7 @@ async def main() -> None:
         sys.exit(1)
 
     try:
-        if args.command == "search":
-            await _handle_search_command(args.query, args.json)
-        elif args.command == "info":
-            await show_station_info(args.station_id, format_json=args.json)
-        elif args.command == "routes":
-            await _handle_routes_command(args.query, show_patterns=not args.no_patterns)
-        elif args.command == "generate":
-            await _handle_generate_command(args.station_id, args.station_name)
+        await _execute_cli_command(args)
     except KeyboardInterrupt:
         print("\nInterrupted.", file=sys.stderr)
         sys.exit(1)

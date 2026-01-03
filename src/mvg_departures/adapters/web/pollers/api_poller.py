@@ -29,28 +29,32 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _extract_status_code(error: Exception) -> int | None:
+    """Extract HTTP status code from error message."""
+    error_str = str(error)
+    status_match = re.search(r"\((\d+)\)", error_str)
+    return int(status_match.group(1)) if status_match else None
+
+
+def _determine_error_reason(status_code: int | None) -> str:
+    """Determine error reason from status code."""
+    if status_code == 429:
+        return "Rate limit exceeded"
+    if status_code == 502:
+        return "Bad gateway (server error)"
+    if status_code == 503:
+        return "Service unavailable"
+    if status_code == 504:
+        return "Gateway timeout"
+    if status_code is not None:
+        return f"HTTP {status_code}"
+    return "Unknown error"
+
+
 def _extract_error_details(error: Exception) -> ErrorDetails:
     """Extract HTTP status code and error reason from exception."""
-    error_str = str(error)
-    # Try to extract HTTP status code from error message
-    # Format: "Bad API call: Got response (502) from ..."
-    status_match = re.search(r"\((\d+)\)", error_str)
-    status_code = int(status_match.group(1)) if status_match else None
-
-    # Determine error reason
-    if status_code == 429:
-        reason = "Rate limit exceeded"
-    elif status_code == 502:
-        reason = "Bad gateway (server error)"
-    elif status_code == 503:
-        reason = "Service unavailable"
-    elif status_code == 504:
-        reason = "Gateway timeout"
-    elif status_code is not None:
-        reason = f"HTTP {status_code}"
-    else:
-        reason = "Unknown error"
-
+    status_code = _extract_status_code(error)
+    reason = _determine_error_reason(status_code)
     return ErrorDetails(status_code=status_code, reason=reason)
 
 

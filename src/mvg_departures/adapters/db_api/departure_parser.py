@@ -61,53 +61,64 @@ class DepartureParser:
         return results
 
     @staticmethod
+    @staticmethod
+    def _parse_departure_times(
+        dep: dict[str, Any],
+    ) -> tuple[datetime | None, datetime | None, datetime | None]:
+        """Parse departure times. Returns (planned_time, real_time, effective_time)."""
+        when_str = dep.get("when") or dep.get("plannedWhen", "")
+        planned_when_str = dep.get("plannedWhen", "")
+
+        planned_time = DepartureParser._parse_time(planned_when_str)
+        real_time = DepartureParser._parse_time(when_str)
+
+        if not planned_time and not real_time:
+            return None, None, None
+
+        effective_time = real_time or planned_time
+        return planned_time, real_time, effective_time
+
+    @staticmethod
+    def _calculate_delay(
+        dep: dict[str, Any], planned_time: datetime | None, real_time: datetime | None
+    ) -> int | None:
+        """Calculate delay in seconds."""
+        delay_seconds = dep.get("delay")
+        if delay_seconds is None and planned_time and real_time:
+            delay_seconds = int((real_time - planned_time).total_seconds())
+        return delay_seconds if delay_seconds and delay_seconds > 0 else None
+
+    @staticmethod
+    def _extract_line_info(dep: dict[str, Any]) -> tuple[str, str, str, str]:
+        """Extract line information. Returns (line_name, mode, product, transport_type)."""
+        line_data = dep.get("line", {})
+        line_name = line_data.get("name", "") if line_data else ""
+        mode = line_data.get("mode", "") if line_data else ""
+        product = line_data.get("product", "") if line_data else ""
+        transport_type = DepartureParser._get_transport_type(mode, product, line_name)
+        return line_name, mode, product, transport_type
+
+    @staticmethod
+    def _extract_stop_point_id(dep: dict[str, Any]) -> str | None:
+        """Extract stop point ID if available."""
+        stop = dep.get("stop", {})
+        return str(stop.get("id", "")) if stop else None
+
+    @staticmethod
     def _parse_departure(dep: dict[str, Any]) -> Departure | None:
         """Parse a single departure into a Departure object."""
         try:
-            # Parse times
-            when_str = dep.get("when") or dep.get("plannedWhen", "")
-            planned_when_str = dep.get("plannedWhen", "")
-
-            planned_time = DepartureParser._parse_time(planned_when_str)
-            real_time = DepartureParser._parse_time(when_str)
-
-            if not planned_time and not real_time:
-                return None
-
-            effective_time = real_time or planned_time
+            planned_time, real_time, effective_time = DepartureParser._parse_departure_times(dep)
             if not effective_time:
                 return None
 
-            # Calculate delay
-            delay_seconds = dep.get("delay")
-            if delay_seconds is None and planned_time and real_time:
-                delay_seconds = int((real_time - planned_time).total_seconds())
-            delay = delay_seconds if delay_seconds and delay_seconds > 0 else None
-
-            # Extract line info
-            line_data = dep.get("line", {})
-            line_name = line_data.get("name", "") if line_data else ""
-            mode = line_data.get("mode", "") if line_data else ""
-            product = line_data.get("product", "") if line_data else ""
-
-            # Determine transport type
-            transport_type = DepartureParser._get_transport_type(mode, product, line_name)
-
-            # Get destination
+            delay = DepartureParser._calculate_delay(dep, planned_time, real_time)
+            line_name, mode, _product, transport_type = DepartureParser._extract_line_info(dep)
             destination = dep.get("direction", "")
-
-            # Get platform
             platform = DepartureParser._parse_platform(dep.get("platform"))
-
-            # Check if cancelled
             is_cancelled = dep.get("cancelled", False)
-
-            # Get remarks as messages
             messages = DepartureParser._extract_messages(dep.get("remarks", []))
-
-            # Get stop point ID if available (for sub-stops)
-            stop = dep.get("stop", {})
-            stop_point_id = str(stop.get("id", "")) if stop else None
+            stop_point_id = DepartureParser._extract_stop_point_id(dep)
 
             return Departure(
                 time=effective_time,

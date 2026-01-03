@@ -143,6 +143,33 @@ class DbHttpClient:
             return results[0]
         return None
 
+    def _extract_departures_from_response(
+        self, data: dict[str, Any] | list[dict[str, Any]]
+    ) -> list[dict[str, Any]] | None:
+        """Extract departures list from API response."""
+        if isinstance(data, dict):
+            departures = data.get("departures", [])
+            return departures if isinstance(departures, list) else None
+        if isinstance(data, list):
+            return data
+        return None
+
+    async def _log_error_response(self, response: Any, url: str) -> None:
+        """Log error response details."""
+        error_text = await response.text()
+        error_body = error_text[:500] if error_text else "(empty response body)"
+        content_type = response.headers.get("Content-Type", "unknown")
+        retry_after = response.headers.get("Retry-After")
+        server = response.headers.get("Server", "unknown")
+        extra_info = []
+        if retry_after:
+            extra_info.append(f"Retry-After: {retry_after}")
+        extra_info_str = f" [{', '.join(extra_info)}]" if extra_info else ""
+        logger.error(
+            f"DB API returned status {response.status} for {url}: "
+            f"{error_body} (Content-Type: {content_type}, Server: {server}){extra_info_str}"
+        )
+
     async def fetch_departures(self, station_id: str, duration: int = 60) -> list[dict[str, Any]]:
         """Fetch departures from v6.db.transport.rest/stops/{id}/departures.
 
@@ -157,10 +184,8 @@ class DbHttpClient:
             return []
 
         url = f"{DB_STOPS_URL}/{station_id}/departures"
-        # Request more results to have enough for all routes (similar to VBB API)
         params: dict[str, str | int] = {"duration": duration, "results": 100}
 
-        # Rate limit: wait for permission before making request
         rate_limiter = await self._get_rate_limiter()
         await rate_limiter.acquire()
 
@@ -168,28 +193,11 @@ class DbHttpClient:
             async with self._session.get(url, params=params, ssl=False) as response:
                 if response.status == 200:
                     data = await response.json()
-                    # Response can be {"departures": [...]} or just [...]
-                    if isinstance(data, dict):
-                        departures = data.get("departures", [])
-                        if isinstance(departures, list):
-                            return departures
-                    elif isinstance(data, list):
-                        return data
+                    departures = self._extract_departures_from_response(data)
+                    if departures is not None:
+                        return departures
 
-                error_text = await response.text()
-                # Enhanced error logging for debugging API issues
-                error_body = error_text[:500] if error_text else "(empty response body)"
-                content_type = response.headers.get("Content-Type", "unknown")
-                retry_after = response.headers.get("Retry-After")
-                server = response.headers.get("Server", "unknown")
-                extra_info = []
-                if retry_after:
-                    extra_info.append(f"Retry-After: {retry_after}")
-                extra_info_str = f" [{', '.join(extra_info)}]" if extra_info else ""
-                logger.error(
-                    f"DB API returned status {response.status} for {url}: "
-                    f"{error_body} (Content-Type: {content_type}, Server: {server}){extra_info_str}"
-                )
+                await self._log_error_response(response, url)
         except Exception as e:
             logger.warning(f"Error fetching DB departures for {url}: {e}")
 
