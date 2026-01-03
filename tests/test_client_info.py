@@ -78,3 +78,65 @@ def test_get_client_info_from_scope_ignores_unrelated_cookies() -> None:
     client_info = get_client_info_from_scope(scope)
 
     assert client_info.browser_id == "unknown"
+
+
+def test_get_client_info_from_scope_prefers_x_forwarded_for_over_client_ip() -> None:
+    """Given X-Forwarded-For header, when extracting IP, then uses first forwarded IP."""
+    scope = {
+        "client": ("10.0.0.1", 80),  # Internal proxy IP
+        "headers": [
+            (b"x-forwarded-for", b"203.0.113.50, 70.41.3.18, 150.172.238.178"),
+            (b"user-agent", b"Browser/1.0"),
+        ],
+    }
+
+    client_info = get_client_info_from_scope(scope)
+
+    assert client_info.ip == "203.0.113.50"  # First in chain is original client
+
+
+def test_get_client_info_from_scope_prefers_fly_client_ip_when_no_forwarded_for() -> None:
+    """Given Fly-Client-IP header but no X-Forwarded-For, when extracting, then uses Fly IP."""
+    scope = {
+        "client": ("10.0.0.1", 80),
+        "headers": [
+            (b"fly-client-ip", b"198.51.100.42"),
+            (b"user-agent", b"Browser/1.0"),
+        ],
+    }
+
+    client_info = get_client_info_from_scope(scope)
+
+    assert client_info.ip == "198.51.100.42"
+
+
+def test_get_client_info_from_scope_truncates_long_user_agent() -> None:
+    """Given very long user agent, when extracting, then truncates with ellipsis."""
+    long_ua = "A" * 300  # Way over 200 char limit
+    scope = {
+        "client": ("192.0.2.1", 80),
+        "headers": [
+            (b"user-agent", long_ua.encode()),
+        ],
+    }
+
+    client_info = get_client_info_from_scope(scope)
+
+    assert len(client_info.user_agent) == 200
+    assert client_info.user_agent.endswith("...")
+
+
+def test_get_client_info_from_scope_truncates_long_browser_id() -> None:
+    """Given very long browser ID in cookie, when extracting, then truncates with ellipsis."""
+    long_id = "B" * 200  # Over 128 char limit
+    scope = {
+        "client": ("192.0.2.1", 80),
+        "headers": [
+            (b"cookie", f"mvg_browser_id={long_id}".encode()),
+        ],
+    }
+
+    client_info = get_client_info_from_scope(scope)
+
+    assert len(client_info.browser_id) == 128
+    assert client_info.browser_id.endswith("...")
