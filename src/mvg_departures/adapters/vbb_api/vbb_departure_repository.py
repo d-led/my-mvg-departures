@@ -238,6 +238,25 @@ class VbbDepartureRepository(DepartureRepository):
             messages=messages,
         )
 
+    def _process_departure_data(self, dep_data: dict[str, Any]) -> Departure | None:
+        """Process a single departure data entry."""
+        try:
+            return self._convert_departure(dep_data)
+        except Exception as e:
+            logger.warning(f"Error processing VBB departure: {e}")
+            return None
+
+    def _convert_departures_list(
+        self, departures_data: list[dict[str, Any]], limit: int
+    ) -> list[Departure]:
+        """Convert raw departure data list to Departure objects."""
+        departures = []
+        for dep_data in departures_data[:limit]:
+            departure = self._process_departure_data(dep_data)
+            if departure:
+                departures.append(departure)
+        return departures
+
     async def get_departures(
         self,
         station_id: str,
@@ -260,19 +279,7 @@ class VbbDepartureRepository(DepartureRepository):
         try:
             params = self._build_request_params(offset_minutes, duration_minutes)
             departures_data = await self._fetch_departures_data(station_id, params)
-
-            departures = []
-            for dep_data in departures_data[:limit]:
-                try:
-                    departure = self._convert_departure(dep_data)
-                    if departure:
-                        departures.append(departure)
-                except Exception as e:
-                    logger.warning(f"Error processing VBB departure: {e}")
-                    continue
-
-            return departures
-
+            return self._convert_departures_list(departures_data, limit)
         except Exception as e:
             logger.error(f"Error fetching departures from VBB API for station '{station_id}': {e}")
             raise

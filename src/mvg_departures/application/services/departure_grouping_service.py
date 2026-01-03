@@ -97,6 +97,26 @@ class DepartureGroupingService:
 
         return filtered
 
+    def _find_matching_direction(
+        self, departure: Departure, direction_mappings: dict[str, list[str]]
+    ) -> str | None:
+        """Find the direction name that matches a departure."""
+        for direction_name, patterns in direction_mappings.items():
+            if self._matches_departure(departure, patterns):
+                return direction_name
+        return None
+
+    def _add_departure_to_group(
+        self,
+        direction_groups: dict[str, list[Departure]],
+        direction_name: str,
+        departure: Departure,
+    ) -> None:
+        """Add a departure to the appropriate direction group."""
+        if direction_name not in direction_groups:
+            direction_groups[direction_name] = []
+        direction_groups[direction_name].append(departure)
+
     def _group_by_direction(
         self,
         departures: list[Departure],
@@ -121,16 +141,12 @@ class DepartureGroupingService:
         )
 
         for departure in departures:
-            matched = False
-            for direction_name, patterns in stop_config.direction_mappings.items():
-                if self._matches_departure(departure, patterns):
-                    if direction_name not in direction_groups:
-                        direction_groups[direction_name] = []
-                    direction_groups[direction_name].append(departure)
-                    matched = True
-                    break
-
-            if not matched:
+            direction_name = self._find_matching_direction(
+                departure, stop_config.direction_mappings
+            )
+            if direction_name:
+                self._add_departure_to_group(direction_groups, direction_name, departure)
+            else:
                 ungrouped.append(departure)
                 logger.debug(
                     f"Unmatched departure for {stop_config.station_name}: {departure.transport_type} {departure.line} -> {departure.destination}"

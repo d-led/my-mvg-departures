@@ -9,7 +9,7 @@ from mvg_departures.domain.models.departure import Departure
 from mvg_departures.domain.ports.departure_repository import DepartureRepository
 
 if TYPE_CHECKING:
-    from aiohttp import ClientSession
+    from aiohttp import ClientResponse, ClientSession
 
 
 class MvgDepartureRepository(DepartureRepository):
@@ -39,6 +39,31 @@ class MvgDepartureRepository(DepartureRepository):
         }
         return [type_map[t] for t in transport_types if t in type_map]
 
+    def _build_departures_url(self, station_id: str, limit: int) -> str:
+        """Build the MVG departures API URL."""
+        transport_types_str = ",".join(["UBAHN", "TRAM", "SBAHN", "BUS", "REGIONAL_BUS", "BAHN"])
+        return (
+            f"https://www.mvg.de/api/bgw-pt/v3/departures"
+            f"?globalId={station_id}&limit={limit}&transportTypes={transport_types_str}"
+        )
+
+    def _get_departures_headers(self) -> dict[str, str]:
+        """Get headers for MVG departures API request."""
+        return {
+            "accept": "application/json",
+            "user-agent": "Mozilla/5.0",
+        }
+
+    async def _parse_departures_response(
+        self, response: "ClientResponse"
+    ) -> list[dict[str, Any]] | None:
+        """Parse the departures API response."""
+        if response.status == 200:
+            raw_results = await response.json()
+            if isinstance(raw_results, list):
+                return raw_results
+        return None
+
     async def _fetch_raw_api_response(
         self, station_id: str, limit: int
     ) -> list[dict[str, Any]] | None:
@@ -55,19 +80,10 @@ class MvgDepartureRepository(DepartureRepository):
             return None
 
         try:
-            transport_types_str = ",".join(
-                ["UBAHN", "TRAM", "SBAHN", "BUS", "REGIONAL_BUS", "BAHN"]
-            )
-            url = f"https://www.mvg.de/api/bgw-pt/v3/departures?globalId={station_id}&limit={limit}&transportTypes={transport_types_str}"
-            headers = {
-                "accept": "application/json",
-                "user-agent": "Mozilla/5.0",
-            }
+            url = self._build_departures_url(station_id, limit)
+            headers = self._get_departures_headers()
             async with self._session.get(url, headers=headers, ssl=False) as response:
-                if response.status == 200:
-                    raw_results = await response.json()
-                    if isinstance(raw_results, list):
-                        return raw_results
+                return await self._parse_departures_response(response)
         except Exception:
             pass
 

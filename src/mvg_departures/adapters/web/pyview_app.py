@@ -438,18 +438,80 @@ class PyViewWebAdapter(DisplayAdapter):
 
         await self._server.serve()
 
+    def _collect_unique_station_ids(self) -> set[str]:
+        """Collect all unique station IDs across all routes."""
+        unique_station_ids: set[str] = set()
+        for route_config in self.route_configs:
+            for stop_config in route_config.stop_configs:
+                unique_station_ids.add(stop_config.station_id)
+        return unique_station_ids
+
+    def _filter_and_mark_stale(self, departures: list[Departure]) -> list[Departure]:
+        """Filter out departed entries and mark remaining as stale (not realtime)."""
+        now = datetime.now(UTC)
+        stale_departures = []
+        for dep in departures:
+            # Keep only departures that haven't departed yet
+            if dep.time >= now:
+                # Mark as stale (not realtime) since we couldn't refresh from API
+                stale_dep = replace(dep, is_realtime=False)
+                stale_departures.append(stale_dep)
+        return stale_departures
+
+    async def _fetch_all_stations(self, unique_station_ids: set[str]) -> None:
+        """Fetch raw departures for all unique stations."""
+        fetch_limit = 50  # Same as in DepartureGroupingService
+        sleep_ms = self.config.sleep_ms_between_calls
+        station_list = list(unique_station_ids)
+
+        for i, station_id in enumerate(station_list):
+            try:
+                departures = await self.departure_repository.get_departures(
+                    station_id, limit=fetch_limit
+                )
+                self._shared_departure_cache.set(station_id, departures)
+                logger.debug(f"Fetched {len(departures)} raw departures for station {station_id}")
+            except Exception as e:
+                logger.error(
+                    f"Failed to fetch departures for station {station_id}: {e}",
+                    exc_info=True,
+                )
+                # Keep stale cached data: filter out departed entries and mark as stale
+                cached = self._shared_departure_cache.get(station_id)
+                if cached:
+                    stale_departures = self._filter_and_mark_stale(cached)
+                    self._shared_departure_cache.set(station_id, stale_departures)
+                    logger.info(
+                        f"Using {len(stale_departures)} stale departures for station {station_id} "
+                        f"(filtered from {len(cached)} cached entries)"
+                    )
+                # If no cached data at all, leave cache empty (don't set empty list)
+
+            # Add delay between calls (except after the last one)
+            if sleep_ms > 0 and i < len(station_list) - 1:
+                await asyncio.sleep(sleep_ms / 1000.0)
+
+    def _create_fetch_loop(self, unique_station_ids: set[str]) -> asyncio.Task:
+        """Create and return a task that periodically fetches departures."""
+
+        async def _fetch_loop() -> None:
+            try:
+                while True:
+                    await asyncio.sleep(self.config.refresh_interval_seconds)
+                    await self._fetch_all_stations(unique_station_ids)
+            except asyncio.CancelledError:
+                logger.info("Shared fetcher cancelled")
+                raise
+
+        return asyncio.create_task(_fetch_loop())
+
     async def _start_departure_fetcher(self) -> None:
         """Start a shared fetcher that populates the cache with raw departures."""
         if self._departure_fetcher is not None:
             logger.warning("Departure fetcher already running")
             return
 
-        # Collect all unique station_ids across all routes
-        unique_station_ids: set[str] = set()
-        for route_config in self.route_configs:
-            for stop_config in route_config.stop_configs:
-                unique_station_ids.add(stop_config.station_id)
-
+        unique_station_ids = self._collect_unique_station_ids()
         logger.info(
             f"Departure fetcher: {len(unique_station_ids)} unique station(s) across {len(self.route_configs)} route(s)"
         )
@@ -462,68 +524,12 @@ class PyViewWebAdapter(DisplayAdapter):
             config=self.config,
         )
         await self._departure_fetcher.start()
-        # Use the departure repository directly (already available)
-        departure_repo = self.departure_repository
-
-        def _filter_and_mark_stale(departures: list[Departure]) -> list[Departure]:
-            """Filter out departed entries and mark remaining as stale (not realtime)."""
-            now = datetime.now(UTC)
-            stale_departures = []
-            for dep in departures:
-                # Keep only departures that haven't departed yet
-                if dep.time >= now:
-                    # Mark as stale (not realtime) since we couldn't refresh from API
-                    stale_dep = replace(dep, is_realtime=False)
-                    stale_departures.append(stale_dep)
-            return stale_departures
-
-        async def _fetch_all_stations() -> None:
-            """Fetch raw departures for all unique stations."""
-            fetch_limit = 50  # Same as in DepartureGroupingService
-            sleep_ms = self.config.sleep_ms_between_calls
-            station_list = list(unique_station_ids)
-
-            for i, station_id in enumerate(station_list):
-                try:
-                    departures = await departure_repo.get_departures(station_id, limit=fetch_limit)
-                    self._shared_departure_cache.set(station_id, departures)
-                    logger.debug(
-                        f"Fetched {len(departures)} raw departures for station {station_id}"
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Failed to fetch departures for station {station_id}: {e}",
-                        exc_info=True,
-                    )
-                    # Keep stale cached data: filter out departed entries and mark as stale
-                    cached = self._shared_departure_cache.get(station_id)
-                    if cached:
-                        stale_departures = _filter_and_mark_stale(cached)
-                        self._shared_departure_cache.set(station_id, stale_departures)
-                        logger.info(
-                            f"Using {len(stale_departures)} stale departures for station {station_id} "
-                            f"(filtered from {len(cached)} cached entries)"
-                        )
-                    # If no cached data at all, leave cache empty (don't set empty list)
-
-                # Add delay between calls (except after the last one)
-                if sleep_ms > 0 and i < len(station_list) - 1:
-                    await asyncio.sleep(sleep_ms / 1000.0)
 
         # Do initial fetch immediately
-        await _fetch_all_stations()
+        await self._fetch_all_stations(unique_station_ids)
 
         # Then fetch periodically
-        async def _fetch_loop() -> None:
-            try:
-                while True:
-                    await asyncio.sleep(self.config.refresh_interval_seconds)
-                    await _fetch_all_stations()
-            except asyncio.CancelledError:
-                logger.info("Shared fetcher cancelled")
-                raise
-
-        self._shared_fetcher_task = asyncio.create_task(_fetch_loop())
+        self._shared_fetcher_task = self._create_fetch_loop(unique_station_ids)
         logger.info("Started shared departure fetcher")
 
     async def stop(self) -> None:

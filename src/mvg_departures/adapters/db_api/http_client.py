@@ -108,15 +108,19 @@ class DbHttpClient:
 
         return results
 
-    async def get_station_info(self, station_id: str) -> dict[str, Any] | None:
-        """Get station information by ID.
+    def _parse_station_data(self, data: dict[str, Any], station_id: str) -> dict[str, Any]:
+        """Parse station data from API response."""
+        return {
+            "id": str(data.get("id", station_id)),
+            "name": data.get("name", ""),
+            "place": "",
+            "latitude": data.get("location", {}).get("latitude", 0.0),
+            "longitude": data.get("location", {}).get("longitude", 0.0),
+            "products": data.get("products", {}),
+        }
 
-        Args:
-            station_id: Station ID to look up.
-
-        Returns:
-            Station data dictionary or None if not found.
-        """
+    async def _fetch_station_info_direct(self, station_id: str) -> dict[str, Any] | None:
+        """Fetch station info directly from the API endpoint."""
         if not self._session:
             return None
 
@@ -126,22 +130,33 @@ class DbHttpClient:
                 if response.status == 200:
                     data = await response.json()
                     if isinstance(data, dict):
-                        return {
-                            "id": str(data.get("id", station_id)),
-                            "name": data.get("name", ""),
-                            "place": "",
-                            "latitude": data.get("location", {}).get("latitude", 0.0),
-                            "longitude": data.get("location", {}).get("longitude", 0.0),
-                            "products": data.get("products", {}),
-                        }
+                        return self._parse_station_data(data, station_id)
         except Exception as e:
             logger.warning(f"Error getting station info: {e}")
 
-        # Fallback to search
+        return None
+
+    async def _get_station_info_fallback(self, station_id: str) -> dict[str, Any] | None:
+        """Fallback to search if direct fetch fails."""
         results = await self.search_stations(station_id)
         if results:
             return results[0]
         return None
+
+    async def get_station_info(self, station_id: str) -> dict[str, Any] | None:
+        """Get station information by ID.
+
+        Args:
+            station_id: Station ID to look up.
+
+        Returns:
+            Station data dictionary or None if not found.
+        """
+        direct_result = await self._fetch_station_info_direct(station_id)
+        if direct_result:
+            return direct_result
+
+        return await self._get_station_info_fallback(station_id)
 
     def _extract_departures_from_response(
         self, data: dict[str, Any] | list[dict[str, Any]]

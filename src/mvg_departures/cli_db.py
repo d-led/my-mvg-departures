@@ -335,6 +335,23 @@ def _display_routes_grouped(by_type: dict[str, list[tuple[str, dict[str, Any]]]]
                 _display_route_destinations(route_name, destinations)
 
 
+def _display_single_sub_stop(stop_id: str, sub_stop: dict[str, Any]) -> None:
+    """Display information for a single sub-stop."""
+    transport_types = sub_stop.get("transport_types", [])
+    sub_routes = sub_stop.get("routes", {})
+    types_str = ", ".join(transport_types)
+
+    print(f"\n  # Sub-stop {stop_id} ({types_str}):")
+    print(f'  # station_id = "{stop_id}"')
+
+    for route_key in sorted(sub_routes.keys()):
+        route = sub_routes[route_key]
+        destinations = route.get("destinations", [])
+        if destinations:
+            dest_str = _format_destinations(destinations)
+            print(f"  #   {route_key}: {dest_str}")
+
+
 def _display_sub_stops(sub_stops: dict[str, dict[str, Any]]) -> None:
     """Display sub-stops information."""
     if len(sub_stops) <= 1:
@@ -347,22 +364,7 @@ def _display_sub_stops(sub_stops: dict[str, dict[str, Any]]) -> None:
     print("# Set station_id to a sub-stop ID to only show departures from that stop")
 
     for stop_id in sorted(sub_stops.keys()):
-        sub_stop = sub_stops[stop_id]
-        transport_types = sub_stop.get("transport_types", [])
-        sub_routes = sub_stop.get("routes", {})
-        types_str = ", ".join(transport_types)
-
-        print(f"\n  # Sub-stop {stop_id} ({types_str}):")
-        print(f'  # station_id = "{stop_id}"')
-
-        for route_key in sorted(sub_routes.keys()):
-            route = sub_routes[route_key]
-            destinations = route.get("destinations", [])
-            if destinations:
-                dest_str = ", ".join(destinations[:3])
-                if len(destinations) > 3:
-                    dest_str += f" (+{len(destinations) - 3})"
-                print(f"  #   {route_key}: {dest_str}")
+        _display_single_sub_stop(stop_id, sub_stops[stop_id])
 
 
 async def _handle_routes_command(query: str, show_patterns: bool) -> None:

@@ -32,12 +32,20 @@ class CompositeDepartureRepository(DepartureRepository):
         self._repositories: dict[str, DepartureRepository] = {}
         self._initialize_repositories()
 
-    def _initialize_repositories(self) -> None:
-        """Initialize repositories for each unique API provider combination."""
+    def _create_repository_for_provider(self, api_provider: str) -> DepartureRepository:
+        """Create a repository instance for the given API provider."""
         from mvg_departures.adapters.db_api import DbDepartureRepository
         from mvg_departures.adapters.mvg_api import MvgDepartureRepository
         from mvg_departures.adapters.vbb_api import VbbDepartureRepository
 
+        if api_provider == "db":
+            return DbDepartureRepository(session=self._session)
+        if api_provider == "vbb":
+            return VbbDepartureRepository(session=self._session)
+        return MvgDepartureRepository(session=self._session)
+
+    def _initialize_repositories(self) -> None:
+        """Initialize repositories for each unique API provider combination."""
         # Map of RepositoryKey -> repository instance
         repo_cache: dict[RepositoryKey, DepartureRepository] = {}
 
@@ -47,14 +55,7 @@ class CompositeDepartureRepository(DepartureRepository):
 
             # Create repository if we haven't seen this API provider
             if repo_key not in repo_cache:
-                repo: DepartureRepository
-                if api_provider == "db":
-                    repo = DbDepartureRepository(session=self._session)
-                elif api_provider == "vbb":
-                    repo = VbbDepartureRepository(session=self._session)
-                else:
-                    repo = MvgDepartureRepository(session=self._session)
-                repo_cache[repo_key] = repo
+                repo_cache[repo_key] = self._create_repository_for_provider(api_provider)
 
             # Map this station to the appropriate repository
             self._repositories[stop_config.station_id] = repo_cache[repo_key]
