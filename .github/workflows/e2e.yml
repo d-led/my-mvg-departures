@@ -34,6 +34,7 @@ jobs:
       packages: read
     container:
       image: cypress/included:latest
+      options: --ipc=host
     services:
       app:
         image: ${{ inputs.docker_image != '' && inputs.docker_image || format('ghcr.io/{0}:main', github.repository) }}
