@@ -131,26 +131,36 @@ class StaticFileServer(StaticFileServerProtocol):
                 status_code=500,
             )
 
+    def _get_github_icon_paths(self) -> list[Path]:
+        """Get possible paths for GitHub icon file."""
+        return [
+            Path.cwd() / "static" / "assets" / "github-mark.svg",
+            Path(__file__).parent.parent.parent.parent.parent
+            / "static"
+            / "assets"
+            / "github-mark.svg",
+        ]
+
+    def _create_github_icon_response(self, icon_path: Path) -> FileResponse:
+        """Create response for GitHub icon file."""
+        response = FileResponse(str(icon_path), media_type="image/svg+xml")
+        response.headers["Cache-Control"] = "public, max-age=60, must-revalidate"
+        return response
+
+    def _find_github_icon(self, possible_paths: list[Path]) -> Path | None:
+        """Find existing GitHub icon path."""
+        for github_icon_path in possible_paths:
+            if github_icon_path.exists():
+                return github_icon_path
+        return None
+
     async def _serve_github_icon(self, _request: Any) -> Any:
         """Serve GitHub octicon SVG."""
         try:
-            # Try multiple possible locations for the static file
-            # 1. Relative to working directory (Docker: /app/static/)
-            # 2. Relative to source file (development: project_root/static/)
-            possible_paths = [
-                Path.cwd() / "static" / "assets" / "github-mark.svg",
-                Path(__file__).parent.parent.parent.parent.parent
-                / "static"
-                / "assets"
-                / "github-mark.svg",
-            ]
-
-            for github_icon_path in possible_paths:
-                if github_icon_path.exists():
-                    response = FileResponse(str(github_icon_path), media_type="image/svg+xml")
-                    # Add cache headers: cache for 1 minute
-                    response.headers["Cache-Control"] = "public, max-age=60, must-revalidate"
-                    return response
+            possible_paths = self._get_github_icon_paths()
+            icon_path = self._find_github_icon(possible_paths)
+            if icon_path:
+                return self._create_github_icon_response(icon_path)
 
             logger.error(
                 f"Could not find GitHub icon at any of: {[str(p) for p in possible_paths]}"

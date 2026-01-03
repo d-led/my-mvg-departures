@@ -578,39 +578,48 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         # Discarding from the set keeps this idempotent if unmount already ran.
         self.state_manager.unregister_socket(socket)
 
+    def _handle_presence_event(
+        self, topic: str, payload: Any, socket: LiveViewSocket[DeparturesState]
+    ) -> None:
+        """Handle presence event from InfoEvent."""
+        if isinstance(payload, dict):
+            self._update_presence_from_event(topic, payload, socket)
+        else:
+            logger.warning(f"Unexpected presence payload type: {type(payload)}")
+
+    def _handle_info_event(self, event: InfoEvent, socket: LiveViewSocket[DeparturesState]) -> None:
+        """Handle InfoEvent for presence updates or regular updates."""
+        topic = event.name
+        payload = event.payload
+
+        if topic.startswith("presence:"):
+            self._handle_presence_event(topic, payload, socket)
+            return
+
+        if payload == "update":
+            self._update_context_from_state(socket)
+            return
+
+        logger.debug(f"Received InfoEvent from topic '{topic}' with payload: {payload}")
+
+    def _handle_string_event(self, event: str, socket: LiveViewSocket[DeparturesState]) -> None:
+        """Handle direct string payload (legacy format)."""
+        if event == "update":
+            self._update_context_from_state(socket)
+            return
+
+        logger.debug(f"Received direct payload: {event}")
+
     async def handle_info(
         self, event: str | InfoEvent, socket: LiveViewSocket[DeparturesState]
     ) -> None:
         """Handle update messages from pubsub."""
-
-        # Handle InfoEvent for presence updates
         if isinstance(event, InfoEvent):
-            topic = event.name
-            payload = event.payload
-
-            # Handle presence events
-            if topic.startswith("presence:"):
-                if isinstance(payload, dict):
-                    self._update_presence_from_event(topic, payload, socket)
-                else:
-                    logger.warning(f"Unexpected presence payload type: {type(payload)}")
-                return
-
-            # Handle regular update messages
-            if payload == "update":
-                self._update_context_from_state(socket)
-                return
-
-            logger.debug(f"Received InfoEvent from topic '{topic}' with payload: {payload}")
+            self._handle_info_event(event, socket)
             return
 
-        # Handle direct string payload (legacy format)
         if isinstance(event, str):
-            if event == "update":
-                self._update_context_from_state(socket)
-                return
-
-            logger.debug(f"Received direct payload: {event}")
+            self._handle_string_event(event, socket)
             return
 
         # Unknown event type - log error and return

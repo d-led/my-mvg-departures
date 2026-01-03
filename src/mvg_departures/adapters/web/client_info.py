@@ -46,17 +46,27 @@ def _extract_user_agent(headers: list[tuple[Any, Any]]) -> str:
     return "unknown"
 
 
+def _process_header_for_forwarded_ip(
+    name: Any, value: Any, forwarded_for: str | None, fly_client_ip: str | None
+) -> tuple[str | None, str | None]:
+    """Process a single header for forwarded IP extraction."""
+    decoded_name = _decode_header_value(name).lower()
+    if decoded_name == "x-forwarded-for":
+        forwarded_for = _decode_header_value(value)
+    elif decoded_name == "fly-client-ip":
+        fly_client_ip = _decode_header_value(value)
+    return forwarded_for, fly_client_ip
+
+
 def _extract_forwarded_ip(headers: list[tuple[Any, Any]]) -> tuple[str | None, str | None]:
     """Extract forwarded IP addresses from headers."""
     forwarded_for: str | None = None
     fly_client_ip: str | None = None
 
     for name, value in headers:
-        decoded_name = _decode_header_value(name).lower()
-        if decoded_name == "x-forwarded-for":
-            forwarded_for = _decode_header_value(value)
-        elif decoded_name == "fly-client-ip":
-            fly_client_ip = _decode_header_value(value)
+        forwarded_for, fly_client_ip = _process_header_for_forwarded_ip(
+            name, value, forwarded_for, fly_client_ip
+        )
 
     return forwarded_for, fly_client_ip
 
@@ -113,14 +123,22 @@ def _extract_cookie_header(headers: list[tuple[Any, Any]]) -> str | None:
     return None
 
 
+def _parse_cookie_part(part: str) -> str | None:
+    """Parse a single cookie part for browser ID."""
+    name_value = part.strip().split("=", 1)
+    if len(name_value) == 2 and name_value[0] == "mvg_browser_id":
+        browser_id = name_value[1]
+        if len(browser_id) > 128:
+            browser_id = f"{browser_id[:125]}..."
+        return browser_id
+    return None
+
+
 def _parse_browser_id_from_cookie(cookie_header: str) -> str | None:
     """Parse browser ID from cookie header."""
     for part in cookie_header.split(";"):
-        name_value = part.strip().split("=", 1)
-        if len(name_value) == 2 and name_value[0] == "mvg_browser_id":
-            browser_id = name_value[1]
-            if len(browser_id) > 128:
-                browser_id = f"{browser_id[:125]}..."
+        browser_id = _parse_cookie_part(part)
+        if browser_id:
             return browser_id
     return None
 

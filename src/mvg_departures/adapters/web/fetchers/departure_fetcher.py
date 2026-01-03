@@ -67,19 +67,23 @@ class DepartureFetcher:
                 logger.info("Departure fetcher cancelled")
             logger.info("Stopped departure fetcher")
 
+    async def _fetch_with_error_handling(self) -> None:
+        """Fetch all stations with error handling."""
+        try:
+            await self._fetch_all_stations()
+        except Exception as e:
+            # Log error but continue the loop - don't stop fetching on errors
+            logger.error(
+                f"Error in departure fetcher loop (will retry): {e}",
+                exc_info=True,
+            )
+
     async def _fetch_loop(self) -> None:
         """Main fetching loop."""
         try:
             while True:
                 await asyncio.sleep(self.config.refresh_interval_seconds)
-                try:
-                    await self._fetch_all_stations()
-                except Exception as e:
-                    # Log error but continue the loop - don't stop fetching on errors
-                    logger.error(
-                        f"Error in departure fetcher loop (will retry): {e}",
-                        exc_info=True,
-                    )
+                await self._fetch_with_error_handling()
         except asyncio.CancelledError:
             logger.info("Departure fetcher cancelled")
             raise
@@ -103,6 +107,29 @@ class DepartureFetcher:
                 stale_departures.append(stale_dep)
         return stale_departures
 
+    async def _fetch_single_station(self, station_id: str, fetch_limit: int) -> None:
+        """Fetch departures for a single station."""
+        departures = await self.departure_repository.get_departures(station_id, limit=fetch_limit)
+        self.cache.set(station_id, departures)
+        logger.debug(f"Fetched {len(departures)} raw departures for station {station_id}")
+
+    def _handle_fetch_error(self, station_id: str, error: Exception) -> None:
+        """Handle error when fetching departures for a station."""
+        logger.error(
+            f"Failed to fetch departures for station {station_id}: {error}",
+            exc_info=True,
+        )
+        # Keep stale cached data: filter out departed entries and mark as stale
+        cached = self.cache.get(station_id)
+        if cached:
+            stale_departures = self._filter_and_mark_stale(cached)
+            self.cache.set(station_id, stale_departures)
+            logger.info(
+                f"Using {len(stale_departures)} stale departures for station {station_id} "
+                f"(filtered from {len(cached)} cached entries)"
+            )
+        # If no cached data at all, leave cache empty (don't set empty list)
+
     async def _fetch_all_stations(self) -> None:
         """Fetch raw departures for all stations."""
         fetch_limit = 50  # Same as in DepartureGroupingService
@@ -111,26 +138,9 @@ class DepartureFetcher:
 
         for i, station_id in enumerate(station_list):
             try:
-                departures = await self.departure_repository.get_departures(
-                    station_id, limit=fetch_limit
-                )
-                self.cache.set(station_id, departures)
-                logger.debug(f"Fetched {len(departures)} raw departures for station {station_id}")
+                await self._fetch_single_station(station_id, fetch_limit)
             except Exception as e:
-                logger.error(
-                    f"Failed to fetch departures for station {station_id}: {e}",
-                    exc_info=True,
-                )
-                # Keep stale cached data: filter out departed entries and mark as stale
-                cached = self.cache.get(station_id)
-                if cached:
-                    stale_departures = self._filter_and_mark_stale(cached)
-                    self.cache.set(station_id, stale_departures)
-                    logger.info(
-                        f"Using {len(stale_departures)} stale departures for station {station_id} "
-                        f"(filtered from {len(cached)} cached entries)"
-                    )
-                # If no cached data at all, leave cache empty (don't set empty list)
+                self._handle_fetch_error(station_id, e)
 
             # Add delay between calls (except after the last one)
             if sleep_ms > 0 and i < len(station_list) - 1:

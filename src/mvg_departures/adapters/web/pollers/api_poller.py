@@ -177,6 +177,25 @@ class ApiPoller(ApiPollerProtocol):
 
         return self.grouping_service.group_departures(recent_departures, stop_config)
 
+    def _create_departure_key(self, dep: Departure) -> tuple[str, str, datetime]:
+        """Create a unique key for a departure."""
+        return (dep.line, dep.destination, dep.time)
+
+    def _deduplicate_group_departures(self, group: GroupedDepartures) -> GroupedDepartures:
+        """Deduplicate departures within a single group."""
+        seen = set()
+        unique_departures = []
+        for dep in group.departures:
+            dep_key = self._create_departure_key(dep)
+            if dep_key not in seen:
+                seen.add(dep_key)
+                unique_departures.append(dep)
+            else:
+                logger.warning(
+                    f"Duplicate departure detected and removed: {dep.line} to {dep.destination} at {dep.time}"
+                )
+        return GroupedDepartures(direction_name=group.direction_name, departures=unique_departures)
+
     def _deduplicate_departures(self, groups: list[GroupedDepartures]) -> list[GroupedDepartures]:
         """Deduplicate departures within groups.
 
@@ -186,23 +205,7 @@ class ApiPoller(ApiPollerProtocol):
         Returns:
             List of grouped departures with duplicates removed.
         """
-        deduplicated: list[GroupedDepartures] = []
-        for group in groups:
-            seen = set()
-            unique_departures = []
-            for dep in group.departures:
-                dep_key = (dep.line, dep.destination, dep.time)
-                if dep_key not in seen:
-                    seen.add(dep_key)
-                    unique_departures.append(dep)
-                else:
-                    logger.warning(
-                        f"Duplicate departure detected and removed: {dep.line} to {dep.destination} at {dep.time}"
-                    )
-            deduplicated.append(
-                GroupedDepartures(direction_name=group.direction_name, departures=unique_departures)
-            )
-        return deduplicated
+        return [self._deduplicate_group_departures(group) for group in groups]
 
     def _build_direction_groups_with_metadata(
         self,

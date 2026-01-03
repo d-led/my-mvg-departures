@@ -421,6 +421,22 @@ async def _handle_routes_command(query: str, show_patterns: bool) -> None:
         print("=" * 70)
 
 
+def _generate_db_route_snippet(route_data: dict[str, Any]) -> str:
+    """Generate config snippet for a single DB route."""
+    destinations = route_data.get("destinations", [])
+    transport_type = route_data.get("transport_type", "")
+    line = route_data.get("line", "")
+
+    if not destinations:
+        return ""
+
+    first_dest = destinations[0]
+    direction_name = f"->{first_dest[:20]}"  # Limit length
+    match_strings = [f"{line} {dest}" for dest in destinations]
+
+    return f"\n# {transport_type} {line}:\n" f'# "{direction_name}" = {match_strings}\n'
+
+
 def generate_db_config_snippet(station_id: str, station_name: str, routes: dict[str, Any]) -> str:
     """Generate a TOML config snippet for a DB station.
 
@@ -445,23 +461,8 @@ show_ungrouped = true
 # Patterns can be: destination ("München"), route ("RE 5"), or route+destination ("RE 5 München")
 """
 
-    # Add suggested direction mappings for each route
     for _route_name, route_data in sorted(routes.items()):
-        destinations = route_data.get("destinations", [])
-        transport_type = route_data.get("transport_type", "")
-        line = route_data.get("line", "")
-
-        if destinations:
-            # Create a suggested direction name from first destination
-            first_dest = destinations[0] if destinations else "Destination"
-            direction_name = f"->{first_dest[:20]}"  # Limit length
-
-            # Include line name in match strings for specificity
-            # Show ALL destinations for copy-pasteable config
-            match_strings = [f"{line} {dest}" for dest in destinations]
-
-            snippet += f"\n# {transport_type} {line}:\n"
-            snippet += f'# "{direction_name}" = {match_strings}\n'
+        snippet += _generate_db_route_snippet(route_data)
 
     return snippet
 

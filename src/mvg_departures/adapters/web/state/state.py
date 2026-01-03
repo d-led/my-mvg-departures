@@ -174,14 +174,8 @@ class State:
         )
         return True
 
-    def unregister_socket(self, socket: LiveViewSocket[DeparturesState]) -> None:
-        """Unregister a socket.
-
-        This method is idempotent and also cleans up any session mapping that still
-        points at the given socket.
-        """
-        self.connected_sockets.discard(socket)
-        # Remove from browser-based tracking, if present.
+    def _remove_socket_from_browser_tracking(self, socket: LiveViewSocket[DeparturesState]) -> None:
+        """Remove socket from browser-based tracking."""
         browser_id = self._socket_browser.pop(socket, None)
         if browser_id is not None:
             sockets_for_browser = self._browser_sockets.get(browser_id)
@@ -189,7 +183,9 @@ class State:
                 sockets_for_browser.discard(socket)
                 if not sockets_for_browser:
                     del self._browser_sockets[browser_id]
-        # Remove any session IDs associated with this socket
+
+    def _remove_socket_from_session_tracking(self, socket: LiveViewSocket[DeparturesState]) -> None:
+        """Remove socket from session-based tracking."""
         stale_session_ids = [
             session_id
             for session_id, registered_socket in self._session_sockets.items()
@@ -197,4 +193,14 @@ class State:
         ]
         for session_id in stale_session_ids:
             del self._session_sockets[session_id]
+
+    def unregister_socket(self, socket: LiveViewSocket[DeparturesState]) -> None:
+        """Unregister a socket.
+
+        This method is idempotent and also cleans up any session mapping that still
+        points at the given socket.
+        """
+        self.connected_sockets.discard(socket)
+        self._remove_socket_from_browser_tracking(socket)
+        self._remove_socket_from_session_tracking(socket)
         logger.info(f"Unregistered socket, total connected: {len(self.connected_sockets)}")

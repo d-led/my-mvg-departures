@@ -281,16 +281,21 @@ async def _process_routes_response(data: Any, station_id: str) -> dict[str, Any]
     return _build_routes_result(station_id, routes, route_details)
 
 
+def _get_mvg_routes_headers() -> dict[str, str]:
+    """Get headers for MVG routes API request."""
+    return {
+        "accept": "application/json",
+        "user-agent": "Mozilla/5.0",
+    }
+
+
 async def _get_routes_from_endpoint(
     station_id: str, session: aiohttp.ClientSession
 ) -> dict[str, Any] | None:
     """Get routes from the MVG routes endpoint."""
     try:
         url = f"https://www.mvg.de/api/bgw-pt/v3/lines/{station_id}"
-        headers = {
-            "accept": "application/json",
-            "user-agent": "Mozilla/5.0",
-        }
+        headers = _get_mvg_routes_headers()
         async with session.get(url, headers=headers) as response:
             if response.status != 200:
                 return None
@@ -345,6 +350,14 @@ def _process_departures_for_mapping(
         _process_departure_for_stop_point_mapping(dep, stop_point_mapping)
 
 
+def _build_stop_point_mapping_url(station_id: str, limit: int) -> str:
+    """Build URL for stop point mapping API request."""
+    return (
+        f"https://www.mvg.de/api/bgw-pt/v3/departures"
+        f"?globalId={station_id}&limit={limit}&transportTypes=UBAHN,TRAM,SBAHN,BUS,REGIONAL_BUS,BAHN"
+    )
+
+
 async def _get_stop_point_mapping(
     station_id: str, session: aiohttp.ClientSession, limit: int = 100
 ) -> dict[str, dict[str, Any]]:
@@ -352,11 +365,8 @@ async def _get_stop_point_mapping(
     stop_point_mapping: dict[str, dict[str, Any]] = {}
 
     try:
-        url = f"https://www.mvg.de/api/bgw-pt/v3/departures?globalId={station_id}&limit={limit}&transportTypes=UBAHN,TRAM,SBAHN,BUS,REGIONAL_BUS,BAHN"
-        headers = {
-            "accept": "application/json",
-            "user-agent": "Mozilla/5.0",
-        }
+        url = _build_stop_point_mapping_url(station_id, limit)
+        headers = _get_mvg_routes_headers()
         async with session.get(url, headers=headers) as response:
             if response.status != 200:
                 return stop_point_mapping
@@ -770,32 +780,45 @@ def _group_stop_points(
     return stops_with_routes, s_bahn_platforms
 
 
+def _extract_stop_number(stop_point: str) -> str:
+    """Extract stop number from stop point ID."""
+    return stop_point.split(":")[-1] if ":" in stop_point else stop_point
+
+
+def _has_platform_info(route_infos: list[StopPointRouteInfo]) -> bool:
+    """Check if any route info has platform information."""
+    return any(route_info.platform_info for route_info in route_infos if route_info.platform_info)
+
+
+def _build_route_pattern(route_info: StopPointRouteInfo) -> str:
+    """Build route pattern string from route info."""
+    line = route_info.route_key.split()[-1] if route_info.route_key.split() else ""
+    return f"{line} {route_info.destination}" if line else route_info.destination
+
+
+def _display_single_stop_point(stop_point: str, route_infos: list[StopPointRouteInfo]) -> None:
+    """Display a single stop point with its routes."""
+    stop_num = _extract_stop_number(stop_point)
+    print(f"\n  # Stop {stop_num} ({stop_point}):")
+    print(f'  # station_id = "{stop_point}"')
+
+    if _has_platform_info(route_infos):
+        print(
+            "  # Note: You can use this stopPointGlobalId directly, or use base station_id with direction_mappings for additional filtering."
+        )
+
+    for route_info in sorted(route_infos, key=lambda r: (r.route_key, r.destination)):
+        pattern = _build_route_pattern(route_info)
+        if route_info.platform_info:
+            print(f'    {route_info.route_key} -> "{pattern}"  # {route_info.platform_info}')
+        else:
+            print(f'    {route_info.route_key} -> "{pattern}"')
+
+
 def _display_stop_points(stops_with_routes: dict[str, list[StopPointRouteInfo]]) -> None:
     """Display stop points with their routes."""
     for stop_point in sorted(stops_with_routes.keys(), reverse=True):
-        stop_num = stop_point.split(":")[-1] if ":" in stop_point else stop_point
-        print(f"\n  # Stop {stop_num} ({stop_point}):")
-        print(f'  # station_id = "{stop_point}"')
-
-        has_platforms = any(
-            route_info.platform_info
-            for route_info in stops_with_routes[stop_point]
-            if route_info.platform_info
-        )
-        if has_platforms:
-            print(
-                "  # Note: You can use this stopPointGlobalId directly, or use base station_id with direction_mappings for additional filtering."
-            )
-
-        for route_info in sorted(
-            stops_with_routes[stop_point], key=lambda r: (r.route_key, r.destination)
-        ):
-            line = route_info.route_key.split()[-1] if route_info.route_key.split() else ""
-            pattern = f"{line} {route_info.destination}" if line else route_info.destination
-            if route_info.platform_info:
-                print(f'    {route_info.route_key} -> "{pattern}"  # {route_info.platform_info}')
-            else:
-                print(f'    {route_info.route_key} -> "{pattern}"')
+        _display_single_stop_point(stop_point, stops_with_routes[stop_point])
 
 
 def _display_platform_for_route(
@@ -946,9 +969,8 @@ async def show_station_info(station_id: str, format_json: bool = False) -> None:
             )
 
 
-def generate_config_snippet(station_id: str, station_name: str, routes: dict[str, Any]) -> str:
-    """Generate a TOML config snippet for a station."""
-    # Extract all destinations from routes
+def _extract_all_destinations(routes: dict[str, Any]) -> set[str]:
+    """Extract all destinations from routes dictionary."""
     all_destinations = set()
     for route_data in routes.values():
         if isinstance(route_data, dict):
@@ -956,6 +978,12 @@ def generate_config_snippet(station_id: str, station_name: str, routes: dict[str
             all_destinations.update(destinations)
         elif isinstance(route_data, list):
             all_destinations.update(route_data)
+    return all_destinations
+
+
+def generate_config_snippet(station_id: str, station_name: str, routes: dict[str, Any]) -> str:
+    """Generate a TOML config snippet for a station."""
+    all_destinations = _extract_all_destinations(routes)
 
     # Create a simple config snippet
     snippet = f"""[[stops]]

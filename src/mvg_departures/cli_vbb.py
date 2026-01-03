@@ -212,6 +212,29 @@ async def _fetch_departures(
         return departures
 
 
+def _build_vbb_station_info(station_id: str, station_name: str) -> dict[str, Any]:
+    """Build station info dictionary for VBB."""
+    return {
+        "id": station_id,
+        "name": station_name,
+        "place": "Berlin",
+        "api_provider": "vbb",
+    }
+
+
+def _build_vbb_routes_dict(
+    routes: dict[str, set[str]], route_details: dict[str, dict[str, Any]]
+) -> dict[str, dict[str, Any]]:
+    """Build routes dictionary for VBB."""
+    return {
+        line: {
+            "destinations": sorted(destinations),
+            "transport_type": route_details[line]["transport_type"],
+        }
+        for line, destinations in routes.items()
+    }
+
+
 async def get_station_details_vbb(station_id: str) -> dict[str, Any] | None:
     """Get detailed information about a VBB station including routes."""
     try:
@@ -224,23 +247,26 @@ async def get_station_details_vbb(station_id: str) -> dict[str, Any] | None:
             station_name = departures_data[0].get("stop", {}).get("name", "") or station_id
 
             return {
-                "station": {
-                    "id": station_id,
-                    "name": station_name,
-                    "place": "Berlin",
-                    "api_provider": "vbb",
-                },
-                "routes": {
-                    line: {
-                        "destinations": sorted(destinations),
-                        "transport_type": route_details[line]["transport_type"],
-                    }
-                    for line, destinations in routes.items()
-                },
+                "station": _build_vbb_station_info(station_id, station_name),
+                "routes": _build_vbb_routes_dict(routes, route_details),
             }
     except Exception as e:
         print(f"Error getting station details: {e}", file=sys.stderr)
         return None
+
+
+def _generate_vbb_route_snippet(line: str, route_data: dict[str, Any]) -> str:
+    """Generate config snippet for a single VBB route."""
+    destinations = route_data.get("destinations", [])
+    transport_type = route_data.get("transport_type", "")
+    if not destinations:
+        return ""
+
+    first_dest = destinations[0]
+    direction_name = f"->{first_dest[:20]}"  # Limit length
+    match_strings = [f"{line} {dest}" for dest in destinations]
+
+    return f"# {transport_type} {line}:\n" f'# "{direction_name}" = {match_strings}\n' "\n"
 
 
 def generate_vbb_config_snippet(station_id: str, station_name: str, routes: dict[str, Any]) -> str:
@@ -260,23 +286,7 @@ show_ungrouped = true
 """
 
     for line, route_data in sorted(routes.items()):
-        destinations = route_data.get("destinations", [])
-        transport_type = route_data.get("transport_type", "")
-        if destinations:
-            # Create a suggested direction name
-            first_dest = destinations[0] if destinations else "Destination"
-            direction_name = f"->{first_dest[:20]}"  # Limit length
-
-            # Include line name in match strings (e.g., "U9 Osloer Str." instead of just "Osloer Str.")
-            # This makes matching more specific and avoids conflicts between different lines
-            # Show ALL destinations for copy-pasteable config
-            match_strings = [f"{line} {dest}" for dest in destinations]
-
-            snippet += f"# {transport_type} {line}:\n"
-            snippet += (
-                f'# "{direction_name}" = {match_strings}\n'  # Show all destinations with line names
-            )
-            snippet += "\n"
+        snippet += _generate_vbb_route_snippet(line, route_data)
 
     return snippet
 
