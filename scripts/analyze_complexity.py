@@ -309,6 +309,23 @@ def find_protocol_implementing_classes(
     return implementing_classes
 
 
+def _is_protocol_class_method(parent_class: ast.ClassDef, protocol_context: ProtocolContext) -> bool:
+    """Check if parent class is a protocol class."""
+    return parent_class.name in protocol_context.protocol_classes
+
+
+def _is_protocol_implementation_method(
+    func_name: str, parent_class: ast.ClassDef, protocol_context: ProtocolContext
+) -> bool:
+    """Check if function is implementing a protocol method."""
+    if parent_class.name not in protocol_context.protocol_implementing_classes:
+        return False
+    return any(
+        func_name in method_names
+        for method_names in protocol_context.protocol_signatures.values()
+    )
+
+
 def check_if_protocol_method(
     func_node: ast.FunctionDef | ast.AsyncFunctionDef,
     parent_class: ast.ClassDef | None,
@@ -318,17 +335,11 @@ def check_if_protocol_method(
     if not parent_class:
         return protocol_context.is_protocol_file
     
-    if parent_class.name in protocol_context.protocol_classes:
+    if _is_protocol_class_method(parent_class, protocol_context):
         return True
     
-    if parent_class.name in protocol_context.protocol_implementing_classes:
-        func_name = func_node.name
-        return any(
-            func_name in method_names
-            for method_names in protocol_context.protocol_signatures.values()
-        )
-    
-    return False
+    func_name = func_node.name
+    return _is_protocol_implementation_method(func_name, parent_class, protocol_context)
 
 
 def _find_radon_complexity(
@@ -371,14 +382,28 @@ def get_cyclomatic_complexity(
     return _estimate_complexity_from_ast(func_node)
 
 
+def _extract_function_bounds(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[int, int]:
+    """Extract line start and end from function node."""
+    line_start = func_node.lineno
+    line_end = func_node.end_lineno if hasattr(func_node, "end_lineno") else line_start
+    return line_start, line_end
+
+
+def _calculate_max_nesting(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
+    """Calculate maximum nesting level for a function."""
+    visitor = NestingLevelVisitor()
+    visitor.visit(func_node)
+    return visitor.max_nesting
+
+
 def analyze_function_node(
     func_node: ast.FunctionDef | ast.AsyncFunctionDef,
     context: FileAnalysisContext,
 ) -> FunctionMetrics:
     """Analyze a single function node and return metrics."""
     func_name = func_node.name
-    line_start = func_node.lineno
-    line_end = func_node.end_lineno if hasattr(func_node, "end_lineno") else line_start
+    line_start, line_end = _extract_function_bounds(func_node)
+    function_length = line_end - line_start + 1
     
     parent_class = find_parent_class(func_node, context.tree)
     is_protocol_method = check_if_protocol_method(
@@ -387,12 +412,7 @@ def analyze_function_node(
         context.protocol_context,
     )
     
-    function_length = line_end - line_start + 1
-    
-    visitor = NestingLevelVisitor()
-    visitor.visit(func_node)
-    max_nesting = visitor.max_nesting
-    
+    max_nesting = _calculate_max_nesting(func_node)
     param_count, has_varargs, has_kwargs = count_parameters(func_node)
     cyclomatic_complexity = get_cyclomatic_complexity(
         func_node, func_name, line_start, context.analysis_context.radon_results
@@ -522,35 +542,40 @@ def _prepare_metrics_with_paths(
     return metrics_with_paths
 
 
-def _calculate_column_widths(
-    metrics_with_paths: list[tuple[Path, FunctionMetrics]]
-) -> dict[str, int]:
-    """Calculate column widths for table formatting."""
-    if not metrics_with_paths:
-        return {
-            'priority': 12,
-            'file': 52,
-            'function': 32,
-            'lines': 12,
-            'nest': 6,
-            'complex': 8,
-            'length': 8,
-            'params': 8,
-        }
-    
-    max_file_len = min(max(len(str(p)) for p, _ in metrics_with_paths), 50)
-    max_func_len = min(max(len(m.function_name) for _, m in metrics_with_paths), 30)
-    
+def _get_default_column_widths() -> dict[str, int]:
+    """Get default column widths for table formatting."""
     return {
         'priority': 12,
-        'file': max_file_len + 2,
-        'function': max_func_len + 2,
+        'file': 52,
+        'function': 32,
         'lines': 12,
         'nest': 6,
         'complex': 8,
         'length': 8,
         'params': 8,
     }
+
+
+def _calculate_dynamic_column_widths(
+    metrics_with_paths: list[tuple[Path, FunctionMetrics]]
+) -> dict[str, int]:
+    """Calculate dynamic column widths based on content."""
+    max_file_len = min(max(len(str(p)) for p, _ in metrics_with_paths), 50)
+    max_func_len = min(max(len(m.function_name) for _, m in metrics_with_paths), 30)
+    
+    widths = _get_default_column_widths()
+    widths['file'] = max_file_len + 2
+    widths['function'] = max_func_len + 2
+    return widths
+
+
+def _calculate_column_widths(
+    metrics_with_paths: list[tuple[Path, FunctionMetrics]]
+) -> dict[str, int]:
+    """Calculate column widths for table formatting."""
+    if not metrics_with_paths:
+        return _get_default_column_widths()
+    return _calculate_dynamic_column_widths(metrics_with_paths)
 
 
 def _format_table_header(col_widths: dict[str, int]) -> str:
@@ -681,11 +706,6 @@ def _count_low_mi(metrics: list[FunctionMetrics]) -> int:
     return sum(1 for m in metrics if 0 < m.maintainability_index < 20)
 
 
-def _count_low_mi(metrics: list[FunctionMetrics]) -> int:
-    """Count functions with low Maintainability Index (< 20)."""
-    return sum(1 for m in metrics if 0 < m.maintainability_index < 20)
-
-
 def print_summary(
     all_metrics: list[FunctionMetrics],
     regular_metrics: list[FunctionMetrics],
@@ -702,8 +722,8 @@ def print_summary(
     print(f"Functions with complexity > 10: {_count_violations(regular_metrics, 'complexity')}")
     print(f"Functions with length > 50: {_count_violations(regular_metrics, 'length')}")
     print(f"Functions with too many parameters: {regular_param_violations} (regular) + {protocol_param_violations} (protocol)")
-    print(f"Functions with low Maintainability Index (< 20): {_count_low_mi(regular_metrics)}")
-    print(f"Functions with low Maintainability Index (< 20): {_count_low_mi(regular_metrics)}")
+    low_mi_count = _count_low_mi(regular_metrics)
+    print(f"Functions with low Maintainability Index (< 20): {low_mi_count}")
 
 
 def print_protocol_methods(protocol_metrics: list[FunctionMetrics], project_root: Path) -> None:
