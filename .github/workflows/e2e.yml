@@ -69,7 +69,7 @@ jobs:
       - name: Run E2E tests (with JUnit reporter)
         run: |
           mkdir -p test-results
-          npx cypress run --e2e --browser chrome --config-file cypress.config.ts --config baseUrl=http://app:8000 --spec 'cypress/e2e/!(screenshot).cy.js' --reporter mocha-junit-reporter --reporter-options mochaFile=test-results/junit-[hash].xml
+          npx cypress run --e2e --browser electron --config-file cypress.config.ts --config baseUrl=http://app:8000 --spec 'cypress/e2e/!(screenshot).cy.js' --reporter mocha-junit-reporter --reporter-options mochaFile=test-results/junit-[hash].xml
         env:
           CYPRESS_CI: true
           NODE_OPTIONS: --dns-result-order=ipv4first
