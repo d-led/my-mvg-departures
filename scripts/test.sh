@@ -11,26 +11,11 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 cd "$PROJECT_ROOT"
 
-# Detect virtual environment and command runner
-if [ -d ".venv" ]; then
-    PYTHON=".venv/bin/python"
-    PIP=".venv/bin/pip"
-    RUN_CMD=""
-    echo "Using existing .venv"
-elif command -v uv &> /dev/null; then
-    PYTHON="python3"
-    PIP="uv pip"
-    RUN_CMD="uv run"
-    echo "Using uv"
-else
-    PYTHON="python3"
-    PIP="pip3"
-    RUN_CMD=""
-    echo "Using system Python (ensure dependencies are installed)"
-fi
+# Source common environment setup
+source "$SCRIPT_DIR/common_env.sh"
 
 # Check if dependencies are installed
-if ! $PYTHON -m pytest --version &> /dev/null 2>&1; then
+if ! run_python_module pytest --version &> /dev/null 2>&1; then
     echo "Dependencies not found. Installing..."
     if [ -d ".venv" ]; then
         $PIP install -e ".[dev]"
@@ -40,13 +25,9 @@ if ! $PYTHON -m pytest --version &> /dev/null 2>&1; then
     fi
 fi
 
-# Function to run command with or without uv
+# Function to run command with or without uv (for backward compatibility)
 run_check() {
-    if [ -n "$RUN_CMD" ]; then
-        $RUN_CMD "$@"
-    else
-        $PYTHON -m "$@"
-    fi
+    run_python_module "$@"
 }
 
 echo "=========================================="
@@ -64,41 +45,25 @@ echo ""
 
 # 1. Check code formatting with Black
 echo "1. Checking code formatting with Black..."
-if [ -n "$RUN_CMD" ]; then
-    $RUN_CMD black --check src tests
-else
-    $PYTHON -m black --check src tests
-fi
+run_python_module black --check src tests
 echo "✓ Formatting check passed"
 echo ""
 
 # 2. Lint with Ruff
 echo "2. Linting with Ruff..."
-if [ -n "$RUN_CMD" ]; then
-    $RUN_CMD ruff check src tests
-else
-    $PYTHON -m ruff check src tests
-fi
+run_python_module ruff check src tests
 echo "✓ Linting passed"
 echo ""
 
 # 3. Type check with mypy
 echo "3. Type checking with mypy..."
-if [ -n "$RUN_CMD" ]; then
-    $RUN_CMD mypy src
-else
-    $PYTHON -m mypy src
-fi
+run_python_module mypy src
 echo "✓ Type checking passed"
 echo ""
 
 # 4. Run tests (excluding integration tests by default)
 echo "4. Running tests..."
-if [ -n "$RUN_CMD" ]; then
-    $RUN_CMD pytest -m "not integration" "$@"
-else
-    $PYTHON -m pytest -m "not integration" "$@"
-fi
+run_python_module pytest -m "not integration" "$@"
 echo "✓ Tests passed"
 echo ""
 

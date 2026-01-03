@@ -10,26 +10,23 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 cd "$PROJECT_ROOT"
 
-# Detect virtual environment
-if [ -d ".venv" ]; then
-    PYTHON=".venv/bin/python"
+# Source common environment setup
+source "$SCRIPT_DIR/common_env.sh"
+
+# Set BLACK command based on environment
+if [ -n "$RUN_CMD" ]; then
+    BLACK="$RUN_CMD black"
+elif [ -d ".venv" ]; then
     BLACK=".venv/bin/black"
-    echo "Using existing .venv"
-elif command -v uv &> /dev/null; then
-    PYTHON="python3"
-    BLACK="uv run black"
-    echo "Using uv"
 else
-    PYTHON="python3"
     BLACK="black"
-    echo "Using system Python (ensure dependencies are installed)"
 fi
 
 # Check if black is available
-if ! $PYTHON -m black --version &> /dev/null; then
+if ! run_python_module black --version &> /dev/null; then
     echo "black not found. Installing dependencies..."
     if [ -d ".venv" ]; then
-        .venv/bin/pip install -e ".[dev]"
+        $PIP install -e ".[dev]"
     elif command -v uv &> /dev/null; then
         uv pip install -e ".[dev]"
     else

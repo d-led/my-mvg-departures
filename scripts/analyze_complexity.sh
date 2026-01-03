@@ -14,41 +14,23 @@ ANALYZE_SCRIPT="$SCRIPT_DIR/analyze_complexity.py"
 
 cd "$PROJECT_ROOT"
 
-# Detect virtual environment and command runner (same pattern as test.sh)
-if [ -d ".venv" ]; then
-    PYTHON=".venv/bin/python"
-    RUN_CMD=""
-    echo "Using existing .venv"
-elif command -v uv &> /dev/null; then
-    PYTHON="python3"
-    RUN_CMD="uv run"
-    echo "Using uv"
-else
-    PYTHON="python3"
-    RUN_CMD=""
-    echo "Using system Python (ensure dependencies are installed)"
-fi
+# Source common environment setup
+source "$SCRIPT_DIR/common_env.sh"
 
-# Function to run command with or without uv
-run_python() {
-    if [ -n "$RUN_CMD" ]; then
-        $RUN_CMD "$@"
-    else
-        $PYTHON "$@"
-    fi
-}
+# Debug: show argument count and what we received
+echo "DEBUG: analyze_complexity.sh called with $# arguments: $*" >&2
 
 # Default to both src/mvg_departures and scripts if no argument provided
 # If argument is provided, use it; otherwise analyze both source and scripts
 if [[ $# -eq 0 ]]; then
     # Analyze both source code and scripts
     echo "Analyzing source code and scripts..."
-    run_python "$ANALYZE_SCRIPT" "$PROJECT_ROOT/src/mvg_departures"
+    run_python "$ANALYZE_SCRIPT" "$PROJECT_ROOT/src/mvg_departures" || exit $?
     echo ""
     echo "=================================================================================="
     echo "SCRIPTS ANALYSIS"
     echo "=================================================================================="
-    run_python "$ANALYZE_SCRIPT" "$PROJECT_ROOT/scripts"
+    run_python "$ANALYZE_SCRIPT" "$PROJECT_ROOT/scripts" || exit $?
     exit 0
 else
     TARGET_DIR="${1}"
@@ -71,6 +53,6 @@ if [[ ! -d "$TARGET_DIR" ]]; then
     exit 1
 fi
 
-# Run the analysis script
+# Run the analysis script (unbuffered output handled by run_python)
 run_python "$ANALYZE_SCRIPT" "$TARGET_DIR"
 

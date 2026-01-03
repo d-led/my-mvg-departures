@@ -11,26 +11,11 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 cd "$PROJECT_ROOT"
 
-# Detect virtual environment and command runner
-if [ -d ".venv" ]; then
-    PYTHON=".venv/bin/python"
-    PIP=".venv/bin/pip"
-    RUN_CMD=""
-    echo "Using existing .venv"
-elif command -v uv &> /dev/null; then
-    PYTHON="python3"
-    PIP="uv pip"
-    RUN_CMD="uv run"
-    echo "Using uv"
-else
-    PYTHON="python3"
-    PIP="pip3"
-    RUN_CMD=""
-    echo "Using system Python (ensure dependencies are installed)"
-fi
+# Source common environment setup
+source "$SCRIPT_DIR/common_env.sh"
 
 # Check if dependencies are installed
-if ! $PYTHON -m pytest --version &> /dev/null 2>&1; then
+if ! run_python_module pytest --version &> /dev/null 2>&1; then
     echo "Dependencies not found. Installing..."
     if [ -d ".venv" ]; then
         $PIP install -e ".[dev]"

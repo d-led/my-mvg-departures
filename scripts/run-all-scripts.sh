@@ -2,7 +2,18 @@
 # Run all utility scripts to verify they work correctly
 # This is a smoke test to ensure scripts are functional
 
-set -euo pipefail
+set -uo pipefail  # Removed -e to allow proper signal handling
+
+# Handle Ctrl-C gracefully - allow interruption
+INTERRUPTED=0
+cleanup() {
+    INTERRUPTED=1
+    echo ""
+    echo "Interrupted by user. Cleaning up..."
+    rm -f /tmp/script_output_$$.log
+    exit 130
+}
+trap cleanup INT TERM
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -25,9 +36,8 @@ FAILED_SCRIPTS=()
 run_script() {
     local script_name="$1"
     local description="$2"
-    local timeout_seconds="${3:-30}"  # Default 30 seconds, can be overridden
-    shift 3
-    local args=("${@:-}")
+    shift 2
+    local args=("$@")
     
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -52,32 +62,34 @@ run_script() {
         }
     fi
     
-    # Run script with timeout and capture output
+    # Run script directly - output will be shown in real-time
     # Use conditional expansion to handle empty args array
     local script_exit_code=0
     if [ ${#args[@]} -gt 0 ]; then
-        timeout "$timeout_seconds" "$SCRIPT_DIR/$script_name" "${args[@]}" >/tmp/script_output_$$.log 2>&1 || script_exit_code=$?
+        "$SCRIPT_DIR/$script_name" "${args[@]}" || script_exit_code=$?
     else
-        timeout "$timeout_seconds" "$SCRIPT_DIR/$script_name" >/tmp/script_output_$$.log 2>&1 || script_exit_code=$?
+        "$SCRIPT_DIR/$script_name" || script_exit_code=$?
+    fi
+    
+    # Check if we were interrupted - if so, exit immediately
+    if [ $INTERRUPTED -eq 1 ]; then
+        cleanup
+    fi
+    
+    # Check if script was interrupted (SIGINT = 130, SIGTERM = 143)
+    if [ $script_exit_code -eq 130 ] || [ $script_exit_code -eq 143 ]; then
+        echo -e "${YELLOW}⚠ INTERRUPTED${NC}"
+        cleanup
     fi
     
     if [ $script_exit_code -eq 0 ]; then
         echo -e "${GREEN}✓ PASSED${NC}"
         ((PASSED++))
-        # Show last few lines of output for context
-        if [ -s /tmp/script_output_$$.log ]; then
-            echo "Last output lines:"
-            tail -3 /tmp/script_output_$$.log | sed 's/^/  /'
-        fi
     else
         echo -e "${RED}✗ FAILED (exit code: $script_exit_code)${NC}"
         ((FAILED++))
         FAILED_SCRIPTS+=("$script_name")
-        echo "Error output:"
-        tail -10 /tmp/script_output_$$.log | sed 's/^/  /' || true
     fi
-    
-    rm -f /tmp/script_output_$$.log
 }
 
 # Check if config.example.toml exists
@@ -93,7 +105,7 @@ echo "════════════════════════�
 
 # 1. Check all stations script
 if [ -n "$CONFIG_FILE" ]; then
-    run_script "check_all_stations.sh" "Check if all stations in config can be queried" 60 "$CONFIG_FILE"
+    run_script "check_all_stations.sh" "Check if all stations in config can be queried" "$CONFIG_FILE"
 else
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -102,17 +114,17 @@ else
     ((SKIPPED++))
 fi
 
-# 2. Analyze complexity script (needs more time)
-run_script "analyze_complexity.sh" "Analyze code complexity metrics" 120
+# 2. Analyze complexity script
+run_script "analyze_complexity.sh" "Analyze code complexity metrics"
 
 # 3. List routes (MVG)
-run_script "list_routes.sh" "List routes for MVG station" 30 "Balanstr."
+run_script "list_routes.sh" "List routes for MVG station" "Balanstr."
 
 # 4. List routes VBB
-run_script "list_routes_vbb.sh" "List routes for VBB station" 30 "blissestr."
+run_script "list_routes_vbb.sh" "List routes for VBB station" "blissestr."
 
 # 5. List routes DB
-run_script "list_routes_db.sh" "List routes for DB station" 30 "blissestr."
+run_script "list_routes_db.sh" "List routes for DB station" "blissestr."
 
 # Print summary
 echo ""
