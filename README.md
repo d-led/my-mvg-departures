@@ -146,6 +146,23 @@ Use the `list_routes.sh` script to list routes for a station:
 
 📖 **See [docs/FINDING_STOP_IDS.md](docs/FINDING_STOP_IDS.md) for more details.**
 
+### Supported API Providers
+
+The app supports multiple transit APIs via the `api_provider` setting:
+
+| Provider | Coverage | CLI Tool | API Documentation |
+|----------|----------|----------|-------------------|
+| `mvg` (default) | Munich (MVG) | `mvg-config` | [MVG API](https://www.mvg.de/) |
+| `vbb` | Berlin/Brandenburg | `vbb-config` | [v6.bvg.transport.rest](https://v6.bvg.transport.rest/) |
+| `db` | Germany (Deutsche Bahn) | `db-config` | [v6.db.transport.rest](https://v6.db.transport.rest/api.html) |
+
+```toml
+[[stops]]
+station_id = "8000013"
+station_name = "Augsburg Hbf"
+api_provider = "db"  # Use DB API for German train stations
+```
+
 ## Configuration Patterns
 
 Configuration is flexible and depends on your specific use case. Here are some common patterns:

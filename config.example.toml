@@ -304,46 +304,75 @@ refresh_interval_seconds = 60
 
 
 [[routes.stops]]
-# Station ID for Zoologischer Garten (Berlin)
-# Using VBB REST API which works better for Berlin stations
+# Station ID for Zoologischer Garten (Berlin) - VBB API
 # Found using: curl "https://v6.bvg.transport.rest/locations?query=Zoologischer%20Garten"
 station_id = "900023201"  # S+U Zoologischer Garten Bhf (Berlin)
-station_name = "Zoologischer Garten"
-api_provider = "vbb"  # Use VBB REST API for Berlin (more reliable than HAFAS)
+station_name = "Zoologischer Garten (in 15+ min)"
+api_provider = "vbb"  # Use VBB REST API for Berlin
 max_departures_per_stop = 15
 max_departures_per_route = 3
 departure_leeway_minutes = 15
 show_ungrouped = false
-# Increase fetch limit to ensure we get enough U9 departures (frequent train)
 max_departures_fetch = 160
-# Maximum minutes in advance to fetch departures from API
-# Default: 60 minutes. Increase to 120 for infrequent routes like bus 249
-# (Legacy names also supported: vbb_api_duration_minutes, api_duration_minutes)
 fetch_max_minutes_in_advance = 120
-# Filter to only show bus 249 departures from platform 9 (bus 249 uses multiple platforms)
-# U9 will show from all platforms since it's not in platform_filter_routes
 platform_filter = 9
 platform_filter_routes = ["249"]
 
 [routes.stops.direction_mappings]
-# U-Bahn and Bus routes from Zoologischer Garten
-"->Berliner Str." = ["U9 S+U Bundesplatz"]
-"->Uhlandstr. (in 15+ min)" = ["249"]
+# U-Bahn and Bus routes from Zoologischer Garten (via VBB)
+"->Berliner Str. (via vbb)" = ["U9 S+U Bundesplatz"]
+"->Uhlandstr. (via vbb, 15+ min)" = ["249"]
 
 [[routes.stops]]
-# Station ID for Ernst-Reuter-Platz (Berlin)
-# Using VBB REST API which works better for Berlin stations
+# Station ID for Zoologischer Garten (Berlin) - DB API
+# Same station, different API - compare results!
+# API docs: https://v6.db.transport.rest/api.html
+# Found using: db-config search "Zoologischer Garten Berlin"
+station_id = "8010406"  # Berlin Zoologischer Garten
+station_name = "Zoo (15+ min, via db)"
+api_provider = "db"  # Use DB REST API
+max_departures_per_stop = 15
+max_departures_per_route = 3
+departure_leeway_minutes = 15
+show_ungrouped = false  # Show all departures
+fetch_max_minutes_in_advance = 120
+
+[routes.stops.direction_mappings]
+# U-Bahn and Bus routes from Zoologischer Garten (via DB)
+# Note: DB uses "U 9" (with space), VBB uses "U9" (no space)
+# Note: DB destination format is "Station (S+U), City" not "S+U Station (City)"
+"->Berliner Str. (via db)" = ["U 9 Bundesplatz"]
+
+[[routes.stops]]
+# Station ID for Ernst-Reuter-Platz (Berlin) - VBB API
 # Found using: vbb-config search "Ernst-Reuter-Platz"
 station_id = "900023101"  # U Ernst-Reuter-Platz (Berlin)
-station_name = "Ernst-Reuter-Platz"
-api_provider = "vbb"  # Use VBB REST API for Berlin (more reliable than HAFAS)
+station_name = "Ernst-Reuter-Platz (6+ min, via vbb)"
+api_provider = "vbb"  # Use VBB REST API for Berlin
 max_departures_per_stop = 15
 max_departures_per_route = 3
 show_ungrouped = false
 departure_leeway_minutes = 6
 
 [routes.stops.direction_mappings]
-# U-Bahn and Bus routes from Ernst-Reuter-Platz
-# Note: Include line name in match strings for more specific matching
-"->Bismarckstr. (in 6+ min)" = ["U2 Ruhleben", "U Theodor"]
+# U-Bahn routes from Ernst-Reuter-Platz (via VBB)
+"->Bismarckstr. (via vbb)" = ["U2 Ruhleben", "U Theodor"]
+
+[[routes.stops]]
+# Station ID for Ernst-Reuter-Platz (Berlin) - DB API
+# Same station, different API - compare results!
+# API docs: https://v6.db.transport.rest/api.html
+# Found using: db-config search "Ernst-Reuter-Platz Berlin"
+station_id = "731013"  # Ernst-Reuter-Platz (U), Berlin
+station_name = "Ernst-Reuter-Platz (6+ min, via db)"
+api_provider = "db"  # Use DB REST API
+max_departures_per_stop = 15
+max_departures_per_route = 3
+show_ungrouped = false  # Show all departures to debug matching
+departure_leeway_minutes = 6
+
+[routes.stops.direction_mappings]
+# U-Bahn routes from Ernst-Reuter-Platz (via DB)
+# Note: DB uses "U 2" (with space), VBB uses "U2" (no space)
+"->Bismarckstr. (via db)" = ["U 2 Ruhleben"]
 

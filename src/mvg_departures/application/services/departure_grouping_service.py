@@ -279,8 +279,6 @@ class DepartureGroupingService:
         if stop_config.platform_filter is None:
             return departures
 
-        import re
-
         initial_count = len(departures)
         available_platforms = {d.platform for d in departures if d.platform is not None}
         platform_filter_str = str(stop_config.platform_filter)
@@ -451,168 +449,26 @@ class DepartureGroupingService:
         # (e.g., ä as single character vs a + combining diaeresis)
         return unicodedata.normalize("NFC", text).lower()
 
-    def _normalize_departure_data(self, departure: Departure) -> tuple[str, str, str, str]:
-        """Normalize departure data for matching.
-
-        Args:
-            departure: Departure to normalize.
-
-        Returns:
-            Tuple of (destination_normalized, transport_type_normalized,
-                     route_line, route_full).
-        """
-        destination_normalized = self._normalize_unicode(departure.destination)
-        line_normalized = self._normalize_unicode(departure.line)
-        transport_type_normalized = self._normalize_unicode(departure.transport_type)
-        route_line = line_normalized
-        route_full = f"{transport_type_normalized} {line_normalized}"
-        return (
-            destination_normalized,
-            transport_type_normalized,
-            route_line,
-            route_full,
-        )
-
-    def _match_multi_word_pattern(
-        self,
-        pattern_words: list[str],
-        route_line: str,
-        route_full: str,
-        transport_type_normalized: str,
-        destination_normalized: str,
-    ) -> bool:
-        """Match a multi-word pattern against route and destination.
-
-        Args:
-            pattern_words: List of pattern words.
-            route_line: Normalized line identifier.
-            route_full: Normalized full route identifier.
-            transport_type_normalized: Normalized transport type.
-            destination_normalized: Normalized destination.
-
-        Returns:
-            True if pattern matches, False otherwise.
-        """
-        route_matched = False
-        dest_start_idx = 1
-
-        if pattern_words[0] == route_line:
-            route_matched = True
-            dest_start_idx = 1
-        elif len(pattern_words) >= 2:
-            first_two = " ".join(pattern_words[0:2])
-            if first_two == route_full or (
-                pattern_words[1] == route_line and pattern_words[0] in transport_type_normalized
-            ):
-                route_matched = True
-                dest_start_idx = 2
-
-        if route_matched and dest_start_idx < len(pattern_words):
-            dest_part = " ".join(pattern_words[dest_start_idx:])
-            return self._matches_text_normalized(destination_normalized, dest_part)
-
-        return False
-
-    def _match_single_word_pattern(
-        self,
-        pattern_single: str,
-        route_line: str,
-        route_full: str,
-        destination_normalized: str,
-    ) -> bool:
-        """Match a single-word pattern against route or destination.
-
-        Args:
-            pattern_single: Single pattern word.
-            route_line: Normalized line identifier.
-            route_full: Normalized full route identifier.
-            destination_normalized: Normalized destination.
-
-        Returns:
-            True if pattern matches, False otherwise.
-        """
-        route_matches = pattern_single in (route_line, route_full)
-        if route_matches:
-            return True
-
-        return self._matches_text_normalized(destination_normalized, pattern_single)
-
     def _matches_departure(self, departure: Departure, patterns: list[str]) -> bool:
         """Check if a departure matches any of the given patterns.
 
-        Matching is done per route+destination combination:
-        - Route + destination: "U2 Messestadt" (matches U2 going to Messestadt specifically)
-        - Route + destination: "Bus 59 Giesing" (matches Bus 59 going to Giesing specifically)
-        - Transport type + route + destination: "S-Bahn S5 Aying" (matches S-Bahn S5 going to Aying)
+        Simple substring matching: pattern matches if it appears in the search text.
+        Search text is "{transport_type} {line} {destination}" (normalized to lowercase).
 
-        Patterns can also be:
-        - Route only: "U2" (matches any destination for U2 route)
-        - Destination only: "Messestadt" (matches any route going to Messestadt)
+        Examples:
+        - "U9 Bundesplatz" matches line="U9" destination="S+U Bundesplatz (Berlin)"
+        - "U 9 Bundesplatz" matches line="U 9" destination="Bundesplatz (S+U), Berlin"
+        - "Bus 59 Giesing" matches transport_type="Bus" line="59" destination="Giesing Bahnhof"
+        - "Messestadt" matches any departure with "Messestadt" in destination
         """
-        (
-            destination_normalized,
-            transport_type_normalized,
-            route_line,
-            route_full,
-        ) = self._normalize_departure_data(departure)
+        # Build search text: "{transport_type} {line} {destination}"
+        search_text = self._normalize_unicode(
+            f"{departure.transport_type} {departure.line} {departure.destination}"
+        )
 
         for pattern in patterns:
             pattern_normalized = self._normalize_unicode(pattern.strip())
-            pattern_words = pattern_normalized.split()
-
-            if len(pattern_words) >= 2:
-                if self._match_multi_word_pattern(
-                    pattern_words,
-                    route_line,
-                    route_full,
-                    transport_type_normalized,
-                    destination_normalized,
-                ):
-                    return True
-            else:
-                pattern_single = pattern_words[0]
-                if self._match_single_word_pattern(
-                    pattern_single, route_line, route_full, destination_normalized
-                ):
-                    return True
-
-        return False
-
-    def _matches_text(self, text: str, pattern: str) -> bool:
-        """Check if text matches pattern (exact match or word-boundary match).
-
-        For multi-word patterns, requires exact phrase match.
-        For single-word patterns, requires whole-word match.
-        This prevents "Ostbahnhof" from matching "Giesing Bahnhof"
-        """
-        return self._matches_text_normalized(text, pattern)
-
-    def _matches_text_normalized(self, text: str, pattern: str) -> bool:
-        """Check if text matches pattern with Unicode normalization.
-
-        Normalizes both text and pattern to handle Unicode characters consistently
-        (e.g., ä, ö, ü, ß will match regardless of their Unicode representation).
-        """
-        # Normalize Unicode for consistent matching
-        text_normalized = self._normalize_unicode(text)
-        pattern_normalized = self._normalize_unicode(pattern)
-
-        if pattern_normalized == text_normalized:
-            return True
-
-        # For multi-word patterns, require exact phrase match
-        if " " in pattern_normalized:
-            if pattern_normalized == text_normalized:
+            if pattern_normalized in search_text:
                 return True
-            # Check if pattern appears as a phrase (with word boundaries)
-            pattern_escaped = re.escape(pattern_normalized)
-            return bool(re.search(r"\b" + pattern_escaped + r"\b", text_normalized))
 
-        # For single-word patterns, use word-boundary matching
-        try:
-            pattern_escaped = re.escape(pattern_normalized)
-            if re.search(r"\b" + pattern_escaped + r"\b", text_normalized):
-                return True
-        except re.error:
-            pass
         return False

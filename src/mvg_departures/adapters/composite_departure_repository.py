@@ -3,7 +3,6 @@
 import logging
 from typing import TYPE_CHECKING
 
-from mvg_departures.adapters.hafas_api.profile_detector import ProfileDetector
 from mvg_departures.domain.models.repository_key import RepositoryKey
 from mvg_departures.domain.models.stop_configuration import StopConfiguration
 from mvg_departures.domain.ports.departure_repository import DepartureRepository
@@ -31,39 +30,26 @@ class CompositeDepartureRepository(DepartureRepository):
         self._session = session
         self._stop_configs = {config.station_id: config for config in stop_configs}
         self._repositories: dict[str, DepartureRepository] = {}
-        # Shared profile detector for caching across all HAFAS repositories
-        self._profile_detector = ProfileDetector(session=session)
         self._initialize_repositories()
 
     def _initialize_repositories(self) -> None:
-        """Initialize repositories for each unique API provider/profile combination."""
-        from mvg_departures.adapters.hafas_api import HafasDepartureRepository
+        """Initialize repositories for each unique API provider combination."""
+        from mvg_departures.adapters.db_api import DbDepartureRepository
         from mvg_departures.adapters.mvg_api import MvgDepartureRepository
         from mvg_departures.adapters.vbb_api import VbbDepartureRepository
 
         # Map of RepositoryKey -> repository instance
-        # Use None for hafas_profile to indicate auto-detection
         repo_cache: dict[RepositoryKey, DepartureRepository] = {}
 
         for stop_config in self._stop_configs.values():
             api_provider = stop_config.api_provider.lower()
-            # Use None for empty string or None to indicate auto-detection
-            hafas_profile = (
-                stop_config.hafas_profile.lower()
-                if stop_config.hafas_profile and stop_config.hafas_profile.strip()
-                else None
-            )
-            repo_key = RepositoryKey(api_provider=api_provider, hafas_profile=hafas_profile)
+            repo_key = RepositoryKey(api_provider=api_provider)
 
-            # Create repository if we haven't seen this API/profile combination
+            # Create repository if we haven't seen this API provider
             if repo_key not in repo_cache:
                 repo: DepartureRepository
-                if api_provider == "hafas":
-                    repo = HafasDepartureRepository(
-                        profile=hafas_profile,
-                        session=self._session,
-                        profile_detector=self._profile_detector,
-                    )
+                if api_provider == "db":
+                    repo = DbDepartureRepository(session=self._session)
                 elif api_provider == "vbb":
                     repo = VbbDepartureRepository(session=self._session)
                 else:

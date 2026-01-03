@@ -23,7 +23,6 @@ dependencies = [
     "pydantic-settings>=2.6.0",  # Depends on pydantic (transitive via pyview-web)
     "aiohttp>=3.11.0",
     "throttled-py>=3.0.0",
-    "pyhafas>=0.6.1",  # HAFAS API client for public transport data
 ]
 
 [project.optional-dependencies]
@@ -42,8 +41,8 @@ dev = [
 [project.scripts]
 mvg-departures = "mvg_departures.main:main"
 mvg-config = "mvg_departures.cli:cli_main"
-hafas-config = "mvg_departures.cli_hafas:cli_main"
 vbb-config = "mvg_departures.cli_vbb:cli_main"
+db-config = "mvg_departures.cli_db:cli_main"
 
 [build-system]
 requires = ["hatchling"]
@@ -82,7 +81,6 @@ module = [
     "pyview.*",
     "tomli.*",
     "throttled.*",
-    "pyhafas.*",
     "requests",
     "requests.*",
 ]

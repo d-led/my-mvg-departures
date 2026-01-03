@@ -30,11 +30,7 @@ class AppConfig(BaseSettings):
     # API provider configuration
     api_provider: str = Field(
         default="mvg",
-        description="API provider to use: 'mvg' (default) or 'hafas' (optional)",
-    )
-    hafas_profile: str | None = Field(
-        default=None,
-        description="HAFAS profile to use when api_provider='hafas' (e.g., 'db', 'vvo'). None = auto-detect",
+        description="API provider to use: 'mvg' (default), 'db', or 'vbb'",
     )
 
     # MVG API configuration
@@ -204,9 +200,9 @@ class AppConfig(BaseSettings):
     @field_validator("api_provider")
     @classmethod
     def validate_api_provider(cls, v: str) -> str:
-        """Validate API provider is either 'mvg' or 'hafas'."""
-        if v.lower() not in ("mvg", "hafas"):
-            raise ValueError("api_provider must be either 'mvg' or 'hafas'")
+        """Validate API provider is 'mvg', 'db', or 'vbb'."""
+        if v.lower() not in ("mvg", "db", "vbb"):
+            raise ValueError("api_provider must be either 'mvg', 'db', or 'vbb'")
         return v.lower()
 
     @classmethod
@@ -278,9 +274,6 @@ class AppConfig(BaseSettings):
             self.sleep_ms_between_calls = api_config["sleep_ms_between_calls"]
         if "api_provider" in api_config:
             self.api_provider = api_config["api_provider"]
-        if "hafas_profile" in api_config:
-            hafas_profile_value = api_config["hafas_profile"]
-            self.hafas_profile = hafas_profile_value if hafas_profile_value else None
 
     def _load_toml_data(self) -> dict[str, Any]:
         """Load and parse TOML file, updating display settings."""

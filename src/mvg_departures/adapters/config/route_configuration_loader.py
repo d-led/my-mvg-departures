@@ -54,9 +54,6 @@ class RouteConfigurationLoader:
             Dictionary with extracted API fields.
         """
         api_provider = stop_data.get("api_provider", config.api_provider)
-        hafas_profile = stop_data.get("hafas_profile", config.hafas_profile)
-        if hafas_profile == "":
-            hafas_profile = None
 
         fetch_max_minutes_in_advance = (
             stop_data.get("fetch_max_minutes_in_advance")
@@ -66,7 +63,6 @@ class RouteConfigurationLoader:
 
         return {
             "api_provider": api_provider,
-            "hafas_profile": hafas_profile,
             "max_departures_fetch": stop_data.get("max_departures_fetch", 50),
             "platform_filter": stop_data.get("platform_filter"),
             "platform_filter_routes": stop_data.get("platform_filter_routes", []),
@@ -233,7 +229,6 @@ class RouteConfigurationLoader:
             random_color_salt=all_fields["random_color_salt"],
             exclude_destinations=all_fields["exclude_destinations"],
             api_provider=all_fields["api_provider"],
-            hafas_profile=all_fields["hafas_profile"],
             max_departures_fetch=all_fields["max_departures_fetch"],
             platform_filter=all_fields["platform_filter"],
             platform_filter_routes=all_fields["platform_filter_routes"],

@@ -1,9 +1,9 @@
 """Adapters layer - external system integrations."""
 
 from mvg_departures.adapters.config import AppConfig
-from mvg_departures.adapters.hafas_api import (
-    HafasDepartureRepository,
-    HafasStationRepository,
+from mvg_departures.adapters.db_api import (
+    DbDepartureRepository,
+    DbStationRepository,
 )
 from mvg_departures.adapters.mvg_api import (
     MvgDepartureRepository,
@@ -12,8 +12,8 @@ from mvg_departures.adapters.mvg_api import (
 
 __all__ = [
     "AppConfig",
-    "HafasDepartureRepository",
-    "HafasStationRepository",
+    "DbDepartureRepository",
+    "DbStationRepository",
     "MvgDepartureRepository",
     "MvgStationRepository",
 ]

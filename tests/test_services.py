@@ -763,6 +763,135 @@ async def test_pattern_matching_bus_with_transport_type() -> None:
 
 
 @pytest.mark.asyncio
+async def test_pattern_matching_db_style_line_with_space() -> None:
+    """Given DB-style patterns like 'U 9 Bundesplatz', when matching, then it matches correctly.
+
+    DB API uses line names with spaces (e.g., 'U 9' instead of 'U9').
+    The simple substring matching should handle this without special cases.
+    """
+    now = datetime.now(UTC)
+    departures = [
+        Departure(
+            time=now + timedelta(minutes=5),
+            planned_time=now + timedelta(minutes=5),
+            delay_seconds=0,
+            platform=19,
+            is_realtime=True,
+            line="U 9",  # DB uses space in line name
+            destination="Bundesplatz (S+U), Berlin",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(minutes=10),
+            planned_time=now + timedelta(minutes=10),
+            delay_seconds=0,
+            platform=29,
+            is_realtime=True,
+            line="U 9",
+            destination="Osloer Str.",  # Different destination
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+    ]
+
+    stop_config = StopConfiguration(
+        station_id="8010406",
+        station_name="Zoo (via db)",
+        direction_mappings={"->Berliner Str.": ["U 9 Bundesplatz"]},
+        max_departures_per_stop=10,
+        max_departures_per_route=2,
+        show_ungrouped=False,
+    )
+
+    repo = MockDepartureRepository(departures)
+    service = DepartureGroupingService(repo)
+
+    groups = await service.get_grouped_departures(stop_config)
+
+    assert len(groups) == 1
+    assert groups[0].direction_name == "->Berliner Str."
+    assert len(groups[0].departures) == 1
+    assert "Bundesplatz" in groups[0].departures[0].destination
+
+
+@pytest.mark.asyncio
+async def test_pattern_matching_vbb_vs_db_line_formats() -> None:
+    """Given VBB-style 'U9' and DB-style 'U 9' patterns, when matching, then each matches its format.
+
+    VBB: line="U9", destination="S+U Bundesplatz (Berlin)", pattern="U9 S+U Bundesplatz"
+    DB: line="U 9", destination="Bundesplatz (S+U), Berlin", pattern="U 9 Bundesplatz"
+
+    Note: Pattern must be a contiguous substring of "{transport_type} {line} {destination}".
+    """
+    now = datetime.now(UTC)
+    vbb_departure = Departure(
+        time=now + timedelta(minutes=5),
+        planned_time=now + timedelta(minutes=5),
+        delay_seconds=0,
+        platform=1,
+        is_realtime=True,
+        line="U9",  # VBB format (no space)
+        destination="S+U Bundesplatz (Berlin)",
+        transport_type="U-Bahn",
+        icon="mdi:subway",
+        is_cancelled=False,
+        messages=[],
+    )
+    db_departure = Departure(
+        time=now + timedelta(minutes=10),
+        planned_time=now + timedelta(minutes=10),
+        delay_seconds=0,
+        platform=19,
+        is_realtime=True,
+        line="U 9",  # DB format (with space)
+        destination="Bundesplatz (S+U), Berlin",
+        transport_type="U-Bahn",
+        icon="mdi:subway",
+        is_cancelled=False,
+        messages=[],
+    )
+
+    # VBB config: pattern includes "S+U" since destination starts with it
+    vbb_config = StopConfiguration(
+        station_id="900000024201",
+        station_name="Zoo (vbb)",
+        direction_mappings={"->Berliner Str.": ["U9 S+U Bundesplatz"]},
+        max_departures_per_stop=10,
+        max_departures_per_route=2,
+        show_ungrouped=False,
+    )
+
+    repo = MockDepartureRepository([vbb_departure])
+    service = DepartureGroupingService(repo)
+    groups = await service.get_grouped_departures(vbb_config)
+
+    assert len(groups) == 1
+    assert len(groups[0].departures) == 1
+
+    # DB config: pattern uses "U 9" with space, destination starts with "Bundesplatz"
+    db_config = StopConfiguration(
+        station_id="8010406",
+        station_name="Zoo (db)",
+        direction_mappings={"->Berliner Str.": ["U 9 Bundesplatz"]},
+        max_departures_per_stop=10,
+        max_departures_per_route=2,
+        show_ungrouped=False,
+    )
+
+    repo = MockDepartureRepository([db_departure])
+    service = DepartureGroupingService(repo)
+    groups = await service.get_grouped_departures(db_config)
+
+    assert len(groups) == 1
+    assert len(groups[0].departures) == 1
+
+
+@pytest.mark.asyncio
 async def test_direction_order_preserved() -> None:
     """Given multiple directions, when grouped, then directions appear in config order."""
     now = datetime.now(UTC)
