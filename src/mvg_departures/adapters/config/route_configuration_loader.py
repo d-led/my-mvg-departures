@@ -244,16 +244,9 @@ class RouteConfigurationLoader:
         )
 
     @staticmethod
-    def _parse_display_data(display_data: Any) -> dict[str, Any]:
-        """Parse display data from route configuration.
-
-        Args:
-            display_data: Display data (dict or list).
-
-        Returns:
-            Dictionary with parsed display values.
-        """
-        defaults = {
+    def _get_display_defaults() -> dict[str, Any]:
+        """Get default display configuration values."""
+        return {
             "title": None,
             "theme": None,
             "fill_vertical_space": False,
@@ -264,46 +257,45 @@ class RouteConfigurationLoader:
             "refresh_interval_seconds": None,
         }
 
+    @staticmethod
+    def _extract_display_values_from_dict(data: dict[str, Any]) -> dict[str, Any]:
+        """Extract display values from a dictionary."""
+        return {
+            "title": data.get("title"),
+            "theme": data.get("theme"),
+            "fill_vertical_space": data.get("fill_vertical_space", False),
+            "font_scaling_factor_when_filling": data.get("font_scaling_factor_when_filling", 1.0),
+            "random_header_colors": data.get("random_header_colors", False),
+            "header_background_brightness": data.get("header_background_brightness", 0.7),
+            "random_color_salt": data.get("random_color_salt", 0),
+            "refresh_interval_seconds": data.get("refresh_interval_seconds"),
+        }
+
+    @staticmethod
+    def _parse_display_data(display_data: Any) -> dict[str, Any]:
+        """Parse display data from route configuration.
+
+        Args:
+            display_data: Display data (dict or list).
+
+        Returns:
+            Dictionary with parsed display values.
+        """
+        defaults = RouteConfigurationLoader._get_display_defaults()
+
         if not display_data:
             return defaults
 
         if isinstance(display_data, dict):
-            return {
-                "title": display_data.get("title"),
-                "theme": display_data.get("theme"),
-                "fill_vertical_space": display_data.get("fill_vertical_space", False),
-                "font_scaling_factor_when_filling": display_data.get(
-                    "font_scaling_factor_when_filling", 1.0
-                ),
-                "random_header_colors": display_data.get("random_header_colors", False),
-                "header_background_brightness": display_data.get(
-                    "header_background_brightness", 0.7
-                ),
-                "random_color_salt": display_data.get("random_color_salt", 0),
-                "refresh_interval_seconds": display_data.get("refresh_interval_seconds"),
-            }
+            return RouteConfigurationLoader._extract_display_values_from_dict(display_data)
 
         if isinstance(display_data, list) and len(display_data) > 0:
             first_display = display_data[0]
             if isinstance(first_display, dict):
-                return {
-                    "title": first_display.get("title"),
-                    "theme": first_display.get("theme"),
-                    "fill_vertical_space": first_display.get("fill_vertical_space", False),
-                    "font_scaling_factor_when_filling": first_display.get(
-                        "font_scaling_factor_when_filling", 1.0
-                    ),
-                    "random_header_colors": first_display.get("random_header_colors", False),
-                    "header_background_brightness": first_display.get(
-                        "header_background_brightness", 0.7
-                    ),
-                    "random_color_salt": first_display.get("random_color_salt", 0),
-                    "refresh_interval_seconds": first_display.get("refresh_interval_seconds"),
-                }
+                return RouteConfigurationLoader._extract_display_values_from_dict(first_display)
 
         return defaults
 
-    @staticmethod
     @staticmethod
     def _validate_title(title: Any) -> str | None:
         """Validate title field."""

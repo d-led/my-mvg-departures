@@ -81,6 +81,35 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             random_color_salt,
         )
 
+    def _assign_instance_variables(
+        self,
+        state_manager: State,
+        grouping_service: DepartureGroupingService,
+        stop_configs: list[StopConfiguration],
+        config: AppConfig,
+        presence_tracker: PresenceTrackerProtocol,
+        route_title: str | None,
+        route_theme: str | None,
+        fill_vertical_space: bool,
+        font_scaling_factor_when_filling: float,
+        random_header_colors: bool,
+        header_background_brightness: float,
+        random_color_salt: int,
+    ) -> None:
+        """Assign instance variables from parameters."""
+        self.state_manager = state_manager
+        self.grouping_service = grouping_service
+        self.stop_configs = stop_configs
+        self.config = config
+        self.presence_tracker = presence_tracker
+        self.route_title = route_title
+        self.route_theme = route_theme
+        self.fill_vertical_space = fill_vertical_space
+        self.font_scaling_factor_when_filling = font_scaling_factor_when_filling
+        self.random_header_colors = random_header_colors
+        self.header_background_brightness = header_background_brightness
+        self.random_color_salt = random_color_salt
+
     def __init__(
         self,
         state_manager: State,
@@ -96,38 +125,23 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         header_background_brightness: float = 0.7,
         random_color_salt: int = 0,
     ) -> None:
-        """Initialize the LiveView.
-
-        Args:
-            state_manager: State manager for this route.
-            grouping_service: Service for grouping departures.
-            stop_configs: List of stop configurations for this route.
-            config: Application configuration.
-            presence_tracker: Presence tracker for tracking user connections.
-            route_title: Optional route-specific title (overrides config title).
-            route_theme: Optional route-specific theme (overrides config theme).
-            fill_vertical_space: Enable dynamic font sizing to fill viewport.
-            font_scaling_factor_when_filling: Scale factor for all fonts when fill_vertical_space is enabled.
-            random_header_colors: Enable hash-based pastel colors for headers.
-            header_background_brightness: Brightness adjustment for random header colors (0.0-1.0).
-            random_color_salt: Salt value for hash-based color generation (default 0).
-        """
+        """Initialize the LiveView with route configuration and display settings."""
         super().__init__()
         self._validate_init_parameters(config, stop_configs, presence_tracker, grouping_service)
-
-        self.state_manager = state_manager
-        self.grouping_service = grouping_service
-        self.stop_configs = stop_configs
-        self.config = config
-        self.presence_tracker = presence_tracker
-        self.route_title = route_title
-        self.route_theme = route_theme
-        self.fill_vertical_space = fill_vertical_space
-        self.font_scaling_factor_when_filling = font_scaling_factor_when_filling
-        self.random_header_colors = random_header_colors
-        self.header_background_brightness = header_background_brightness
-        self.random_color_salt = random_color_salt
-
+        self._assign_instance_variables(
+            state_manager,
+            grouping_service,
+            stop_configs,
+            config,
+            presence_tracker,
+            route_title,
+            route_theme,
+            fill_vertical_space,
+            font_scaling_factor_when_filling,
+            random_header_colors,
+            header_background_brightness,
+            random_color_salt,
+        )
         self._initialize_components(
             stop_configs,
             config,
@@ -893,29 +907,7 @@ def create_departures_live_view(
     header_background_brightness: float = 0.7,
     random_color_salt: int = 0,
 ) -> type[DeparturesLiveView]:
-    """Create a configured DeparturesLiveView class for a specific route.
-
-    This factory function creates a LiveView class that is configured with
-    route-specific parameters. PyView's add_live_view expects a class, not
-    an instance, so we return a configured class.
-
-    Args:
-        state_manager: State manager for this route.
-        grouping_service: Service for grouping departures.
-        stop_configs: List of stop configurations for this route.
-        config: Application configuration.
-        presence_tracker: Presence tracker for tracking user connections.
-        route_title: Optional route-specific title (overrides config title).
-        route_theme: Optional route-specific theme (overrides config theme).
-        fill_vertical_space: Enable dynamic font sizing to fill viewport.
-        font_scaling_factor_when_filling: Scale factor for all fonts when fill_vertical_space is enabled.
-        random_header_colors: Enable hash-based pastel colors for headers.
-        header_background_brightness: Brightness adjustment for random header colors (0.0-1.0).
-        random_color_salt: Salt value for hash-based color generation (default 0).
-
-    Returns:
-        A configured DeparturesLiveView class that can be registered with PyView.
-    """
+    """Create a configured DeparturesLiveView class for a specific route."""
     captured = _capture_live_view_parameters(
         state_manager,
         grouping_service,

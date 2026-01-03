@@ -298,6 +298,54 @@ show_ungrouped = true
     return snippet
 
 
+def _print_search_error(query: str) -> None:
+    """Print error message when no stations found."""
+    print(f"\n❌ No stations found for '{query}'", file=sys.stderr)
+    print("\n💡 Tips:", file=sys.stderr)
+    print("  - Try a more specific query (e.g., include 'Berlin')", file=sys.stderr)
+    print("  - Try a different spelling or partial name", file=sys.stderr)
+
+
+def _print_station_routes(routes: dict[str, Any]) -> None:
+    """Print available routes for a station."""
+    print(f"  Available Routes ({len(routes)}):")
+    for line, route_data in sorted(routes.items()):
+        transport_type = route_data.get("transport_type", "")
+        destinations = route_data.get("destinations", [])
+        dest_str = ", ".join(destinations)
+        print(f"    {transport_type} {line}: {dest_str}")
+
+
+async def _process_station_and_show_config(station: dict[str, Any], index: int, total: int) -> None:
+    """Process a single station and show its configuration."""
+    station_id = station.get("id", "")
+    station_name = station.get("name", "Unknown")
+    station_place = station.get("place", "Unknown")
+
+    print(f"\n[{index}/{total}] {station_name} ({station_place})")
+    print(f"ID: {station_id}")
+    print("-" * 70)
+
+    details = await get_station_details_vbb(station_id)
+    if not details:
+        print("  No routes found or station has no departures.")
+        return
+
+    routes = details.get("routes", {})
+    if not routes:
+        print("  No routes found.")
+        return
+
+    _print_station_routes(routes)
+
+    print("\n" + "=" * 70)
+    print("Configuration Snippet:")
+    print("=" * 70)
+    config_snippet = generate_vbb_config_snippet(station_id, station_name, routes)
+    print(config_snippet)
+    print("=" * 70)
+
+
 async def search_and_show_config(query: str) -> None:
     """Search for VBB stations and show config snippets."""
     print(f"Searching VBB REST API for: '{query}'\n")
@@ -305,50 +353,14 @@ async def search_and_show_config(query: str) -> None:
     results = await search_stations_vbb(query)
 
     if not results:
-        print(f"\n❌ No stations found for '{query}'", file=sys.stderr)
-        print("\n💡 Tips:", file=sys.stderr)
-        print("  - Try a more specific query (e.g., include 'Berlin')", file=sys.stderr)
-        print("  - Try a different spelling or partial name", file=sys.stderr)
+        _print_search_error(query)
         sys.exit(1)
 
     print(f"Found {len(results)} station(s):\n")
     print("=" * 70)
 
     for i, station in enumerate(results, 1):
-        station_id = station.get("id", "")
-        station_name = station.get("name", "Unknown")
-        station_place = station.get("place", "Unknown")
-
-        print(f"\n[{i}/{len(results)}] {station_name} ({station_place})")
-        print(f"ID: {station_id}")
-        print("-" * 70)
-
-        # Get routes for this station
-        details = await get_station_details_vbb(station_id)
-        if not details:
-            print("  No routes found or station has no departures.")
-            continue
-
-        routes = details.get("routes", {})
-        if not routes:
-            print("  No routes found.")
-            continue
-
-        print(f"  Available Routes ({len(routes)}):")
-        for line, route_data in sorted(routes.items()):
-            transport_type = route_data.get("transport_type", "")
-            destinations = route_data.get("destinations", [])
-            # Show ALL destinations for copy-pasteable config
-            dest_str = ", ".join(destinations)
-            print(f"    {transport_type} {line}: {dest_str}")
-
-        # Generate and show config snippet
-        print("\n" + "=" * 70)
-        print("Configuration Snippet:")
-        print("=" * 70)
-        config_snippet = generate_vbb_config_snippet(station_id, station_name, routes)
-        print(config_snippet)
-        print("=" * 70)
+        await _process_station_and_show_config(station, i, len(results))
 
 
 async def main() -> None:

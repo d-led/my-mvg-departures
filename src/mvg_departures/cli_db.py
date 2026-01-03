@@ -486,6 +486,34 @@ async def _handle_generate_command(station_id: str, station_name: str) -> None:
     print(snippet)
 
 
+def _setup_db_argparse_subparsers(subparsers: Any) -> None:
+    """Set up subparsers for DB CLI commands."""
+    search_parser = subparsers.add_parser("search", help="Search for stations")
+    search_parser.add_argument("query", help="Station name to search for")
+    search_parser.add_argument("--json", action="store_true", help="Output as JSON")
+
+    info_parser = subparsers.add_parser("info", help="Show station information")
+    info_parser.add_argument("station_id", help="Station ID (e.g., 8000013)")
+    info_parser.add_argument("--json", action="store_true", help="Output as JSON")
+
+    routes_parser = subparsers.add_parser(
+        "routes", help="List routes for a station (by ID or search query)"
+    )
+    routes_parser.add_argument(
+        "query",
+        help="Station ID (e.g., 8000013) or station name to search for",
+    )
+    routes_parser.add_argument(
+        "--no-patterns",
+        action="store_true",
+        help="Don't show config patterns",
+    )
+
+    generate_parser = subparsers.add_parser("generate", help="Generate config snippet")
+    generate_parser.add_argument("station_id", help="Station ID")
+    generate_parser.add_argument("station_name", help="Station name")
+
+
 def _setup_argparse() -> Any:
     """Set up and configure argument parser."""
     import argparse
@@ -515,31 +543,7 @@ API: https://v6.db.transport.rest/api.html (100 req/min, no auth)
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
-
-    search_parser = subparsers.add_parser("search", help="Search for stations")
-    search_parser.add_argument("query", help="Station name to search for")
-    search_parser.add_argument("--json", action="store_true", help="Output as JSON")
-
-    info_parser = subparsers.add_parser("info", help="Show station information")
-    info_parser.add_argument("station_id", help="Station ID (e.g., 8000013)")
-    info_parser.add_argument("--json", action="store_true", help="Output as JSON")
-
-    routes_parser = subparsers.add_parser(
-        "routes", help="List routes for a station (by ID or search query)"
-    )
-    routes_parser.add_argument(
-        "query",
-        help="Station ID (e.g., 8000013) or station name to search for",
-    )
-    routes_parser.add_argument(
-        "--no-patterns",
-        action="store_true",
-        help="Don't show config patterns",
-    )
-
-    generate_parser = subparsers.add_parser("generate", help="Generate config snippet")
-    generate_parser.add_argument("station_id", help="Station ID")
-    generate_parser.add_argument("station_name", help="Station name")
+    _setup_db_argparse_subparsers(subparsers)
 
     return parser
 

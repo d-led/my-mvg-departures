@@ -37,6 +37,39 @@ if TYPE_CHECKING:
 class PyViewWebAdapter(DisplayAdapter):
     """PyView-based web adapter for displaying departures."""
 
+    def _validate_init_parameters(
+        self,
+        grouping_service: DepartureGroupingService,
+        route_configs: list[RouteConfiguration],
+        config: AppConfig,
+        departure_repository: DepartureRepository,
+    ) -> None:
+        """Validate initialization parameters."""
+        if not isinstance(config, AppConfig):
+            raise TypeError("config must be an AppConfig instance")
+        if not isinstance(route_configs, list) or not all(
+            isinstance(rc, RouteConfiguration) for rc in route_configs
+        ):
+            raise TypeError("route_configs must be a list of RouteConfiguration instances")
+        if not hasattr(grouping_service, "group_departures") or not callable(
+            getattr(grouping_service, "group_departures", None)
+        ):
+            raise TypeError("grouping_service must implement DepartureGroupingService protocol")
+        if not hasattr(departure_repository, "get_departures") or not callable(
+            getattr(departure_repository, "get_departures", None)
+        ):
+            raise TypeError("departure_repository must implement DepartureRepository protocol")
+
+    def _initialize_route_states(self, route_configs: list[RouteConfiguration]) -> dict[str, State]:
+        """Initialize state managers for each route."""
+        return {
+            route_config.path: State(
+                route_path=route_config.path,
+                max_sessions_per_browser=self.config.max_sessions_per_browser,
+            )
+            for route_config in route_configs
+        }
+
     def __init__(
         self,
         grouping_service: DepartureGroupingService,
@@ -54,22 +87,9 @@ class PyViewWebAdapter(DisplayAdapter):
             departure_repository: Repository for fetching raw departures (used for shared caching).
             session: Optional aiohttp session.
         """
-        # Runtime usage - these assignments ensure Ruff detects runtime dependency
-        if not isinstance(config, AppConfig):
-            raise TypeError("config must be an AppConfig instance")
-        if not isinstance(route_configs, list) or not all(
-            isinstance(rc, RouteConfiguration) for rc in route_configs
-        ):
-            raise TypeError("route_configs must be a list of RouteConfiguration instances")
-        # Protocols can't be checked with isinstance, verify required methods exist
-        if not hasattr(grouping_service, "group_departures") or not callable(
-            getattr(grouping_service, "group_departures", None)
-        ):
-            raise TypeError("grouping_service must implement DepartureGroupingService protocol")
-        if not hasattr(departure_repository, "get_departures") or not callable(
-            getattr(departure_repository, "get_departures", None)
-        ):
-            raise TypeError("departure_repository must implement DepartureRepository protocol")
+        self._validate_init_parameters(
+            grouping_service, route_configs, config, departure_repository
+        )
 
         self.grouping_service = grouping_service
         self.route_configs = route_configs
@@ -78,16 +98,7 @@ class PyViewWebAdapter(DisplayAdapter):
         self.session = session
         self._update_task: asyncio.Task | None = None
         self._server: Any | None = None
-        # Create a state manager for each route
-        self.route_states: dict[str, State] = {
-            route_config.path: State(
-                route_path=route_config.path,
-                max_sessions_per_browser=self.config.max_sessions_per_browser,
-            )
-            for route_config in route_configs
-        }
-        # Shared cache for raw departures by station_id (to avoid duplicate API calls)
-        # Each route will process this cached data according to its own StopConfiguration
+        self.route_states = self._initialize_route_states(route_configs)
         self._shared_departure_cache = SharedDepartureCache()
         self._departure_fetcher: DepartureFetcher | None = None
 
@@ -208,6 +219,43 @@ class PyViewWebAdapter(DisplayAdapter):
             app.add_live_view(route_path, live_view_class)
             logger.info(f"Successfully registered route at path '{route_path}'")
 
+    async def _handle_reset_connections(self, request: Any, presence_tracker: Any) -> Any:
+        """Handle reset connections admin endpoint."""
+        from starlette.responses import JSONResponse
+
+        expected_token = self.config.admin_command_token
+        if not expected_token:
+            return JSONResponse(
+                {"error": "admin endpoint disabled - ADMIN_COMMAND_TOKEN not configured"},
+                status_code=503,
+            )
+
+        provided_token = request.headers.get("X-Admin-Token", "")
+        if provided_token != expected_token:
+            logger.warning("Unauthorized attempt to call reset_connections admin endpoint")
+            return JSONResponse({"error": "forbidden"}, status_code=403)
+
+        total_disconnected = self._reset_all_route_sockets()
+        sync_result = presence_tracker.sync_with_registered_sockets({})
+        added, removed = sync_result.added_count, sync_result.removed_count
+
+        await self._broadcast_reload_updates()
+
+        logger.info(
+            "Admin reset_connections completed: "
+            f"disconnected_sockets={total_disconnected}, "
+            f"presence_added={added}, presence_removed={removed}"
+        )
+
+        return JSONResponse(
+            {
+                "status": "ok",
+                "disconnected_sockets": total_disconnected,
+                "presence_added": added,
+                "presence_removed": removed,
+            }
+        )
+
     def _setup_admin_endpoints(self, app: Any, presence_tracker: Any) -> None:
         """Set up admin maintenance endpoints.
 
@@ -215,47 +263,14 @@ class PyViewWebAdapter(DisplayAdapter):
             app: The PyView application instance.
             presence_tracker: The presence tracker instance.
         """
-        from starlette.responses import JSONResponse, Response
+        from starlette.responses import Response
         from starlette.routing import Route
 
         async def reset_connections(request: Any) -> Any:
-            """Reset server-side connection and presence state."""
-            expected_token = self.config.admin_command_token
-            if not expected_token:
-                return JSONResponse(
-                    {"error": "admin endpoint disabled - ADMIN_COMMAND_TOKEN not configured"},
-                    status_code=503,
-                )
-
-            provided_token = request.headers.get("X-Admin-Token", "")
-            if provided_token != expected_token:
-                logger.warning("Unauthorized attempt to call reset_connections admin endpoint")
-                return JSONResponse({"error": "forbidden"}, status_code=403)
-
-            total_disconnected = self._reset_all_route_sockets()
-            sync_result = presence_tracker.sync_with_registered_sockets({})
-            added, removed = sync_result.added_count, sync_result.removed_count
-
-            await self._broadcast_reload_updates()
-
-            logger.info(
-                "Admin reset_connections completed: "
-                f"disconnected_sockets={total_disconnected}, "
-                f"presence_added={added}, presence_removed={removed}"
-            )
-
-            return JSONResponse(
-                {
-                    "status": "ok",
-                    "disconnected_sockets": total_disconnected,
-                    "presence_added": added,
-                    "presence_removed": removed,
-                }
-            )
+            return await self._handle_reset_connections(request, presence_tracker)
 
         app.routes.append(Route("/admin/reset-connections", reset_connections, methods=["POST"]))
 
-        # Health check endpoint
         async def healthz(_request: Any) -> Response:
             """Health check endpoint for load balancers and monitoring."""
             return Response(content="Ok", media_type="text/plain")
@@ -389,59 +404,51 @@ class PyViewWebAdapter(DisplayAdapter):
         for route_path, route_state in self.route_states.items():
             self._initialize_route_reload_id(route_path, route_state, server_start_reload_id)
 
-    async def start(self) -> None:
-        """Start the web server."""
+    def _configure_uvicorn_server(self, wrapped_app: Any) -> Any:
+        """Configure and create uvicorn server instance."""
         import uvicorn
-        from pyview import PyView
 
-        from mvg_departures.adapters.web.rate_limit_middleware import RateLimitMiddleware
-
-        app = PyView()
-
-        # Set up favicon and root template
-        self._setup_favicon_and_root_template(app)
-
-        # Get the presence tracker instance (shared across all routes)
-        presence_tracker = get_presence_tracker()
-
-        # Register LiveViews for all routes
-        self._register_live_views(app, presence_tracker)
-
-        # Set up admin endpoints and health check
-        self._setup_admin_endpoints(app, presence_tracker)
-
-        # Register static file routes
-        static_file_server = StaticFileServer()
-        static_file_server.register_routes(app)
-
-        # Wrap the app with rate limiting middleware
-        wrapped_app = RateLimitMiddleware(
-            app,
-            requests_per_minute=self.config.rate_limit_per_minute,
-        )
-
-        # Start the shared fetcher that populates the cache with raw departures
-        await self._start_departure_fetcher()
-
-        # Start API pollers for all routes
-        cache_dict = self._prepare_cache_dict()
-        await self._start_api_pollers(cache_dict)
-
-        # Initialize reload request IDs if enabled
-        self._initialize_reload_request_ids()
-
-        # Set up logging filter
-        self._setup_logging_filter()
-
-        # Configure and start uvicorn server
         config = uvicorn.Config(
             wrapped_app,
             host=self.config.host,
             port=self.config.port,
             log_level="info",
         )
-        self._server = uvicorn.Server(config)
+        return uvicorn.Server(config)
 
+    async def _setup_application(self, app: Any) -> Any:
+        """Set up application with all routes and middleware."""
+        from mvg_departures.adapters.web.rate_limit_middleware import RateLimitMiddleware
+
+        presence_tracker = get_presence_tracker()
+        self._register_live_views(app, presence_tracker)
+        self._setup_admin_endpoints(app, presence_tracker)
+
+        static_file_server = StaticFileServer()
+        static_file_server.register_routes(app)
+
+        return RateLimitMiddleware(
+            app,
+            requests_per_minute=self.config.rate_limit_per_minute,
+        )
+
+    async def start(self) -> None:
+        """Start the web server."""
+        from pyview import PyView
+
+        app = PyView()
+        self._setup_favicon_and_root_template(app)
+
+        wrapped_app = await self._setup_application(app)
+
+        await self._start_departure_fetcher()
+        cache_dict = self._prepare_cache_dict()
+        await self._start_api_pollers(cache_dict)
+
+        self._initialize_reload_request_ids()
+        self._setup_logging_filter()
+
+        self._server = self._configure_uvicorn_server(wrapped_app)
         await self._server.serve()
 
     def _collect_unique_station_ids(self) -> set[str]:
