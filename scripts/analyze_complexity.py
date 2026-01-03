@@ -28,7 +28,7 @@ try:
 except ImportError:
     RADON_AVAILABLE = False
     print("Warning: radon is not installed. Complexity analysis will be limited.", file=sys.stderr)
-    print("Install it with: poetry add --group dev radon", file=sys.stderr)
+    print("Install it with: poetry install --with dev", file=sys.stderr)
 
 
 @dataclass(frozen=True)
@@ -294,19 +294,20 @@ def check_if_protocol_method(
     return False
 
 
-def get_cyclomatic_complexity(
-    func_node: ast.FunctionDef | ast.AsyncFunctionDef,
-    func_name: str,
-    line_start: int,
-    radon_results: list[Any],
-) -> int:
-    """Get cyclomatic complexity for a function."""
-    if RADON_AVAILABLE:
-        for radon_func in radon_results:
-            if radon_func.name == func_name and radon_func.lineno == line_start:
-                return radon_func.complexity
-    
-    # Simple estimation: count control flow nodes
+def _find_radon_complexity(
+    func_name: str, line_start: int, radon_results: list[Any]
+) -> int | None:
+    """Find cyclomatic complexity from radon results."""
+    if not RADON_AVAILABLE:
+        return None
+    for radon_func in radon_results:
+        if radon_func.name == func_name and radon_func.lineno == line_start:
+            return radon_func.complexity
+    return None
+
+
+def _estimate_complexity_from_ast(func_node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
+    """Estimate complexity by counting control flow nodes."""
     control_flow_types = (
         ast.If,
         ast.For,
@@ -318,6 +319,19 @@ def get_cyclomatic_complexity(
     )
     control_flow_count = sum(1 for n in ast.walk(func_node) if isinstance(n, control_flow_types))
     return 1 + control_flow_count
+
+
+def get_cyclomatic_complexity(
+    func_node: ast.FunctionDef | ast.AsyncFunctionDef,
+    func_name: str,
+    line_start: int,
+    radon_results: list[Any],
+) -> int:
+    """Get cyclomatic complexity for a function."""
+    radon_complexity = _find_radon_complexity(func_name, line_start, radon_results)
+    if radon_complexity is not None:
+        return radon_complexity
+    return _estimate_complexity_from_ast(func_node)
 
 
 def analyze_function_node(
@@ -457,13 +471,10 @@ def format_priority(score: float) -> str:
     return "✅ OK"
 
 
-def print_priority_table(top_metrics: list[FunctionMetrics], limit: int = 30) -> None:
-    """Print top priority functions in a tabular format."""
-    if not top_metrics:
-        return
-
-    # Get relative paths
-    project_root = Path(__file__).parent.parent
+def _prepare_metrics_with_paths(
+    top_metrics: list[FunctionMetrics], limit: int, project_root: Path
+) -> list[tuple[Path, FunctionMetrics]]:
+    """Prepare metrics with relative paths."""
     metrics_with_paths = []
     for m in top_metrics[:limit]:
         try:
@@ -471,15 +482,29 @@ def print_priority_table(top_metrics: list[FunctionMetrics], limit: int = 30) ->
         except ValueError:
             rel_path = Path(m.file_path)
         metrics_with_paths.append((rel_path, m))
+    return metrics_with_paths
 
-    # Calculate column widths
-    max_file_len = max(len(str(p)) for p, _ in metrics_with_paths) if metrics_with_paths else 0
-    max_func_len = max(len(m.function_name) for _, m in metrics_with_paths) if metrics_with_paths else 0
-    max_file_len = min(max_file_len, 50)  # Cap at 50 chars
-    max_func_len = min(max_func_len, 30)  # Cap at 30 chars
 
-    # Print header with proper spacing
-    col_widths = {
+def _calculate_column_widths(
+    metrics_with_paths: list[tuple[Path, FunctionMetrics]]
+) -> dict[str, int]:
+    """Calculate column widths for table formatting."""
+    if not metrics_with_paths:
+        return {
+            'priority': 12,
+            'file': 52,
+            'function': 32,
+            'lines': 12,
+            'nest': 6,
+            'complex': 8,
+            'length': 8,
+            'params': 8,
+        }
+    
+    max_file_len = min(max(len(str(p)) for p, _ in metrics_with_paths), 50)
+    max_func_len = min(max(len(m.function_name) for _, m in metrics_with_paths), 30)
+    
+    return {
         'priority': 12,
         'file': max_file_len + 2,
         'function': max_func_len + 2,
@@ -489,8 +514,11 @@ def print_priority_table(top_metrics: list[FunctionMetrics], limit: int = 30) ->
         'length': 8,
         'params': 8,
     }
-    
-    header = (
+
+
+def _format_table_header(col_widths: dict[str, int]) -> str:
+    """Format table header string."""
+    return (
         f"{'Priority':<{col_widths['priority']}} "
         f"{'File':<{col_widths['file']}} "
         f"{'Function':<{col_widths['function']}} "
@@ -500,45 +528,63 @@ def print_priority_table(top_metrics: list[FunctionMetrics], limit: int = 30) ->
         f"{'Length':<{col_widths['length']}} "
         f"{'Params':<{col_widths['params']}}"
     )
+
+
+def _format_parameter_string(metric: FunctionMetrics) -> str:
+    """Format parameter count string with *args/**kwargs indicators."""
+    param_parts = [str(metric.parameter_count)]
+    if metric.has_varargs:
+        param_parts.append("*args")
+    if metric.has_kwargs:
+        param_parts.append("**kwargs")
+    return "+".join(param_parts)
+
+
+def _truncate_string(text: str, max_len: int) -> str:
+    """Truncate string to max length with ellipsis."""
+    if len(text) <= max_len:
+        return text
+    if max_len <= 3:
+        return text[:max_len]
+    return "..." + text[-(max_len - 3):]
+
+
+def _format_table_row(
+    rel_path: Path, metric: FunctionMetrics, col_widths: dict[str, int]
+) -> str:
+    """Format a single table row."""
+    file_str = _truncate_string(str(rel_path), col_widths['file'] - 2)
+    func_str = _truncate_string(metric.function_name, col_widths['function'] - 2)
+    
+    return (
+        f"{format_priority(metric.priority_score):<{col_widths['priority']}} "
+        f"{file_str:<{col_widths['file']}} "
+        f"{func_str:<{col_widths['function']}} "
+        f"{metric.line_start}-{metric.line_end:<{col_widths['lines']}} "
+        f"{metric.max_nesting_level:<{col_widths['nest']}} "
+        f"{metric.cyclomatic_complexity:<{col_widths['complex']}} "
+        f"{metric.function_length:<{col_widths['length']}} "
+        f"{_format_parameter_string(metric):<{col_widths['params']}}"
+    )
+
+
+def print_priority_table(top_metrics: list[FunctionMetrics], limit: int = 30) -> None:
+    """Print top priority functions in a tabular format."""
+    if not top_metrics:
+        return
+
+    project_root = Path(__file__).parent.parent
+    metrics_with_paths = _prepare_metrics_with_paths(top_metrics, limit, project_root)
+    col_widths = _calculate_column_widths(metrics_with_paths)
+    
+    header = _format_table_header(col_widths)
     separator = "=" * len(header)
     print(f"\n{separator}")
     print(header)
     print(separator)
 
-    # Print rows
     for rel_path, metric in metrics_with_paths:
-        file_str = str(rel_path)
-        if len(file_str) > max_file_len:
-            file_str = "..." + file_str[-(max_file_len - 3):]
-
-        func_str = metric.function_name
-        if len(func_str) > max_func_len:
-            func_str = func_str[: max_func_len - 3] + "..."
-
-        priority_str = format_priority(metric.priority_score)
-        lines_str = f"{metric.line_start}-{metric.line_end}"
-        nest_str = f"{metric.max_nesting_level}"
-        complex_str = f"{metric.cyclomatic_complexity}"
-        length_str = f"{metric.function_length}"
-        # Format params: show count + *args/**kwargs indicators
-        param_parts = [str(metric.parameter_count)]
-        if metric.has_varargs:
-            param_parts.append("*args")
-        if metric.has_kwargs:
-            param_parts.append("**kwargs")
-        params_str = "+".join(param_parts)
-
-        row = (
-            f"{priority_str:<{col_widths['priority']}} "
-            f"{file_str:<{col_widths['file']}} "
-            f"{func_str:<{col_widths['function']}} "
-            f"{lines_str:<{col_widths['lines']}} "
-            f"{nest_str:<{col_widths['nest']}} "
-            f"{complex_str:<{col_widths['complex']}} "
-            f"{length_str:<{col_widths['length']}} "
-            f"{params_str:<{col_widths['params']}}"
-        )
-        print(row)
+        print(_format_table_row(rel_path, metric, col_widths))
 
     print(separator)
     print(f"\nShowing top {min(limit, len(top_metrics))} functions by priority score")
@@ -563,6 +609,15 @@ def _parse_file_safely(file_path: Path) -> ast.AST | None:
         return None
 
 
+def _collect_protocols_from_tree(tree: ast.AST) -> dict[str, set[str]]:
+    """Collect protocol signatures from a single AST tree."""
+    protocols: dict[str, set[str]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and is_protocol_class(node, tree):
+            protocols[node.name] = _extract_method_names_from_protocol(node)
+    return protocols
+
+
 def collect_protocol_signatures(root_dir: Path) -> dict[str, set[str]]:
     """Collect all Protocol class names and their method signatures across all files.
     
@@ -573,12 +628,8 @@ def collect_protocol_signatures(root_dir: Path) -> dict[str, set[str]]:
     
     for py_file in find_python_files(root_dir):
         tree = _parse_file_safely(py_file)
-        if tree is None:
-            continue
-        
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ClassDef) and is_protocol_class(node, tree):
-                protocol_signatures[node.name] = _extract_method_names_from_protocol(node)
+        if tree is not None:
+            protocol_signatures.update(_collect_protocols_from_tree(tree))
     
     return protocol_signatures
 
@@ -655,26 +706,47 @@ def _print_function_details(metric: FunctionMetrics) -> None:
     print()
 
 
+def _print_file_header(file_path: str, file_metrics: list[FunctionMetrics], project_root: Path) -> None:
+    """Print header for a file section."""
+    rel_path = Path(file_path).relative_to(project_root)
+    max_priority = max(m.priority_score for m in file_metrics)
+    print(f"\n{format_priority(max_priority)} {rel_path}")
+    print("-" * 80)
+
+
+def _print_file_metrics(file_metrics: list[FunctionMetrics]) -> None:
+    """Print metrics for a file."""
+    top_metrics = sorted(file_metrics, key=lambda m: m.priority_score, reverse=True)[:5]
+    for metric in top_metrics:
+        if metric.priority_score <= 0:
+            continue
+        _print_function_details(metric)
+
+
+def _get_file_priority(file_metrics: list[FunctionMetrics]) -> float:
+    """Get the maximum priority score for a file."""
+    return max(m.priority_score for m in file_metrics)
+
+
+def _sort_files_by_priority(
+    file_groups: dict[str, list[FunctionMetrics]]
+) -> list[tuple[str, list[FunctionMetrics]]]:
+    """Sort files by their highest priority function."""
+    return sorted(
+        file_groups.items(),
+        key=lambda item: _get_file_priority(item[1]),
+        reverse=True,
+    )
+
+
 def print_detailed_file_view(regular_metrics: list[FunctionMetrics], project_root: Path) -> None:
     """Print detailed view grouped by file."""
     file_groups = _group_metrics_by_file(regular_metrics)
-    
-    sorted_files = sorted(
-        file_groups.items(),
-        key=lambda item: max(m.priority_score for m in item[1]),
-        reverse=True,
-    )
+    sorted_files = _sort_files_by_priority(file_groups)
     
     for file_path, file_metrics in sorted_files[:20]:
-        rel_path = Path(file_path).relative_to(project_root)
-        max_priority = max(m.priority_score for m in file_metrics)
-        print(f"\n{format_priority(max_priority)} {rel_path}")
-        print("-" * 80)
-        
-        top_metrics = sorted(file_metrics, key=lambda m: m.priority_score, reverse=True)[:5]
-        for metric in top_metrics:
-            if metric.priority_score > 0:
-                _print_function_details(metric)
+        _print_file_header(file_path, file_metrics, project_root)
+        _print_file_metrics(file_metrics)
 
 
 def generate_json_report(
