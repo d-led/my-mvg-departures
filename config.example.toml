@@ -205,16 +205,13 @@ max_hours_in_advance = 3
 
 # Second stop: Balanstraße
 [[stops]]
-station_id = "de:09162:1056"
+station_id = "de:09162:1056:1:1"
 station_name = "Balanstr."
+ungrouped_title = "Giesing"
 max_departures_per_stop = 4
 max_departures_per_route = 2
 random_header_colors = true
-show_ungrouped = false
-
-[stops.direction_mappings]
-# Group destinations heading toward Giesing
-"->Giesing" = ["139 Klinikum Harlaching", "59 Giesing Bahnhof"]
+show_ungrouped = true
 
 # Example: Multiple physical stops at the same station
 # If a station has multiple physical stops, define separate [[stops]] entries
