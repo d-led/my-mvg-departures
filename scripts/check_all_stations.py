@@ -4,6 +4,7 @@
 import argparse
 import asyncio
 import sys
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -22,6 +23,18 @@ from mvg_departures.adapters.config.route_configuration_loader import (
     RouteConfigurationLoader,
 )
 from mvg_departures.application.services import DepartureGroupingService
+
+
+@dataclass(frozen=True)
+class StationResult:
+    """Result of checking a single station."""
+
+    station_id: str
+    station_name: str
+    api_provider: str
+    success: bool
+    count: int
+    error: str | None
 
 
 def _create_config_without_env() -> AppConfig:
@@ -163,7 +176,6 @@ async def _check_single_station(
     station_id = stop_config.station_id
     station_name = stop_config.station_name
     api_provider = stop_config.api_provider or "mvg"
-    hafas_profile = stop_config.hafas_profile or "auto"
     
     print(f"Checking: {station_name} ({station_id})", end=" ... ")
     sys.stdout.flush()
@@ -184,7 +196,7 @@ async def _check_single_station(
         if raw_output:
             _print_raw_departure_details(raw_departures)
         
-        return (station_id, station_name, api_provider, hafas_profile, True, len(departures), None)
+        return (station_id, station_name, api_provider, True, len(departures), None)
     except Exception as e:
         error_msg = str(e)
         print(f"✗ FAILED: {error_msg}")
@@ -192,7 +204,7 @@ async def _check_single_station(
             import traceback
             print(f"  Traceback:")
             traceback.print_exc()
-        return (station_id, station_name, api_provider, hafas_profile, False, 0, error_msg)
+        return (station_id, station_name, api_provider, False, 0, error_msg)
 
 
 async def _check_all_stations(
@@ -211,25 +223,57 @@ async def _check_all_stations(
     return results
 
 
+def _format_station_result(result: StationResult) -> str:
+    """Format a single station result line."""
+    if result.error:
+        return f"  ✗ {result.station_name} ({result.station_id}) [{result.api_provider}]: {result.error}"
+    return f"  ✓ {result.station_name} ({result.station_id}) [{result.api_provider}]: {result.count} departures"
+
+
+def _tuple_to_result(tup: tuple) -> StationResult:
+    """Convert result tuple to StationResult dataclass."""
+    station_id, station_name, api_provider, success, count, error = tup
+    return StationResult(
+        station_id=station_id,
+        station_name=station_name,
+        api_provider=api_provider,
+        success=success,
+        count=count or 0,
+        error=error,
+    )
+
+
+def _print_successful_stations(successful: list, total: int) -> None:
+    """Print successful station results."""
+    print(f"\nSuccessful: {len(successful)}/{total}")
+    for result_tuple in successful:
+        result = _tuple_to_result(result_tuple)
+        if result.success:
+            print(_format_station_result(result))
+
+
+def _print_failed_stations(failed: list, total: int) -> None:
+    """Print failed station results."""
+    if not failed:
+        return
+    print(f"\nFailed: {len(failed)}/{total}")
+    for result_tuple in failed:
+        result = _tuple_to_result(result_tuple)
+        print(_format_station_result(result))
+
+
 def _print_summary(results: list) -> None:
     """Print summary of station check results."""
     print("\n" + "=" * 80)
     print("SUMMARY")
     print("=" * 80)
     
-    successful = [r for r in results if r[4]]
-    failed = [r for r in results if not r[4]]
+    successful = [r for r in results if r[3]]
+    failed = [r for r in results if not r[3]]
+    total = len(results)
     
-    print(f"\nSuccessful: {len(successful)}/{len(results)}")
-    for station_id, station_name, api_provider, hafas_profile, _, count, _ in successful:
-        profile_info = f" (profile: {hafas_profile})" if api_provider == "hafas" else ""
-        print(f"  ✓ {station_name} ({station_id}) [{api_provider}]{profile_info}: {count} departures")
-    
-    if failed:
-        print(f"\nFailed: {len(failed)}/{len(results)}")
-        for station_id, station_name, api_provider, hafas_profile, _, _, error in failed:
-            profile_info = f" (profile: {hafas_profile})" if api_provider == "hafas" else ""
-            print(f"  ✗ {station_name} ({station_id}) [{api_provider}]{profile_info}: {error}")
+    _print_successful_stations(successful, total)
+    _print_failed_stations(failed, total)
     
     if failed:
         sys.exit(1)

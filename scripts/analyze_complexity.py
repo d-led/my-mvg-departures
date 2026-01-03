@@ -89,18 +89,40 @@ class FunctionMetrics:
 
     @property
     def priority_score(self) -> float:
-        """Calculate priority score for refactoring (higher = more urgent)."""
+        """Calculate priority score for refactoring (higher = more urgent).
+        
+        Maintainability Index (MI) ranges from 0-100:
+        - 20-100: Maintainable
+        - 10-19: Difficult to maintain
+        - 0-9: Very difficult to maintain
+        Lower MI = higher priority (more urgent to refactor).
+        """
         # Weight factors:
         # - Nesting violations (max 2 allowed): heavy weight
         # - Complexity: medium weight
         # - Function length: light weight
         # - Parameter count: medium weight
+        # - Maintainability Index: medium weight (lower MI = higher penalty)
         nesting_penalty = max(0, (self.max_nesting_level - 2) * 10)
         complexity_penalty = max(0, (self.cyclomatic_complexity - 10) * 2)
         length_penalty = max(0, (self.function_length - 50) * 0.5)
         parameter_penalty = self.parameter_violation * 3
+        
+        # MI penalty: lower MI = higher penalty
+        # MI < 20 is considered difficult to maintain
+        # Scale: MI 0-9 (very difficult) = penalty 5-10, MI 10-19 (difficult) = penalty 2.5-5
+        if self.maintainability_index > 0:
+            if self.maintainability_index < 10:
+                mi_penalty = 10 - (self.maintainability_index * 0.5)  # 5.5 to 10
+            elif self.maintainability_index < 20:
+                mi_penalty = 5 - ((self.maintainability_index - 10) * 0.25)  # 2.5 to 5
+            else:
+                mi_penalty = 0
+        else:
+            # If MI is 0 or not available, use default penalty
+            mi_penalty = 2.5
 
-        return nesting_penalty + complexity_penalty + length_penalty + parameter_penalty
+        return nesting_penalty + complexity_penalty + length_penalty + parameter_penalty + mi_penalty
 
 
 class NestingLevelVisitor(ast.NodeVisitor):
@@ -634,22 +656,39 @@ def collect_protocol_signatures(root_dir: Path) -> dict[str, set[str]]:
     return protocol_signatures
 
 
+def _count_parameter_violations(metrics: list[FunctionMetrics]) -> int:
+    """Count parameter violations in metrics."""
+    return sum(1 for m in metrics if m.parameter_violation > 0)
+
+
+def _count_low_mi(metrics: list[FunctionMetrics]) -> int:
+    """Count functions with low Maintainability Index (< 20)."""
+    return sum(1 for m in metrics if 0 < m.maintainability_index < 20)
+
+
+def _count_low_mi(metrics: list[FunctionMetrics]) -> int:
+    """Count functions with low Maintainability Index (< 20)."""
+    return sum(1 for m in metrics if 0 < m.maintainability_index < 20)
+
+
 def print_summary(
     all_metrics: list[FunctionMetrics],
     regular_metrics: list[FunctionMetrics],
     protocol_metrics: list[FunctionMetrics],
 ) -> None:
     """Print summary statistics."""
-    regular_param_violations = sum(1 for m in regular_metrics if m.parameter_violation > 0)
-    protocol_param_violations = sum(1 for m in protocol_metrics if m.parameter_violation > 0)
+    regular_param_violations = _count_parameter_violations(regular_metrics)
+    protocol_param_violations = _count_parameter_violations(protocol_metrics)
     
     print(f"\nTotal functions analyzed: {len(all_metrics)}")
     print(f"  - Regular functions: {len(regular_metrics)}")
     print(f"  - Protocol/interface methods: {len(protocol_metrics)}")
-    print(f"Functions with nesting > 2: {sum(1 for m in regular_metrics if m.max_nesting_level > 2)}")
-    print(f"Functions with complexity > 10: {sum(1 for m in regular_metrics if m.cyclomatic_complexity > 10)}")
-    print(f"Functions with length > 50: {sum(1 for m in regular_metrics if m.function_length > 50)}")
+    print(f"Functions with nesting > 2: {_count_violations(regular_metrics, 'nesting')}")
+    print(f"Functions with complexity > 10: {_count_violations(regular_metrics, 'complexity')}")
+    print(f"Functions with length > 50: {_count_violations(regular_metrics, 'length')}")
     print(f"Functions with too many parameters: {regular_param_violations} (regular) + {protocol_param_violations} (protocol)")
+    print(f"Functions with low Maintainability Index (< 20): {_count_low_mi(regular_metrics)}")
+    print(f"Functions with low Maintainability Index (< 20): {_count_low_mi(regular_metrics)}")
 
 
 def print_protocol_methods(protocol_metrics: list[FunctionMetrics], project_root: Path) -> None:
@@ -692,6 +731,17 @@ def _group_metrics_by_file(regular_metrics: list[FunctionMetrics]) -> dict[str, 
     return file_groups
 
 
+def _format_mi_status(mi: float) -> str:
+    """Format Maintainability Index status."""
+    if mi == 0:
+        return "N/A"
+    if mi < 10:
+        return f"{mi:.1f} (very difficult)"
+    if mi < 20:
+        return f"{mi:.1f} (difficult)"
+    return f"{mi:.1f} (maintainable)"
+
+
 def _print_function_details(metric: FunctionMetrics) -> None:
     """Print detailed information about a function metric."""
     print(f"  Function: {metric.function_name} (lines {metric.line_start}-{metric.line_end})")
@@ -699,6 +749,7 @@ def _print_function_details(metric: FunctionMetrics) -> None:
     print(f"    Nesting: {metric.max_nesting_level} (max 2 allowed)")
     print(f"    Complexity: {metric.cyclomatic_complexity} (recommended < 10)")
     print(f"    Length: {metric.function_length} lines (recommended < 50)")
+    print(f"    Maintainability Index: {_format_mi_status(metric.maintainability_index)}")
     param_info, max_allowed = format_parameter_info(metric)
     print(f"    Parameters: {param_info} (max {max_allowed} allowed: 4 regular + *args + **kwargs)")
     if metric.parameter_violation > 0:
@@ -749,6 +800,63 @@ def print_detailed_file_view(regular_metrics: list[FunctionMetrics], project_roo
         _print_file_metrics(file_metrics)
 
 
+def _count_violations(metrics: list[FunctionMetrics], violation_type: str) -> int:
+    """Count violations of a specific type."""
+    if violation_type == "nesting":
+        return sum(1 for m in metrics if m.max_nesting_level > 2)
+    if violation_type == "complexity":
+        return sum(1 for m in metrics if m.cyclomatic_complexity > 10)
+    if violation_type == "length":
+        return sum(1 for m in metrics if m.function_length > 50)
+    if violation_type == "parameters":
+        return sum(1 for m in metrics if m.parameter_violation > 0)
+    return 0
+
+
+def _build_summary_data(
+    all_metrics: list[FunctionMetrics],
+    regular_metrics: list[FunctionMetrics],
+    protocol_metrics: list[FunctionMetrics],
+) -> dict:
+    """Build summary statistics dictionary."""
+    return {
+        "total_functions": len(all_metrics),
+        "regular_functions": len(regular_metrics),
+        "protocol_methods": len(protocol_metrics),
+        "functions_with_nesting_violations": _count_violations(regular_metrics, "nesting"),
+        "functions_with_high_complexity": _count_violations(regular_metrics, "complexity"),
+        "functions_with_high_length": _count_violations(regular_metrics, "length"),
+        "functions_with_too_many_parameters": _count_violations(regular_metrics, "parameters"),
+        "protocol_methods_with_too_many_parameters": _count_violations(protocol_metrics, "parameters"),
+        "functions_with_low_maintainability_index": _count_low_mi(regular_metrics),
+    }
+
+
+def _metric_to_dict(metric: FunctionMetrics) -> dict:
+    """Convert a FunctionMetrics object to a dictionary."""
+    return {
+        "file": metric.file_path,
+        "function": metric.function_name,
+        "line_start": metric.line_start,
+        "line_end": metric.line_end,
+        "cyclomatic_complexity": metric.cyclomatic_complexity,
+        "max_nesting_level": metric.max_nesting_level,
+        "function_length": metric.function_length,
+        "parameter_count": metric.parameter_count,
+        "has_varargs": metric.has_varargs,
+        "has_kwargs": metric.has_kwargs,
+        "parameter_violation": metric.parameter_violation,
+        "maintainability_index": metric.maintainability_index,
+        "priority_score": metric.priority_score,
+        "is_protocol_method": metric.is_protocol_method,
+    }
+
+
+def _should_include_metric(metric: FunctionMetrics) -> bool:
+    """Determine if a metric should be included in the report."""
+    return metric.priority_score > 0 or (metric.is_protocol_method and metric.parameter_violation > 0)
+
+
 def generate_json_report(
     all_metrics: list[FunctionMetrics],
     regular_metrics: list[FunctionMetrics],
@@ -756,39 +864,12 @@ def generate_json_report(
     report_path: Path,
 ) -> None:
     """Generate JSON report file."""
-    regular_param_violations = sum(1 for m in regular_metrics if m.parameter_violation > 0)
-    protocol_param_violations = sum(1 for m in protocol_metrics if m.parameter_violation > 0)
-    
     report_data = {
-        "summary": {
-            "total_functions": len(all_metrics),
-            "regular_functions": len(regular_metrics),
-            "protocol_methods": len(protocol_metrics),
-            "functions_with_nesting_violations": sum(1 for m in regular_metrics if m.max_nesting_level > 2),
-            "functions_with_high_complexity": sum(1 for m in regular_metrics if m.cyclomatic_complexity > 10),
-            "functions_with_high_length": sum(1 for m in regular_metrics if m.function_length > 50),
-            "functions_with_too_many_parameters": regular_param_violations,
-            "protocol_methods_with_too_many_parameters": protocol_param_violations,
-        },
+        "summary": _build_summary_data(all_metrics, regular_metrics, protocol_metrics),
         "functions": [
-            {
-                "file": m.file_path,
-                "function": m.function_name,
-                "line_start": m.line_start,
-                "line_end": m.line_end,
-                "cyclomatic_complexity": m.cyclomatic_complexity,
-                "max_nesting_level": m.max_nesting_level,
-                "function_length": m.function_length,
-                "parameter_count": m.parameter_count,
-                "has_varargs": m.has_varargs,
-                "has_kwargs": m.has_kwargs,
-                "parameter_violation": m.parameter_violation,
-                "maintainability_index": m.maintainability_index,
-                "priority_score": m.priority_score,
-                "is_protocol_method": m.is_protocol_method,
-            }
+            _metric_to_dict(m)
             for m in all_metrics
-            if m.priority_score > 0 or (m.is_protocol_method and m.parameter_violation > 0)
+            if _should_include_metric(m)
         ],
     }
     
