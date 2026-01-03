@@ -39,6 +39,48 @@ logger = logging.getLogger(__name__)
 class DeparturesLiveView(LiveView[DeparturesState]):
     """LiveView for displaying MVG departures."""
 
+    def _validate_init_parameters(
+        self,
+        config: AppConfig,
+        stop_configs: list[StopConfiguration],
+        presence_tracker: PresenceTrackerProtocol,
+        grouping_service: DepartureGroupingService,
+    ) -> None:
+        """Validate initialization parameters."""
+        if not isinstance(config, AppConfig):
+            raise TypeError("config must be an AppConfig instance")
+        if not isinstance(stop_configs, list) or not all(
+            isinstance(sc, StopConfiguration) for sc in stop_configs
+        ):
+            raise TypeError("stop_configs must be a list of StopConfiguration instances")
+        # Protocols can't be checked with isinstance, but we verify required methods exist
+        _ = presence_tracker.join_dashboard  # Runtime usage - ensures Ruff detects dependency
+        _ = grouping_service.group_departures  # Runtime usage - ensures Ruff detects dependency
+        if not callable(presence_tracker.join_dashboard):
+            raise TypeError("presence_tracker must implement PresenceTrackerProtocol")
+        if not callable(grouping_service.group_departures):
+            raise TypeError("grouping_service must implement DepartureGroupingService protocol")
+
+    def _initialize_components(
+        self,
+        stop_configs: list[StopConfiguration],
+        config: AppConfig,
+        random_header_colors: bool,
+        header_background_brightness: float,
+        random_color_salt: int,
+    ) -> None:
+        """Initialize formatter, broadcaster, and calculator components."""
+        self.formatter = DepartureFormatter(config)
+        self.presence_broadcaster = PresenceBroadcaster()
+        self.departure_grouping_calculator = DepartureGroupingCalculator(
+            stop_configs,
+            config,
+            self.formatter,
+            random_header_colors,
+            header_background_brightness,
+            random_color_salt,
+        )
+
     def __init__(
         self,
         state_manager: State,
@@ -71,21 +113,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             random_color_salt: Salt value for hash-based color generation (default 0).
         """
         super().__init__()
-        # Runtime usage - these assignments ensure Ruff detects runtime dependency
-        if not isinstance(config, AppConfig):
-            raise TypeError("config must be an AppConfig instance")
-        if not isinstance(stop_configs, list) or not all(
-            isinstance(sc, StopConfiguration) for sc in stop_configs
-        ):
-            raise TypeError("stop_configs must be a list of StopConfiguration instances")
-        # Protocols can't be checked with isinstance, but we verify required methods exist
-        # Access methods directly to make runtime dependency explicit for Ruff
-        _ = presence_tracker.join_dashboard  # Runtime usage - ensures Ruff detects dependency
-        _ = grouping_service.group_departures  # Runtime usage - ensures Ruff detects dependency
-        if not callable(presence_tracker.join_dashboard):
-            raise TypeError("presence_tracker must implement PresenceTrackerProtocol")
-        if not callable(grouping_service.group_departures):
-            raise TypeError("grouping_service must implement DepartureGroupingService protocol")
+        self._validate_init_parameters(config, stop_configs, presence_tracker, grouping_service)
 
         self.state_manager = state_manager
         self.grouping_service = grouping_service
@@ -99,17 +127,14 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         self.random_header_colors = random_header_colors
         self.header_background_brightness = header_background_brightness
         self.random_color_salt = random_color_salt
-        self.formatter = DepartureFormatter(config)
-        self.presence_broadcaster = PresenceBroadcaster()
-        self.departure_grouping_calculator = DepartureGroupingCalculator(
+
+        self._initialize_components(
             stop_configs,
             config,
-            self.formatter,
             random_header_colors,
             header_background_brightness,
             random_color_salt,
         )
-        # Generate static version for cache busting
         self._static_version = self._get_static_version()
 
     def _update_presence_from_event(
@@ -798,6 +823,62 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             return self._create_error_template(e, meta)  # type: ignore[no-any-return]
 
 
+def _capture_live_view_parameters(
+    state_manager: State,
+    grouping_service: DepartureGroupingService,
+    stop_configs: list[StopConfiguration],
+    config: AppConfig,
+    presence_tracker: PresenceTrackerProtocol,
+    route_title: str | None,
+    route_theme: str | None,
+    fill_vertical_space: bool,
+    font_scaling_factor_when_filling: float,
+    random_header_colors: bool,
+    header_background_brightness: float,
+    random_color_salt: int,
+) -> dict[str, Any]:
+    """Capture parameters in closure to avoid late binding issues."""
+    return {
+        "state_manager": state_manager,
+        "stop_configs": stop_configs,
+        "grouping_service": grouping_service,
+        "config": config,
+        "presence_tracker": presence_tracker,
+        "route_title": route_title,
+        "route_theme": route_theme,
+        "fill_vertical_space": fill_vertical_space,
+        "font_scaling_factor_when_filling": font_scaling_factor_when_filling,
+        "random_header_colors": random_header_colors,
+        "header_background_brightness": header_background_brightness,
+        "random_color_salt": random_color_salt,
+    }
+
+
+def _create_configured_live_view_class(captured: dict[str, Any]) -> type[DeparturesLiveView]:
+    """Create configured LiveView class with captured parameters."""
+
+    class ConfiguredDeparturesLiveView(DeparturesLiveView):
+        """Configured LiveView for a specific route."""
+
+        def __init__(self) -> None:
+            super().__init__(
+                captured["state_manager"],
+                captured["grouping_service"],
+                captured["stop_configs"],
+                captured["config"],
+                captured["presence_tracker"],
+                captured["route_title"],
+                captured["route_theme"],
+                captured["fill_vertical_space"],
+                captured["font_scaling_factor_when_filling"],
+                captured["random_header_colors"],
+                captured["header_background_brightness"],
+                captured["random_color_salt"],
+            )
+
+    return ConfiguredDeparturesLiveView
+
+
 def create_departures_live_view(
     state_manager: State,
     grouping_service: DepartureGroupingService,
@@ -835,37 +916,18 @@ def create_departures_live_view(
     Returns:
         A configured DeparturesLiveView class that can be registered with PyView.
     """
-    # Capture values in closure to avoid late binding issues
-    captured_state = state_manager
-    captured_stop_configs = stop_configs
-    captured_grouping_service = grouping_service
-    captured_config = config
-    captured_presence_tracker = presence_tracker
-    captured_route_title = route_title
-    captured_route_theme = route_theme
-    captured_fill_vertical_space = fill_vertical_space
-    captured_font_scaling_factor_when_filling = font_scaling_factor_when_filling
-    captured_random_header_colors = random_header_colors
-    captured_header_background_brightness = header_background_brightness
-    captured_random_color_salt = random_color_salt
-
-    class ConfiguredDeparturesLiveView(DeparturesLiveView):
-        """Configured LiveView for a specific route."""
-
-        def __init__(self) -> None:
-            super().__init__(
-                captured_state,
-                captured_grouping_service,
-                captured_stop_configs,
-                captured_config,
-                captured_presence_tracker,
-                captured_route_title,
-                captured_route_theme,
-                captured_fill_vertical_space,
-                captured_font_scaling_factor_when_filling,
-                captured_random_header_colors,
-                captured_header_background_brightness,
-                captured_random_color_salt,
-            )
-
-    return ConfiguredDeparturesLiveView
+    captured = _capture_live_view_parameters(
+        state_manager,
+        grouping_service,
+        stop_configs,
+        config,
+        presence_tracker,
+        route_title,
+        route_theme,
+        fill_vertical_space,
+        font_scaling_factor_when_filling,
+        random_header_colors,
+        header_background_brightness,
+        random_color_salt,
+    )
+    return _create_configured_live_view_class(captured)

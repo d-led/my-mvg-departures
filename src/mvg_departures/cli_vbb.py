@@ -235,21 +235,28 @@ def _build_vbb_routes_dict(
     }
 
 
+async def _process_vbb_station_details(
+    session: aiohttp.ClientSession, station_id: str
+) -> dict[str, Any] | None:
+    """Process VBB station details from API."""
+    departures_data = await _fetch_departures(session, station_id)
+    if not departures_data:
+        return None
+
+    routes, route_details = _process_departures(departures_data)
+    station_name = departures_data[0].get("stop", {}).get("name", "") or station_id
+
+    return {
+        "station": _build_vbb_station_info(station_id, station_name),
+        "routes": _build_vbb_routes_dict(routes, route_details),
+    }
+
+
 async def get_station_details_vbb(station_id: str) -> dict[str, Any] | None:
     """Get detailed information about a VBB station including routes."""
     try:
         async with aiohttp.ClientSession() as session:
-            departures_data = await _fetch_departures(session, station_id)
-            if not departures_data:
-                return None
-
-            routes, route_details = _process_departures(departures_data)
-            station_name = departures_data[0].get("stop", {}).get("name", "") or station_id
-
-            return {
-                "station": _build_vbb_station_info(station_id, station_name),
-                "routes": _build_vbb_routes_dict(routes, route_details),
-            }
+            return await _process_vbb_station_details(session, station_id)
     except Exception as e:
         print(f"Error getting station details: {e}", file=sys.stderr)
         return None

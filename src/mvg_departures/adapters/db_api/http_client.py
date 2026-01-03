@@ -207,6 +207,23 @@ class DbHttpClient:
         await self._log_error_response(response, url)
         return None
 
+    async def _fetch_departures_with_rate_limit(
+        self, url: str, params: dict[str, str | int]
+    ) -> list[dict[str, Any]] | None:
+        """Fetch departures with rate limiting."""
+        if not self._session:
+            return None
+
+        rate_limiter = await self._get_rate_limiter()
+        await rate_limiter.acquire()
+
+        try:
+            async with self._session.get(url, params=params, ssl=False) as response:
+                return await self._handle_departures_response(response, url)
+        except Exception as e:
+            logger.warning(f"Error fetching DB departures for {url}: {e}")
+            return None
+
     async def fetch_departures(self, station_id: str, duration: int = 60) -> list[dict[str, Any]]:
         """Fetch departures from v6.db.transport.rest/stops/{id}/departures.
 
@@ -223,15 +240,5 @@ class DbHttpClient:
         url = f"{DB_STOPS_URL}/{station_id}/departures"
         params: dict[str, str | int] = {"duration": duration, "results": 100}
 
-        rate_limiter = await self._get_rate_limiter()
-        await rate_limiter.acquire()
-
-        try:
-            async with self._session.get(url, params=params, ssl=False) as response:
-                result = await self._handle_departures_response(response, url)
-                if result is not None:
-                    return result
-        except Exception as e:
-            logger.warning(f"Error fetching DB departures for {url}: {e}")
-
-        return []
+        result = await self._fetch_departures_with_rate_limit(url, params)
+        return result if result is not None else []

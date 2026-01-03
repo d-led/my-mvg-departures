@@ -289,6 +289,17 @@ def _get_mvg_routes_headers() -> dict[str, str]:
     }
 
 
+async def _handle_routes_response(
+    response: aiohttp.ClientResponse, station_id: str
+) -> dict[str, Any] | None:
+    """Handle routes API response."""
+    if response.status != 200:
+        return None
+
+    data = await response.json()
+    return await _process_routes_response(data, station_id)
+
+
 async def _get_routes_from_endpoint(
     station_id: str, session: aiohttp.ClientSession
 ) -> dict[str, Any] | None:
@@ -297,11 +308,7 @@ async def _get_routes_from_endpoint(
         url = f"https://www.mvg.de/api/bgw-pt/v3/lines/{station_id}"
         headers = _get_mvg_routes_headers()
         async with session.get(url, headers=headers) as response:
-            if response.status != 200:
-                return None
-
-            data = await response.json()
-            return await _process_routes_response(data, station_id)
+            return await _handle_routes_response(response, station_id)
     except Exception:
         return None
 
@@ -358,6 +365,25 @@ def _build_stop_point_mapping_url(station_id: str, limit: int) -> str:
     )
 
 
+def _process_stop_point_mapping_response(
+    data: Any, stop_point_mapping: dict[str, dict[str, Any]]
+) -> None:
+    """Process stop point mapping API response."""
+    if isinstance(data, list):
+        _process_departures_for_mapping(data, stop_point_mapping)
+
+
+async def _handle_stop_point_mapping_response(
+    response: aiohttp.ClientResponse, stop_point_mapping: dict[str, dict[str, Any]]
+) -> None:
+    """Handle stop point mapping API response."""
+    if response.status != 200:
+        return
+
+    data = await response.json()
+    _process_stop_point_mapping_response(data, stop_point_mapping)
+
+
 async def _get_stop_point_mapping(
     station_id: str, session: aiohttp.ClientSession, limit: int = 100
 ) -> dict[str, dict[str, Any]]:
@@ -368,12 +394,7 @@ async def _get_stop_point_mapping(
         url = _build_stop_point_mapping_url(station_id, limit)
         headers = _get_mvg_routes_headers()
         async with session.get(url, headers=headers) as response:
-            if response.status != 200:
-                return stop_point_mapping
-
-            data = await response.json()
-            if isinstance(data, list):
-                _process_departures_for_mapping(data, stop_point_mapping)
+            await _handle_stop_point_mapping_response(response, stop_point_mapping)
     except Exception:
         pass
 
@@ -465,28 +486,35 @@ def _build_station_result(
     }
 
 
+async def _process_station_details(
+    session: aiohttp.ClientSession, station_id: str, limit: int
+) -> dict[str, Any] | None:
+    """Process station details from API."""
+    stop_point_mapping = await _get_stop_point_mapping(station_id, session, limit)
+    routes_from_endpoint = await _get_routes_from_endpoint(station_id, session)
+
+    departures = await MvgApi.departures_async(station_id, limit=limit, session=session)
+    if not departures:
+        return None
+
+    routes, route_details = _build_routes_from_departures(departures)
+    _merge_route_details(routes, route_details, routes_from_endpoint)
+
+    return _build_station_result(
+        station_id,
+        routes,
+        route_details,
+        stop_point_mapping,
+        departures,
+        routes_from_endpoint,
+    )
+
+
 async def get_station_details(station_id: str, limit: int = 100) -> dict[str, Any] | None:
     """Get detailed information about a station."""
     async with aiohttp.ClientSession() as session:
         try:
-            stop_point_mapping = await _get_stop_point_mapping(station_id, session, limit)
-            routes_from_endpoint = await _get_routes_from_endpoint(station_id, session)
-
-            departures = await MvgApi.departures_async(station_id, limit=limit, session=session)
-            if not departures:
-                return None
-
-            routes, route_details = _build_routes_from_departures(departures)
-            _merge_route_details(routes, route_details, routes_from_endpoint)
-
-            return _build_station_result(
-                station_id,
-                routes,
-                route_details,
-                stop_point_mapping,
-                departures,
-                routes_from_endpoint,
-            )
+            return await _process_station_details(session, station_id, limit)
         except Exception as e:
             print(f"Error fetching station details: {e}", file=sys.stderr)
             return None
@@ -969,23 +997,52 @@ async def show_station_info(station_id: str, format_json: bool = False) -> None:
             )
 
 
+def _extract_destinations_from_dict(route_data: dict[str, Any]) -> list[str]:
+    """Extract destinations from dictionary route data."""
+    destinations = route_data.get("destinations", [])
+    if isinstance(destinations, list):
+        return [str(d) for d in destinations]
+    return []
+
+
+def _extract_destinations_from_route_data(route_data: Any) -> list[str]:
+    """Extract destinations from a single route data item."""
+    if isinstance(route_data, dict):
+        return _extract_destinations_from_dict(route_data)
+    if isinstance(route_data, list):
+        return [str(d) for d in route_data]
+    return []
+
+
 def _extract_all_destinations(routes: dict[str, Any]) -> set[str]:
     """Extract all destinations from routes dictionary."""
     all_destinations = set()
     for route_data in routes.values():
-        if isinstance(route_data, dict):
-            destinations = route_data.get("destinations", [])
-            all_destinations.update(destinations)
-        elif isinstance(route_data, list):
-            all_destinations.update(route_data)
+        destinations = _extract_destinations_from_route_data(route_data)
+        all_destinations.update(destinations)
     return all_destinations
+
+
+def _create_destination_chunks(destinations_list: list[str]) -> list[list[str]]:
+    """Create chunks of destinations for direction grouping."""
+    chunk_size = max(2, len(destinations_list) // 3)
+    return [
+        destinations_list[j : j + chunk_size] for j in range(0, len(destinations_list), chunk_size)
+    ]
+
+
+def _add_direction_mappings_to_snippet(snippet: str, destinations_list: list[str]) -> str:
+    """Add direction mappings to config snippet."""
+    chunks = _create_destination_chunks(destinations_list)
+    for i, chunk in enumerate(chunks, 1):
+        snippet += f'"->Direction{i}" = {json.dumps(chunk, ensure_ascii=False)}\n'
+    return snippet
 
 
 def generate_config_snippet(station_id: str, station_name: str, routes: dict[str, Any]) -> str:
     """Generate a TOML config snippet for a station."""
     all_destinations = _extract_all_destinations(routes)
 
-    # Create a simple config snippet
     snippet = f"""[[stops]]
 station_id = "{station_id}"
 station_name = "{station_name}"
@@ -996,20 +1053,9 @@ max_departures_per_stop = 30
 # Example based on available destinations:
 """
 
-    # Suggest some direction mappings based on common destination patterns
     destinations_list = sorted(all_destinations)
     if destinations_list:
-        # Simple grouping - user can customize
-        # Group into 2-3 directions
-        chunk_size = max(2, len(destinations_list) // 3)
-        for i, chunk in enumerate(
-            [
-                destinations_list[j : j + chunk_size]
-                for j in range(0, len(destinations_list), chunk_size)
-            ],
-            1,
-        ):
-            snippet += f'"->Direction{i}" = {json.dumps(chunk, ensure_ascii=False)}\n'
+        snippet = _add_direction_mappings_to_snippet(snippet, destinations_list)
 
     return snippet
 

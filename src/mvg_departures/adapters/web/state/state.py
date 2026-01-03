@@ -174,6 +174,12 @@ class State:
         )
         return True
 
+    def _cleanup_empty_browser_tracking(self, browser_id: str) -> None:
+        """Remove browser tracking if no sockets remain."""
+        sockets_for_browser = self._browser_sockets.get(browser_id)
+        if sockets_for_browser is not None and not sockets_for_browser:
+            del self._browser_sockets[browser_id]
+
     def _remove_socket_from_browser_tracking(self, socket: LiveViewSocket[DeparturesState]) -> None:
         """Remove socket from browser-based tracking."""
         browser_id = self._socket_browser.pop(socket, None)
@@ -181,8 +187,7 @@ class State:
             sockets_for_browser = self._browser_sockets.get(browser_id)
             if sockets_for_browser is not None:
                 sockets_for_browser.discard(socket)
-                if not sockets_for_browser:
-                    del self._browser_sockets[browser_id]
+                self._cleanup_empty_browser_tracking(browser_id)
 
     def _remove_socket_from_session_tracking(self, socket: LiveViewSocket[DeparturesState]) -> None:
         """Remove socket from session-based tracking."""

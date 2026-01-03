@@ -187,32 +187,39 @@ def _process_departures_for_details(
         _process_route(line, transport_type, destination, stop_point_id, routes)
 
 
+async def _process_db_station_details(
+    session: aiohttp.ClientSession, station_id: str, limit: int, duration_minutes: int
+) -> dict[str, Any] | None:
+    """Process DB station details from API."""
+    repo = DbDepartureRepository(session=session)
+    departures = await repo.get_departures(
+        station_id, limit=limit, duration_minutes=duration_minutes
+    )
+
+    if not departures:
+        return None
+
+    routes: dict[str, dict[str, Any]] = {}
+    sub_stops: dict[str, dict[str, Any]] = {}
+
+    _process_departures_for_details(departures, routes, sub_stops)
+    _normalize_sets_to_lists(routes, sub_stops)
+
+    return {
+        "station_id": station_id,
+        "routes": routes,
+        "sub_stops": sub_stops,
+        "departures_count": len(departures),
+    }
+
+
 async def get_station_details_db(
     station_id: str, limit: int = 100, duration_minutes: int = 120
 ) -> dict[str, Any] | None:
     """Get station details including routes and sub-stops from departures."""
     try:
         async with aiohttp.ClientSession() as session:
-            repo = DbDepartureRepository(session=session)
-            departures = await repo.get_departures(
-                station_id, limit=limit, duration_minutes=duration_minutes
-            )
-
-            if not departures:
-                return None
-
-            routes: dict[str, dict[str, Any]] = {}
-            sub_stops: dict[str, dict[str, Any]] = {}
-
-            _process_departures_for_details(departures, routes, sub_stops)
-            _normalize_sets_to_lists(routes, sub_stops)
-
-            return {
-                "station_id": station_id,
-                "routes": routes,
-                "sub_stops": sub_stops,
-                "departures_count": len(departures),
-            }
+            return await _process_db_station_details(session, station_id, limit, duration_minutes)
     except Exception as e:
         print(f"Error getting station details: {e}", file=sys.stderr)
         return None
