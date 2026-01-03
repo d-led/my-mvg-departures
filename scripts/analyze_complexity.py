@@ -5,6 +5,7 @@ Measures:
 - Cyclomatic complexity (via radon)
 - Maximum nesting level per function
 - Function length (lines of code)
+- Parameter count (max 4 regular params + *args + **kwargs)
 - Overall priority score for refactoring
 """
 
@@ -41,7 +42,21 @@ class FunctionMetrics:
     cyclomatic_complexity: int
     max_nesting_level: int
     function_length: int
+    parameter_count: int
+    has_varargs: bool
+    has_kwargs: bool
     maintainability_index: float
+
+    @property
+    def parameter_violation(self) -> int:
+        """Calculate parameter count violation (0 if OK, positive if too many)."""
+        # Max allowed: 4 regular params + *args + **kwargs
+        max_allowed = 4
+        if self.has_varargs:
+            max_allowed += 1
+        if self.has_kwargs:
+            max_allowed += 1
+        return max(0, self.parameter_count - max_allowed)
 
     @property
     def priority_score(self) -> float:
@@ -50,11 +65,13 @@ class FunctionMetrics:
         # - Nesting violations (max 2 allowed): heavy weight
         # - Complexity: medium weight
         # - Function length: light weight
+        # - Parameter count: medium weight
         nesting_penalty = max(0, (self.max_nesting_level - 2) * 10)
         complexity_penalty = max(0, (self.cyclomatic_complexity - 10) * 2)
         length_penalty = max(0, (self.function_length - 50) * 0.5)
+        parameter_penalty = self.parameter_violation * 3
 
-        return nesting_penalty + complexity_penalty + length_penalty
+        return nesting_penalty + complexity_penalty + length_penalty + parameter_penalty
 
 
 class NestingLevelVisitor(ast.NodeVisitor):
@@ -90,6 +107,26 @@ class NestingLevelVisitor(ast.NodeVisitor):
             self.current_nesting -= 1
         else:
             self.generic_visit(node)
+
+
+def count_parameters(node: ast.FunctionDef | ast.AsyncFunctionDef) -> tuple[int, bool, bool]:
+    """Count function parameters.
+    
+    Returns:
+        Tuple of (regular_param_count, has_varargs, has_kwargs)
+        Regular params exclude 'self' and 'cls'.
+    """
+    args = node.args
+    regular_count = 0
+    has_varargs = args.vararg is not None
+    has_kwargs = args.kwarg is not None
+    
+    # Count regular arguments, excluding 'self' and 'cls'
+    for arg in args.args:
+        if arg.arg not in ('self', 'cls'):
+            regular_count += 1
+    
+    return regular_count, has_varargs, has_kwargs
 
 
 def analyze_file(file_path: Path) -> list[FunctionMetrics]:
@@ -141,6 +178,9 @@ def analyze_file(file_path: Path) -> list[FunctionMetrics]:
             visitor.visit(node)
             max_nesting = visitor.max_nesting
 
+            # Count parameters
+            param_count, has_varargs, has_kwargs = count_parameters(node)
+
             # Find matching radon result (or estimate complexity)
             cyclomatic_complexity = 1  # Default
             if RADON_AVAILABLE:
@@ -166,6 +206,9 @@ def analyze_file(file_path: Path) -> list[FunctionMetrics]:
                     cyclomatic_complexity=cyclomatic_complexity,
                     max_nesting_level=max_nesting,
                     function_length=function_length,
+                    parameter_count=param_count,
+                    has_varargs=has_varargs,
+                    has_kwargs=has_kwargs,
                     maintainability_index=float(mi_score),
                 )
             )
@@ -225,6 +268,7 @@ def print_priority_table(top_metrics: list[FunctionMetrics], limit: int = 30) ->
         'nest': 6,
         'complex': 8,
         'length': 8,
+        'params': 8,
     }
     
     header = (
@@ -234,7 +278,8 @@ def print_priority_table(top_metrics: list[FunctionMetrics], limit: int = 30) ->
         f"{'Lines':<{col_widths['lines']}} "
         f"{'Nest':<{col_widths['nest']}} "
         f"{'Complex':<{col_widths['complex']}} "
-        f"{'Length':<{col_widths['length']}}"
+        f"{'Length':<{col_widths['length']}} "
+        f"{'Params':<{col_widths['params']}}"
     )
     separator = "=" * len(header)
     print(f"\n{separator}")
@@ -256,6 +301,13 @@ def print_priority_table(top_metrics: list[FunctionMetrics], limit: int = 30) ->
         nest_str = f"{metric.max_nesting_level}"
         complex_str = f"{metric.cyclomatic_complexity}"
         length_str = f"{metric.function_length}"
+        # Format params: show count + *args/**kwargs indicators
+        param_parts = [str(metric.parameter_count)]
+        if metric.has_varargs:
+            param_parts.append("*args")
+        if metric.has_kwargs:
+            param_parts.append("**kwargs")
+        params_str = "+".join(param_parts)
 
         row = (
             f"{priority_str:<{col_widths['priority']}} "
@@ -264,13 +316,14 @@ def print_priority_table(top_metrics: list[FunctionMetrics], limit: int = 30) ->
             f"{lines_str:<{col_widths['lines']}} "
             f"{nest_str:<{col_widths['nest']}} "
             f"{complex_str:<{col_widths['complex']}} "
-            f"{length_str:<{col_widths['length']}}"
+            f"{length_str:<{col_widths['length']}} "
+            f"{params_str:<{col_widths['params']}}"
         )
         print(row)
 
     print(separator)
     print(f"\nShowing top {min(limit, len(top_metrics))} functions by priority score")
-    print("Legend: Nest = Max nesting level, Complex = Cyclomatic complexity, Length = Lines of code")
+    print("Legend: Nest = Max nesting level, Complex = Cyclomatic complexity, Length = Lines of code, Params = Parameter count")
 
 
 def main() -> None:
@@ -301,6 +354,7 @@ def main() -> None:
     print(f"Functions with nesting > 2: {sum(1 for m in all_metrics if m.max_nesting_level > 2)}")
     print(f"Functions with complexity > 10: {sum(1 for m in all_metrics if m.cyclomatic_complexity > 10)}")
     print(f"Functions with length > 50: {sum(1 for m in all_metrics if m.function_length > 50)}")
+    print(f"Functions with too many parameters: {sum(1 for m in all_metrics if m.parameter_violation > 0)}")
 
     # Print top priorities in tabular format
     print("\n" + "=" * 80)
@@ -344,6 +398,15 @@ def main() -> None:
                 print(f"    Nesting: {metric.max_nesting_level} (max 2 allowed)")
                 print(f"    Complexity: {metric.cyclomatic_complexity} (recommended < 10)")
                 print(f"    Length: {metric.function_length} lines (recommended < 50)")
+                param_info = f"{metric.parameter_count}"
+                if metric.has_varargs:
+                    param_info += " + *args"
+                if metric.has_kwargs:
+                    param_info += " + **kwargs"
+                max_allowed = 4 + (1 if metric.has_varargs else 0) + (1 if metric.has_kwargs else 0)
+                print(f"    Parameters: {param_info} (max {max_allowed} allowed: 4 regular + *args + **kwargs)")
+                if metric.parameter_violation > 0:
+                    print(f"      ⚠️  {metric.parameter_violation} parameter(s) over limit")
                 print()
 
     # Generate JSON report
@@ -354,6 +417,7 @@ def main() -> None:
             "functions_with_nesting_violations": sum(1 for m in all_metrics if m.max_nesting_level > 2),
             "functions_with_high_complexity": sum(1 for m in all_metrics if m.cyclomatic_complexity > 10),
             "functions_with_high_length": sum(1 for m in all_metrics if m.function_length > 50),
+            "functions_with_too_many_parameters": sum(1 for m in all_metrics if m.parameter_violation > 0),
         },
         "functions": [
             {
@@ -364,6 +428,10 @@ def main() -> None:
                 "cyclomatic_complexity": m.cyclomatic_complexity,
                 "max_nesting_level": m.max_nesting_level,
                 "function_length": m.function_length,
+                "parameter_count": m.parameter_count,
+                "has_varargs": m.has_varargs,
+                "has_kwargs": m.has_kwargs,
+                "parameter_violation": m.parameter_violation,
                 "maintainability_index": m.maintainability_index,
                 "priority_score": m.priority_score,
             }
