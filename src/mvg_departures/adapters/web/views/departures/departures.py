@@ -6,6 +6,7 @@ import hashlib
 import logging
 import os
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -34,6 +35,45 @@ from mvg_departures.domain.ports import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class LiveViewDependencies:
+    """Core dependencies required for LiveView initialization.
+
+    Groups together services and repositories that the LiveView depends on.
+    """
+
+    state_manager: State
+    grouping_service: DepartureGroupingService
+    stop_configs: list[StopConfiguration]
+    config: AppConfig
+    presence_tracker: PresenceTrackerProtocol
+
+
+@dataclass(frozen=True)
+class RouteDisplaySettings:
+    """Route-specific display settings that override global configuration.
+
+    These settings are specific to a route and take precedence over global config.
+    """
+
+    title: str | None = None
+    theme: str | None = None
+
+
+@dataclass(frozen=True)
+class DisplayConfiguration:
+    """Visual and UI display configuration for the LiveView.
+
+    Groups together all visual rendering settings that control how departures are displayed.
+    """
+
+    fill_vertical_space: bool = False
+    font_scaling_factor_when_filling: float = 1.0
+    random_header_colors: bool = False
+    header_background_brightness: float = 0.7
+    random_color_salt: int = 0
 
 
 class DeparturesLiveView(LiveView[DeparturesState]):
@@ -83,71 +123,56 @@ class DeparturesLiveView(LiveView[DeparturesState]):
 
     def _assign_instance_variables(
         self,
-        state_manager: State,
-        grouping_service: DepartureGroupingService,
-        stop_configs: list[StopConfiguration],
-        config: AppConfig,
-        presence_tracker: PresenceTrackerProtocol,
-        route_title: str | None,
-        route_theme: str | None,
-        fill_vertical_space: bool,
-        font_scaling_factor_when_filling: float,
-        random_header_colors: bool,
-        header_background_brightness: float,
-        random_color_salt: int,
+        dependencies: LiveViewDependencies,
+        route_display: RouteDisplaySettings,
+        display_config: DisplayConfiguration,
     ) -> None:
-        """Assign instance variables from parameters."""
-        self.state_manager = state_manager
-        self.grouping_service = grouping_service
-        self.stop_configs = stop_configs
-        self.config = config
-        self.presence_tracker = presence_tracker
-        self.route_title = route_title
-        self.route_theme = route_theme
-        self.fill_vertical_space = fill_vertical_space
-        self.font_scaling_factor_when_filling = font_scaling_factor_when_filling
-        self.random_header_colors = random_header_colors
-        self.header_background_brightness = header_background_brightness
-        self.random_color_salt = random_color_salt
+        """Assign instance variables from typed configuration objects."""
+        self.state_manager = dependencies.state_manager
+        self.grouping_service = dependencies.grouping_service
+        self.stop_configs = dependencies.stop_configs
+        self.config = dependencies.config
+        self.presence_tracker = dependencies.presence_tracker
+        self.route_title = route_display.title
+        self.route_theme = route_display.theme
+        self.fill_vertical_space = display_config.fill_vertical_space
+        self.font_scaling_factor_when_filling = display_config.font_scaling_factor_when_filling
+        self.random_header_colors = display_config.random_header_colors
+        self.header_background_brightness = display_config.header_background_brightness
+        self.random_color_salt = display_config.random_color_salt
 
     def __init__(
         self,
-        state_manager: State,
-        grouping_service: DepartureGroupingService,
-        stop_configs: list[StopConfiguration],
-        config: AppConfig,
-        presence_tracker: PresenceTrackerProtocol,
-        route_title: str | None = None,
-        route_theme: str | None = None,
-        fill_vertical_space: bool = False,
-        font_scaling_factor_when_filling: float = 1.0,
-        random_header_colors: bool = False,
-        header_background_brightness: float = 0.7,
-        random_color_salt: int = 0,
+        dependencies: LiveViewDependencies,
+        route_display: RouteDisplaySettings | None = None,
+        display_config: DisplayConfiguration | None = None,
     ) -> None:
-        """Initialize the LiveView with route configuration and display settings."""
+        """Initialize the LiveView with typed configuration objects.
+
+        Args:
+            dependencies: Core services and repositories required by the LiveView.
+            route_display: Route-specific display settings (title, theme). Defaults to empty settings.
+            display_config: Visual/UI display configuration. Defaults to standard configuration.
+        """
         super().__init__()
-        self._validate_init_parameters(config, stop_configs, presence_tracker, grouping_service)
-        self._assign_instance_variables(
-            state_manager,
-            grouping_service,
-            stop_configs,
-            config,
-            presence_tracker,
-            route_title,
-            route_theme,
-            fill_vertical_space,
-            font_scaling_factor_when_filling,
-            random_header_colors,
-            header_background_brightness,
-            random_color_salt,
+        if route_display is None:
+            route_display = RouteDisplaySettings()
+        if display_config is None:
+            display_config = DisplayConfiguration()
+
+        self._validate_init_parameters(
+            dependencies.config,
+            dependencies.stop_configs,
+            dependencies.presence_tracker,
+            dependencies.grouping_service,
         )
+        self._assign_instance_variables(dependencies, route_display, display_config)
         self._initialize_components(
-            stop_configs,
-            config,
-            random_header_colors,
-            header_background_brightness,
-            random_color_salt,
+            dependencies.stop_configs,
+            dependencies.config,
+            display_config.random_header_colors,
+            display_config.header_background_brightness,
+            display_config.random_color_salt,
         )
         self._static_version = self._get_static_version()
 
@@ -837,57 +862,29 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             return self._create_error_template(e, meta)  # type: ignore[no-any-return]
 
 
-def _capture_live_view_parameters(
-    state_manager: State,
-    grouping_service: DepartureGroupingService,
-    stop_configs: list[StopConfiguration],
-    config: AppConfig,
-    presence_tracker: PresenceTrackerProtocol,
-    route_title: str | None,
-    route_theme: str | None,
-    fill_vertical_space: bool,
-    font_scaling_factor_when_filling: float,
-    random_header_colors: bool,
-    header_background_brightness: float,
-    random_color_salt: int,
-) -> dict[str, Any]:
-    """Capture parameters in closure to avoid late binding issues."""
-    return {
-        "state_manager": state_manager,
-        "stop_configs": stop_configs,
-        "grouping_service": grouping_service,
-        "config": config,
-        "presence_tracker": presence_tracker,
-        "route_title": route_title,
-        "route_theme": route_theme,
-        "fill_vertical_space": fill_vertical_space,
-        "font_scaling_factor_when_filling": font_scaling_factor_when_filling,
-        "random_header_colors": random_header_colors,
-        "header_background_brightness": header_background_brightness,
-        "random_color_salt": random_color_salt,
-    }
+@dataclass(frozen=True)
+class LiveViewConfiguration:
+    """Complete configuration for creating a LiveView instance.
+
+    Groups all configuration needed to create a configured LiveView class.
+    """
+
+    dependencies: LiveViewDependencies
+    route_display: RouteDisplaySettings
+    display_config: DisplayConfiguration
 
 
-def _create_configured_live_view_class(captured: dict[str, Any]) -> type[DeparturesLiveView]:
-    """Create configured LiveView class with captured parameters."""
+def _create_configured_live_view_class(config: LiveViewConfiguration) -> type[DeparturesLiveView]:
+    """Create configured LiveView class with captured configuration."""
 
     class ConfiguredDeparturesLiveView(DeparturesLiveView):
         """Configured LiveView for a specific route."""
 
         def __init__(self) -> None:
             super().__init__(
-                captured["state_manager"],
-                captured["grouping_service"],
-                captured["stop_configs"],
-                captured["config"],
-                captured["presence_tracker"],
-                captured["route_title"],
-                captured["route_theme"],
-                captured["fill_vertical_space"],
-                captured["font_scaling_factor_when_filling"],
-                captured["random_header_colors"],
-                captured["header_background_brightness"],
-                captured["random_color_salt"],
+                config.dependencies,
+                config.route_display,
+                config.display_config,
             )
 
     return ConfiguredDeparturesLiveView
@@ -907,19 +904,47 @@ def create_departures_live_view(
     header_background_brightness: float = 0.7,
     random_color_salt: int = 0,
 ) -> type[DeparturesLiveView]:
-    """Create a configured DeparturesLiveView class for a specific route."""
-    captured = _capture_live_view_parameters(
-        state_manager,
-        grouping_service,
-        stop_configs,
-        config,
-        presence_tracker,
-        route_title,
-        route_theme,
-        fill_vertical_space,
-        font_scaling_factor_when_filling,
-        random_header_colors,
-        header_background_brightness,
-        random_color_salt,
+    """Create a configured DeparturesLiveView class for a specific route.
+
+    This factory function creates a LiveView class that is configured with
+    route-specific parameters. PyView's add_live_view expects a class, not
+    an instance, so we return a configured class.
+
+    Args:
+        state_manager: State manager for this route.
+        grouping_service: Service for grouping departures.
+        stop_configs: List of stop configurations for this route.
+        config: Application configuration.
+        presence_tracker: Presence tracker for tracking user connections.
+        route_title: Optional route-specific title (overrides config title).
+        route_theme: Optional route-specific theme (overrides config theme).
+        fill_vertical_space: Enable dynamic font sizing to fill viewport.
+        font_scaling_factor_when_filling: Scale factor for all fonts when fill_vertical_space is enabled.
+        random_header_colors: Enable hash-based pastel colors for headers.
+        header_background_brightness: Brightness adjustment for random header colors (0.0-1.0).
+        random_color_salt: Salt value for hash-based color generation (default 0).
+
+    Returns:
+        A configured DeparturesLiveView class that can be registered with PyView.
+    """
+    dependencies = LiveViewDependencies(
+        state_manager=state_manager,
+        grouping_service=grouping_service,
+        stop_configs=stop_configs,
+        config=config,
+        presence_tracker=presence_tracker,
     )
-    return _create_configured_live_view_class(captured)
+    route_display = RouteDisplaySettings(title=route_title, theme=route_theme)
+    display_config = DisplayConfiguration(
+        fill_vertical_space=fill_vertical_space,
+        font_scaling_factor_when_filling=font_scaling_factor_when_filling,
+        random_header_colors=random_header_colors,
+        header_background_brightness=header_background_brightness,
+        random_color_salt=random_color_salt,
+    )
+    live_view_config = LiveViewConfiguration(
+        dependencies=dependencies,
+        route_display=route_display,
+        display_config=display_config,
+    )
+    return _create_configured_live_view_class(live_view_config)

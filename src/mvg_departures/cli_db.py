@@ -1,14 +1,43 @@
 """CLI helpers for configuring DB (Deutsche Bahn) departures."""
 
+from __future__ import annotations
+
 import asyncio
 import json
 import sys
+from dataclasses import dataclass
 from typing import Any
 
 import aiohttp
 
 from mvg_departures.adapters.db_api import DbDepartureRepository
 from mvg_departures.adapters.db_api.http_client import DbHttpClient
+
+
+@dataclass(frozen=True)
+class SubStopConfig:
+    """Configuration for processing a sub-stop.
+
+    Groups together sub-stop identification and route information.
+    """
+
+    stop_point_id: str
+    line: str
+    transport_type: str
+    destination: str | None
+
+
+@dataclass(frozen=True)
+class RouteProcessingConfig:
+    """Configuration for processing a route.
+
+    Groups together route identification and associated information.
+    """
+
+    line: str
+    transport_type: str
+    destination: str | None
+    stop_point_id: str | None
 
 
 def _calculate_relevance_score(
@@ -105,53 +134,47 @@ async def search_stations_db(query: str) -> list[dict[str, Any]]:
 
 
 def _process_sub_stop(
-    stop_point_id: str,
-    line: str,
-    transport_type: str,
-    destination: str | None,
+    config: SubStopConfig,
     sub_stops: dict[str, dict[str, Any]],
 ) -> None:
     """Process a sub-stop from a departure."""
-    if stop_point_id not in sub_stops:
-        sub_stops[stop_point_id] = {
-            "id": stop_point_id,
+    if config.stop_point_id not in sub_stops:
+        sub_stops[config.stop_point_id] = {
+            "id": config.stop_point_id,
             "routes": {},
             "transport_types": set(),
         }
-    sub_stops[stop_point_id]["transport_types"].add(transport_type)
+    sub_stops[config.stop_point_id]["transport_types"].add(config.transport_type)
 
-    route_key = line
-    if route_key not in sub_stops[stop_point_id]["routes"]:
-        sub_stops[stop_point_id]["routes"][route_key] = {
-            "transport_type": transport_type,
-            "line": line,
+    route_key = config.line
+    if route_key not in sub_stops[config.stop_point_id]["routes"]:
+        sub_stops[config.stop_point_id]["routes"][route_key] = {
+            "transport_type": config.transport_type,
+            "line": config.line,
             "destinations": set(),
         }
-    if destination:
-        sub_stops[stop_point_id]["routes"][route_key]["destinations"].add(destination)
+    if config.destination:
+        sub_stops[config.stop_point_id]["routes"][route_key]["destinations"].add(config.destination)
 
 
 def _process_route(
-    line: str,
-    transport_type: str,
-    destination: str | None,
-    stop_point_id: str | None,
+    config: RouteProcessingConfig,
     routes: dict[str, dict[str, Any]],
 ) -> None:
     """Process a route from a departure."""
-    route_key = line
+    route_key = config.line
     if route_key not in routes:
         routes[route_key] = {
-            "transport_type": transport_type,
-            "line": line,
+            "transport_type": config.transport_type,
+            "line": config.line,
             "destinations": set(),
             "stop_points": set(),
         }
 
-    if destination:
-        routes[route_key]["destinations"].add(destination)
-    if stop_point_id:
-        routes[route_key]["stop_points"].add(stop_point_id)
+    if config.destination:
+        routes[route_key]["destinations"].add(config.destination)
+    if config.stop_point_id:
+        routes[route_key]["stop_points"].add(config.stop_point_id)
 
 
 def _normalize_sets_to_lists(
@@ -182,9 +205,21 @@ def _process_departures_for_details(
         stop_point_id = dep.stop_point_global_id
 
         if stop_point_id:
-            _process_sub_stop(stop_point_id, line, transport_type, destination, sub_stops)
+            config = SubStopConfig(
+                stop_point_id=stop_point_id,
+                line=line,
+                transport_type=transport_type,
+                destination=destination,
+            )
+            _process_sub_stop(config, sub_stops)
 
-        _process_route(line, transport_type, destination, stop_point_id, routes)
+        route_config = RouteProcessingConfig(
+            line=line,
+            transport_type=transport_type,
+            destination=destination,
+            stop_point_id=stop_point_id,
+        )
+        _process_route(route_config, routes)
 
 
 async def _process_db_station_details(

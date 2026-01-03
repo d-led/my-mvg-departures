@@ -7,7 +7,10 @@ from unittest.mock import MagicMock, patch
 from mvg_departures.adapters.config import AppConfig
 from mvg_departures.adapters.web.presence import PresenceTracker
 from mvg_departures.adapters.web.state import State
-from mvg_departures.adapters.web.views.departures.departures import DeparturesLiveView
+from mvg_departures.adapters.web.views.departures.departures import (
+    DeparturesLiveView,
+    LiveViewDependencies,
+)
 from mvg_departures.application.services import DepartureGroupingService
 from mvg_departures.domain.models import (
     Departure,
@@ -30,9 +33,14 @@ def _create_test_view() -> DeparturesLiveView:
         ]
         config = AppConfig.for_testing(config_file=None)
         presence_tracker = PresenceTracker()
-        return DeparturesLiveView(
-            state_manager, grouping_service, stop_configs, config, presence_tracker
+        dependencies = LiveViewDependencies(
+            state_manager=state_manager,
+            grouping_service=grouping_service,
+            stop_configs=stop_configs,
+            config=config,
+            presence_tracker=presence_tracker,
         )
+        return DeparturesLiveView(dependencies)
 
 
 def test_prepare_template_data_includes_line_and_destination() -> None:

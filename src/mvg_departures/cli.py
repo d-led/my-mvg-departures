@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -18,6 +19,34 @@ from mvg_departures.domain.models.cli_types import (
     DestinationPlatformInfo,
     StopPointRouteInfo,
 )
+
+
+@dataclass(frozen=True)
+class RouteEntryConfig:
+    """Configuration for initializing a route entry.
+
+    Groups together route identification and display information.
+    """
+
+    route_key: str
+    line: str
+    transport_type: str
+    icon: str
+
+
+@dataclass(frozen=True)
+class StationResultData:
+    """Data required to build a station result.
+
+    Groups together all the data structures needed to build the final station result.
+    """
+
+    station_id: str
+    routes: dict[str, set[str]]
+    route_details: dict[str, dict[str, Any]]
+    stop_point_mapping: dict[str, Any]
+    departures: list[dict[str, Any]]
+    routes_from_endpoint: dict[str, Any] | None
 
 
 async def _try_direct_search(query: str, session: aiohttp.ClientSession) -> dict[str, Any] | None:
@@ -176,18 +205,15 @@ def _parse_routes_response(data: Any) -> list[dict[str, Any]]:
 def _initialize_route_entry(
     routes: dict[str, set[str]],
     route_details: dict[str, dict[str, Any]],
-    route_key: str,
-    line: str,
-    transport_type: str,
-    icon: str,
+    config: RouteEntryConfig,
 ) -> None:
     """Initialize a new route entry."""
-    if route_key not in routes:
-        routes[route_key] = set()
-        route_details[route_key] = {
-            "line": line,
-            "transport_type": transport_type,
-            "icon": icon,
+    if config.route_key not in routes:
+        routes[config.route_key] = set()
+        route_details[config.route_key] = {
+            "line": config.line,
+            "transport_type": config.transport_type,
+            "icon": config.icon,
         }
 
 
@@ -223,7 +249,10 @@ def _build_routes_dict(
         destinations_raw = _extract_destinations_from_line_info(line_info)
 
         route_key = f"{transport_type} {line}"
-        _initialize_route_entry(routes, route_details, route_key, line, transport_type, icon)
+        config = RouteEntryConfig(
+            route_key=route_key, line=line, transport_type=transport_type, icon=icon
+        )
+        _initialize_route_entry(routes, route_details, config)
         _add_destinations_to_route(routes, route_key, destinations_raw)
 
     return routes, route_details
@@ -456,32 +485,25 @@ def _merge_route_details(
         )
 
 
-def _build_station_result(
-    station_id: str,
-    routes: dict[str, set[str]],
-    route_details: dict[str, dict[str, Any]],
-    stop_point_mapping: dict[str, Any],
-    departures: list[dict[str, Any]],
-    routes_from_endpoint: dict[str, Any] | None,
-) -> dict[str, Any]:
+def _build_station_result(data: StationResultData) -> dict[str, Any]:
     """Build the final station result dictionary."""
-    source = "departures_sampling" + (" + routes_endpoint" if routes_from_endpoint else "")
+    source = "departures_sampling" + (" + routes_endpoint" if data.routes_from_endpoint else "")
 
     return {
         "station": {
-            "id": station_id,
-            "name": station_id,  # MVG API might not return station name in departures
+            "id": data.station_id,
+            "name": data.station_id,  # MVG API might not return station name in departures
             "place": "München",
         },
         "routes": {
             route: {
                 "destinations": sorted(destinations),
-                **route_details[route],
+                **data.route_details[route],
             }
-            for route, destinations in routes.items()
+            for route, destinations in data.routes.items()
         },
-        "stop_point_mapping": stop_point_mapping,
-        "total_departures_found": len(departures),
+        "stop_point_mapping": data.stop_point_mapping,
+        "total_departures_found": len(data.departures),
         "source": source,
     }
 
@@ -500,14 +522,15 @@ async def _process_station_details(
     routes, route_details = _build_routes_from_departures(departures)
     _merge_route_details(routes, route_details, routes_from_endpoint)
 
-    return _build_station_result(
-        station_id,
-        routes,
-        route_details,
-        stop_point_mapping,
-        departures,
-        routes_from_endpoint,
+    data = StationResultData(
+        station_id=station_id,
+        routes=routes,
+        route_details=route_details,
+        stop_point_mapping=stop_point_mapping,
+        departures=departures,
+        routes_from_endpoint=routes_from_endpoint,
     )
+    return _build_station_result(data)
 
 
 async def get_station_details(station_id: str, limit: int = 100) -> dict[str, Any] | None:
