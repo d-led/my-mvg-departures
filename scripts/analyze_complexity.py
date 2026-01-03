@@ -160,6 +160,176 @@ def get_protocol_base_names(node: ast.ClassDef) -> list[str]:
     return protocol_names
 
 
+def find_parent_class(node: ast.AST, tree: ast.AST) -> ast.ClassDef | None:
+    """Find the parent class of a node."""
+    for class_node in ast.walk(tree):
+        if isinstance(class_node, ast.ClassDef):
+            for child in ast.walk(class_node):
+                if child is node:
+                    return class_node
+    return None
+
+
+def is_protocol_file_path(file_path: Path) -> bool:
+    """Check if file path suggests it's a protocol/contract file."""
+    name_lower = file_path.name.lower()
+    return "protocol" in name_lower or "contracts" in name_lower or "ports" in name_lower
+
+
+def collect_protocol_classes_from_file(
+    tree: ast.AST, protocol_signatures: dict[str, set[str]]
+) -> set[str]:
+    """Collect Protocol classes defined in this file."""
+    protocol_classes: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef) and is_protocol_class(node, tree):
+            protocol_classes.add(node.name)
+            if node.name not in protocol_signatures:
+                method_names = {
+                    child.name
+                    for child in ast.walk(node)
+                    if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+                }
+                protocol_signatures[node.name] = method_names
+    return protocol_classes
+
+
+def find_protocol_implementing_classes(
+    tree: ast.AST, protocol_classes: set[str], protocol_signatures: dict[str, set[str]]
+) -> set[str]:
+    """Find classes that implement protocols."""
+    implementing_classes: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            base_names = get_protocol_base_names(node)
+            for base_name in base_names:
+                if base_name in protocol_classes or base_name in protocol_signatures:
+                    implementing_classes.add(node.name)
+                    break
+    return implementing_classes
+
+
+def check_if_protocol_method(
+    func_node: ast.FunctionDef | ast.AsyncFunctionDef,
+    parent_class: ast.ClassDef | None,
+    protocol_classes: set[str],
+    protocol_implementing_classes: set[str],
+    protocol_signatures: dict[str, set[str]],
+    is_protocol_file: bool,
+) -> bool:
+    """Check if a function is a protocol method."""
+    if not parent_class:
+        return is_protocol_file
+    
+    if parent_class.name in protocol_classes:
+        return True
+    
+    if parent_class.name in protocol_implementing_classes:
+        func_name = func_node.name
+        return any(func_name in method_names for method_names in protocol_signatures.values())
+    
+    return False
+
+
+def get_cyclomatic_complexity(
+    func_node: ast.FunctionDef | ast.AsyncFunctionDef,
+    func_name: str,
+    line_start: int,
+    radon_results: list[Any],
+) -> int:
+    """Get cyclomatic complexity for a function."""
+    if RADON_AVAILABLE:
+        for radon_func in radon_results:
+            if radon_func.name == func_name and radon_func.lineno == line_start:
+                return radon_func.complexity
+    
+    # Simple estimation: count control flow nodes
+    control_flow_types = (
+        ast.If,
+        ast.For,
+        ast.While,
+        ast.Try,
+        ast.With,
+        ast.AsyncFor,
+        ast.AsyncWith,
+    )
+    control_flow_count = sum(1 for n in ast.walk(func_node) if isinstance(n, control_flow_types))
+    return 1 + control_flow_count
+
+
+def analyze_function_node(
+    func_node: ast.FunctionDef | ast.AsyncFunctionDef,
+    file_path: Path,
+    tree: ast.AST,
+    protocol_classes: set[str],
+    protocol_implementing_classes: set[str],
+    protocol_signatures: dict[str, set[str]],
+    is_protocol_file: bool,
+    radon_results: list[Any],
+    mi_score: float,
+) -> FunctionMetrics:
+    """Analyze a single function node and return metrics."""
+    func_name = func_node.name
+    line_start = func_node.lineno
+    line_end = func_node.end_lineno if hasattr(func_node, "end_lineno") else line_start
+    
+    parent_class = find_parent_class(func_node, tree)
+    is_protocol_method = check_if_protocol_method(
+        func_node,
+        parent_class,
+        protocol_classes,
+        protocol_implementing_classes,
+        protocol_signatures,
+        is_protocol_file,
+    )
+    
+    function_length = line_end - line_start + 1
+    
+    visitor = NestingLevelVisitor()
+    visitor.visit(func_node)
+    max_nesting = visitor.max_nesting
+    
+    param_count, has_varargs, has_kwargs = count_parameters(func_node)
+    cyclomatic_complexity = get_cyclomatic_complexity(func_node, func_name, line_start, radon_results)
+    
+    return FunctionMetrics(
+        file_path=str(file_path),
+        function_name=func_name,
+        line_start=line_start,
+        line_end=line_end,
+        cyclomatic_complexity=cyclomatic_complexity,
+        max_nesting_level=max_nesting,
+        function_length=function_length,
+        parameter_count=param_count,
+        has_varargs=has_varargs,
+        has_kwargs=has_kwargs,
+        maintainability_index=float(mi_score),
+        is_protocol_method=is_protocol_method,
+    )
+
+
+def get_radon_metrics(source_code: str, file_path: Path) -> tuple[list[Any], float]:
+    """Get radon metrics if available."""
+    radon_results: list[Any] = []
+    mi_score = 0.0
+    
+    if not RADON_AVAILABLE:
+        return radon_results, mi_score
+    
+    try:
+        radon_results = cc_visit(source_code)
+    except Exception as e:
+        print(f"Warning: Radon error for {file_path}: {e}", file=sys.stderr)
+    
+    try:
+        mi_result = mi_visit(source_code, multi=True)
+        mi_score = mi_result[1] if isinstance(mi_result, tuple) else mi_result
+    except Exception:
+        pass
+    
+    return radon_results, mi_score
+
+
 def analyze_file(file_path: Path, protocol_signatures: dict[str, set[str]] | None = None) -> list[FunctionMetrics]:
     """Analyze a Python file and return function metrics."""
     try:
@@ -168,145 +338,38 @@ def analyze_file(file_path: Path, protocol_signatures: dict[str, set[str]] | Non
         print(f"Warning: Could not read {file_path}: {e}", file=sys.stderr)
         return []
 
-    # Parse AST
     try:
         tree = ast.parse(source_code, filename=str(file_path))
     except SyntaxError as e:
         print(f"Warning: Syntax error in {file_path}: {e}", file=sys.stderr)
         return []
 
-    # Check if file is a protocol/contract file (heuristic: filename contains "protocol" or "contracts")
-    is_protocol_file = "protocol" in file_path.name.lower() or "contracts" in file_path.name.lower() or "ports" in file_path.name.lower()
-    
-    # Use provided protocol signatures or collect from this file
     if protocol_signatures is None:
         protocol_signatures = {}
     
-    # Find all Protocol classes in THIS file
-    protocol_classes: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef):
-            if is_protocol_class(node, tree):
-                protocol_classes.add(node.name)
-                # Also add to protocol_signatures if not already there
-                if node.name not in protocol_signatures:
-                    method_names = set()
-                    for child in ast.walk(node):
-                        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                            method_names.add(child.name)
-                    protocol_signatures[node.name] = method_names
+    is_protocol_file = is_protocol_file_path(file_path)
+    protocol_classes = collect_protocol_classes_from_file(tree, protocol_signatures)
+    protocol_implementing_classes = find_protocol_implementing_classes(
+        tree, protocol_classes, protocol_signatures
+    )
     
-    # Find all classes that implement protocols (inherit from Protocol classes)
-    protocol_implementing_classes: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef):
-            base_names = get_protocol_base_names(node)
-            # Check if any base is a known protocol class (from this file or collected)
-            for base_name in base_names:
-                if base_name in protocol_classes or base_name in protocol_signatures:
-                    protocol_implementing_classes.add(node.name)
-                    break
-
-    # Get cyclomatic complexity from radon (if available)
-    radon_results: list[Any] = []
-    if RADON_AVAILABLE:
-        try:
-            radon_results = cc_visit(source_code)
-        except Exception as e:
-            print(f"Warning: Radon error for {file_path}: {e}", file=sys.stderr)
-
-    # Get maintainability index (if available)
-    mi_score = 0.0
-    if RADON_AVAILABLE:
-        try:
-            mi_result = mi_visit(source_code, multi=True)
-            mi_score = mi_result[1] if isinstance(mi_result, tuple) else mi_result
-        except Exception:
-            pass
-
+    radon_results, mi_score = get_radon_metrics(source_code, file_path)
+    
     metrics: list[FunctionMetrics] = []
-
-    # Build a map of nodes to their parent classes
-    class_parent_map: dict[ast.AST, ast.ClassDef | None] = {}
-    
-    def find_parent_class(node: ast.AST, tree: ast.AST) -> ast.ClassDef | None:
-        """Find the parent class of a node."""
-        for class_node in ast.walk(tree):
-            if isinstance(class_node, ast.ClassDef):
-                for child in ast.walk(class_node):
-                    if child is node:
-                        return class_node
-        return None
-
-    # Find all function definitions
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            func_name = node.name
-            line_start = node.lineno
-            line_end = node.end_lineno if hasattr(node, "end_lineno") else line_start
-
-            # Check if this function is in a Protocol class or implements a protocol method
-            is_protocol_method = False
-            parent_class = find_parent_class(node, tree)
-            
-            if parent_class:
-                # Check if parent is a Protocol class itself
-                if parent_class.name in protocol_classes:
-                    is_protocol_method = True
-                # Check if parent implements a Protocol (inherits from Protocol class)
-                elif parent_class.name in protocol_implementing_classes:
-                    # Check if this method matches a protocol method signature
-                    for method_names in protocol_signatures.values():
-                        if func_name in method_names:
-                            is_protocol_method = True
-                            break
-            elif is_protocol_file:
-                # If file is a protocol/contracts file, assume all methods are protocol methods
-                is_protocol_method = True
-
-            # Calculate function length
-            function_length = line_end - line_start + 1
-
-            # Measure nesting level
-            visitor = NestingLevelVisitor()
-            visitor.visit(node)
-            max_nesting = visitor.max_nesting
-
-            # Count parameters
-            param_count, has_varargs, has_kwargs = count_parameters(node)
-
-            # Find matching radon result (or estimate complexity)
-            cyclomatic_complexity = 1  # Default
-            if RADON_AVAILABLE:
-                for radon_func in radon_results:
-                    if radon_func.name == func_name and radon_func.lineno == line_start:
-                        cyclomatic_complexity = radon_func.complexity
-                        break
-            else:
-                # Simple estimation: count control flow nodes
-                control_flow_nodes = sum(
-                    1
-                    for n in ast.walk(node)
-                    if isinstance(n, (ast.If, ast.For, ast.While, ast.Try, ast.With, ast.AsyncFor, ast.AsyncWith))
-                )
-                cyclomatic_complexity = 1 + control_flow_nodes
-
-            metrics.append(
-                FunctionMetrics(
-                    file_path=str(file_path),
-                    function_name=func_name,
-                    line_start=line_start,
-                    line_end=line_end,
-                    cyclomatic_complexity=cyclomatic_complexity,
-                    max_nesting_level=max_nesting,
-                    function_length=function_length,
-                    parameter_count=param_count,
-                    has_varargs=has_varargs,
-                    has_kwargs=has_kwargs,
-                    maintainability_index=float(mi_score),
-                    is_protocol_method=is_protocol_method,
-                )
+            metric = analyze_function_node(
+                node,
+                file_path,
+                tree,
+                protocol_classes,
+                protocol_implementing_classes,
+                protocol_signatures,
+                is_protocol_file,
+                radon_results,
+                mi_score,
             )
+            metrics.append(metric)
 
     return metrics
 
@@ -448,120 +511,98 @@ def collect_protocol_signatures(root_dir: Path) -> dict[str, set[str]]:
     return protocol_signatures
 
 
-def main() -> None:
-    """Main entry point."""
-    if len(sys.argv) > 1:
-        root_dir = Path(sys.argv[1])
-    else:
-        root_dir = Path(__file__).parent.parent / "src" / "mvg_departures"
-
-    if not root_dir.exists():
-        print(f"Error: Directory {root_dir} does not exist", file=sys.stderr)
-        sys.exit(1)
-
-    print(f"Analyzing Python files in: {root_dir}")
-    print("=" * 80)
-
-    # First pass: collect all Protocol class signatures
-    print("Collecting protocol signatures...")
-    protocol_signatures = collect_protocol_signatures(root_dir)
-
-    all_metrics: list[FunctionMetrics] = []
-
-    # Second pass: analyze all files with protocol context
-    for py_file in find_python_files(root_dir):
-        metrics = analyze_file(py_file, protocol_signatures)
-        all_metrics.extend(metrics)
-
-    # Sort by priority score (descending)
-    all_metrics.sort(key=lambda m: m.priority_score, reverse=True)
-
-    # Separate protocol methods from regular functions
-    protocol_metrics = [m for m in all_metrics if m.is_protocol_method]
-    regular_metrics = [m for m in all_metrics if not m.is_protocol_method]
-
-    # Print summary
+def print_summary(
+    all_metrics: list[FunctionMetrics],
+    regular_metrics: list[FunctionMetrics],
+    protocol_metrics: list[FunctionMetrics],
+) -> None:
+    """Print summary statistics."""
+    regular_param_violations = sum(1 for m in regular_metrics if m.parameter_violation > 0)
+    protocol_param_violations = sum(1 for m in protocol_metrics if m.parameter_violation > 0)
+    
     print(f"\nTotal functions analyzed: {len(all_metrics)}")
     print(f"  - Regular functions: {len(regular_metrics)}")
     print(f"  - Protocol/interface methods: {len(protocol_metrics)}")
     print(f"Functions with nesting > 2: {sum(1 for m in regular_metrics if m.max_nesting_level > 2)}")
     print(f"Functions with complexity > 10: {sum(1 for m in regular_metrics if m.cyclomatic_complexity > 10)}")
     print(f"Functions with length > 50: {sum(1 for m in regular_metrics if m.function_length > 50)}")
-    regular_param_violations = sum(1 for m in regular_metrics if m.parameter_violation > 0)
-    protocol_param_violations = sum(1 for m in protocol_metrics if m.parameter_violation > 0)
     print(f"Functions with too many parameters: {regular_param_violations} (regular) + {protocol_param_violations} (protocol)")
 
-    # Print protocol methods separately (terse)
-    if protocol_metrics and any(m.parameter_violation > 0 for m in protocol_metrics):
-        print("\n" + "=" * 80)
-        print("PROTOCOL/INTERFACE METHODS (excluded from refactoring priorities)")
-        print("=" * 80)
-        protocol_with_violations = [m for m in protocol_metrics if m.parameter_violation > 0]
-        if protocol_with_violations:
-            project_root = Path(__file__).parent.parent
-            for m in sorted(protocol_with_violations, key=lambda x: (x.file_path, x.function_name)):
-                try:
-                    rel_path = Path(m.file_path).relative_to(project_root)
-                except ValueError:
-                    rel_path = Path(m.file_path)
-                print(f"  {rel_path}::{m.function_name} ({m.parameter_count} params, {m.parameter_violation} over limit)")
-        print("  Note: Protocol methods maintain interface contracts and cannot be refactored.")
 
-    # Print top priorities in tabular format (excluding protocol methods)
+def print_protocol_methods(protocol_metrics: list[FunctionMetrics], project_root: Path) -> None:
+    """Print protocol methods with violations."""
+    protocol_with_violations = [m for m in protocol_metrics if m.parameter_violation > 0]
+    if not protocol_with_violations:
+        return
+    
     print("\n" + "=" * 80)
-    print("TOP REFACTORING PRIORITIES (TABULAR VIEW)")
+    print("PROTOCOL/INTERFACE METHODS (excluded from refactoring priorities)")
     print("=" * 80)
+    
+    for m in sorted(protocol_with_violations, key=lambda x: (x.file_path, x.function_name)):
+        try:
+            rel_path = Path(m.file_path).relative_to(project_root)
+        except ValueError:
+            rel_path = Path(m.file_path)
+        print(f"  {rel_path}::{m.function_name} ({m.parameter_count} params, {m.parameter_violation} over limit)")
+    
+    print("  Note: Protocol methods maintain interface contracts and cannot be refactored.")
 
-    top_priority_metrics = [m for m in regular_metrics if m.priority_score > 0]
-    print_priority_table(top_priority_metrics, limit=30)
 
-    # Also show detailed view grouped by file
-    print("\n" + "=" * 80)
-    print("TOP REFACTORING PRIORITIES (DETAILED VIEW BY FILE)")
-    print("=" * 80)
+def format_parameter_info(metric: FunctionMetrics) -> tuple[str, int]:
+    """Format parameter information string and calculate max allowed."""
+    param_info = str(metric.parameter_count)
+    if metric.has_varargs:
+        param_info += " + *args"
+    if metric.has_kwargs:
+        param_info += " + **kwargs"
+    max_allowed = 4 + (1 if metric.has_varargs else 0) + (1 if metric.has_kwargs else 0)
+    return param_info, max_allowed
 
-    # Group by file (excluding protocol methods)
+
+def print_detailed_file_view(regular_metrics: list[FunctionMetrics], project_root: Path) -> None:
+    """Print detailed view grouped by file."""
     file_groups: dict[str, list[FunctionMetrics]] = {}
     for metric in regular_metrics:
         if metric.priority_score > 0:
             file_groups.setdefault(metric.file_path, []).append(metric)
-
-    # Sort files by highest priority function
+    
     sorted_files = sorted(
         file_groups.items(),
         key=lambda item: max(m.priority_score for m in item[1]),
         reverse=True,
     )
-
-    for file_path, file_metrics in sorted_files[:20]:  # Top 20 files
-        rel_path = Path(file_path).relative_to(Path(__file__).parent.parent)
+    
+    for file_path, file_metrics in sorted_files[:20]:
+        rel_path = Path(file_path).relative_to(project_root)
         max_priority = max(m.priority_score for m in file_metrics)
         print(f"\n{format_priority(max_priority)} {rel_path}")
         print("-" * 80)
-
-        # Show top functions in this file
+        
         for metric in sorted(file_metrics, key=lambda m: m.priority_score, reverse=True)[:5]:
             if metric.priority_score > 0:
-                print(
-                    f"  Function: {metric.function_name} (lines {metric.line_start}-{metric.line_end})"
-                )
+                print(f"  Function: {metric.function_name} (lines {metric.line_start}-{metric.line_end})")
                 print(f"    Priority: {format_priority(metric.priority_score)} ({metric.priority_score:.1f})")
                 print(f"    Nesting: {metric.max_nesting_level} (max 2 allowed)")
                 print(f"    Complexity: {metric.cyclomatic_complexity} (recommended < 10)")
                 print(f"    Length: {metric.function_length} lines (recommended < 50)")
-                param_info = f"{metric.parameter_count}"
-                if metric.has_varargs:
-                    param_info += " + *args"
-                if metric.has_kwargs:
-                    param_info += " + **kwargs"
-                max_allowed = 4 + (1 if metric.has_varargs else 0) + (1 if metric.has_kwargs else 0)
+                param_info, max_allowed = format_parameter_info(metric)
                 print(f"    Parameters: {param_info} (max {max_allowed} allowed: 4 regular + *args + **kwargs)")
                 if metric.parameter_violation > 0:
                     print(f"      ⚠️  {metric.parameter_violation} parameter(s) over limit")
                 print()
 
-    # Generate JSON report
-    report_path = Path(__file__).parent.parent / "complexity_report.json"
+
+def generate_json_report(
+    all_metrics: list[FunctionMetrics],
+    regular_metrics: list[FunctionMetrics],
+    protocol_metrics: list[FunctionMetrics],
+    report_path: Path,
+) -> None:
+    """Generate JSON report file."""
+    regular_param_violations = sum(1 for m in regular_metrics if m.parameter_violation > 0)
+    protocol_param_violations = sum(1 for m in protocol_metrics if m.parameter_violation > 0)
+    
     report_data = {
         "summary": {
             "total_functions": len(all_metrics),
@@ -594,10 +635,56 @@ def main() -> None:
             if m.priority_score > 0 or (m.is_protocol_method and m.parameter_violation > 0)
         ],
     }
-
+    
     with report_path.open("w") as f:
         json.dump(report_data, f, indent=2)
 
+
+def main() -> None:
+    """Main entry point."""
+    if len(sys.argv) > 1:
+        root_dir = Path(sys.argv[1])
+    else:
+        root_dir = Path(__file__).parent.parent / "src" / "mvg_departures"
+
+    if not root_dir.exists():
+        print(f"Error: Directory {root_dir} does not exist", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Analyzing Python files in: {root_dir}")
+    print("=" * 80)
+
+    print("Collecting protocol signatures...")
+    protocol_signatures = collect_protocol_signatures(root_dir)
+
+    all_metrics: list[FunctionMetrics] = []
+    for py_file in find_python_files(root_dir):
+        metrics = analyze_file(py_file, protocol_signatures)
+        all_metrics.extend(metrics)
+
+    all_metrics.sort(key=lambda m: m.priority_score, reverse=True)
+
+    protocol_metrics = [m for m in all_metrics if m.is_protocol_method]
+    regular_metrics = [m for m in all_metrics if not m.is_protocol_method]
+
+    print_summary(all_metrics, regular_metrics, protocol_metrics)
+
+    project_root = Path(__file__).parent.parent
+    print_protocol_methods(protocol_metrics, project_root)
+
+    print("\n" + "=" * 80)
+    print("TOP REFACTORING PRIORITIES (TABULAR VIEW)")
+    print("=" * 80)
+    top_priority_metrics = [m for m in regular_metrics if m.priority_score > 0]
+    print_priority_table(top_priority_metrics, limit=30)
+
+    print("\n" + "=" * 80)
+    print("TOP REFACTORING PRIORITIES (DETAILED VIEW BY FILE)")
+    print("=" * 80)
+    print_detailed_file_view(regular_metrics, project_root)
+
+    report_path = project_root / "complexity_report.json"
+    generate_json_report(all_metrics, regular_metrics, protocol_metrics, report_path)
     print(f"\nDetailed report saved to: {report_path}")
 
 

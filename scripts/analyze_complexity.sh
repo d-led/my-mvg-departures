@@ -12,8 +12,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ANALYZE_SCRIPT="$SCRIPT_DIR/analyze_complexity.py"
 
-# Default to src/mvg_departures if no argument provided
-TARGET_DIR="${1:-$PROJECT_ROOT/src/mvg_departures}"
+# Default to both src/mvg_departures and scripts if no argument provided
+# If argument is provided, use it; otherwise analyze both source and scripts
+if [[ $# -eq 0 ]]; then
+    # Analyze both source code and scripts
+    echo "Analyzing source code and scripts..."
+    python3 "$ANALYZE_SCRIPT" "$PROJECT_ROOT/src/mvg_departures"
+    echo ""
+    echo "=================================================================================="
+    echo "SCRIPTS ANALYSIS"
+    echo "=================================================================================="
+    python3 "$ANALYZE_SCRIPT" "$PROJECT_ROOT/scripts"
+    exit 0
+else
+    TARGET_DIR="${1}"
+fi
 
 # Convert to absolute path if relative
 if [[ ! "$TARGET_DIR" = /* ]]; then
