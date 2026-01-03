@@ -4,7 +4,14 @@
 
 ### Features
 
-- **Time-based filtering**: `max_hours_in_advance` option (float, per stop) to filter out departures more than N hours in the future (< 1 or unset = unfiltered)
+- **DB REST API adapter**: Replaced HAFAS with [v6.db.transport.rest](https://v6.db.transport.rest/api.html) for Berlin/VBB support - more reliable and broader coverage
+- **Berlin (VBB/BVG) support**: Full support for Berlin public transport via `api = "db"` in stop config
+- **Per-route polling**: `poll_interval_seconds` per route for independent update intervals
+- **CLI tools**: `mvg-db stations` and `mvg-db departures` for DB REST API exploration
+
+### Removed
+
+- **HAFAS adapter**: Replaced by DB REST API adapter
 
 ## [0.0.5]
 
