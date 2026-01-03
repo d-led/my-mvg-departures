@@ -36,6 +36,7 @@ dev = [
     "mypy>=1.13.0",
     "types-pytz>=2024.1.0",
     "radon>=6.0.0",
+    "vulture>=2.14",
 ]
 
 [project.scripts]
@@ -77,6 +78,7 @@ ruff = ">=0.8.0"
 mypy = ">=1.13.0"
 types-pytz = ">=2024.1.0"
 radon = ">=6.0.0"
+vulture = ">=2.14"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mvg_departures"]

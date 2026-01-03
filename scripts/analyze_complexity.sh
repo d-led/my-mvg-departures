@@ -31,6 +31,19 @@ if [[ $# -eq 0 ]]; then
     echo "SCRIPTS ANALYSIS"
     echo "=================================================================================="
     run_python "$ANALYZE_SCRIPT" "$PROJECT_ROOT/scripts" || exit $?
+    echo ""
+    echo "=================================================================================="
+    echo "DEAD CODE DETECTION (vulture)"
+    echo "=================================================================================="
+    echo "Checking source code..."
+    if run_python_module vulture "$PROJECT_ROOT/src/mvg_departures" --min-confidence 80; then
+        echo "✓ No dead code found in source"
+    fi
+    echo ""
+    echo "Checking scripts..."
+    if run_python_module vulture "$PROJECT_ROOT/scripts" --min-confidence 80; then
+        echo "✓ No dead code found in scripts"
+    fi
     exit 0
 else
     TARGET_DIR="${1}"

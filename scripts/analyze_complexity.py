@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import ast
 import json
-import subprocess
 import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
