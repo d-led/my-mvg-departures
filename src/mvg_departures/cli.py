@@ -996,6 +996,17 @@ async def search_and_list_routes(query: str, show_patterns: bool = True) -> None
             print()
 
 
+def _convert_sets_to_lists(obj: Any) -> Any:
+    """Recursively convert sets to lists for JSON serialization."""
+    if isinstance(obj, set):
+        return sorted(obj)
+    if isinstance(obj, dict):
+        return {k: _convert_sets_to_lists(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_convert_sets_to_lists(item) for item in obj]
+    return obj
+
+
 async def show_station_info(station_id: str, format_json: bool = False) -> None:
     """Show detailed information about a station."""
     details = await get_station_details(station_id)
@@ -1004,7 +1015,9 @@ async def show_station_info(station_id: str, format_json: bool = False) -> None:
         sys.exit(1)
 
     if format_json:
-        print(json.dumps(details, indent=2, ensure_ascii=False))
+        # Convert sets to lists for JSON serialization
+        serializable_details = _convert_sets_to_lists(details)
+        print(json.dumps(serializable_details, indent=2, ensure_ascii=False))
     else:
         station = details.get("station", {})
         routes = details.get("routes", {})
@@ -1014,10 +1027,17 @@ async def show_station_info(station_id: str, format_json: bool = False) -> None:
         print(f"  Name: {station.get('name', 'Unknown')}")
         print(f"  Place: {station.get('place', 'München')}")
         print(f"\nRoutes: {len(routes)}")
-        for route, destinations in sorted(routes.items()):
-            print(
-                f"  {route}: {', '.join(destinations[:3])}{'...' if len(destinations) > 3 else ''}"
+        for route, route_data in sorted(routes.items()):
+            destinations = (
+                route_data.get("destinations", []) if isinstance(route_data, dict) else []
             )
+            destinations_list = (
+                sorted(destinations) if isinstance(destinations, set) else destinations
+            )
+            destinations_display = ", ".join(destinations_list[:3]) + (
+                "..." if len(destinations_list) > 3 else ""
+            )
+            print(f"  {route}: {destinations_display}")
 
 
 def _extract_destinations_from_dict(route_data: dict[str, Any]) -> list[str]:
