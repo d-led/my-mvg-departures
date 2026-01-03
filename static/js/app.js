@@ -538,7 +538,7 @@ window.addEventListener("phx:update", (event) => {
     let serverApiStatus = null;
     if (apiStatusEl) {
       const statusText = (apiStatusEl.textContent || "").trim().toLowerCase();
-      if (statusText === "success" || statusText === "error" || statusText === "unknown") {
+      if (statusText === "success" || statusText === "error" || statusText === "degraded" || statusText === "unknown") {
         serverApiStatus = statusText;
       }
     }
@@ -546,6 +546,9 @@ window.addEventListener("phx:update", (event) => {
     // If server reports API error, show error regardless of update health
     if (serverApiStatus === "error") {
       apiStatus = "error";
+    } else if (serverApiStatus === "degraded") {
+      // Server reports degraded (some API calls failed) - show degraded/warning status
+      apiStatus = "degraded";
     } else {
       // Check if update contains undefined values (unhealthy update from server)
       let updateIsHealthy = true;
@@ -645,6 +648,7 @@ function updateApiStatus(status) {
   const apiSuccessIcon = document.getElementById("api-success-icon");
   const apiErrorIcon = document.getElementById("api-error-icon");
   const apiUnknownIcon = document.getElementById("api-unknown-icon");
+  const apiDegradedIcon = document.getElementById("api-degraded-icon");
   const apiStatusContainer = document.getElementById("api-status-container");
   const liveRegion = document.getElementById("aria-live-status");
 
@@ -657,6 +661,7 @@ function updateApiStatus(status) {
   apiSuccessIcon.style.display = "none";
   apiErrorIcon.style.display = "none";
   apiUnknownIcon.style.display = "none";
+  if (apiDegradedIcon) apiDegradedIcon.style.display = "none";
 
   // Show appropriate icon based on status
   if (status === "success") {
@@ -666,6 +671,13 @@ function updateApiStatus(status) {
     }
     apiSuccessIcon.style.display = "";
     if (liveRegion) liveRegion.textContent = "API status: success";
+  } else if (status === "degraded") {
+    if (apiStatusContainer) {
+      apiStatusContainer.setAttribute("aria-label", "API status: degraded");
+      apiStatusContainer.setAttribute("title", "MVG API connection: some API calls failed, showing partial/cached data");
+    }
+    if (apiDegradedIcon) apiDegradedIcon.style.display = "";
+    if (liveRegion) liveRegion.textContent = "API status: degraded - some API calls failed";
   } else if (status === "error") {
     if (apiStatusContainer) {
       apiStatusContainer.setAttribute("aria-label", "API status: error");

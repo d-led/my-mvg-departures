@@ -635,6 +635,15 @@ h1 {
 [data-theme="dark"] .api-status-icon.api-unknown {
   color: rgba(255, 255, 255, 0.3);
 }
+.api-status-icon.api-degraded {
+  color: #d97706;
+}
+[data-theme="light"] .api-status-icon.api-degraded {
+  color: #b45309;
+}
+[data-theme="dark"] .api-status-icon.api-degraded {
+  color: #fbbf24;
+}
 /* Screen reader only class */
 .sr-only {
   position: absolute;

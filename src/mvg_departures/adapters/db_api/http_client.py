@@ -7,6 +7,7 @@ API Documentation: https://v6.db.transport.rest/api.html
 import logging
 from typing import TYPE_CHECKING, Any
 
+from mvg_departures.adapters.api_rate_limiter import ApiRateLimiter
 from mvg_departures.adapters.db_api.constants import (
     DB_LOCATIONS_URL,
     DB_STOPS_URL,
@@ -17,6 +18,11 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from aiohttp import ClientSession
 
+# Minimum delay between DB API requests (in seconds)
+# DB API rate limit is 100 requests/minute, so ~0.6s minimum
+# Using 1.5s to be safe and account for multiple instances
+DB_API_MIN_DELAY_SECONDS = 1.5
+
 
 class DbHttpClient:
     """HTTP client for DB API requests using v6.db.transport.rest."""
@@ -24,6 +30,15 @@ class DbHttpClient:
     def __init__(self, session: "ClientSession | None" = None) -> None:
         """Initialize with optional aiohttp session."""
         self._session = session
+        self._rate_limiter: ApiRateLimiter | None = None
+
+    async def _get_rate_limiter(self) -> ApiRateLimiter:
+        """Get the shared rate limiter for DB API."""
+        if self._rate_limiter is None:
+            self._rate_limiter = await ApiRateLimiter.get_instance(
+                "db_api", DB_API_MIN_DELAY_SECONDS
+            )
+        return self._rate_limiter
 
     async def search_stations(self, query: str) -> list[dict[str, Any]]:
         """Search for stations using v6.db.transport.rest/locations.
@@ -142,7 +157,12 @@ class DbHttpClient:
             return []
 
         url = f"{DB_STOPS_URL}/{station_id}/departures"
-        params: dict[str, str | int] = {"duration": duration}
+        # Request more results to have enough for all routes (similar to VBB API)
+        params: dict[str, str | int] = {"duration": duration, "results": 100}
+
+        # Rate limit: wait for permission before making request
+        rate_limiter = await self._get_rate_limiter()
+        await rate_limiter.acquire()
 
         try:
             async with self._session.get(url, params=params, ssl=False) as response:
@@ -157,8 +177,20 @@ class DbHttpClient:
                         return data
 
                 error_text = await response.text()
-                logger.error(f"DB API returned status {response.status}: {error_text[:500]}")
+                # Enhanced error logging for debugging API issues
+                error_body = error_text[:500] if error_text else "(empty response body)"
+                content_type = response.headers.get("Content-Type", "unknown")
+                retry_after = response.headers.get("Retry-After")
+                server = response.headers.get("Server", "unknown")
+                extra_info = []
+                if retry_after:
+                    extra_info.append(f"Retry-After: {retry_after}")
+                extra_info_str = f" [{', '.join(extra_info)}]" if extra_info else ""
+                logger.error(
+                    f"DB API returned status {response.status} for {url}: "
+                    f"{error_body} (Content-Type: {content_type}, Server: {server}){extra_info_str}"
+                )
         except Exception as e:
-            logger.warning(f"Error fetching DB departures: {e}")
+            logger.warning(f"Error fetching DB departures for {url}: {e}")
 
         return []

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import replace
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from mvg_departures.adapters.config import AppConfig
@@ -463,6 +465,18 @@ class PyViewWebAdapter(DisplayAdapter):
         # Use the departure repository directly (already available)
         departure_repo = self.departure_repository
 
+        def _filter_and_mark_stale(departures: list[Departure]) -> list[Departure]:
+            """Filter out departed entries and mark remaining as stale (not realtime)."""
+            now = datetime.now(UTC)
+            stale_departures = []
+            for dep in departures:
+                # Keep only departures that haven't departed yet
+                if dep.time >= now:
+                    # Mark as stale (not realtime) since we couldn't refresh from API
+                    stale_dep = replace(dep, is_realtime=False)
+                    stale_departures.append(stale_dep)
+            return stale_departures
+
         async def _fetch_all_stations() -> None:
             """Fetch raw departures for all unique stations."""
             fetch_limit = 50  # Same as in DepartureGroupingService
@@ -481,9 +495,16 @@ class PyViewWebAdapter(DisplayAdapter):
                         f"Failed to fetch departures for station {station_id}: {e}",
                         exc_info=True,
                     )
-                    # Keep cached data if available, otherwise set empty list
-                    if not self._shared_departure_cache.get(station_id):
-                        self._shared_departure_cache.set(station_id, [])
+                    # Keep stale cached data: filter out departed entries and mark as stale
+                    cached = self._shared_departure_cache.get(station_id)
+                    if cached:
+                        stale_departures = _filter_and_mark_stale(cached)
+                        self._shared_departure_cache.set(station_id, stale_departures)
+                        logger.info(
+                            f"Using {len(stale_departures)} stale departures for station {station_id} "
+                            f"(filtered from {len(cached)} cached entries)"
+                        )
+                    # If no cached data at all, leave cache empty (don't set empty list)
 
                 # Add delay between calls (except after the last one)
                 if sleep_ms > 0 and i < len(station_list) - 1:

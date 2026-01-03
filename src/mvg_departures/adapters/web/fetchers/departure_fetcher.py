@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import replace
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from mvg_departures.domain.contracts.departure_cache import DepartureCacheProtocol  # noqa: TC001
 
 if TYPE_CHECKING:
     from mvg_departures.adapters.config.app_config import AppConfig
+    from mvg_departures.domain.models.departure import Departure
     from mvg_departures.domain.ports import DepartureRepository
 
 logger = logging.getLogger(__name__)
@@ -81,6 +84,25 @@ class DepartureFetcher:
             logger.info("Departure fetcher cancelled")
             raise
 
+    def _filter_and_mark_stale(self, departures: list[Departure]) -> list[Departure]:
+        """Filter out departed entries and mark remaining as stale (not realtime).
+
+        Args:
+            departures: List of cached departures.
+
+        Returns:
+            Filtered list with departures that haven't departed yet, marked as stale.
+        """
+        now = datetime.now(UTC)
+        stale_departures = []
+        for dep in departures:
+            # Keep only departures that haven't departed yet
+            if dep.time >= now:
+                # Mark as stale (not realtime) since we couldn't refresh from API
+                stale_dep = replace(dep, is_realtime=False)
+                stale_departures.append(stale_dep)
+        return stale_departures
+
     async def _fetch_all_stations(self) -> None:
         """Fetch raw departures for all stations."""
         fetch_limit = 50  # Same as in DepartureGroupingService
@@ -99,9 +121,16 @@ class DepartureFetcher:
                     f"Failed to fetch departures for station {station_id}: {e}",
                     exc_info=True,
                 )
-                # Keep cached data if available, otherwise set empty list
-                if not self.cache.get(station_id):
-                    self.cache.set(station_id, [])
+                # Keep stale cached data: filter out departed entries and mark as stale
+                cached = self.cache.get(station_id)
+                if cached:
+                    stale_departures = self._filter_and_mark_stale(cached)
+                    self.cache.set(station_id, stale_departures)
+                    logger.info(
+                        f"Using {len(stale_departures)} stale departures for station {station_id} "
+                        f"(filtered from {len(cached)} cached entries)"
+                    )
+                # If no cached data at all, leave cache empty (don't set empty list)
 
             # Add delay between calls (except after the last one)
             if sleep_ms > 0 and i < len(station_list) - 1:

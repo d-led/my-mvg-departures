@@ -7,6 +7,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
+from mvg_departures.adapters.api_rate_limiter import ApiRateLimiter
 from mvg_departures.domain.models.departure import Departure
 from mvg_departures.domain.ports.departure_repository import DepartureRepository
 
@@ -14,6 +15,10 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from aiohttp import ClientSession
+
+# Minimum delay between VBB API requests (in seconds)
+# Using 1.5s to be nice to the API and avoid rate limiting
+VBB_API_MIN_DELAY_SECONDS = 1.5
 
 
 class VbbDepartureRepository(DepartureRepository):
@@ -23,6 +28,15 @@ class VbbDepartureRepository(DepartureRepository):
         """Initialize with optional aiohttp session."""
         self._session = session
         self._base_url = "https://v6.bvg.transport.rest"
+        self._rate_limiter: ApiRateLimiter | None = None
+
+    async def _get_rate_limiter(self) -> ApiRateLimiter:
+        """Get the shared rate limiter for VBB API."""
+        if self._rate_limiter is None:
+            self._rate_limiter = await ApiRateLimiter.get_instance(
+                "vbb_api", VBB_API_MIN_DELAY_SECONDS
+            )
+        return self._rate_limiter
 
     def _build_request_params(
         self, offset_minutes: int, duration_minutes: int
@@ -69,6 +83,10 @@ class VbbDepartureRepository(DepartureRepository):
             raise RuntimeError("VBB API requires an aiohttp session")
 
         url = f"{self._base_url}/stops/{station_id}/departures"
+
+        # Rate limit: wait for permission before making request
+        rate_limiter = await self._get_rate_limiter()
+        await rate_limiter.acquire()
 
         async with self._session.get(url, params=params, ssl=False) as response:
             if response.status != 200:

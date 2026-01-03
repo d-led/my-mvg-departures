@@ -282,19 +282,21 @@ class ApiPoller(ApiPollerProtocol):
     async def _process_and_broadcast(self) -> None:
         """Process departures (from cache or API) and broadcast update."""
         all_groups: list[DirectionGroupWithMetadata] = []
-        has_errors = False
+        success_count = 0
+        error_count = 0
 
         for stop_config in self.stop_configs:
             try:
                 direction_groups = await self._process_stop_config(stop_config)
                 all_groups.extend(direction_groups)
+                success_count += 1
             except Exception as e:
                 error_details = _extract_error_details(e)
                 logger.error(
                     f"API poller failed to process departures for {stop_config.station_name}: "
                     f"{error_details.reason} (status: {error_details.status_code}, error: {e})"
                 )
-                has_errors = True
+                error_count += 1
                 if error_details.status_code == 429:
                     logger.warning(
                         f"Rate limit (429) detected for {stop_config.station_name} - "
@@ -314,11 +316,18 @@ class ApiPoller(ApiPollerProtocol):
 
         self.state_updater.update_departures(all_groups)
         self.state_updater.update_last_update_time(datetime.now(UTC))
-        self.state_updater.update_api_status("error" if has_errors else "success")
+        # Determine API status: success (all worked), degraded (some failed), error (all failed)
+        if error_count == 0:
+            api_status = "success"
+        elif success_count > 0:
+            api_status = "degraded"
+        else:
+            api_status = "error"
+        self.state_updater.update_api_status(api_status)
 
         logger.debug(
             f"API poller updated departures at {datetime.now(UTC)}, "
-            f"groups: {len(all_groups)}, errors: {has_errors}"
+            f"groups: {len(all_groups)}, api_status: {api_status}"
         )
 
         await self.state_broadcaster.broadcast_update(self.broadcast_topic)

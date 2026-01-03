@@ -323,25 +323,30 @@ platform_filter_routes = ["249"]
 "->Berliner Str. (via vbb)" = ["U9 S+U Bundesplatz"]
 "->Uhlandstr. (via vbb, 15+ min)" = ["249"]
 
-[[routes.stops]]
-# Station ID for Zoologischer Garten (Berlin) - DB API
-# Same station, different API - compare results!
-# API docs: https://v6.db.transport.rest/api.html
-# Found using: db-config search "Zoologischer Garten Berlin"
-station_id = "8010406"  # Berlin Zoologischer Garten
-station_name = "Zoo (15+ min, via db)"
-api_provider = "db"  # Use DB REST API
-max_departures_per_stop = 15
-max_departures_per_route = 3
-departure_leeway_minutes = 15
-show_ungrouped = false  # Show all departures
-fetch_max_minutes_in_advance = 120
-
-[routes.stops.direction_mappings]
-# U-Bahn and Bus routes from Zoologischer Garten (via DB)
-# Note: DB uses "U 9" (with space), VBB uses "U9" (no space)
-# Note: DB destination format is "Station (S+U), City" not "S+U Station (City)"
-"->Berliner Str. (via db)" = ["U 9 Bundesplatz"]
+# NOTE: DB REST API (v6.db.transport.rest) has strict rate limits due to underlying
+# Deutsche Bahn API changes. The original HAFAS API was shut down and the new backend
+# has much lower rate limits. See: https://v6.db.transport.rest/
+# For Berlin, the VBB API (v6.bvg.transport.rest) is recommended instead.
+#
+# [[routes.stops]]
+# # Station ID for Zoologischer Garten (Berlin) - DB API
+# # Same station, different API - compare results!
+# # API docs: https://v6.db.transport.rest/api.html
+# # Found using: db-config search "Zoologischer Garten Berlin"
+# station_id = "8010406"  # Berlin Zoologischer Garten
+# station_name = "Zoo (15+ min, via db)"
+# api_provider = "db"  # Use DB REST API
+# max_departures_per_stop = 15
+# max_departures_per_route = 3
+# departure_leeway_minutes = 15
+# show_ungrouped = false  # Show all departures
+# fetch_max_minutes_in_advance = 120
+#
+# [routes.stops.direction_mappings]
+# # U-Bahn and Bus routes from Zoologischer Garten (via DB)
+# # Note: DB uses "U 9" (with space), VBB uses "U9" (no space)
+# # Note: DB destination format is "Station (S+U), City" not "S+U Station (City)"
+# "->Berliner Str. (via db)" = ["U 9 Bundesplatz"]
 
 [[routes.stops]]
 # Station ID for Ernst-Reuter-Platz (Berlin) - VBB API
@@ -358,21 +363,21 @@ departure_leeway_minutes = 6
 # U-Bahn routes from Ernst-Reuter-Platz (via VBB)
 "->Bismarckstr. (via vbb)" = ["U2 Ruhleben", "U Theodor"]
 
-[[routes.stops]]
-# Station ID for Ernst-Reuter-Platz (Berlin) - DB API
-# Same station, different API - compare results!
-# API docs: https://v6.db.transport.rest/api.html
-# Found using: db-config search "Ernst-Reuter-Platz Berlin"
-station_id = "731013"  # Ernst-Reuter-Platz (U), Berlin
-station_name = "Ernst-Reuter-Platz (6+ min, via db)"
-api_provider = "db"  # Use DB REST API
-max_departures_per_stop = 15
-max_departures_per_route = 3
-show_ungrouped = false  # Show all departures to debug matching
-departure_leeway_minutes = 6
-
-[routes.stops.direction_mappings]
-# U-Bahn routes from Ernst-Reuter-Platz (via DB)
-# Note: DB uses "U 2" (with space), VBB uses "U2" (no space)
-"->Bismarckstr. (via db)" = ["U 2 Ruhleben"]
+# [[routes.stops]]
+# # Station ID for Ernst-Reuter-Platz (Berlin) - DB API
+# # Same station, different API - compare results!
+# # API docs: https://v6.db.transport.rest/api.html
+# # Found using: db-config search "Ernst-Reuter-Platz Berlin"
+# station_id = "731013"  # Ernst-Reuter-Platz (U), Berlin
+# station_name = "Ernst-Reuter-Platz (6+ min, via db)"
+# api_provider = "db"  # Use DB REST API
+# max_departures_per_stop = 15
+# max_departures_per_route = 3
+# show_ungrouped = false  # Show all departures to debug matching
+# departure_leeway_minutes = 6
+#
+# [routes.stops.direction_mappings]
+# # U-Bahn routes from Ernst-Reuter-Platz (via DB)
+# # Note: DB uses "U 2" (with space), VBB uses "U2" (no space)
+# "->Bismarckstr. (via db)" = ["U 2 Ruhleben"]
 
