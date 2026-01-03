@@ -48,6 +48,36 @@ db-config = "mvg_departures.cli_db:cli_main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+# Poetry configuration (for dependency management)
+# This is in addition to PEP 621 format above for compatibility
+[tool.poetry]
+name = "my-mvg-departures"
+version = "0.0.1"
+description = "Live MVG departures display with server-side rendered UI"
+readme = "README.md"
+authors = ["Dmitry Ledentsov"]
+license = "MPL-2.0"
+
+[tool.poetry.dependencies]
+python = ">=3.12,<3.15"
+mvg = ">=1.6.0"
+pyview-web = ">=0.7.0"
+uvicorn = {extras = ["standard"], version = ">=0.32.0"}
+pydantic-settings = ">=2.6.0"
+aiohttp = ">=3.11.0"
+throttled-py = ">=3.0.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.3.0"
+pytest-asyncio = ">=0.24.0"
+pytest-cov = ">=6.0.0"
+pytest-archon = ">=0.0.7"
+black = ">=25.12.0"
+ruff = ">=0.8.0"
+mypy = ">=1.13.0"
+types-pytz = ">=2024.1.0"
+radon = ">=6.0.0"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/mvg_departures"]
 
