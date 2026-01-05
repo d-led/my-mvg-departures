@@ -33,7 +33,7 @@ def log_api_request(
     method: str,
     url: str,
     params: dict[str, Any] | None = None,
-    headers: dict[str, str] | None = None,
+    headers: dict[str, str] | None = None,  # noqa: ARG001
     payload: Any = None,
 ) -> None:
     """Log API request details if MMD_LOG_REQUESTS is enabled.
@@ -42,7 +42,7 @@ def log_api_request(
         method: HTTP method (GET, POST, etc.).
         url: Request URL.
         params: Query parameters (optional).
-        headers: Request headers (optional, not logged).
+        headers: Request headers (optional, not logged, kept for API compatibility).
         payload: Request payload/body (optional).
     """
     if not should_log_requests():
