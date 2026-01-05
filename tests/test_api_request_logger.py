@@ -112,72 +112,6 @@ class TestLogApiRequest:
 
     @patch("mvg_departures.adapters.api_request_logger.should_log_requests")
     @patch("mvg_departures.adapters.api_request_logger.logger")
-    def test_when_logging_enabled_with_headers_then_logs_headers(
-        self, mock_logger: object, mock_should_log: object
-    ) -> None:
-        """Given logging enabled with headers, when calling, then logs headers."""
-        mock_should_log.return_value = True
-
-        log_api_request("GET", "https://example.com/api", headers={"User-Agent": "Test"})
-
-        mock_logger.info.assert_called_once()
-        call_args = mock_logger.info.call_args[0][0]
-        assert "Headers:" in call_args
-        assert "User-Agent" in call_args
-        assert "Test" in call_args
-
-    @patch("mvg_departures.adapters.api_request_logger.should_log_requests")
-    @patch("mvg_departures.adapters.api_request_logger.logger")
-    def test_when_logging_with_authorization_header_then_redacts_it(
-        self, mock_logger: object, mock_should_log: object
-    ) -> None:
-        """Given Authorization header, when logging, then redacts the value."""
-        mock_should_log.return_value = True
-
-        log_api_request(
-            "GET", "https://example.com/api", headers={"Authorization": "Bearer secret-token"}
-        )
-
-        mock_logger.info.assert_called_once()
-        call_args = mock_logger.info.call_args[0][0]
-        assert "Authorization" in call_args
-        assert "***REDACTED***" in call_args
-        assert "secret-token" not in call_args
-
-    @patch("mvg_departures.adapters.api_request_logger.should_log_requests")
-    @patch("mvg_departures.adapters.api_request_logger.logger")
-    def test_when_logging_with_cookie_header_then_redacts_it(
-        self, mock_logger: object, mock_should_log: object
-    ) -> None:
-        """Given Cookie header, when logging, then redacts the value."""
-        mock_should_log.return_value = True
-
-        log_api_request("GET", "https://example.com/api", headers={"Cookie": "session=abc123"})
-
-        mock_logger.info.assert_called_once()
-        call_args = mock_logger.info.call_args[0][0]
-        assert "Cookie" in call_args
-        assert "***REDACTED***" in call_args
-        assert "abc123" not in call_args
-
-    @patch("mvg_departures.adapters.api_request_logger.should_log_requests")
-    @patch("mvg_departures.adapters.api_request_logger.logger")
-    def test_when_logging_with_x_api_key_header_then_redacts_it(
-        self, mock_logger: object, mock_should_log: object
-    ) -> None:
-        """Given X-API-Key header, when logging, then redacts the value."""
-        mock_should_log.return_value = True
-
-        log_api_request("GET", "https://example.com/api", headers={"X-API-Key": "secret-key"})
-
-        mock_logger.info.assert_called_once()
-        call_args = mock_logger.info.call_args[0][0]
-        assert "X-API-Key" in call_args
-        assert "***REDACTED***" in call_args
-        assert "secret-key" not in call_args
-
-    @patch("mvg_departures.adapters.api_request_logger.should_log_requests")
-    @patch("mvg_departures.adapters.api_request_logger.logger")
     def test_when_logging_with_dict_payload_then_logs_as_json(
         self, mock_logger: object, mock_should_log: object
     ) -> None:
@@ -210,10 +144,10 @@ class TestLogApiRequest:
 
     @patch("mvg_departures.adapters.api_request_logger.should_log_requests")
     @patch("mvg_departures.adapters.api_request_logger.logger")
-    def test_when_logging_with_all_fields_then_logs_all(
+    def test_when_logging_with_all_fields_then_logs_url_and_payload(
         self, mock_logger: object, mock_should_log: object
     ) -> None:
-        """Given all fields provided, when logging, then logs all of them."""
+        """Given all fields provided, when logging, then logs URL and payload (not headers)."""
         mock_should_log.return_value = True
 
         log_api_request(
@@ -229,5 +163,5 @@ class TestLogApiRequest:
         assert "POST" in call_args
         assert "https://example.com/api" in call_args
         assert "limit=10" in call_args
-        assert "Content-Type" in call_args
         assert "Payload:" in call_args
+        assert "Content-Type" not in call_args  # Headers should not be logged

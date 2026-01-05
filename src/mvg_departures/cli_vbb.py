@@ -1,6 +1,7 @@
 """CLI helpers for configuring VBB (Berlin) departures."""
 
 import asyncio
+import logging
 import sys
 from typing import Any
 
@@ -418,6 +419,13 @@ Examples:
 
 def cli_main() -> None:
     """CLI entry point for setuptools."""
+    # Configure logging for CLI (needed for API request logging)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        stream=sys.stderr,
+    )
     asyncio.run(main())
 
 

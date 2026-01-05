@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -1564,6 +1565,13 @@ async def main() -> None:
 
 def cli_main() -> None:
     """Synchronous entry point for the CLI command."""
+    # Configure logging for CLI (needed for API request logging)
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        stream=sys.stderr,
+    )
     asyncio.run(main())
 
 
