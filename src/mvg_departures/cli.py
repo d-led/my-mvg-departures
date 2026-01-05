@@ -6,6 +6,7 @@ import asyncio
 import json
 import sys
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -47,6 +48,17 @@ class StationResultData:
     stop_point_mapping: dict[str, Any]
     departures: list[dict[str, Any]]
     routes_from_endpoint: dict[str, Any] | None
+
+
+@dataclass(frozen=True)
+class DeparturesDisplayContext:
+    """Context for displaying departures header and content."""
+
+    station_name: str
+    station_id: str
+    departures_count: int
+    filter_stop_point: str | None = None
+    total_before_filter: int | None = None
 
 
 async def _try_direct_search(query: str, session: aiohttp.ClientSession) -> dict[str, Any] | None:
@@ -1154,6 +1166,21 @@ def _setup_mvg_argparse_subparsers(subparsers: Any) -> None:
         help="Don't show config patterns",
     )
 
+    departures_parser = subparsers.add_parser(
+        "departures", help="Show live departures for a station (by ID or search query)"
+    )
+    departures_parser.add_argument(
+        "query",
+        help="Station ID (e.g., de:09162:100 or de:09162:100:4:4) or station name",
+    )
+    departures_parser.add_argument(
+        "--limit",
+        type=int,
+        default=100,
+        help="Maximum number of departures to fetch (default: 100)",
+    )
+    departures_parser.add_argument("--json", action="store_true", help="Output as JSON")
+
     generate_parser = subparsers.add_parser("generate", help="Generate config snippet")
     generate_parser.add_argument("station_id", help="Station ID")
     generate_parser.add_argument("station_name", help="Station name")
@@ -1179,6 +1206,15 @@ Examples:
 
   # Search for stations and show routes (by name)
   mvg-config routes "Giesing"
+
+  # Show live departures for a station
+  mvg-config departures de:09162:100
+
+  # Show departures for a specific stop point (physical stop)
+  mvg-config departures de:09162:1108:4:4
+
+  # Search and show departures
+  mvg-config departures "Chiemgaustr"
 
   # Generate config snippet
   mvg-config generate de:09162:100 "Giesing"
@@ -1228,12 +1264,244 @@ async def _handle_generate_command(station_id: str, station_name: str) -> None:
     print(snippet)
 
 
+def _format_departure_time(dep: dict[str, Any]) -> str:
+    """Format departure time from API response."""
+    realtime_ms = dep.get("realtimeDepartureTime") or dep.get("time")
+
+    if not realtime_ms:
+        return "??:??"
+
+    if isinstance(realtime_ms, int) and realtime_ms > 1000000000000:
+        dt = datetime.fromtimestamp(realtime_ms / 1000, tz=UTC)
+    elif isinstance(realtime_ms, int):
+        dt = datetime.fromtimestamp(realtime_ms, tz=UTC)
+    else:
+        return "??:??"
+
+    local_dt = dt.astimezone()
+    now = datetime.now(UTC)
+    diff_minutes = int((dt - now).total_seconds() / 60)
+
+    delay_min = dep.get("delayInMinutes") or dep.get("delay", 0) or 0
+    delay_str = f" (+{delay_min})" if delay_min > 0 else ""
+
+    return f"{local_dt.strftime('%H:%M')}{delay_str} (in {diff_minutes} min)"
+
+
+def _display_departure(dep: dict[str, Any], index: int) -> None:
+    """Display a single departure."""
+    line = dep.get("label") or dep.get("line", "?")
+    destination = dep.get("destination", "?")
+    transport_type = _normalize_transport_type(dep.get("transportType") or dep.get("type", ""))
+    stop_point = dep.get("stopPointGlobalId", "")
+    platform = dep.get("platform", "")
+    cancelled = dep.get("cancelled", False)
+
+    time_str = _format_departure_time(dep)
+    platform_str = f" [Platform {platform}]" if platform else ""
+    stop_point_str = f" | Stop: {stop_point}" if stop_point else ""
+    cancelled_str = " [CANCELLED]" if cancelled else ""
+
+    print(
+        f"  {index:3}. {time_str:25} {transport_type:12} {line:6} → {destination}{platform_str}{stop_point_str}{cancelled_str}"
+    )
+
+
+def _parse_stop_point_filter(station_id: str) -> tuple[str, str | None]:
+    """Parse station_id to extract base station and optional stop point filter.
+
+    Args:
+        station_id: Station ID, possibly with stop point suffix (e.g., de:09162:1108:4:4).
+
+    Returns:
+        Tuple of (base_station_id, filter_stop_point or None).
+    """
+    parts = station_id.split(":")
+    is_stop_point_id = len(parts) >= 5 and parts[-1] == parts[-2]
+
+    if is_stop_point_id:
+        return ":".join(parts[:3]), station_id
+
+    return station_id, None
+
+
+def _build_departures_api_url(station_id: str, limit: int) -> str:
+    """Build MVG departures API URL."""
+    return (
+        f"https://www.mvg.de/api/bgw-pt/v3/departures"
+        f"?globalId={station_id}&limit={limit}&transportTypes=UBAHN,TRAM,SBAHN,BUS,REGIONAL_BUS,BAHN"
+    )
+
+
+async def _fetch_departures_from_api(
+    session: aiohttp.ClientSession, url: str
+) -> list[dict[str, Any]]:
+    """Fetch departures from API URL."""
+    headers = _get_mvg_routes_headers()
+    try:
+        response = await session.get(url, headers=headers)
+    except Exception as e:
+        print(f"Error fetching departures: {e}", file=sys.stderr)
+        return []
+
+    try:
+        if response.status != 200:
+            return []
+        data = await response.json()
+        return data if isinstance(data, list) else []
+    finally:
+        response.release()
+
+
+async def _fetch_raw_departures(
+    station_id: str, limit: int
+) -> tuple[list[dict[str, Any]], str | None]:
+    """Fetch raw departures from MVG API."""
+    base_station_id, filter_stop_point = _parse_stop_point_filter(station_id)
+    url = _build_departures_api_url(base_station_id, limit)
+
+    async with aiohttp.ClientSession() as session:
+        departures = await _fetch_departures_from_api(session, url)
+        return departures, filter_stop_point
+
+
+async def _resolve_station(query: str) -> tuple[str, str]:
+    """Resolve query to station_id and station_name."""
+    if ":" in query:
+        return query, query
+
+    results = await search_stations(query)
+    if not results:
+        print(f"No stations found for '{query}'", file=sys.stderr)
+        sys.exit(1)
+
+    return results[0].get("id", ""), results[0].get("name", query)
+
+
+def _filter_by_stop_point(
+    departures: list[dict[str, Any]], filter_stop_point: str | None
+) -> tuple[list[dict[str, Any]], int | None]:
+    """Filter departures by stop point if specified."""
+    if not filter_stop_point:
+        return departures, None
+
+    total_before = len(departures)
+    filtered = [d for d in departures if d.get("stopPointGlobalId") == filter_stop_point]
+    return filtered, total_before
+
+
+def _print_departures_header(ctx: DeparturesDisplayContext) -> None:
+    """Print the departures display header."""
+    print(f"\n{'=' * 100}")
+    print(f"Live Departures: {ctx.station_name} ({ctx.station_id})")
+    print(f"{'=' * 100}")
+
+    if ctx.filter_stop_point:
+        print(f"Filtered by stop point: {ctx.filter_stop_point}")
+        print(f"Showing {ctx.departures_count} of {ctx.total_before_filter} total departures")
+    else:
+        print(f"Total departures: {ctx.departures_count}")
+
+    print(f"{'-' * 100}")
+
+
+async def _show_available_stop_points(station_id: str, limit: int) -> None:
+    """Show available stop points when filter returns no results."""
+    print("\n  No departures match the filter!")
+    print("\n  Available stop points at this station:")
+
+    base_station = station_id.rsplit(":", 2)[0]
+    all_deps, _ = await _fetch_raw_departures(base_station, limit)
+
+    stop_points: dict[str, int] = {}
+    for d in all_deps:
+        sp = d.get("stopPointGlobalId", "unknown")
+        stop_points[sp] = stop_points.get(sp, 0) + 1
+
+    for sp, count in sorted(stop_points.items()):
+        print(f"    {sp}: {count} departures")
+
+
+def _group_by_stop_point(departures: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Group departures by stop point ID."""
+    by_stop_point: dict[str, list[dict[str, Any]]] = {}
+    for dep in departures:
+        sp = dep.get("stopPointGlobalId", "unknown")
+        if sp not in by_stop_point:
+            by_stop_point[sp] = []
+        by_stop_point[sp].append(dep)
+    return by_stop_point
+
+
+def _display_departures_flat(departures: list[dict[str, Any]]) -> None:
+    """Display departures as a flat list."""
+    for i, dep in enumerate(departures, 1):
+        _display_departure(dep, i)
+
+
+def _display_departures_grouped(by_stop_point: dict[str, list[dict[str, Any]]]) -> None:
+    """Display departures grouped by stop point."""
+    for sp in sorted(by_stop_point.keys()):
+        stop_num = sp.split(":")[-1] if ":" in sp else sp
+        print(f"\n  Stop {stop_num} ({sp}):")
+        for i, dep in enumerate(by_stop_point[sp], 1):
+            _display_departure(dep, i)
+
+
+def _print_departures_footer() -> None:
+    """Print the departures display footer."""
+    print(f"\n{'-' * 100}")
+    print(
+        "Tip: Use station_id with stop point (e.g., de:09162:1108:4:4) to filter by physical stop."
+    )
+
+
+async def list_departures(query: str, limit: int = 100, format_json: bool = False) -> None:
+    """List live departures for a station."""
+    station_id, station_name = await _resolve_station(query)
+    departures, filter_stop_point = await _fetch_raw_departures(station_id, limit)
+
+    if not departures:
+        print(f"No departures found for station {station_id}", file=sys.stderr)
+        sys.exit(1)
+
+    departures, total_before_filter = _filter_by_stop_point(departures, filter_stop_point)
+
+    if format_json:
+        print(json.dumps(departures, indent=2, ensure_ascii=False))
+        return
+
+    ctx = DeparturesDisplayContext(
+        station_name=station_name,
+        station_id=station_id,
+        departures_count=len(departures),
+        filter_stop_point=filter_stop_point,
+        total_before_filter=total_before_filter,
+    )
+    _print_departures_header(ctx)
+
+    if not departures:
+        await _show_available_stop_points(station_id, limit)
+        return
+
+    by_stop_point = _group_by_stop_point(departures)
+    use_flat_display = len(by_stop_point) == 1 or filter_stop_point
+
+    if use_flat_display:
+        _display_departures_flat(departures)
+    else:
+        _display_departures_grouped(by_stop_point)
+
+    _print_departures_footer()
+
+
 async def _execute_cli_command(args: Any) -> None:
     """Execute the appropriate CLI command based on args."""
     command_handlers: dict[str, Any] = {
         "search": lambda: _handle_search_command(args.query, args.json),
         "info": lambda: show_station_info(args.station_id, format_json=args.json),
         "routes": lambda: _handle_routes_command(args.query, show_patterns=not args.no_patterns),
+        "departures": lambda: list_departures(args.query, limit=args.limit, format_json=args.json),
         "generate": lambda: _handle_generate_command(args.station_id, args.station_name),
     }
 

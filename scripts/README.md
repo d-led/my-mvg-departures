@@ -106,6 +106,67 @@ Init.d service script (used by install.sh).
 
 Helper script to find station IDs (see main README).
 
+### `list_routes.sh`
+
+List available routes and destinations for a station. Useful for configuring direction mappings.
+
+**Usage:**
+
+```bash
+# Search by station name
+./scripts/list_routes.sh "Giesing"
+
+# By station ID
+./scripts/list_routes.sh de:09162:100
+
+# By specific stop point ID
+./scripts/list_routes.sh de:09162:1108:4:4
+```
+
+**Output includes:**
+
+- Available routes and their destinations
+- Config patterns ready to copy into `direction_mappings`
+- Stop point differentiation hints for physical stops
+
+### `list_departures.sh`
+
+Show live departures for a station. Useful for debugging when departures don't appear.
+
+**Usage:**
+
+```bash
+# Search by station name
+./scripts/list_departures.sh "Chiemgaustr"
+
+# By station ID (shows all stop points)
+./scripts/list_departures.sh de:09162:100
+
+# By specific stop point (filter to one physical stop)
+./scripts/list_departures.sh de:09162:1108:4:4
+
+# Limit number of results
+./scripts/list_departures.sh de:09162:100 --limit 50
+
+# Output as JSON
+./scripts/list_departures.sh de:09162:100 --json
+```
+
+**Output includes:**
+
+- Live departure times with delays
+- Transport type, line number, and destination
+- Stop point IDs for each departure
+- Platform information (when available)
+- Cancelled departures marked
+
+**Use cases:**
+
+- Debug why a stop shows no departures
+- Verify stop point IDs are correct
+- Check departure frequency for specific stop points
+- Compare departures across different physical stops
+
 ## How Scripts Work
 
 All scripts use `deploy-common.sh` which provides:

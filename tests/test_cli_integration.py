@@ -164,7 +164,60 @@ class TestMVGCliIntegration:
         assert "search" in stdout
         assert "info" in stdout
         assert "routes" in stdout
+        assert "departures" in stdout
         assert "generate" in stdout
+
+    def test_departures_command_by_id_shows_live_departures(self) -> None:
+        """Given a station ID, when listing departures, then shows live departures."""
+        stdout, stderr, exit_code = _run_cli_command(["departures", "de:09162:6", "--limit", "10"])
+
+        assert exit_code == 0, f"Command failed with stderr: {stderr}"
+        assert "Live Departures" in stdout
+        assert "de:09162:6" in stdout
+
+    def test_departures_command_by_name_searches_and_shows_departures(self) -> None:
+        """Given a station name, when listing departures, then searches and shows departures."""
+        stdout, stderr, exit_code = _run_cli_command(
+            ["departures", "Rotkreuzplatz", "--limit", "10"]
+        )
+
+        assert exit_code == 0, f"Command failed with stderr: {stderr}"
+        assert "Live Departures" in stdout
+
+    def test_departures_command_with_stop_point_filters_results(self) -> None:
+        """Given a stop point ID, when listing departures, then filters by that stop point."""
+        stdout, stderr, exit_code = _run_cli_command(
+            ["departures", "de:09162:6:1:1", "--limit", "20"]
+        )
+
+        assert exit_code == 0, f"Command failed with stderr: {stderr}"
+        assert "Live Departures" in stdout
+        assert "Filtered by stop point" in stdout
+        assert "de:09162:6:1:1" in stdout
+
+    def test_departures_command_with_json_output(self) -> None:
+        """Given --json flag, when listing departures, then returns JSON output."""
+        stdout, stderr, exit_code = _run_cli_command(
+            ["departures", "de:09162:6", "--limit", "5", "--json"]
+        )
+
+        assert exit_code == 0, f"Command failed with stderr: {stderr}"
+        data = json.loads(stdout)
+        assert isinstance(data, list)
+        # Each departure should have expected fields
+        if len(data) > 0:
+            assert "destination" in data[0] or "label" in data[0]
+
+    def test_departures_command_with_limit_restricts_results(self) -> None:
+        """Given --limit flag, when listing departures, then limits number of results."""
+        stdout, stderr, exit_code = _run_cli_command(
+            ["departures", "de:09162:6", "--limit", "5", "--json"]
+        )
+
+        assert exit_code == 0, f"Command failed with stderr: {stderr}"
+        data = json.loads(stdout)
+        assert isinstance(data, list)
+        assert len(data) <= 5
 
 
 @pytest.mark.integration
