@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.0.7]
+
+### Features
+
+- **API request logging**: `MMD_LOG_REQUESTS=true` environment variable logs all API requests (URL, method, headers, payload) for debugging
+
+### Fixes
+
+- **Stop point filtering**: Fixed bug where stops with no departures were still displayed - now correctly filters out empty groups
+- **CLI stop point handling**: Fixed `list_departures.sh` to handle both `stopPointGlobalId` (camelCase) and `stop_point_global_id` (snake_case) field formats
+
+### Improvements
+
+- **Stop point filtering performance**: Moved stop point filtering earlier in processing pipeline for better efficiency
+- **Test coverage**: Added comprehensive tests for filtering and grouping combinations (direction mappings, blacklist, leeway, max hours, stop points)
+
 ## [0.0.6]
 
 ### Features
