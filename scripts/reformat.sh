@@ -22,8 +22,8 @@ else
     BLACK="black"
 fi
 
-# Check if black is available
-if ! run_python_module black --version &> /dev/null; then
+# Check if black is available using the actual command we'll use
+if ! $BLACK --version &> /dev/null; then
     echo "black not found. Installing dependencies..."
     if [ -d ".venv" ]; then
         $PIP install -e ".[dev]"

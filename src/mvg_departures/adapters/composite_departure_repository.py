@@ -28,9 +28,29 @@ class CompositeDepartureRepository(DepartureRepository):
             session: Optional aiohttp session for HTTP connections.
         """
         self._session = session
-        self._stop_configs = {config.station_id: config for config in stop_configs}
+        self._stop_configs = self._build_stop_configs_mapping(stop_configs)
         self._repositories: dict[str, DepartureRepository] = {}
         self._initialize_repositories()
+
+    def _build_stop_configs_mapping(
+        self, stop_configs: list[StopConfiguration]
+    ) -> dict[str, StopConfiguration]:
+        """Build station_id to config mapping, including base station IDs for stop points."""
+        mapping: dict[str, StopConfiguration] = {}
+        for config in stop_configs:
+            mapping[config.station_id] = config
+            # Also map by base station ID if this is a stop_point_global_id
+            base_id = self._extract_base_station_id(config.station_id)
+            if base_id != config.station_id and base_id not in mapping:
+                mapping[base_id] = config
+        return mapping
+
+    def _extract_base_station_id(self, station_id: str) -> str:
+        """Extract base station ID from a potential stop_point_global_id."""
+        parts = station_id.split(":")
+        if len(parts) >= 5 and parts[-1] == parts[-2]:
+            return ":".join(parts[:3])
+        return station_id
 
     def _create_repository_for_provider(self, api_provider: str) -> DepartureRepository:
         """Create a repository instance for the given API provider."""
@@ -49,7 +69,7 @@ class CompositeDepartureRepository(DepartureRepository):
         # Map of RepositoryKey -> repository instance
         repo_cache: dict[RepositoryKey, DepartureRepository] = {}
 
-        for stop_config in self._stop_configs.values():
+        for station_id, stop_config in self._stop_configs.items():
             api_provider = stop_config.api_provider.lower()
             repo_key = RepositoryKey(api_provider=api_provider)
 
@@ -57,8 +77,8 @@ class CompositeDepartureRepository(DepartureRepository):
             if repo_key not in repo_cache:
                 repo_cache[repo_key] = self._create_repository_for_provider(api_provider)
 
-            # Map this station to the appropriate repository
-            self._repositories[stop_config.station_id] = repo_cache[repo_key]
+            # Map this station_id (including base IDs) to the appropriate repository
+            self._repositories[station_id] = repo_cache[repo_key]
 
     def _get_repository(self, station_id: str) -> DepartureRepository:
         """Get the appropriate repository for a station."""

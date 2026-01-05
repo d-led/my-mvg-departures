@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 import aiohttp
 from mvg import MvgApi
 
+from mvg_departures.adapters.api_request_logger import log_api_request
 from mvg_departures.domain.models.cli_types import (
     ConfigPattern,
     DestinationPlatformInfo,
@@ -348,6 +349,7 @@ async def _get_routes_from_endpoint(
     try:
         url = f"https://www.mvg.de/api/bgw-pt/v3/lines/{station_id}"
         headers = _get_mvg_routes_headers()
+        log_api_request("GET", url, headers=headers)
         async with session.get(url, headers=headers) as response:
             return await _handle_routes_response(response, station_id)
     except Exception:
@@ -361,7 +363,7 @@ def _process_departure_for_stop_point_mapping(
     line = str(dep.get("label", dep.get("line", "")))
     destination = str(dep.get("destination", ""))
     transport_type = str(dep.get("transportType", dep.get("type", "")))
-    stop_point_id = dep.get("stopPointGlobalId", "")
+    stop_point_id = dep.get("stopPointGlobalId") or dep.get("stop_point_global_id") or ""
     platform = dep.get("platform")
 
     if not line or not destination:
@@ -434,6 +436,7 @@ async def _get_stop_point_mapping(
     try:
         url = _build_stop_point_mapping_url(station_id, limit)
         headers = _get_mvg_routes_headers()
+        log_api_request("GET", url, headers=headers)
         async with session.get(url, headers=headers) as response:
             await _handle_stop_point_mapping_response(response, stop_point_mapping)
     except Exception:
@@ -1293,7 +1296,7 @@ def _display_departure(dep: dict[str, Any], index: int) -> None:
     line = dep.get("label") or dep.get("line", "?")
     destination = dep.get("destination", "?")
     transport_type = _normalize_transport_type(dep.get("transportType") or dep.get("type", ""))
-    stop_point = dep.get("stopPointGlobalId", "")
+    stop_point = dep.get("stopPointGlobalId") or dep.get("stop_point_global_id") or ""
     platform = dep.get("platform", "")
     cancelled = dep.get("cancelled", False)
 
@@ -1338,6 +1341,7 @@ async def _fetch_departures_from_api(
 ) -> list[dict[str, Any]]:
     """Fetch departures from API URL."""
     headers = _get_mvg_routes_headers()
+    log_api_request("GET", url, headers=headers)
     try:
         response = await session.get(url, headers=headers)
     except Exception as e:
@@ -1386,7 +1390,12 @@ def _filter_by_stop_point(
         return departures, None
 
     total_before = len(departures)
-    filtered = [d for d in departures if d.get("stopPointGlobalId") == filter_stop_point]
+    # Check both camelCase and snake_case field names (API might use either)
+    filtered = [
+        d
+        for d in departures
+        if (d.get("stopPointGlobalId") or d.get("stop_point_global_id")) == filter_stop_point
+    ]
     return filtered, total_before
 
 
@@ -1415,7 +1424,7 @@ async def _show_available_stop_points(station_id: str, limit: int) -> None:
 
     stop_points: dict[str, int] = {}
     for d in all_deps:
-        sp = d.get("stopPointGlobalId", "unknown")
+        sp = d.get("stopPointGlobalId") or d.get("stop_point_global_id") or "unknown"
         stop_points[sp] = stop_points.get(sp, 0) + 1
 
     for sp, count in sorted(stop_points.items()):
@@ -1426,7 +1435,7 @@ def _group_by_stop_point(departures: list[dict[str, Any]]) -> dict[str, list[dic
     """Group departures by stop point ID."""
     by_stop_point: dict[str, list[dict[str, Any]]] = {}
     for dep in departures:
-        sp = dep.get("stopPointGlobalId", "unknown")
+        sp = dep.get("stopPointGlobalId") or dep.get("stop_point_global_id") or "unknown"
         if sp not in by_stop_point:
             by_stop_point[sp] = []
         by_stop_point[sp].append(dep)

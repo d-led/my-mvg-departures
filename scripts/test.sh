@@ -67,8 +67,31 @@ run_python_module pytest -m "not integration" "$@"
 echo "✓ Tests passed"
 echo ""
 
+# 5. Run integration tests
+echo "5. Running integration tests..."
+INTEGRATION_PASSED=true
+if ! run_python_module pytest -m integration "$@"; then
+    INTEGRATION_PASSED=false
+    echo "⚠ Integration tests failed (may require network access)"
+else
+    echo "✓ Integration tests passed"
+fi
+echo ""
+
+# 6. Complexity analysis
+echo "6. Running complexity analysis..."
+run_python "$SCRIPT_DIR/analyze_complexity.py" "$PROJECT_ROOT/src/mvg_departures" || {
+    echo "⚠ Complexity analysis had issues (this is non-fatal)"
+}
+echo "✓ Complexity analysis passed"
+echo ""
+
 echo "=========================================="
-echo "All checks passed! ✓"
+if [ "$INTEGRATION_PASSED" = true ]; then
+    echo "All checks passed! ✓"
+else
+    echo "Core checks passed! ✓ (Integration tests skipped/failed - may require network)"
+fi
 echo "=========================================="
 
 

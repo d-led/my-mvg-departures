@@ -191,15 +191,14 @@ class DepartureGroupingService:
             stop_config: Stop configuration.
 
         Returns:
-            List of GroupedDepartures.
+            List of GroupedDepartures (only groups with departures).
         """
         result = []
         for direction_name in stop_config.direction_mappings:
-            if direction_name in direction_groups:
+            departures = direction_groups.get(direction_name)
+            if departures:
                 result.append(
-                    GroupedDepartures(
-                        direction_name=direction_name, departures=direction_groups[direction_name]
-                    )
+                    GroupedDepartures(direction_name=direction_name, departures=departures)
                 )
 
         if stop_config.show_ungrouped and ungrouped:
@@ -231,6 +230,7 @@ class DepartureGroupingService:
             reference_time_utc = datetime.now(UTC)
 
         departures = self._filter_blacklisted_departures(departures, stop_config)
+        departures = self._filter_by_stop_point(departures, stop_config)
         direction_groups, ungrouped = self._group_by_direction(departures, stop_config)
 
         direction_groups = self._process_direction_groups(
@@ -468,8 +468,9 @@ class DepartureGroupingService:
 
         Returns:
             Filtered and limited list of departures.
+
+        Note: Stop point filtering is done earlier in group_departures, so it's not repeated here.
         """
-        departures = self._filter_by_stop_point(departures, stop_config)
         departures = self._filter_by_platform(departures, stop_config)
         departures = self._filter_by_leeway(departures, stop_config, reference_time_utc)
         departures = self._filter_by_max_hours(departures, stop_config)

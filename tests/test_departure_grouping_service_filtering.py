@@ -2,6 +2,8 @@
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from mvg_departures.application.services import DepartureGroupingService
 from mvg_departures.domain.models import Departure, StopConfiguration
 from tests.test_services import MockDepartureRepository
@@ -701,3 +703,198 @@ def test_group_departures_with_empty_blacklist() -> None:
     assert len(all_departures) == 2
     assert any(dep.line == "U3" for dep in all_departures)
     assert any(dep.line == "54" for dep in all_departures)
+
+
+@pytest.mark.asyncio
+async def test_group_departures_returns_empty_when_stop_point_has_no_departures() -> None:
+    """Given a stop point that doesn't exist, when grouping, then returns empty list."""
+    now = datetime.now(UTC)
+
+    # Departures from different stop points
+    departures = [
+        Departure(
+            time=now + timedelta(minutes=10),
+            planned_time=now + timedelta(minutes=10),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U3",
+            destination="Giesing",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+            stop_point_global_id="de:09162:1108:1:1",  # Different stop point
+        ),
+        Departure(
+            time=now + timedelta(minutes=15),
+            planned_time=now + timedelta(minutes=15),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U3",
+            destination="Giesing",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+            stop_point_global_id="de:09162:1108:2:2",  # Different stop point
+        ),
+    ]
+
+    # Stop config for a stop point that doesn't exist in departures
+    stop_config = StopConfiguration(
+        station_id="de:09162:1108:4:4",  # This stop point doesn't exist
+        station_name="Test Station",
+        direction_mappings={},
+        show_ungrouped=True,
+        ungrouped_title="Test",
+    )
+
+    repo = MockDepartureRepository(departures)
+    service = DepartureGroupingService(repo)
+
+    groups = await service.get_grouped_departures(stop_config)
+
+    # Should return empty list when no departures match the stop point
+    assert len(groups) == 0
+
+
+@pytest.mark.asyncio
+async def test_group_departures_returns_empty_when_all_departures_filtered_out() -> None:
+    """Given departures that are all filtered out, when grouping, then returns empty list."""
+    now = datetime.now(UTC)
+
+    departures = [
+        Departure(
+            time=now + timedelta(minutes=10),
+            planned_time=now + timedelta(minutes=10),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U3",
+            destination="Giesing",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+    ]
+
+    # Stop config with direction mappings but departures don't match
+    stop_config = StopConfiguration(
+        station_id="de:09162:70",
+        station_name="Test Station",
+        direction_mappings={"->City": ["U2"]},  # U3 doesn't match
+        show_ungrouped=False,  # Don't show ungrouped
+    )
+
+    repo = MockDepartureRepository(departures)
+    service = DepartureGroupingService(repo)
+
+    groups = await service.get_grouped_departures(stop_config)
+
+    # Should return empty list when all departures are filtered out and show_ungrouped is False
+    assert len(groups) == 0
+
+
+@pytest.mark.asyncio
+async def test_group_departures_returns_empty_when_ungrouped_filtered_out() -> None:
+    """Given show_ungrouped is true but all departures are filtered out, when grouping, then returns empty list."""
+    now = datetime.now(UTC)
+
+    departures = [
+        Departure(
+            time=now + timedelta(minutes=10),
+            planned_time=now + timedelta(minutes=10),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U3",
+            destination="Giesing",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+    ]
+
+    # Stop config with show_ungrouped=True but all departures filtered by leeway
+    stop_config = StopConfiguration(
+        station_id="de:09162:70",
+        station_name="Test Station",
+        direction_mappings={},
+        show_ungrouped=True,
+        ungrouped_title="Test",
+        departure_leeway_minutes=15,  # Filter out departures within 15 minutes
+    )
+
+    repo = MockDepartureRepository(departures)
+    service = DepartureGroupingService(repo)
+
+    groups = await service.get_grouped_departures(stop_config)
+
+    # Should return empty list when all departures are filtered out by leeway
+    assert len(groups) == 0
+
+
+def test_build_result_list_excludes_empty_direction_groups() -> None:
+    """Given direction groups with empty departures, when building result list, then excludes empty groups."""
+    service = DepartureGroupingService(MockDepartureRepository([]))
+    now = datetime.now(UTC)
+
+    stop_config = StopConfiguration(
+        station_id="de:09162:70",
+        station_name="Test Station",
+        direction_mappings={"->City": ["U3"], "->West": ["U6"]},
+        show_ungrouped=True,
+    )
+
+    # Direction groups with one empty
+    direction_groups = {
+        "->City": [
+            Departure(
+                time=now + timedelta(minutes=10),
+                planned_time=now + timedelta(minutes=10),
+                delay_seconds=None,
+                platform=None,
+                is_realtime=True,
+                line="U3",
+                destination="Giesing",
+                transport_type="U-Bahn",
+                icon="mdi:subway",
+                is_cancelled=False,
+                messages=[],
+            ),
+        ],
+        "->West": [],  # Empty group
+    }
+    ungrouped: list[Departure] = []
+
+    result = service._build_result_list(direction_groups, ungrouped, stop_config)
+
+    # Should only include the non-empty group
+    assert len(result) == 1
+    assert result[0].direction_name == "->City"
+    assert len(result[0].departures) == 1
+
+
+def test_build_result_list_excludes_empty_ungrouped() -> None:
+    """Given show_ungrouped is true but ungrouped is empty, when building result list, then excludes ungrouped."""
+    service = DepartureGroupingService(MockDepartureRepository([]))
+
+    stop_config = StopConfiguration(
+        station_id="de:09162:70",
+        station_name="Test Station",
+        direction_mappings={},
+        show_ungrouped=True,
+        ungrouped_title="Test",
+    )
+
+    direction_groups: dict[str, list[Departure]] = {}
+    ungrouped: list[Departure] = []  # Empty
+
+    result = service._build_result_list(direction_groups, ungrouped, stop_config)
+
+    # Should return empty list when ungrouped is empty
+    assert len(result) == 0

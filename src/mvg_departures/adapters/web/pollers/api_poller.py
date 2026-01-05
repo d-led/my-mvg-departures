@@ -235,10 +235,12 @@ class ApiPoller(ApiPollerProtocol):
             groups: List of grouped departures.
 
         Returns:
-            List of direction groups with metadata.
+            List of direction groups with metadata (only groups with departures).
         """
         result: list[DirectionGroupWithMetadata] = []
         for group in groups:
+            if not group.departures:
+                continue
             result.append(
                 DirectionGroupWithMetadata(
                     station_id=stop_config.station_id,
@@ -264,10 +266,12 @@ class ApiPoller(ApiPollerProtocol):
             cached_groups: List of cached grouped departures.
 
         Returns:
-            List of direction groups with metadata (marked as stale).
+            List of direction groups with metadata (marked as stale, only groups with departures).
         """
         result: list[DirectionGroupWithMetadata] = []
         for cached_group in cached_groups:
+            if not cached_group.departures:
+                continue
             stale_departures = [replace(dep, is_realtime=False) for dep in cached_group.departures]
             result.append(
                 DirectionGroupWithMetadata(

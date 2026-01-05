@@ -8,6 +8,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from mvg_departures.adapters.api_rate_limiter import ApiRateLimiter
+from mvg_departures.adapters.api_request_logger import log_api_request
 from mvg_departures.adapters.db_api.constants import (
     DB_LOCATIONS_URL,
     DB_STOPS_URL,
@@ -65,6 +66,8 @@ class DbHttpClient:
             return []
 
         params: dict[str, str | int] = {"query": query, "results": 20}
+
+        log_api_request("GET", DB_LOCATIONS_URL, params=params)
 
         try:
             async with self._session.get(DB_LOCATIONS_URL, params=params, ssl=False) as response:
@@ -138,6 +141,7 @@ class DbHttpClient:
 
         try:
             url = f"{DB_STOPS_URL}/{station_id}"
+            log_api_request("GET", url)
             async with self._session.get(url, ssl=False) as response:
                 return await self._parse_station_response(response, station_id)
         except Exception as e:

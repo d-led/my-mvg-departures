@@ -6,6 +6,8 @@ from typing import Any
 
 import aiohttp
 
+from mvg_departures.adapters.api_request_logger import log_api_request
+
 _COMMON_WORDS = {
     "berlin",
     "platz",
@@ -78,6 +80,8 @@ async def _fetch_locations(session: aiohttp.ClientSession, query: str) -> list[d
     base_url = "https://v6.bvg.transport.rest"
     url = f"{base_url}/locations"
     params: dict[str, str | int] = {"query": query, "results": 20}
+
+    log_api_request("GET", url, params=params)
 
     async with session.get(url, params=params, ssl=False) as response:
         if response.status != 200:
@@ -211,6 +215,8 @@ async def _fetch_departures(
     base_url = "https://v6.bvg.transport.rest"
     url = f"{base_url}/stops/{station_id}/departures"
     params: dict[str, int] = {"duration": 120, "results": 300}
+
+    log_api_request("GET", url, params=params)
 
     async with session.get(url, params=params, ssl=False) as response:
         if response.status != 200:

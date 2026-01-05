@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 from mvg import MvgApi, TransportType
 
+from mvg_departures.adapters.api_request_logger import log_api_request
 from mvg_departures.domain.models.departure import Departure
 from mvg_departures.domain.ports.departure_repository import DepartureRepository
 
@@ -82,6 +83,7 @@ class MvgDepartureRepository(DepartureRepository):
         try:
             url = self._build_departures_url(station_id, limit)
             headers = self._get_departures_headers()
+            log_api_request("GET", url, headers=headers)
             async with self._session.get(url, headers=headers, ssl=False) as response:
                 return await self._parse_departures_response(response)
         except Exception:

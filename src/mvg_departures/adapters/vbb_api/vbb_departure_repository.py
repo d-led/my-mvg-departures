@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from mvg_departures.adapters.api_rate_limiter import ApiRateLimiter
+from mvg_departures.adapters.api_request_logger import log_api_request
 from mvg_departures.domain.models.departure import Departure
 from mvg_departures.domain.ports.departure_repository import DepartureRepository
 
@@ -87,6 +88,8 @@ class VbbDepartureRepository(DepartureRepository):
         # Rate limit: wait for permission before making request
         rate_limiter = await self._get_rate_limiter()
         await rate_limiter.acquire()
+
+        log_api_request("GET", url, params=params)
 
         async with self._session.get(url, params=params, ssl=False) as response:
             if response.status != 200:
