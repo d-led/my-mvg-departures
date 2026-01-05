@@ -356,23 +356,22 @@ async def _get_routes_from_endpoint(
         return None
 
 
-def _process_departure_for_stop_point_mapping(
-    dep: dict[str, Any], stop_point_mapping: dict[str, dict[str, Any]]
-) -> None:
-    """Process a single departure to extract stop point and platform information."""
+def _extract_departure_fields(dep: dict[str, Any]) -> tuple[str, str, str, str, int | None]:
+    """Extract fields from departure dictionary.
+
+    Returns:
+        Tuple of (line, destination, transport_type, stop_point_id, platform).
+    """
     line = str(dep.get("label", dep.get("line", "")))
     destination = str(dep.get("destination", ""))
     transport_type = str(dep.get("transportType", dep.get("type", "")))
     stop_point_id = dep.get("stopPointGlobalId") or dep.get("stop_point_global_id") or ""
     platform = dep.get("platform")
+    return line, destination, transport_type, stop_point_id, platform
 
-    if not line or not destination:
-        return
 
-    transport_type = _normalize_transport_type(transport_type)
-    route_key = f"{transport_type} {line}"
-    mapping_key = f"{route_key}|{destination}"
-
+def _ensure_mapping_entry(stop_point_mapping: dict[str, dict[str, Any]], mapping_key: str) -> None:
+    """Ensure mapping entry exists for the given key."""
     if mapping_key not in stop_point_mapping:
         stop_point_mapping[mapping_key] = {
             "stop_points": set(),
@@ -380,6 +379,14 @@ def _process_departure_for_stop_point_mapping(
             "platform_to_stop_point": {},
         }
 
+
+def _add_stop_point_info(
+    stop_point_mapping: dict[str, dict[str, Any]],
+    mapping_key: str,
+    stop_point_id: str,
+    platform: int | None,
+) -> None:
+    """Add stop point and platform information to mapping."""
     if stop_point_id and stop_point_id.strip():
         stop_point_mapping[mapping_key]["stop_points"].add(stop_point_id)
 
@@ -390,6 +397,23 @@ def _process_departure_for_stop_point_mapping(
             platform_map[platform] = set()
         if stop_point_id and stop_point_id.strip():
             platform_map[platform].add(stop_point_id)
+
+
+def _process_departure_for_stop_point_mapping(
+    dep: dict[str, Any], stop_point_mapping: dict[str, dict[str, Any]]
+) -> None:
+    """Process a single departure to extract stop point and platform information."""
+    line, destination, transport_type, stop_point_id, platform = _extract_departure_fields(dep)
+
+    if not line or not destination:
+        return
+
+    transport_type = _normalize_transport_type(transport_type)
+    route_key = f"{transport_type} {line}"
+    mapping_key = f"{route_key}|{destination}"
+
+    _ensure_mapping_entry(stop_point_mapping, mapping_key)
+    _add_stop_point_info(stop_point_mapping, mapping_key, stop_point_id, platform)
 
 
 def _process_departures_for_mapping(

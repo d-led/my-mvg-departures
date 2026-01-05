@@ -898,3 +898,484 @@ def test_build_result_list_excludes_empty_ungrouped() -> None:
 
     # Should return empty list when ungrouped is empty
     assert len(result) == 0
+
+
+@pytest.mark.asyncio
+async def test_group_departures_with_direction_mappings_and_ungrouped() -> None:
+    """Given direction mappings and show_ungrouped=true, when grouping, then shows both mapped and ungrouped."""
+    now = datetime.now(UTC)
+    departures = [
+        Departure(
+            time=now + timedelta(minutes=10),
+            planned_time=now + timedelta(minutes=10),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U3",
+            destination="Giesing",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(minutes=15),
+            planned_time=now + timedelta(minutes=15),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="54",
+            destination="Münchner Freiheit",
+            transport_type="Bus",
+            icon="mdi:bus",
+            is_cancelled=False,
+            messages=[],
+        ),
+    ]
+
+    stop_config = StopConfiguration(
+        station_id="de:09162:70",
+        station_name="Test Station",
+        direction_mappings={"->Giesing": ["U3"]},
+        show_ungrouped=True,
+    )
+
+    repo = MockDepartureRepository(departures)
+    service = DepartureGroupingService(repo)
+
+    groups = await service.get_grouped_departures(stop_config)
+
+    # Should have both ->Giesing group and Other group
+    assert len(groups) == 2
+    direction_names = {g.direction_name for g in groups}
+    assert "->Giesing" in direction_names
+    assert "Other" in direction_names
+
+
+@pytest.mark.asyncio
+async def test_group_departures_with_direction_mappings_and_blacklist() -> None:
+    """Given direction mappings and blacklist, when grouping, then excludes blacklisted from both groups."""
+    now = datetime.now(UTC)
+    departures = [
+        Departure(
+            time=now + timedelta(minutes=10),
+            planned_time=now + timedelta(minutes=10),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U3",
+            destination="Giesing",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(minutes=11),
+            planned_time=now + timedelta(minutes=11),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="54",
+            destination="Münchner Freiheit",
+            transport_type="Bus",
+            icon="mdi:bus",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(minutes=12),
+            planned_time=now + timedelta(minutes=12),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U6",
+            destination="Klinikum",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+    ]
+
+    stop_config = StopConfiguration(
+        station_id="de:09162:70",
+        station_name="Test Station",
+        direction_mappings={"->Giesing": ["U3"]},
+        exclude_destinations=["54"],  # Blacklist route 54
+        show_ungrouped=True,
+    )
+
+    repo = MockDepartureRepository(departures)
+    service = DepartureGroupingService(repo)
+
+    groups = await service.get_grouped_departures(stop_config)
+
+    # Should have ->Giesing with U3, and Other with U6, but not route 54
+    all_departures = [dep for group in groups for dep in group.departures]
+    assert len(all_departures) == 2
+    assert any(dep.line == "U3" for dep in all_departures)
+    assert any(dep.line == "U6" for dep in all_departures)
+    assert not any(dep.line == "54" for dep in all_departures)
+
+
+@pytest.mark.asyncio
+async def test_group_departures_with_direction_mappings_and_leeway() -> None:
+    """Given direction mappings and leeway, when grouping, then applies leeway to all groups."""
+    now = datetime.now(UTC)
+    departures = [
+        Departure(
+            time=now + timedelta(minutes=3),  # Too soon
+            planned_time=now + timedelta(minutes=3),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U3",
+            destination="Giesing",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(minutes=10),  # OK
+            planned_time=now + timedelta(minutes=10),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U3",
+            destination="Giesing",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(minutes=4),  # Too soon
+            planned_time=now + timedelta(minutes=4),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="54",
+            destination="Münchner Freiheit",
+            transport_type="Bus",
+            icon="mdi:bus",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(minutes=12),  # OK
+            planned_time=now + timedelta(minutes=12),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="54",
+            destination="Münchner Freiheit",
+            transport_type="Bus",
+            icon="mdi:bus",
+            is_cancelled=False,
+            messages=[],
+        ),
+    ]
+
+    stop_config = StopConfiguration(
+        station_id="de:09162:70",
+        station_name="Test Station",
+        direction_mappings={"->Giesing": ["U3"]},
+        departure_leeway_minutes=5,
+        show_ungrouped=True,
+    )
+
+    repo = MockDepartureRepository(departures)
+    service = DepartureGroupingService(repo)
+
+    groups = await service.get_grouped_departures(stop_config)
+
+    # Should only have departures after leeway (10+ minutes)
+    all_departures = [dep for group in groups for dep in group.departures]
+    assert len(all_departures) == 2
+    assert all(dep.time >= now + timedelta(minutes=5) for dep in all_departures)
+
+
+@pytest.mark.asyncio
+async def test_group_departures_with_direction_mappings_and_max_hours() -> None:
+    """Given direction mappings and max_hours_in_advance, when grouping, then limits future departures."""
+    now = datetime.now(UTC)
+    departures = [
+        Departure(
+            time=now + timedelta(hours=1),
+            planned_time=now + timedelta(hours=1),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U3",
+            destination="Giesing",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(hours=4),  # Too far
+            planned_time=now + timedelta(hours=4),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U3",
+            destination="Giesing",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+        ),
+        Departure(
+            time=now + timedelta(hours=2),
+            planned_time=now + timedelta(hours=2),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="54",
+            destination="Münchner Freiheit",
+            transport_type="Bus",
+            icon="mdi:bus",
+            is_cancelled=False,
+            messages=[],
+        ),
+    ]
+
+    stop_config = StopConfiguration(
+        station_id="de:09162:70",
+        station_name="Test Station",
+        direction_mappings={"->Giesing": ["U3"]},
+        max_hours_in_advance=3,
+        show_ungrouped=True,
+    )
+
+    repo = MockDepartureRepository(departures)
+    service = DepartureGroupingService(repo)
+
+    groups = await service.get_grouped_departures(stop_config)
+
+    # Should only have departures within 3 hours
+    all_departures = [dep for group in groups for dep in group.departures]
+    assert len(all_departures) == 2
+    assert all((dep.time - now).total_seconds() / 3600 <= 3 for dep in all_departures)
+
+
+@pytest.mark.asyncio
+async def test_group_departures_with_stop_point_and_direction_mappings() -> None:
+    """Given stop point filter and direction mappings, when grouping, then filters by stop point first."""
+    now = datetime.now(UTC)
+    departures = [
+        Departure(
+            time=now + timedelta(minutes=10),
+            planned_time=now + timedelta(minutes=10),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U3",
+            destination="Giesing",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+            stop_point_global_id="de:09162:1108:1:1",
+        ),
+        Departure(
+            time=now + timedelta(minutes=15),
+            planned_time=now + timedelta(minutes=15),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U3",
+            destination="Giesing",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+            stop_point_global_id="de:09162:1108:2:2",  # Different stop point
+        ),
+    ]
+
+    stop_config = StopConfiguration(
+        station_id="de:09162:1108:1:1",  # Filter by stop point
+        station_name="Test Station",
+        direction_mappings={"->Giesing": ["U3"]},
+        show_ungrouped=False,
+    )
+
+    repo = MockDepartureRepository(departures)
+    service = DepartureGroupingService(repo)
+
+    groups = await service.get_grouped_departures(stop_config)
+
+    # Should only have departure from stop point 1:1
+    all_departures = [dep for group in groups for dep in group.departures]
+    assert len(all_departures) == 1
+    assert all_departures[0].stop_point_global_id == "de:09162:1108:1:1"
+
+
+@pytest.mark.asyncio
+async def test_group_departures_with_stop_point_and_ungrouped() -> None:
+    """Given stop point filter and show_ungrouped=true, when grouping, then filters by stop point then shows ungrouped."""
+    now = datetime.now(UTC)
+    departures = [
+        Departure(
+            time=now + timedelta(minutes=10),
+            planned_time=now + timedelta(minutes=10),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U3",
+            destination="Giesing",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+            stop_point_global_id="de:09162:1108:1:1",
+        ),
+        Departure(
+            time=now + timedelta(minutes=15),
+            planned_time=now + timedelta(minutes=15),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="54",
+            destination="Münchner Freiheit",
+            transport_type="Bus",
+            icon="mdi:bus",
+            is_cancelled=False,
+            messages=[],
+            stop_point_global_id="de:09162:1108:1:1",
+        ),
+    ]
+
+    stop_config = StopConfiguration(
+        station_id="de:09162:1108:1:1",
+        station_name="Test Station",
+        direction_mappings={},
+        show_ungrouped=True,
+        ungrouped_title="All",
+    )
+
+    repo = MockDepartureRepository(departures)
+    service = DepartureGroupingService(repo)
+
+    groups = await service.get_grouped_departures(stop_config)
+
+    # Should have ungrouped group with both departures from stop point 1:1
+    assert len(groups) == 1
+    assert groups[0].direction_name == "All"
+    assert len(groups[0].departures) == 2
+    assert all(dep.stop_point_global_id == "de:09162:1108:1:1" for dep in groups[0].departures)
+
+
+@pytest.mark.asyncio
+async def test_group_departures_with_all_filters_combined() -> None:
+    """Given all filters combined, when grouping, then applies all filters correctly."""
+    now = datetime.now(UTC)
+    departures = [
+        # Too soon - filtered by leeway
+        Departure(
+            time=now + timedelta(minutes=3),
+            planned_time=now + timedelta(minutes=3),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U3",
+            destination="Giesing",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+            stop_point_global_id="de:09162:1108:1:1",
+        ),
+        # OK - matches direction mapping
+        Departure(
+            time=now + timedelta(minutes=10),
+            planned_time=now + timedelta(minutes=10),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U3",
+            destination="Giesing",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+            stop_point_global_id="de:09162:1108:1:1",
+        ),
+        # OK but wrong stop point
+        Departure(
+            time=now + timedelta(minutes=12),
+            planned_time=now + timedelta(minutes=12),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U3",
+            destination="Giesing",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+            stop_point_global_id="de:09162:1108:2:2",
+        ),
+        # OK but blacklisted
+        Departure(
+            time=now + timedelta(minutes=15),
+            planned_time=now + timedelta(minutes=15),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="54",
+            destination="Münchner Freiheit",
+            transport_type="Bus",
+            icon="mdi:bus",
+            is_cancelled=False,
+            messages=[],
+            stop_point_global_id="de:09162:1108:1:1",
+        ),
+        # OK - ungrouped
+        Departure(
+            time=now + timedelta(minutes=20),
+            planned_time=now + timedelta(minutes=20),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=True,
+            line="U6",
+            destination="Klinikum",
+            transport_type="U-Bahn",
+            icon="mdi:subway",
+            is_cancelled=False,
+            messages=[],
+            stop_point_global_id="de:09162:1108:1:1",
+        ),
+    ]
+
+    stop_config = StopConfiguration(
+        station_id="de:09162:1108:1:1",
+        station_name="Test Station",
+        direction_mappings={"->Giesing": ["U3"]},
+        exclude_destinations=["54"],
+        departure_leeway_minutes=5,
+        show_ungrouped=True,
+        max_departures_per_route=1,
+    )
+
+    repo = MockDepartureRepository(departures)
+    service = DepartureGroupingService(repo)
+
+    groups = await service.get_grouped_departures(stop_config)
+
+    # Should have ->Giesing with U3 and Other with U6, but not:
+    # - U3 at 3min (leeway)
+    # - U3 at 2:2 (wrong stop point)
+    # - Route 54 (blacklisted)
+    all_departures = [dep for group in groups for dep in group.departures]
+    assert len(all_departures) == 2
+    assert any(
+        dep.line == "U3" and dep.stop_point_global_id == "de:09162:1108:1:1"
+        for dep in all_departures
+    )
+    assert any(dep.line == "U6" for dep in all_departures)
+    assert not any(dep.line == "54" for dep in all_departures)
