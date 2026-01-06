@@ -2,6 +2,10 @@
 
 ## [0.0.9]
 
+### Features
+
+- **Route icon display**: `route_icon_display` option with three modes: `none` (text only), `icon_with_text` (icon + number, default), `badge` (number in colored transport type shape)
+
 ### Fixes
 
 - **Past departures shown**: Fixed bug where departures that already departed were still displayed when `departure_leeway_minutes` was 0 or not configured
