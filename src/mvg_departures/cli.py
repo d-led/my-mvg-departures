@@ -1391,9 +1391,15 @@ async def _fetch_departures_from_api(
 async def _fetch_raw_departures(
     station_id: str, limit: int
 ) -> tuple[list[dict[str, Any]], str | None]:
-    """Fetch raw departures from MVG API."""
-    base_station_id, filter_stop_point = _parse_stop_point_filter(station_id)
-    url = _build_departures_api_url(base_station_id, limit)
+    """Fetch raw departures from MVG API.
+
+    MVG API supports both stationGlobalId (e.g., de:09162:1108) and
+    stopPointGlobalId (e.g., de:09162:1108:3:3) as the globalId parameter.
+    We query directly with whatever ID was provided.
+    """
+    _, filter_stop_point = _parse_stop_point_filter(station_id)
+    # Use station_id directly - MVG API supports both station and stop point IDs
+    url = _build_departures_api_url(station_id, limit)
 
     async with aiohttp.ClientSession() as session:
         departures = await _fetch_departures_from_api(session, url)

@@ -28,17 +28,11 @@ class DepartureGroupingService:
 
         Fetches a reasonable number of departures from the API, then groups them
         by direction and limits each direction group to max_departures_per_stop.
-        """
-        # Extract base station_id if station_id is a stop_point_global_id
-        # API only accepts base stationGlobalId, not stop_point_global_id format
-        station_id_parts = stop_config.station_id.split(":")
-        if len(station_id_parts) >= 5 and station_id_parts[-1] == station_id_parts[-2]:
-            # station_id is a stop_point_global_id (e.g., "de:09162:1108:1:1")
-            # Extract base station_id (e.g., "de:09162:1108")
-            base_station_id = ":".join(station_id_parts[:3])
-        else:
-            base_station_id = stop_config.station_id
 
+        MVG API supports both stationGlobalId (e.g., de:09162:1108) and
+        stopPointGlobalId (e.g., de:09162:1108:3:3) as the globalId parameter.
+        We query directly with whatever ID was configured.
+        """
         # Fetch departures from API - use configurable limit per stop
         # The repository will fetch more data (e.g., 300 results over configurable duration) but return up to this limit
         fetch_limit = stop_config.max_departures_fetch
@@ -55,8 +49,9 @@ class DepartureGroupingService:
             stop_config.departure_leeway_minutes if stop_config.departure_leeway_minutes > 0 else 0
         )
 
+        # Use station_id directly - MVG API supports both station and stop point IDs
         departures = await self._departure_repository.get_departures(
-            base_station_id,
+            stop_config.station_id,
             limit=fetch_limit,
             offset_minutes=offset_minutes,
             transport_types=None,
