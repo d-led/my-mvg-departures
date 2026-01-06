@@ -186,14 +186,15 @@ class TestMVGCliIntegration:
 
     def test_departures_command_with_stop_point_filters_results(self) -> None:
         """Given a stop point ID, when listing departures, then filters by that stop point."""
+        # Use a valid stop point at Marienplatz (U-Bahn platform)
         stdout, stderr, exit_code = _run_cli_command(
-            ["departures", "de:09162:6:1:1", "--limit", "20"]
+            ["departures", "de:09162:6:2:2", "--limit", "20"]
         )
 
         assert exit_code == 0, f"Command failed with stderr: {stderr}"
         assert "Live Departures" in stdout
         assert "Filtered by stop point" in stdout
-        assert "de:09162:6:1:1" in stdout
+        assert "de:09162:6:2:2" in stdout
 
     def test_departures_command_with_json_output(self) -> None:
         """Given --json flag, when listing departures, then returns JSON output."""
