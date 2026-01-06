@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.0.9]
+
+### Fixes
+
+- **Past departures shown**: Fixed bug where departures that already departed were still displayed when `departure_leeway_minutes` was 0 or not configured
+- **Stop point API queries**: MVG API now queried directly with `stopPointGlobalId` instead of fetching parent station and filtering client-side - more accurate results for specific platforms
+
+## [0.0.8]
+
+### Fixes
+
+- **Integration test**: Updated stop point filtering test to use valid stop point ID at Marienplatz
+
 ## [0.0.7]
 
 ### Features

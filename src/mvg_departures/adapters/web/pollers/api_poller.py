@@ -261,6 +261,8 @@ class ApiPoller(ApiPollerProtocol):
     ) -> list[DirectionGroupWithMetadata]:
         """Build direction groups with metadata from cached groups, marking as stale.
 
+        Filters out past departures and marks remaining as stale (not realtime).
+
         Args:
             stop_config: Stop configuration.
             cached_groups: List of cached grouped departures.
@@ -268,11 +270,19 @@ class ApiPoller(ApiPollerProtocol):
         Returns:
             List of direction groups with metadata (marked as stale, only groups with departures).
         """
+        now = datetime.now(UTC)
         result: list[DirectionGroupWithMetadata] = []
         for cached_group in cached_groups:
             if not cached_group.departures:
                 continue
-            stale_departures = [replace(dep, is_realtime=False) for dep in cached_group.departures]
+            # Filter out past departures and mark remaining as stale
+            stale_departures = [
+                replace(dep, is_realtime=False)
+                for dep in cached_group.departures
+                if dep.time >= now
+            ]
+            if not stale_departures:
+                continue
             result.append(
                 DirectionGroupWithMetadata(
                     station_id=stop_config.station_id,

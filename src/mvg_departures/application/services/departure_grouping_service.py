@@ -362,7 +362,11 @@ class DepartureGroupingService:
         stop_config: StopConfiguration,
         reference_time_utc: datetime | None = None,
     ) -> list[Departure]:
-        """Filter departures by departure leeway.
+        """Filter departures by departure leeway and exclude past departures.
+
+        Always filters out departures that have already departed (time < now).
+        Additionally applies leeway if configured (leeway > 0 means don't show
+        departures departing within the next N minutes).
 
         Args:
             departures: List of departures to filter.
@@ -370,13 +374,13 @@ class DepartureGroupingService:
             reference_time_utc: Reference time for comparison.
 
         Returns:
-            Filtered list of departures.
+            Filtered list of departures (no past departures, respects leeway).
         """
-        if stop_config.departure_leeway_minutes <= 0:
-            return departures
-
         now_utc = reference_time_utc if reference_time_utc is not None else datetime.now(UTC)
-        cutoff_time = now_utc + timedelta(minutes=stop_config.departure_leeway_minutes)
+
+        # Always filter out past departures; add leeway if configured
+        leeway_minutes = max(0, stop_config.departure_leeway_minutes)
+        cutoff_time = now_utc + timedelta(minutes=leeway_minutes)
 
         filtered = []
         for d in departures:
