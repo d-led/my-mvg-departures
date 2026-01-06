@@ -1174,6 +1174,186 @@ def test_when_different_salt_then_different_color() -> None:
     assert color_with_salt_1 != color_with_salt_2, "Salt 1 and 2 should produce different colors"
 
 
+def test_when_departure_has_ubahn_then_transport_type_css_is_ubahn() -> None:
+    """Given a U-Bahn departure, when displaying, then transport_type_css is 'ubahn'."""
+    now = datetime.now(UTC)
+    departure = Departure(
+        time=now + timedelta(minutes=5),
+        planned_time=now + timedelta(minutes=5),
+        delay_seconds=None,
+        platform=None,
+        is_realtime=False,
+        line="U3",
+        destination="Giesing",
+        transport_type="U-Bahn",
+        icon="mdi:subway",
+        is_cancelled=False,
+        messages=[],
+    )
+
+    calculator = _create_calculator()
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Giesing",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
+    result = calculator.calculate_display_data(direction_groups)
+
+    departure_display = result["groups_with_departures"][0]["departures"][0]
+    assert departure_display["transport_type"] == "U-Bahn"
+    assert departure_display["transport_type_css"] == "ubahn"
+
+
+def test_when_departure_has_sbahn_then_transport_type_css_is_sbahn() -> None:
+    """Given an S-Bahn departure, when displaying, then transport_type_css is 'sbahn'."""
+    now = datetime.now(UTC)
+    departure = Departure(
+        time=now + timedelta(minutes=5),
+        planned_time=now + timedelta(minutes=5),
+        delay_seconds=None,
+        platform=None,
+        is_realtime=False,
+        line="S3",
+        destination="Holzkirchen",
+        transport_type="S-Bahn",
+        icon="mdi:train",
+        is_cancelled=False,
+        messages=[],
+    )
+
+    calculator = _create_calculator()
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Holzkirchen",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
+    result = calculator.calculate_display_data(direction_groups)
+
+    departure_display = result["groups_with_departures"][0]["departures"][0]
+    assert departure_display["transport_type"] == "S-Bahn"
+    assert departure_display["transport_type_css"] == "sbahn"
+
+
+def test_when_departure_has_tram_then_transport_type_css_is_tram() -> None:
+    """Given a Tram departure, when displaying, then transport_type_css is 'tram'."""
+    now = datetime.now(UTC)
+    departure = Departure(
+        time=now + timedelta(minutes=5),
+        planned_time=now + timedelta(minutes=5),
+        delay_seconds=None,
+        platform=None,
+        is_realtime=False,
+        line="18",
+        destination="Gondrellplatz",
+        transport_type="Tram",
+        icon="mdi:tram",
+        is_cancelled=False,
+        messages=[],
+    )
+
+    calculator = _create_calculator()
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Gondrellplatz",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
+    result = calculator.calculate_display_data(direction_groups)
+
+    departure_display = result["groups_with_departures"][0]["departures"][0]
+    assert departure_display["transport_type"] == "Tram"
+    assert departure_display["transport_type_css"] == "tram"
+
+
+def test_when_departure_has_bus_then_transport_type_css_is_bus() -> None:
+    """Given a Bus departure, when displaying, then transport_type_css is 'bus'."""
+    now = datetime.now(UTC)
+    departure = Departure(
+        time=now + timedelta(minutes=5),
+        planned_time=now + timedelta(minutes=5),
+        delay_seconds=None,
+        platform=None,
+        is_realtime=False,
+        line="139",
+        destination="Messestadt West",
+        transport_type="Bus",
+        icon="mdi:bus",
+        is_cancelled=False,
+        messages=[],
+    )
+
+    calculator = _create_calculator()
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Messestadt West",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
+    result = calculator.calculate_display_data(direction_groups)
+
+    departure_display = result["groups_with_departures"][0]["departures"][0]
+    assert departure_display["transport_type"] == "Bus"
+    assert departure_display["transport_type_css"] == "bus"
+
+
+def test_when_departure_has_empty_transport_type_then_transport_type_css_defaults_to_bus() -> None:
+    """Given a departure with empty transport_type, when displaying, then transport_type_css defaults to 'bus'."""
+    now = datetime.now(UTC)
+    departure = Departure(
+        time=now + timedelta(minutes=5),
+        planned_time=now + timedelta(minutes=5),
+        delay_seconds=None,
+        platform=None,
+        is_realtime=False,
+        line="X99",
+        destination="Unknown",
+        transport_type="",
+        icon="",
+        is_cancelled=False,
+        messages=[],
+    )
+
+    calculator = _create_calculator()
+    direction_groups = [
+        DirectionGroupWithMetadata(
+            station_id="de:09162:70",
+            stop_name="Universität",
+            direction_name="->Unknown",
+            departures=[departure],
+            random_header_colors=None,
+            header_background_brightness=None,
+            random_color_salt=None,
+        )
+    ]
+    result = calculator.calculate_display_data(direction_groups)
+
+    departure_display = result["groups_with_departures"][0]["departures"][0]
+    assert departure_display["transport_type"] == ""
+    assert departure_display["transport_type_css"] == "bus"
+
+
 def test_when_salt_used_in_calculator_then_affects_color() -> None:
     """Given direction groups with different salt values, when calculating display data, then produces different colors."""
     now = datetime.now(UTC)

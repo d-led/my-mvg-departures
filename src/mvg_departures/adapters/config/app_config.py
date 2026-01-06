@@ -92,6 +92,10 @@ class AppConfig(BaseSettings):
         default="#087BC4",
         description="Banner/header background color (hex color code)",
     )
+    route_icon_display: str = Field(
+        default="icon_with_text",
+        description="Route icon display mode: 'none' (text only), 'icon_with_text' (icon + number), or 'badge' (number in transport type shape)",
+    )
 
     # Font size configuration (in rem units)
     font_size_route_number: str = Field(
@@ -205,6 +209,14 @@ class AppConfig(BaseSettings):
             raise ValueError("api_provider must be either 'mvg', 'db', or 'vbb'")
         return v.lower()
 
+    @field_validator("route_icon_display")
+    @classmethod
+    def validate_route_icon_display(cls, v: str) -> str:
+        """Validate route icon display mode."""
+        if v.lower() not in ("none", "icon_with_text", "badge"):
+            raise ValueError("route_icon_display must be 'none', 'icon_with_text', or 'badge'")
+        return v.lower()
+
     @classmethod
     def for_testing(cls, **kwargs: Any) -> "AppConfig":
         """Create an AppConfig instance for testing without loading .env file.
@@ -246,6 +258,7 @@ class AppConfig(BaseSettings):
             "refresh_interval_seconds": "refresh_interval_seconds",
             "time_format_toggle_seconds": "time_format_toggle_seconds",
             "title": "title",
+            "route_icon_display": "route_icon_display",
             "font_size_route_number": "font_size_route_number",
             "font_size_destination": "font_size_destination",
             "font_size_platform": "font_size_platform",

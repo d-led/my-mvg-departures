@@ -354,6 +354,11 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 if self.config.time_format_toggle_seconds is not None
                 else "0"
             ),
+            "route_icon_display": (
+                str(self.config.route_icon_display)
+                if self.config.route_icon_display is not None
+                else "icon_with_text"
+            ),
         }
 
     def _build_state_assigns(self, state: DeparturesState) -> dict[str, str]:

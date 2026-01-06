@@ -160,6 +160,13 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
         delay_display, delay_aria, has_delay = self._format_delay(departure)
         aria_label = self._build_aria_label(departure, time_str, platform_aria, delay_aria)
 
+        # Normalize transport_type for CSS class: "U-Bahn" -> "ubahn", "S-Bahn" -> "sbahn"
+        transport_type_css = (
+            departure.transport_type.lower().replace("-", "").replace(" ", "")
+            if departure.transport_type
+            else "bus"
+        )
+
         return {
             "line": departure.line,
             "destination": departure.destination,
@@ -172,6 +179,8 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
             "delay_display": delay_display,
             "is_realtime": departure.is_realtime,
             "aria_label": aria_label,
+            "transport_type": departure.transport_type,
+            "transport_type_css": transport_type_css,
         }
 
     def _format_delay(self, departure: Any) -> tuple[str | None, str, bool]:

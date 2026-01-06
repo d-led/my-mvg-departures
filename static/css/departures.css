@@ -56,18 +56,73 @@ body {
   background-color: rgba(255, 255, 255, 0.03);
 }
 .route-number {
-  flex: 0 0 5rem;
+  flex: 0 0 auto;
+  min-width: 5rem;
   font-weight: 700;
   font-size: var(--font-size-route-number);
   text-align: left;
   padding: 0 0.75rem 0 0;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
 }
 [data-theme="light"] .route-number {
   color: #1f2937;
 }
 [data-theme="dark"] .route-number {
   color: #f3f4f6;
+}
+/* Route icon (icon_with_text mode) */
+.route-icon {
+  height: 1em;
+  width: auto;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+.route-line-text {
+  vertical-align: middle;
+}
+/* Route badge (badge mode) - number inside transport type shape */
+.route-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.1em 0.3em;
+  min-width: 1.6em;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+  font-size: 0.9em;
+}
+/* U-Bahn: Blue square */
+.route-badge-ubahn {
+  background-color: #00508c;
+  border-radius: 0.15em;
+}
+/* S-Bahn: Green circle */
+.route-badge-sbahn {
+  background-color: #009551;
+  border-radius: 50%;
+  padding: 0.15em 0.35em;
+}
+/* Bus: Teal circle */
+.route-badge-bus {
+  background-color: #005d79;
+  border-radius: 50%;
+  padding: 0.15em 0.35em;
+}
+/* Tram: Red square */
+.route-badge-tram {
+  background-color: #dd0b2f;
+  border-radius: 0.15em;
+}
+/* Regional/other: Gray rounded */
+.route-badge-regional,
+.route-badge-bahn,
+.route-badge-regionalbus {
+  background-color: #6b7280;
+  border-radius: 0.25em;
 }
 .destination {
   flex: 1 1 auto;
