@@ -20,6 +20,7 @@ class DepartureGroupingService:
     def __init__(self, departure_repository: DepartureRepository) -> None:
         """Initialize with a departure repository."""
         self._departure_repository = departure_repository
+        self._logged_warnings: set[str] = set()  # Track which stops have already logged warnings
 
     async def get_grouped_departures(
         self, stop_config: StopConfiguration
@@ -129,8 +130,11 @@ class DepartureGroupingService:
         direction_groups: dict[str, list[Departure]] = {}
         ungrouped: list[Departure] = []
 
-        if not stop_config.direction_mappings:
-            logger.warning(f"No direction_mappings configured for {stop_config.station_name}")
+        if not stop_config.direction_mappings and not stop_config.show_ungrouped:
+            warning_key = stop_config.station_name
+            if warning_key not in self._logged_warnings:
+                logger.warning(f"No direction_mappings configured for {stop_config.station_name}")
+                self._logged_warnings.add(warning_key)
         logger.debug(
             f"Processing {len(departures)} departures for {stop_config.station_name} with {len(stop_config.direction_mappings)} direction mappings"
         )
