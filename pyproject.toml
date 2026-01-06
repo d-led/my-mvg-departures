@@ -18,11 +18,11 @@ classifiers = [
 
 dependencies = [
     "mvg>=1.6.0",
-    "pyview-web>=0.7.0",  # Provides: pydantic>=2.11, starlette, wsproto, APScheduler, etc.
+    "pyview-web>=0.8.0",  # Provides: pydantic>=2.11, starlette, wsproto, APScheduler, etc.
     "uvicorn[standard]>=0.32.0",
     "pydantic-settings>=2.6.0",  # Depends on pydantic (transitive via pyview-web)
-    "aiohttp>=3.11.0",
-    "throttled-py>=3.0.0",
+    "aiohttp>=3.13.3",
+    "throttled-py>=3.1.0",
 ]
 
 [project.optional-dependencies]
