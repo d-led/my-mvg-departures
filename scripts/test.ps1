@@ -87,6 +87,6 @@ if ($LASTEXITCODE -eq 0) {
 Write-Host ""
 
 Write-Host "=========================================="
-Write-Host "All checks passed! ✓" -ForegroundColor Green
+Write-Host "All checks passed!" -ForegroundColor Green
 Write-Host "=========================================="
 

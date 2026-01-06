@@ -45,6 +45,6 @@ if ($RUN_CMD) {
 
 Write-Host ""
 Write-Host "=========================================="
-Write-Host "Integration tests completed! ✓" -ForegroundColor Green
+Write-Host "Integration tests completed!" -ForegroundColor Green
 Write-Host "=========================================="
 
