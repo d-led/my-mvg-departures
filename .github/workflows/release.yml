@@ -6,7 +6,7 @@ on:
       - "v*.*.*"
 
 jobs:
-  wait-for-checks:
+  wait-for-workflows:
     name: Wait for CI and Docker Build
     runs-on: ubuntu-latest
     steps:
@@ -31,7 +31,7 @@ jobs:
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: wait-for-checks
+    needs: wait-for-workflows
     permissions:
       contents: write
     steps:
