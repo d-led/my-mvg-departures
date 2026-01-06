@@ -1316,8 +1316,14 @@ def _format_departure_time(dep: dict[str, Any]) -> str:
     return f"{local_dt.strftime('%H:%M')}{delay_str} (in {diff_minutes} min)"
 
 
-def _display_departure(dep: dict[str, Any], index: int) -> None:
-    """Display a single departure."""
+def _display_departure(dep: dict[str, Any], index: int, show_stop_point: bool = True) -> None:
+    """Display a single departure.
+
+    Args:
+        dep: Departure dictionary.
+        index: Departure index number.
+        show_stop_point: Whether to show stop point ID (False when already grouped by stop point).
+    """
     line = dep.get("label") or dep.get("line", "?")
     destination = dep.get("destination", "?")
     transport_type = _normalize_transport_type(dep.get("transportType") or dep.get("type", ""))
@@ -1327,7 +1333,7 @@ def _display_departure(dep: dict[str, Any], index: int) -> None:
 
     time_str = _format_departure_time(dep)
     platform_str = f" [Platform {platform}]" if platform else ""
-    stop_point_str = f" | Stop: {stop_point}" if stop_point else ""
+    stop_point_str = f" | Stop: {stop_point}" if show_stop_point and stop_point else ""
     cancelled_str = " [CANCELLED]" if cancelled else ""
 
     print(
@@ -1479,7 +1485,7 @@ def _display_departures_grouped(by_stop_point: dict[str, list[dict[str, Any]]]) 
         stop_num = sp.split(":")[-1] if ":" in sp else sp
         print(f"\n  Stop {stop_num} ({sp}):")
         for i, dep in enumerate(by_stop_point[sp], 1):
-            _display_departure(dep, i)
+            _display_departure(dep, i, show_stop_point=False)
 
 
 def _print_departures_footer() -> None:
