@@ -133,6 +133,7 @@ if (_check_package_installed) {
     Write-Host ""
     _print_usage_info
     exit 0
+}
 
 # Try to install using available package managers
 $INSTALL_SUCCESS = $false
@@ -186,6 +187,7 @@ if (-not $INSTALL_SUCCESS) {
             }
         }
     }
+}
 
 # Fall back to pip
 if (-not $INSTALL_SUCCESS) {
@@ -206,6 +208,7 @@ if (-not $INSTALL_SUCCESS) {
             exit 1
         }
     }
+}
 
 # Verify installation
 if (-not (_check_package_installed)) {
