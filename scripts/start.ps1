@@ -45,8 +45,14 @@ if ($VENV_PATH) {
     }
     Write-Host "Using virtual environment: $VENV_PATH" -ForegroundColor Yellow
 } else {
-    $PYTHON = "python3"
-    $PIP = "pip3"
+    # On Windows, prefer 'python' over 'python3'
+    if (Get-Command python -ErrorAction SilentlyContinue) {
+        $PYTHON = "python"
+        $PIP = "pip"
+    } else {
+        $PYTHON = "python3"
+        $PIP = "pip3"
+    }
     $UV = "uv"
     Write-Host "No virtual environment found, using system Python" -ForegroundColor Yellow
 }

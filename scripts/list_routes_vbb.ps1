@@ -16,7 +16,12 @@ if (Test-Path "$PROJECT_ROOT\.venv") {
         $VBB_CONFIG = "$PROJECT_ROOT\.venv\bin\vbb-config"
     }
 } else {
-    $PYTHON = "python3"
+    # On Windows, prefer 'python' over 'python3'
+    if (Get-Command python -ErrorAction SilentlyContinue) {
+        $PYTHON = "python"
+    } else {
+        $PYTHON = "python3"
+    }
     # Try to find vbb-config in PATH
     if (Get-Command vbb-config -ErrorAction SilentlyContinue) {
         $VBB_CONFIG = "vbb-config"

@@ -37,9 +37,16 @@ if ($args.Count -gt 1 -and $args[1] -eq "--raw") {
 
 # Run Python script
 $checkScript = Join-Path $SCRIPT_DIR "check_all_stations.py"
+
+# Find Python command - prefer 'python' on Windows, 'python3' on Unix
+$PYTHON_CMD = "python"
+if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
+    $PYTHON_CMD = "python3"
+}
+
 if ($RAW_FLAG) {
-    python3 $checkScript $CONFIG_FILE $RAW_FLAG
+    & $PYTHON_CMD $checkScript $CONFIG_FILE $RAW_FLAG
 } else {
-    python3 $checkScript $CONFIG_FILE
+    & $PYTHON_CMD $checkScript $CONFIG_FILE
 }
 

@@ -50,9 +50,17 @@ if (-not ($IsWindows -or $env:OS -eq "Windows_NT")) {
 Write-Host "Setting up virtual environment..."
 Set-Location $APP_DIR
 if (-not (Test-Path ".venv")) {
-    $pythonCmd = "python3.12"
-    if (-not (Get-Command $pythonCmd -ErrorAction SilentlyContinue)) {
+    # Try to find the best Python version available
+    $pythonCmd = $null
+    if (Get-Command python3.12 -ErrorAction SilentlyContinue) {
+        $pythonCmd = "python3.12"
+    } elseif (Get-Command python -ErrorAction SilentlyContinue) {
+        $pythonCmd = "python"
+    } elseif (Get-Command python3 -ErrorAction SilentlyContinue) {
         $pythonCmd = "python3"
+    } else {
+        Write-Host "Error: Python not found. Please install Python 3.12 or later." -ForegroundColor Red
+        exit 1
     }
     & $pythonCmd -m venv .venv
 }

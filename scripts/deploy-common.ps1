@@ -45,7 +45,12 @@ function get_app_paths {
                 $script:PYTHON = "${PROJECT_ROOT}/venv/bin/python"
             }
         } else {
-            $script:PYTHON = "python3"
+            # On Windows, prefer 'python' over 'python3'
+            if (Get-Command python -ErrorAction SilentlyContinue) {
+                $script:PYTHON = "python"
+            } else {
+                $script:PYTHON = "python3"
+            }
         }
         $script:APP_SCRIPT = "${PYTHON} -m mvg_departures.main"
         $script:WORK_DIR = $PROJECT_ROOT

@@ -29,13 +29,24 @@ if (-not $env:COMMON_ENV_LOADED) {
         $script:RUN_CMD = ""
         Write-Host "Using existing .venv" -ForegroundColor Yellow
     } elseif (Get-Command uv -ErrorAction SilentlyContinue) {
-        $script:PYTHON = "python3"
+        # On Windows, prefer 'python' over 'python3'
+        if (Get-Command python -ErrorAction SilentlyContinue) {
+            $script:PYTHON = "python"
+        } else {
+            $script:PYTHON = "python3"
+        }
         $script:PIP = "uv pip"
         $script:RUN_CMD = "uv run"
         Write-Host "Using uv" -ForegroundColor Yellow
     } else {
-        $script:PYTHON = "python3"
-        $script:PIP = "pip3"
+        # On Windows, prefer 'python' over 'python3'
+        if (Get-Command python -ErrorAction SilentlyContinue) {
+            $script:PYTHON = "python"
+            $script:PIP = "pip"
+        } else {
+            $script:PYTHON = "python3"
+            $script:PIP = "pip3"
+        }
         $script:RUN_CMD = ""
         Write-Host "Using system Python (ensure dependencies are installed)" -ForegroundColor Yellow
     }

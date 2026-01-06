@@ -13,14 +13,30 @@ Set-Location $PROJECT_ROOT
 Write-Host "Setting up MVG Departures..." -ForegroundColor Yellow
 Write-Host ""
 
-# Check Python version
-if (-not (Get-Command python3 -ErrorAction SilentlyContinue)) {
-    Write-Host "Error: python3 not found. Please install Python 3.12 or later." -ForegroundColor Red
+# Check Python version - On Windows, use 'python' instead of 'python3'
+$PYTHON_CMD = $null
+if (Get-Command python -ErrorAction SilentlyContinue) {
+    $PYTHON_CMD = "python"
+} elseif (Get-Command python3 -ErrorAction SilentlyContinue) {
+    $PYTHON_CMD = "python3"
+} else {
+    Write-Host "Error: Python not found. Please install Python 3.12 or later from:" -ForegroundColor Red
+    Write-Host "  https://www.python.org/downloads/" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Alternatively, you can install Python using a package manager:" -ForegroundColor Yellow
+    Write-Host "  - winget: winget install Python.Python.3.12" -ForegroundColor Cyan
+    Write-Host "  - scoop: scoop install python" -ForegroundColor Cyan
+    Write-Host "  - chocolatey: choco install python" -ForegroundColor Cyan
     exit 1
 }
 
 $getVersionScript = Join-Path $SCRIPT_DIR "get_python_version.py"
-$PYTHON_VERSION = & python3 $getVersionScript
+$PYTHON_VERSION = & $PYTHON_CMD $getVersionScript
+if (-not $PYTHON_VERSION) {
+    Write-Host "Error: Failed to get Python version." -ForegroundColor Red
+    exit 1
+}
+
 $REQUIRED_VERSION = "3.12"
 
 # Compare versions
@@ -40,11 +56,11 @@ $VENV_PATH = Join-Path $PROJECT_ROOT ".venv"
 # Create virtual environment if it doesn't exist
 if (-not (Test-Path $VENV_PATH)) {
     Write-Host "Creating virtual environment at ${VENV_PATH}..." -ForegroundColor Yellow
-    python3 -m venv $VENV_PATH
-    Write-Host "✓ Virtual environment created." -ForegroundColor Green
+    & $PYTHON_CMD -m venv $VENV_PATH
+    Write-Host "Virtual environment created." -ForegroundColor Green
     Write-Host ""
 } else {
-    Write-Host "✓ Virtual environment already exists at ${VENV_PATH}" -ForegroundColor Green
+    Write-Host "Virtual environment already exists at ${VENV_PATH}" -ForegroundColor Green
     Write-Host ""
 }
 
