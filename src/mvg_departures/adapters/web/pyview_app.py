@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from mvg_departures.adapters.config import AppConfig
@@ -477,16 +476,13 @@ class PyViewWebAdapter(DisplayAdapter):
         return unique_station_ids
 
     def _filter_and_mark_stale(self, departures: list[Departure]) -> list[Departure]:
-        """Filter out departed entries and mark remaining as stale (not realtime)."""
-        now = datetime.now(UTC)
-        stale_departures = []
-        for dep in departures:
-            # Keep only departures that haven't departed yet
-            if dep.time >= now:
-                # Mark as stale (not realtime) since we couldn't refresh from API
-                stale_dep = replace(dep, is_realtime=False)
-                stale_departures.append(stale_dep)
-        return stale_departures
+        """Mark all departures as stale (not realtime) without filtering.
+
+        Keep ALL departures including past ones - users can extrapolate from old data.
+        Stale data is only purged when fresh API data arrives (which replaces cache).
+        """
+        # Keep ALL departures, just mark as stale
+        return [replace(dep, is_realtime=False) for dep in departures]
 
     async def _fetch_single_station(self, station_id: str, fetch_limit: int) -> None:
         """Fetch departures for a single station."""
@@ -500,16 +496,18 @@ class PyViewWebAdapter(DisplayAdapter):
             f"Failed to fetch departures for station {station_id}: {error}",
             exc_info=True,
         )
-        # Keep stale cached data: filter out departed entries and mark as stale
+        # Keep ALL stale cached data (even past departures) - mark as non-realtime
+        # Users can extrapolate from old data. Stale data purges automatically when
+        # fresh API data arrives (cache.set() with new data replaces stale data)
         cached = self._shared_departure_cache.get(station_id)
         if cached:
             stale_departures = self._filter_and_mark_stale(cached)
             self._shared_departure_cache.set(station_id, stale_departures)
             logger.info(
-                f"Using {len(stale_departures)} stale departures for station {station_id} "
-                f"(filtered from {len(cached)} cached entries)"
+                f"Keeping {len(stale_departures)} stale departures for station {station_id} "
+                f"until API recovers (marked as non-realtime)"
             )
-        # If no cached data at all, leave cache empty (don't set empty list)
+        # If no cached data at all, leave cache empty
 
     async def _fetch_all_stations(self, unique_station_ids: set[str]) -> None:
         """Fetch raw departures for all unique stations."""

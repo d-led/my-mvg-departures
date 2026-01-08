@@ -207,7 +207,9 @@ function toggleTimeFormat() {
   if (TIME_FORMAT_TOGGLE_SECONDS <= 0) {
     // If toggle is disabled (0), show only relative format
     document.querySelectorAll(".time").forEach((el) => {
-      const relative = el.getAttribute("data-time-relative");
+      const container = el.closest(".time-container");
+      if (!container) return;
+      const relative = container.getAttribute("data-time-relative");
       if (relative) {
         // Fade out, change text, fade in
         el.style.opacity = "0";
@@ -225,8 +227,10 @@ function toggleTimeFormat() {
   const timeElements = document.querySelectorAll(".time");
 
   timeElements.forEach((el) => {
-    const relative = el.getAttribute("data-time-relative");
-    const absolute = el.getAttribute("data-time-absolute");
+    const container = el.closest(".time-container");
+    if (!container) return;
+    const relative = container.getAttribute("data-time-relative");
+    const absolute = container.getAttribute("data-time-absolute");
     if (!relative || !absolute) return;
 
     // Store current width to prevent layout shift when longer text is inserted
@@ -275,7 +279,9 @@ function initTimeFormatToggle() {
 
   // Ensure all time elements start with relative format and full opacity
   document.querySelectorAll(".time").forEach((el) => {
-    const relative = el.getAttribute("data-time-relative");
+    const container = el.closest(".time-container");
+    if (!container) return;
+    const relative = container.getAttribute("data-time-relative");
     if (relative) {
       // Preserve existing delay display if present
       const delayDisplay = el.querySelector(".delay-amount");
