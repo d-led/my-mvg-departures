@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.0.10]
+
+### Features
+
+- **Delay display split**: `split_show_delay` option splits departures into separate "On Time" and "Delayed" sections for clearer status visibility
+
+### Fixes
+
+- **Stale departures handling**: Improved filtering to retain all departures as stale entries rather than removing them, providing better visibility of past departures
+- **API polling robustness**: Enhanced error handling in API polling loop for more reliable operation
+
+### Improvements
+
+- **VBB client**: Improved Berlin VBB API client implementation
+- **Logging**: Reduced noisy logging output
+- **UI refinements**: Horizontal alignment improvements, time format toggle now uses closest container for data attributes
+
 ## [0.0.9]
 
 ### Features
