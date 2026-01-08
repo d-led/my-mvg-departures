@@ -3,10 +3,11 @@
 Uses v6.bvg.transport.rest API for real-time Berlin public transport data.
 """
 
-import aiohttp
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
+
+import aiohttp
 
 from mvg_departures.adapters.api_rate_limiter import ApiRateLimiter
 from mvg_departures.adapters.api_request_logger import log_api_request
