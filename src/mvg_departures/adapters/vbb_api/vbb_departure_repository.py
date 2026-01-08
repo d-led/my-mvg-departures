@@ -3,6 +3,7 @@
 Uses v6.bvg.transport.rest API for real-time Berlin public transport data.
 """
 
+import aiohttp
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -20,6 +21,10 @@ if TYPE_CHECKING:
 # Minimum delay between VBB API requests (in seconds)
 # Using 1.5s to be nice to the API and avoid rate limiting
 VBB_API_MIN_DELAY_SECONDS = 1.5
+
+# Timeout for VBB API requests (in seconds)
+# Shorter timeout to fail fast when API is down
+VBB_API_TIMEOUT_SECONDS = 5
 
 
 class VbbDepartureRepository(DepartureRepository):
@@ -91,10 +96,12 @@ class VbbDepartureRepository(DepartureRepository):
 
         log_api_request("GET", url, params=params)
 
-        async with self._session.get(url, params=params, ssl=False) as response:
+        timeout = aiohttp.ClientTimeout(total=VBB_API_TIMEOUT_SECONDS)
+        async with self._session.get(url, params=params, ssl=False, timeout=timeout) as response:
             if response.status != 200:
                 response_text = await response.text()
-                raise RuntimeError(f"VBB API returned status {response.status}: {response_text}")
+                error_detail = f" ({response_text.strip()})" if response_text.strip() else ""
+                raise RuntimeError(f"VBB API returned status {response.status}{error_detail}")
 
             data = await response.json()
             departures_data: list[dict[str, Any]] = data.get("departures", [])
