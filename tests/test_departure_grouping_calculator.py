@@ -197,8 +197,8 @@ def test_when_departure_is_delayed_then_shows_delay_information() -> None:
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
     assert departure_display["has_delay"] is True
-    assert departure_display["delay_display"] is not None
-    assert "2m" in departure_display["delay_display"]
+    assert departure_display["delay_minutes"] is not None
+    assert departure_display["delay_minutes"] == 2
 
 
 def test_when_delay_is_under_one_minute_then_does_not_show_delay() -> None:
@@ -234,7 +234,7 @@ def test_when_delay_is_under_one_minute_then_does_not_show_delay() -> None:
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
     assert departure_display["has_delay"] is False
-    assert departure_display["delay_display"] is None
+    assert departure_display["delay_minutes"] is None
 
 
 def test_when_departure_has_realtime_data_then_shows_realtime_indicator() -> None:
@@ -1004,7 +1004,7 @@ def test_when_departure_has_large_delay_then_shows_delay_correctly() -> None:
 
     departure_display = result["groups_with_departures"][0]["departures"][0]
     assert departure_display["has_delay"] is True
-    assert "5m" in departure_display["delay_display"]
+    assert departure_display["delay_minutes"] == 5
 
 
 def test_when_departure_has_platform_zero_then_shows_platform_zero() -> None:

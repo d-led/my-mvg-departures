@@ -104,20 +104,22 @@
             <ul role="list" aria-label="Departures for {{ group.header }}">
                 {% for departure in group.departures %}
                 <li class="departure-row{% if departure.cancelled %} cancelled{% endif %}" role="listitem" aria-label="{{ departure.aria_label }}">
-                    <div class="route-number" aria-hidden="true">
-                        {% if route_icon_display == 'icon_with_text' %}
-                        <img class="route-icon" src="/static/assets/ico-{% if departure.transport_type == 'U-Bahn' %}subway{% elif departure.transport_type == 'S-Bahn' %}metropolitan-railway{% elif departure.transport_type == 'Tram' %}tram{% else %}bus{% endif %}.svg" alt="{{ departure.transport_type }}" aria-hidden="true">
-                        <span class="route-line-text">{{ departure.line }}</span>
-                        {% elif route_icon_display == 'badge' %}
-                        <span class="route-badge route-badge-{{ departure.transport_type_css }}">{{ departure.line }}</span>
-                        {% else %}
-                        {{ departure.line }}
-                        {% endif %}
+                    <div class="route-container" aria-hidden="true">
+                        <span class="route-number">
+                            {% if route_icon_display == 'icon_with_text' %}
+                            <img class="route-icon" src="/static/assets/ico-{% if departure.transport_type == 'U-Bahn' %}subway{% elif departure.transport_type == 'S-Bahn' %}metropolitan-railway{% elif departure.transport_type == 'Tram' %}tram{% else %}bus{% endif %}.svg" alt="{{ departure.transport_type }}" aria-hidden="true">
+                            <span class="route-line-text">{{ departure.line }}</span>
+                            {% elif route_icon_display == 'badge' %}
+                            <span class="route-badge route-badge-{{ departure.transport_type_css }}">{{ departure.line }}</span>
+                            {% else %}
+                            {{ departure.line }}
+                            {% endif %}
+                        </span>
+                        <span class="destination"><span class="destination-text">{{ departure.destination }}</span></span>
                     </div>
-                    <div class="destination" aria-hidden="true"><span class="destination-text">{{ departure.destination }}</span></div>
-                    <div class="platform" aria-hidden="true">{% if departure.platform %}{{ departure.platform }}{% endif %}</div>
-                    <div class="time{% if departure.has_delay %} delay{% endif %}{% if departure.is_realtime %} realtime{% endif %}" aria-hidden="true" data-time-relative="{{ departure.time_str_relative }}" data-time-absolute="{{ departure.time_str_absolute }}">
-                        {{ departure.time_str_relative }}{% if departure.delay_display %}{{ departure.delay_display }}{% endif %}
+                    <div class="time-container" aria-hidden="true" data-time-relative="{{ departure.time_str_relative }}" data-time-absolute="{{ departure.time_str_absolute }}">
+                        <span class="platform">{% if departure.platform %}{{ departure.platform }}{% endif %}</span>
+                        <span class="time{% if departure.has_delay %} delay{% endif %}{% if departure.is_realtime %} realtime{% endif %}">{{ departure.time_str_relative }}{% if departure.delay_minutes %}<span class="delay-amount" aria-hidden="true">+{{ departure.delay_minutes }}m</span>{% endif %}</span>
                     </div>
                     <span class="sr-only">{{ departure.aria_label }}</span>
                 </li>

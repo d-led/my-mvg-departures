@@ -157,7 +157,7 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
         platform_display = str(departure.platform) if departure.platform is not None else None
         platform_aria = f", Platform {platform_display}" if platform_display else ""
 
-        delay_display, delay_aria, has_delay = self._format_delay(departure)
+        delay_minutes, delay_aria, has_delay = self._format_delay(departure)
         aria_label = self._build_aria_label(departure, time_str, platform_aria, delay_aria)
 
         # Normalize transport_type for CSS class: "U-Bahn" -> "ubahn", "S-Bahn" -> "sbahn"
@@ -176,30 +176,29 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
             "time_str_absolute": time_str_absolute,
             "cancelled": departure.is_cancelled,
             "has_delay": has_delay,
-            "delay_display": delay_display,
+            "delay_minutes": delay_minutes,
             "is_realtime": departure.is_realtime,
             "aria_label": aria_label,
             "transport_type": departure.transport_type,
             "transport_type_css": transport_type_css,
         }
 
-    def _format_delay(self, departure: Any) -> tuple[str | None, str, bool]:
+    def _format_delay(self, departure: Any) -> tuple[int | None, str, bool]:
         """Format delay information for a departure.
 
         Args:
             departure: Departure object.
 
         Returns:
-            Tuple of (delay_display, delay_aria, has_delay).
+            Tuple of (delay_minutes, delay_aria, has_delay).
         """
         has_delay = departure.delay_seconds is not None and departure.delay_seconds > 60
         if not has_delay or departure.delay_seconds is None:
             return None, "", False
 
         delay_minutes = departure.delay_seconds // 60
-        delay_display = f'<span class="delay-amount" aria-hidden="true">{delay_minutes}m 😞</span>'
         delay_aria = f", delayed by {delay_minutes} minutes"
-        return delay_display, delay_aria, True
+        return delay_minutes, delay_aria, True
 
     def _build_aria_label(
         self, departure: Any, time_str: str, platform_aria: str, delay_aria: str

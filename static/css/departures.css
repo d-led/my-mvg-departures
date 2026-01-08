@@ -55,14 +55,24 @@ body {
 [data-theme="dark"] .departure-row:nth-child(even) {
   background-color: rgba(255, 255, 255, 0.03);
 }
+/* Route container - holds route number and destination in aligned columns */
+.route-container {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: 7ch 1fr;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 0.75rem 0 0;
+}
 .route-number {
-  flex: 0 0 auto;
-  min-width: 5rem;
   font-weight: 700;
   font-size: var(--font-size-route-number);
   text-align: left;
-  padding: 0 0.75rem 0 0;
+  padding: 0;
   white-space: nowrap;
+  justify-self: start;
   display: flex;
   align-items: center;
   gap: 0.3em;
@@ -125,15 +135,15 @@ body {
   border-radius: 0.25em;
 }
 .destination {
-  flex: 1 1 auto;
   overflow-x: hidden;
   overflow-y: hidden;
   white-space: nowrap;
-  padding: 0 0.75rem;
+  padding: 0;
   min-width: 0;
   font-size: var(--font-size-destination);
   font-weight: 500;
   text-align: left;
+  justify-self: start;
 }
 .destination-text {
   display: inline-block;
@@ -188,12 +198,9 @@ body {
   color: #9ca3af;
 }
 .time {
-  flex: 0 0 auto;
   text-align: right;
   font-weight: 600;
   font-size: var(--font-size-time);
-  padding: 0 0.75rem 0 0.75rem;
-  margin-right: 0;
   white-space: nowrap;
   min-width: fit-content;
   overflow: hidden;
@@ -204,6 +211,26 @@ body {
 }
 [data-theme="dark"] .time {
   color: #f9fafb;
+}
+/* Time container - holds platform and time side by side */
+.time-container {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  padding: 0 0.75rem 0 0.75rem;
+  margin-right: 0;
+  gap: 0.75rem;
+  width: 10ch;
+}
+.time-container .platform {
+  text-align: left;
+  justify-self: start;
+  padding: 0;
+}
+.time-container .time {
+  text-align: right;
+  justify-self: end;
 }
 .no-departures {
   width: 100%;
@@ -223,7 +250,7 @@ body {
   font-size: var(--font-size-direction-header);
   font-weight: 700;
   margin: 0.5rem 0 0.25rem 0;
-  padding: 0 0.75rem 0.25rem 0.75rem;
+  padding: 0.5rem 0.75rem;
   border-bottom: 2px solid rgba(0, 0, 0, 0.2);
   opacity: 0.85;
   display: flex;
@@ -235,7 +262,7 @@ body {
 }
 h2.direction-header {
   margin: 0.5rem 0 0.25rem 0;
-  padding: 0 0.75rem 0.25rem 0.75rem;
+  padding: 0.5rem 0.75rem;
 }
 .direction-header-text {
   flex: 1;

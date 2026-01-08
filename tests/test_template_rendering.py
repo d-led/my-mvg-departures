@@ -150,8 +150,8 @@ def test_prepare_template_data_delay_sets_flag() -> None:
 
     dep_data = template_data["groups_with_departures"][0]["departures"][0]
     assert dep_data["has_delay"] is True
-    assert dep_data["delay_display"] is not None
-    assert "2m" in dep_data["delay_display"]
+    assert dep_data["delay_minutes"] is not None
+    assert dep_data["delay_minutes"] == 2
 
 
 def test_prepare_template_data_realtime_sets_flag() -> None:
