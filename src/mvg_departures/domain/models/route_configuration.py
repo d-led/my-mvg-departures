@@ -22,6 +22,9 @@ class RouteConfiguration:
         0.7  # Brightness adjustment for random header colors (0.0-1.0, default 0.7)
     )
     random_color_salt: int = 0  # Salt value for hash-based color generation (default 0)
+    split_show_delay: bool = (
+        False  # If False (default), show calculated expected time. If True, show scheduled + delay separately.
+    )
     refresh_interval_seconds: int | None = (
         None  # Route-specific poller interval in seconds. None uses global config default.
     )

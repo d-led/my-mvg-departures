@@ -271,6 +271,7 @@ class AppConfig(BaseSettings):
             "font_size_no_departures": "font_size_no_departures",
             "font_size_no_departures_available": "font_size_no_departures_available",
             "font_size_status_header": "font_size_status_header",
+            "split_show_delay": "split_show_delay",
         }
 
         for toml_key, attr_name in display_mappings.items():
@@ -341,6 +342,7 @@ class AppConfig(BaseSettings):
             "random_header_colors",
             "header_background_brightness",
             "random_color_salt",
+            "split_show_delay",
         ]
 
         for key in display_keys:

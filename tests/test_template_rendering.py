@@ -600,7 +600,9 @@ async def test_render_delay_applies_class() -> None:
     html = result.text() if hasattr(result, "text") else str(result)
 
     assert 'class="time delay' in html
-    assert "2m" in html
+    # With default split_show_delay=false, delay is calculated into expected time
+    # so "+2m" is NOT shown separately
+    assert "+2m" not in html
 
 
 async def test_render_realtime_applies_class() -> None:

@@ -254,6 +254,7 @@ class RouteConfigurationLoader:
             "random_header_colors": False,
             "header_background_brightness": 0.7,
             "random_color_salt": 0,
+            "split_show_delay": False,
             "refresh_interval_seconds": None,
         }
 
@@ -268,6 +269,7 @@ class RouteConfigurationLoader:
             "random_header_colors": data.get("random_header_colors", False),
             "header_background_brightness": data.get("header_background_brightness", 0.7),
             "random_color_salt": data.get("random_color_salt", 0),
+            "split_show_delay": data.get("split_show_delay", False),
             "refresh_interval_seconds": data.get("refresh_interval_seconds"),
         }
 
@@ -377,6 +379,9 @@ class RouteConfigurationLoader:
             "random_color_salt": RouteConfigurationLoader._validate_int_field(
                 display_values["random_color_salt"], default=0
             ),
+            "split_show_delay": RouteConfigurationLoader._validate_bool_field(
+                display_values.get("split_show_delay"), default=False
+            ),
             "refresh_interval_seconds": RouteConfigurationLoader._validate_refresh_interval(
                 display_values["refresh_interval_seconds"]
             ),
@@ -438,6 +443,7 @@ class RouteConfigurationLoader:
                 random_header_colors=validated_values["random_header_colors"],
                 header_background_brightness=validated_values["header_background_brightness"],
                 random_color_salt=validated_values["random_color_salt"],
+                split_show_delay=validated_values["split_show_delay"],
                 refresh_interval_seconds=validated_values["refresh_interval_seconds"],
             )
             route_configs.append(route_config)

@@ -77,6 +77,7 @@ class DisplayConfiguration:
     random_header_colors: bool = False
     header_background_brightness: float = 0.7
     random_color_salt: int = 0
+    split_show_delay: bool = False
 
 
 @dataclass(frozen=True)
@@ -156,6 +157,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         self.random_header_colors = display_config.random_header_colors
         self.header_background_brightness = display_config.header_background_brightness
         self.random_color_salt = display_config.random_color_salt
+        self.split_show_delay = display_config.split_show_delay
 
     def __init__(
         self,
@@ -413,6 +415,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 else "false"
             ),
             "font_scaling_factor_when_filling": str(self.font_scaling_factor_when_filling),
+            "split_show_delay": str(self.split_show_delay).lower(),
         }
 
     def _build_template_assigns(

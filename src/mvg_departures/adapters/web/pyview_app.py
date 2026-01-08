@@ -202,6 +202,7 @@ class PyViewWebAdapter(DisplayAdapter):
             random_header_colors=route_config.random_header_colors,
             header_background_brightness=route_config.header_background_brightness,
             random_color_salt=route_config.random_color_salt,
+            split_show_delay=route_config.split_show_delay,
         )
         return LiveViewConfiguration(
             dependencies=dependencies,

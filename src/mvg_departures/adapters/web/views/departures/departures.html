@@ -117,10 +117,17 @@
                         </span>
                         <span class="destination"><span class="destination-text">{{ departure.destination }}</span></span>
                     </div>
-                    <div class="time-container" aria-hidden="true" data-time-relative="{{ departure.time_str_relative }}" data-time-absolute="{{ departure.time_str_absolute }}">
+                    {% if split_show_delay == 'true' %}
+                    <div class="time-container" aria-hidden="true" data-time-relative="{{ departure.planned_time_str_relative }}" data-time-absolute="{{ departure.planned_time_str_absolute }}">
                         <span class="platform">{% if departure.platform %}{{ departure.platform }}{% endif %}</span>
-                        <span class="time{% if departure.has_delay %} delay{% endif %}{% if departure.is_realtime %} realtime{% endif %}">{{ departure.time_str_relative }}{% if departure.delay_minutes %}<span class="delay-amount" aria-hidden="true">+{{ departure.delay_minutes }}m</span>{% endif %}</span>
+                        <span class="time{% if departure.has_delay %} delay{% endif %}{% if departure.is_realtime %} realtime{% endif %}">{{ departure.planned_time_str_relative }}{% if departure.delay_minutes %}<span class="delay-amount" aria-hidden="true">+{{ departure.delay_minutes }}m</span>{% endif %}</span>
                     </div>
+                    {% else %}
+                    <div class="time-container" aria-hidden="true" data-time-relative="{{ departure.expected_time_str_relative }}" data-time-absolute="{{ departure.expected_time_str_absolute }}">
+                        <span class="platform">{% if departure.platform %}{{ departure.platform }}{% endif %}</span>
+                        <span class="time{% if departure.has_delay %} delay{% endif %}{% if departure.is_realtime %} realtime{% endif %}">{{ departure.expected_time_str_relative }}</span>
+                    </div>
+                    {% endif %}
                     <span class="sr-only">{{ departure.aria_label }}</span>
                 </li>
                 {% endfor %}

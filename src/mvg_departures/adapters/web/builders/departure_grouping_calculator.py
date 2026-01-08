@@ -154,6 +154,18 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
         time_str_relative = self.formatter.format_departure_time_relative(departure)
         time_str_absolute = self.formatter.format_departure_time_absolute(departure)
 
+        # Calculate planned (scheduled) time for split_show_delay mode
+        planned_time_str_relative = self.formatter.format_departure_time_relative(
+            type("Departure", (), {"time": departure.planned_time})()
+        )
+        planned_time_str_absolute = self.formatter.format_departure_time_absolute(
+            type("Departure", (), {"time": departure.planned_time})()
+        )
+
+        # Expected time is the actual departure time (time field already includes delay)
+        expected_time_str_relative = time_str_relative
+        expected_time_str_absolute = time_str_absolute
+
         platform_display = str(departure.platform) if departure.platform is not None else None
         platform_aria = f", Platform {platform_display}" if platform_display else ""
 
@@ -174,6 +186,10 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
             "time_str": time_str,
             "time_str_relative": time_str_relative,
             "time_str_absolute": time_str_absolute,
+            "planned_time_str_relative": planned_time_str_relative,
+            "planned_time_str_absolute": planned_time_str_absolute,
+            "expected_time_str_relative": expected_time_str_relative,
+            "expected_time_str_absolute": expected_time_str_absolute,
             "cancelled": departure.is_cancelled,
             "has_delay": has_delay,
             "delay_minutes": delay_minutes,
