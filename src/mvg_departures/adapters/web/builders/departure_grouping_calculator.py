@@ -141,6 +141,33 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
         self.header_background_brightness = header_settings.header_background_brightness
         self.random_color_salt = header_settings.random_color_salt
 
+    def _format_time_strings(self, departure: Any) -> dict[str, str]:
+        """Format all time strings for a departure.
+
+        Args:
+            departure: Departure object.
+
+        Returns:
+            Dictionary with time strings.
+        """
+        time_str_relative = self.formatter.format_departure_time_relative(departure)
+        time_str_absolute = self.formatter.format_departure_time_absolute(departure)
+
+        # Create temporary object for planned time formatting
+        planned_departure = type("Departure", (), {"time": departure.planned_time})()
+        planned_time_str_relative = self.formatter.format_departure_time_relative(planned_departure)
+        planned_time_str_absolute = self.formatter.format_departure_time_absolute(planned_departure)
+
+        return {
+            "time_str": self.formatter.format_departure_time(departure),
+            "time_str_relative": time_str_relative,
+            "time_str_absolute": time_str_absolute,
+            "planned_time_str_relative": planned_time_str_relative,
+            "planned_time_str_absolute": planned_time_str_absolute,
+            "expected_time_str_relative": time_str_relative,  # Same as time_str_relative
+            "expected_time_str_absolute": time_str_absolute,  # Same as time_str_absolute
+        }
+
     def _format_departure_data(self, departure: Any) -> dict[str, Any]:
         """Format a single departure for display.
 
@@ -150,29 +177,13 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
         Returns:
             Dictionary with formatted departure data.
         """
-        time_str = self.formatter.format_departure_time(departure)
-        time_str_relative = self.formatter.format_departure_time_relative(departure)
-        time_str_absolute = self.formatter.format_departure_time_absolute(departure)
-
-        # Calculate planned (scheduled) time for split_show_delay mode
-        planned_time_str_relative = self.formatter.format_departure_time_relative(
-            type("Departure", (), {"time": departure.planned_time})()
-        )
-        planned_time_str_absolute = self.formatter.format_departure_time_absolute(
-            type("Departure", (), {"time": departure.planned_time})()
-        )
-
-        # Expected time is the actual departure time (time field already includes delay)
-        expected_time_str_relative = time_str_relative
-        expected_time_str_absolute = time_str_absolute
-
+        time_strings = self._format_time_strings(departure)
         platform_display = str(departure.platform) if departure.platform is not None else None
         platform_aria = f", Platform {platform_display}" if platform_display else ""
-
         delay_minutes, delay_aria, has_delay = self._format_delay(departure)
-        aria_label = self._build_aria_label(departure, time_str, platform_aria, delay_aria)
-
-        # Normalize transport_type for CSS class: "U-Bahn" -> "ubahn", "S-Bahn" -> "sbahn"
+        aria_label = self._build_aria_label(
+            departure, time_strings["time_str"], platform_aria, delay_aria
+        )
         transport_type_css = (
             departure.transport_type.lower().replace("-", "").replace(" ", "")
             if departure.transport_type
@@ -183,13 +194,7 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
             "line": departure.line,
             "destination": departure.destination,
             "platform": platform_display,
-            "time_str": time_str,
-            "time_str_relative": time_str_relative,
-            "time_str_absolute": time_str_absolute,
-            "planned_time_str_relative": planned_time_str_relative,
-            "planned_time_str_absolute": planned_time_str_absolute,
-            "expected_time_str_relative": expected_time_str_relative,
-            "expected_time_str_absolute": expected_time_str_absolute,
+            **time_strings,
             "cancelled": departure.is_cancelled,
             "has_delay": has_delay,
             "delay_minutes": delay_minutes,

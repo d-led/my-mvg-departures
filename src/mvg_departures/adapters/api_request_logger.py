@@ -29,12 +29,31 @@ def _format_payload(payload: Any) -> str:
         return str(payload)
 
 
+def _build_log_message(method: str, url: str, params: dict[str, Any] | None, payload: Any) -> str:
+    """Build log message for API request.
+
+    Args:
+        method: HTTP method.
+        url: Request URL.
+        params: Query parameters.
+        payload: Request payload.
+
+    Returns:
+        Formatted log message.
+    """
+    full_url = _build_url_with_params(url, params)
+    log_parts = [f"{method} {full_url}"]
+    if payload is not None:
+        log_parts.append(f"Payload: {_format_payload(payload)}")
+    return "API Request:\n" + "\n".join(log_parts)
+
+
 def log_api_request(
     method: str,
     url: str,
     params: dict[str, Any] | None = None,
-    headers: dict[str, str] | None = None,  # noqa: ARG001
     payload: Any = None,
+    **kwargs: Any,  # noqa: ARG001 - Accept headers and other args for API compatibility
 ) -> None:
     """Log API request details if MMD_LOG_REQUESTS is enabled.
 
@@ -42,16 +61,9 @@ def log_api_request(
         method: HTTP method (GET, POST, etc.).
         url: Request URL.
         params: Query parameters (optional).
-        headers: Request headers (optional, not logged, kept for API compatibility).
         payload: Request payload/body (optional).
+        **kwargs: Additional arguments (e.g., headers) accepted for API compatibility but not logged.
     """
     if not should_log_requests():
         return
-
-    full_url = _build_url_with_params(url, params)
-    log_parts = [f"{method} {full_url}"]
-
-    if payload is not None:
-        log_parts.append(f"Payload: {_format_payload(payload)}")
-
-    logger.info("API Request:\n" + "\n".join(log_parts))
+    logger.info(_build_log_message(method, url, params, payload))

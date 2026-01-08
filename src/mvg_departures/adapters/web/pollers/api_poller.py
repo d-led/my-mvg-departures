@@ -140,23 +140,27 @@ class ApiPoller(ApiPollerProtocol):
                 logger.info("API poller cancelled")
             logger.info("Stopped API poller")
 
-    async def _poll_loop(self) -> None:
-        """Main polling loop."""
-        # Do initial update immediately
+    async def _safe_process_and_broadcast(self, context: str) -> None:
+        """Process and broadcast with error handling.
+
+        Args:
+            context: Context string for error logging (e.g., 'initial API poll').
+        """
         try:
             await self._process_and_broadcast()
         except Exception as e:
-            logger.exception(f"Error in initial API poll: {e}")
+            logger.exception(f"Error in {context}: {e}")
+
+    async def _poll_loop(self) -> None:
+        """Main polling loop."""
+        # Do initial update immediately
+        await self._safe_process_and_broadcast("initial API poll")
 
         # Then poll periodically
-        # If using shared cache, we still need to reprocess periodically as cache updates
         try:
             while True:
                 await asyncio.sleep(self.refresh_interval_seconds)
-                try:
-                    await self._process_and_broadcast()
-                except Exception as e:
-                    logger.exception(f"Error in API poll: {e}")
+                await self._safe_process_and_broadcast("API poll")
         except asyncio.CancelledError:
             logger.info("API poller cancelled")
             raise
