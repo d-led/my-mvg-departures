@@ -59,7 +59,8 @@ body {
 .route-container {
   flex: 1 1 auto;
   display: grid;
-  grid-template-columns: 7ch 1fr;
+  /* Let the route column grow to fit icon+number but cap it to avoid wasting space */
+  grid-template-columns: minmax(auto, max-content) minmax(0, 1fr);
   align-items: center;
   gap: 0.75rem;
   min-width: 0;
@@ -71,6 +72,7 @@ body {
   font-size: var(--font-size-route-number);
   text-align: left;
   padding: 0;
+  min-width: 0;
   white-space: nowrap;
   justify-self: start;
   display: flex;
