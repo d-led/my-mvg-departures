@@ -384,9 +384,7 @@ class ApiPoller(ApiPollerProtocol):
             f"Using cached processed departures for {stop_config.station_name} "
             f"({len(cached_groups)} direction groups) due to {error_details.reason}"
         )
-        stale_groups = self._build_stale_direction_groups_with_metadata(
-            stop_config, cached_groups
-        )
+        stale_groups = self._build_stale_direction_groups_with_metadata(stop_config, cached_groups)
         all_groups.extend(stale_groups)
         return True
 

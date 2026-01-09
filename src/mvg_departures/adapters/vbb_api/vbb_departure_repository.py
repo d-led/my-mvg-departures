@@ -101,12 +101,14 @@ class VbbDepartureRepository(DepartureRepository):
         self, url: str, params: dict[str, int | str], station_id: str
     ) -> list[dict[str, Any]]:
         """Execute the API request and handle errors."""
+        if not self._session:
+            raise RuntimeError("VBB API requires an aiohttp session")
         timeout = aiohttp.ClientTimeout(total=VBB_API_TIMEOUT_SECONDS)
         try:
             async with self._session.get(
                 url, params=params, ssl=False, timeout=timeout
             ) as response:
-                return await self._process_response(response, station_id)
+                return await self._process_response(response)
         except TimeoutError as e:
             raise RuntimeError(f"VBB API request timed out for station {station_id}") from e
         except asyncio.CancelledError as e:
@@ -116,17 +118,16 @@ class VbbDepartureRepository(DepartureRepository):
         except Exception as e:
             raise RuntimeError(f"VBB API request failed for station {station_id}: {e}") from e
 
-    async def _process_response(
-        self, response: "ClientResponse", station_id: str
-    ) -> list[dict[str, Any]]:
+    async def _process_response(self, response: "ClientResponse") -> list[dict[str, Any]]:
         """Process API response and extract departures data."""
         if response.status != 200:
             response_text = await response.text()
             error_detail = f" ({response_text.strip()})" if response_text.strip() else ""
             raise RuntimeError(f"VBB API returned status {response.status}{error_detail}")
 
-        data = await response.json()
-        return data.get("departures", [])
+        data: dict[str, Any] = await response.json()
+        departures: list[dict[str, Any]] = data.get("departures", [])
+        return departures
 
     def _parse_departure_time(self, dep_data: dict[str, Any]) -> tuple[datetime, datetime] | None:
         """Parse departure time and planned time from VBB departure data.
