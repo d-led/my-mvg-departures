@@ -59,10 +59,10 @@ body {
 .route-container {
   flex: 1 1 auto;
   display: grid;
-  /* Route column: em units scale with font size to prevent overlap when fonts are enlarged */
-  grid-template-columns: 3.5em 1fr;
+  /* Route column: uses CSS variable set by JS for dynamic font scaling, fallback to 6.5em */
+  grid-template-columns: var(--route-column-width, 6.5em) 1fr;
   align-items: center;
-  gap: 0.65em;
+  gap: 0.3em;
   min-width: 0;
   overflow: hidden;
   padding: 0 0.75rem 0 0;
@@ -218,12 +218,13 @@ body {
 .time-container {
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: auto 1fr;
+  /* Use CSS variables for dynamic column widths based on actual content */
+  grid-template-columns: var(--platform-column-width, auto) var(--time-column-width, auto);
   align-items: center;
   padding: 0 0.75rem 0 0.75rem;
   margin-right: 0;
-  gap: 0.75rem;
-  width: 10ch;
+  gap: var(--time-container-gap, 0.75rem);
+  width: var(--time-container-width, auto);
 }
 .time-container .platform {
   text-align: left;
