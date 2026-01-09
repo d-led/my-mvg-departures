@@ -3,6 +3,7 @@
 Uses v6.bvg.transport.rest API for real-time Berlin public transport data.
 """
 
+import asyncio
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -17,7 +18,7 @@ from mvg_departures.domain.ports.departure_repository import DepartureRepository
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from aiohttp import ClientSession
+    from aiohttp import ClientResponse, ClientSession
 
 # Minimum delay between VBB API requests (in seconds)
 # Using 1.5s to be nice to the API and avoid rate limiting
@@ -90,23 +91,42 @@ class VbbDepartureRepository(DepartureRepository):
             raise RuntimeError("VBB API requires an aiohttp session")
 
         url = f"{self._base_url}/stops/{station_id}/departures"
-
-        # Rate limit: wait for permission before making request
         rate_limiter = await self._get_rate_limiter()
         await rate_limiter.acquire()
-
         log_api_request("GET", url, params=params)
 
-        timeout = aiohttp.ClientTimeout(total=VBB_API_TIMEOUT_SECONDS)
-        async with self._session.get(url, params=params, ssl=False, timeout=timeout) as response:
-            if response.status != 200:
-                response_text = await response.text()
-                error_detail = f" ({response_text.strip()})" if response_text.strip() else ""
-                raise RuntimeError(f"VBB API returned status {response.status}{error_detail}")
+        return await self._execute_api_request(url, params, station_id)
 
-            data = await response.json()
-            departures_data: list[dict[str, Any]] = data.get("departures", [])
-            return departures_data
+    async def _execute_api_request(
+        self, url: str, params: dict[str, int | str], station_id: str
+    ) -> list[dict[str, Any]]:
+        """Execute the API request and handle errors."""
+        timeout = aiohttp.ClientTimeout(total=VBB_API_TIMEOUT_SECONDS)
+        try:
+            async with self._session.get(
+                url, params=params, ssl=False, timeout=timeout
+            ) as response:
+                return await self._process_response(response, station_id)
+        except TimeoutError as e:
+            raise RuntimeError(f"VBB API request timed out for station {station_id}") from e
+        except asyncio.CancelledError as e:
+            raise RuntimeError(
+                f"VBB API request was cancelled for station {station_id} (likely due to timeout)"
+            ) from e
+        except Exception as e:
+            raise RuntimeError(f"VBB API request failed for station {station_id}: {e}") from e
+
+    async def _process_response(
+        self, response: "ClientResponse", station_id: str
+    ) -> list[dict[str, Any]]:
+        """Process API response and extract departures data."""
+        if response.status != 200:
+            response_text = await response.text()
+            error_detail = f" ({response_text.strip()})" if response_text.strip() else ""
+            raise RuntimeError(f"VBB API returned status {response.status}{error_detail}")
+
+        data = await response.json()
+        return data.get("departures", [])
 
     def _parse_departure_time(self, dep_data: dict[str, Any]) -> tuple[datetime, datetime] | None:
         """Parse departure time and planned time from VBB departure data.

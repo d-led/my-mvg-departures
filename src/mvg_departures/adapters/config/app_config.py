@@ -8,7 +8,7 @@ try:
 except ImportError:
     import tomli as tomllib  # type: ignore[no-redef]  # Fallback for older Python
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -184,6 +184,23 @@ class AppConfig(BaseSettings):
             "Connections with browser_id == 'unknown' are not limited."
         ),
     )
+
+    @model_validator(mode="after")
+    def check_rate_limit_env_var(self) -> "AppConfig":
+        """Check RATE_LIMIT_PER_MINUTE environment variable and override if valid."""
+        import os
+
+        env_value = os.getenv("RATE_LIMIT_PER_MINUTE")
+        if not env_value or not env_value.strip():
+            return self
+
+        try:
+            value = int(env_value)
+            if value >= 0:
+                self.rate_limit_per_minute = value
+        except ValueError:
+            pass  # Ignore invalid values
+        return self
 
     @field_validator("time_format")
     @classmethod

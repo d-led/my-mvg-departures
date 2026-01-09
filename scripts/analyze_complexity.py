@@ -705,24 +705,33 @@ def _count_low_mi(metrics: list[FunctionMetrics]) -> int:
     return sum(1 for m in metrics if 0 < m.maintainability_index < 20)
 
 
+def _get_relative_path(file_path: str, project_root: Path) -> Path:
+    """Get relative path from project root, falling back to absolute path if not possible."""
+    try:
+        return Path(file_path).relative_to(project_root)
+    except ValueError:
+        return Path(file_path)
+
+
 def print_summary(
     all_metrics: list[FunctionMetrics],
     regular_metrics: list[FunctionMetrics],
     protocol_metrics: list[FunctionMetrics],
 ) -> None:
     """Print summary statistics."""
-    regular_param_violations = _count_parameter_violations(regular_metrics)
-    protocol_param_violations = _count_parameter_violations(protocol_metrics)
+    summary = _build_summary_data(all_metrics, regular_metrics, protocol_metrics)
     
-    print(f"\nTotal functions analyzed: {len(all_metrics)}")
-    print(f"  - Regular functions: {len(regular_metrics)}")
-    print(f"  - Protocol/interface methods: {len(protocol_metrics)}")
-    print(f"Functions with nesting > 2: {_count_violations(regular_metrics, 'nesting')}")
-    print(f"Functions with complexity > 10: {_count_violations(regular_metrics, 'complexity')}")
-    print(f"Functions with length > 50: {_count_violations(regular_metrics, 'length')}")
-    print(f"Functions with too many parameters: {regular_param_violations} (regular) + {protocol_param_violations} (protocol)")
-    low_mi_count = _count_low_mi(regular_metrics)
-    print(f"Functions with low Maintainability Index (< 20): {low_mi_count}")
+    print(f"\nTotal functions analyzed: {summary['total_functions']}")
+    print(f"  - Regular functions: {summary['regular_functions']}")
+    print(f"  - Protocol/interface methods: {summary['protocol_methods']}")
+    print(f"Functions with nesting > 2: {summary['functions_with_nesting_violations']}")
+    print(f"Functions with complexity > 10: {summary['functions_with_high_complexity']}")
+    print(f"Functions with length > 50: {summary['functions_with_high_length']}")
+    print(
+        f"Functions with too many parameters: {summary['functions_with_too_many_parameters']} "
+        f"(regular) + {summary['protocol_methods_with_too_many_parameters']} (protocol)"
+    )
+    print(f"Functions with low Maintainability Index (< 20): {summary['functions_with_low_maintainability_index']}")
 
 
 def print_protocol_methods(protocol_metrics: list[FunctionMetrics], project_root: Path) -> None:
@@ -736,10 +745,7 @@ def print_protocol_methods(protocol_metrics: list[FunctionMetrics], project_root
     print("=" * 80)
     
     for m in sorted(protocol_with_violations, key=lambda x: (x.file_path, x.function_name)):
-        try:
-            rel_path = Path(m.file_path).relative_to(project_root)
-        except ValueError:
-            rel_path = Path(m.file_path)
+        rel_path = _get_relative_path(m.file_path, project_root)
         print(f"  {rel_path}::{m.function_name} ({m.parameter_count} params, {m.parameter_violation} over limit)")
     
     print("  Note: Protocol methods maintain interface contracts and cannot be refactored.")

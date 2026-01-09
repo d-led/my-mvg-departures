@@ -7,7 +7,14 @@ from typing import Any
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
-from throttled import RateLimiterType, Throttled, rate_limiter, store
+from throttled import (
+    MemoryStore,
+    Quota,
+    RateLimiterType,
+    Throttled,
+    rate_limiter,
+    store,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,14 +58,23 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         Args:
             app: The ASGI application to wrap.
             requests_per_minute: Maximum number of requests allowed per IP per minute.
+                                 Set to 0 to disable rate limiting.
         """
         super().__init__(app)
         self.requests_per_minute = requests_per_minute
-        # Store quota and store for creating per-IP throttlers
-        # Each IP gets its own Throttled instance with the same quota
-        self.quota = rate_limiter.per_min(requests_per_minute, burst=requests_per_minute)
-        self.rate_limiter_store = store.MemoryStore()
-        logger.info(f"Rate limiting enabled: {requests_per_minute} requests per minute per IP")
+        # Type hints allow None when rate limiting is disabled
+        self.quota: Quota | None
+        self.rate_limiter_store: MemoryStore | None
+        if requests_per_minute > 0:
+            # Store quota and store for creating per-IP throttlers
+            # Each IP gets its own Throttled instance with the same quota
+            self.quota = rate_limiter.per_min(requests_per_minute, burst=requests_per_minute)
+            self.rate_limiter_store = store.MemoryStore()
+            logger.info(f"Rate limiting enabled: {requests_per_minute} requests per minute per IP")
+        else:
+            self.quota = None
+            self.rate_limiter_store = None
+            logger.info("Rate limiting disabled")
 
     def _extract_retry_after(self, result: Any) -> float:
         """Extract retry_after value from rate limit result."""
@@ -84,10 +100,19 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         """Process request and enforce rate limiting."""
+        if self.requests_per_minute == 0:
+            # Rate limiting disabled
+            return await call_next(request)
+
         client_ip = extract_client_ip(request)
 
         # Create a Throttled instance for this IP
         # Each IP gets tracked separately with the same quota
+        # Type narrowing: we know quota and store are not None here because requests_per_minute > 0
+        assert self.quota is not None, "quota should not be None when rate limiting is enabled"
+        assert (
+            self.rate_limiter_store is not None
+        ), "rate_limiter_store should not be None when rate limiting is enabled"
         throttle = Throttled(
             key=client_ip,
             using=RateLimiterType.TOKEN_BUCKET.value,
@@ -102,5 +127,4 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return self._create_rate_limit_response(client_ip, retry_after)
 
         # Rate limit check passed, proceed with the request
-        response: Response = await call_next(request)
-        return response
+        return await call_next(request)

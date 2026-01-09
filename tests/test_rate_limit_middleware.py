@@ -1,6 +1,8 @@
 """Behavior-focused tests for rate limiting middleware."""
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from mvg_departures.adapters.web.rate_limit_middleware import extract_client_ip
 
@@ -139,3 +141,83 @@ class TestRateLimitMiddlewareResponseCreation:
         assert response.status_code == 429
         assert response.headers["Retry-After"] == "45"
         assert b"Rate limit exceeded" in response.body
+
+
+class TestRateLimitMiddlewareDispatch:
+    """Tests for rate limit middleware dispatch behavior."""
+
+    @pytest.mark.asyncio
+    async def test_when_rpm_zero_then_requests_pass_through(self) -> None:
+        """Given rpm=0, when processing request, then passes through without rate limiting."""
+        from mvg_departures.adapters.web.rate_limit_middleware import RateLimitMiddleware
+
+        mock_app = MagicMock()
+        middleware = RateLimitMiddleware(app=mock_app, requests_per_minute=0)
+
+        request = MagicMock()
+        request.headers = {}
+        request.client = MagicMock()
+        request.client.host = "192.168.1.1"
+
+        expected_response = MagicMock()
+        call_next = AsyncMock(return_value=expected_response)
+
+        response = await middleware.dispatch(request, call_next)
+
+        assert response == expected_response
+        call_next.assert_called_once_with(request)
+
+    @pytest.mark.asyncio
+    async def test_when_rpm_nonzero_and_within_limit_then_requests_pass_through(
+        self,
+    ) -> None:
+        """Given rpm>0 and within limit, when processing request, then passes through."""
+        from mvg_departures.adapters.web.rate_limit_middleware import RateLimitMiddleware
+
+        mock_app = MagicMock()
+        middleware = RateLimitMiddleware(app=mock_app, requests_per_minute=10)
+
+        request = MagicMock()
+        request.headers = {}
+        request.client = MagicMock()
+        request.client.host = "192.168.1.1"
+
+        expected_response = MagicMock()
+        call_next = AsyncMock(return_value=expected_response)
+
+        response = await middleware.dispatch(request, call_next)
+
+        assert response == expected_response
+        call_next.assert_called_once_with(request)
+
+    @pytest.mark.asyncio
+    async def test_when_rpm_nonzero_and_exceeding_limit_then_returns_429(
+        self,
+    ) -> None:
+        """Given rpm>0 and exceeding limit, when processing request, then returns 429."""
+        from mvg_departures.adapters.web.rate_limit_middleware import RateLimitMiddleware
+
+        mock_app = MagicMock()
+        # Use a very low limit to easily exceed it
+        middleware = RateLimitMiddleware(app=mock_app, requests_per_minute=1)
+
+        request = MagicMock()
+        request.headers = {}
+        request.client = MagicMock()
+        request.client.host = "192.168.1.1"
+
+        expected_response = MagicMock()
+        call_next = AsyncMock(return_value=expected_response)
+
+        # First request should pass
+        response1 = await middleware.dispatch(request, call_next)
+        assert response1 == expected_response
+
+        # Second request should be rate limited
+        response2 = await middleware.dispatch(request, call_next)
+
+        assert response2.status_code == 429
+        assert "Retry-After" in response2.headers
+        assert b"Rate limit exceeded" in response2.body
+        # call_next should only be called once (for the first request)
+        assert call_next.call_count == 1

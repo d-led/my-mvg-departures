@@ -128,17 +128,27 @@ class DepartureFetcher:
         # If no cached data at all, leave cache empty
 
     async def _fetch_all_stations(self) -> None:
-        """Fetch raw departures for all stations."""
+        """Fetch raw departures for all stations.
+
+        Each station fetch is completely isolated - failures in one request
+        do not affect other requests.
+        """
         fetch_limit = 50  # Same as in DepartureGroupingService
         sleep_ms = self.config.sleep_ms_between_calls
         station_list = list(self.station_ids)
 
         for i, station_id in enumerate(station_list):
+            # Isolate each request - catch ALL exceptions to ensure one failure doesn't stop other requests
+            # Even CancelledError from individual requests should be handled (converted to RuntimeError by repository)
             try:
                 await self._fetch_single_station(station_id, fetch_limit)
             except Exception as e:
+                # Handle all exceptions - this isolates failures
+                # The repository should have converted CancelledError/TimeoutError to RuntimeError
+                # so we can handle them here without stopping the loop
                 self._handle_fetch_error(station_id, e)
 
             # Add delay between calls (except after the last one)
+            # This happens even if the previous request failed
             if sleep_ms > 0 and i < len(station_list) - 1:
                 await asyncio.sleep(sleep_ms / 1000.0)

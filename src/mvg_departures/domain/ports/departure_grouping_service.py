@@ -1,5 +1,6 @@
 """Departure grouping service port."""
 
+from datetime import datetime
 from typing import Protocol
 
 from mvg_departures.domain.models.departure import Departure
@@ -27,7 +28,10 @@ class DepartureGroupingService(Protocol):
         ...
 
     def group_departures(
-        self, departures: list[Departure], stop_config: StopConfiguration
+        self,
+        departures: list[Departure],
+        stop_config: StopConfiguration,
+        reference_time_utc: datetime | None = None,
     ) -> list[GroupedDepartures]:
         """Group pre-fetched departures by configured directions.
 
@@ -37,6 +41,8 @@ class DepartureGroupingService(Protocol):
         Args:
             departures: Pre-fetched list of departures to group.
             stop_config: Stop configuration with direction mappings and limits.
+            reference_time_utc: Optional reference time for filtering departures.
+                               If None, uses current time.
 
         Returns:
             List of grouped departures for this stop.

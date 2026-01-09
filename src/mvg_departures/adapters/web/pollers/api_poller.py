@@ -165,6 +165,28 @@ class ApiPoller(ApiPollerProtocol):
             logger.info("API poller cancelled")
             raise
 
+    def _is_cache_incomplete(
+        self, groups: list[GroupedDepartures], expected_directions: int
+    ) -> bool:
+        """Check if cached data appears incomplete based on expected directions."""
+        if expected_directions == 0:
+            return False
+        groups_count = len(groups)
+        if groups_count == 0:
+            return True
+        if expected_directions >= 3:
+            min_expected = max(1, int(expected_directions * 0.3))
+            return groups_count < min_expected
+        return False
+
+    def _get_recent_departures(
+        self, raw_departures: list[Departure], max_age_hours: int = 1
+    ) -> list[Departure]:
+        """Filter departures to only include recent ones within max_age."""
+        now = datetime.now(UTC)
+        max_age = timedelta(hours=max_age_hours)
+        return [d for d in raw_departures if d.time >= now - max_age]
+
     async def _fetch_groups_for_stop(
         self, stop_config: StopConfiguration
     ) -> list[GroupedDepartures]:
@@ -190,10 +212,7 @@ class ApiPoller(ApiPollerProtocol):
             )
             return await self.grouping_service.get_grouped_departures(stop_config)
 
-        now = datetime.now(UTC)
-        max_age = timedelta(hours=1)
-        recent_departures = [d for d in raw_departures if d.time >= now - max_age]
-
+        recent_departures = self._get_recent_departures(raw_departures)
         if not recent_departures:
             logger.warning(
                 f"Cached departures for {stop_config.station_name} are too old, "
@@ -201,7 +220,16 @@ class ApiPoller(ApiPollerProtocol):
             )
             return await self.grouping_service.get_grouped_departures(stop_config)
 
-        return self.grouping_service.group_departures(recent_departures, stop_config)
+        groups = self.grouping_service.group_departures(recent_departures, stop_config)
+        expected_directions = len(stop_config.direction_mappings)
+        if self._is_cache_incomplete(groups, expected_directions):
+            logger.warning(
+                f"Cached data for {stop_config.station_name} produced only {len(groups)} groups "
+                f"but {expected_directions} directions are configured - fetching fresh from API"
+            )
+            return await self.grouping_service.get_grouped_departures(stop_config)
+
+        return groups
 
     def _create_departure_key(self, dep: Departure) -> tuple[str, str, datetime]:
         """Create a unique key for a departure."""
@@ -326,6 +354,80 @@ class ApiPoller(ApiPollerProtocol):
         logger.debug(f"Successfully processed departures for {stop_config.station_name}")
         return direction_groups
 
+    def _is_processing_error(self, error: Exception) -> bool:
+        """Determine if error is likely from processing (not API)."""
+        if isinstance(error, TimeoutError):
+            return False
+        if isinstance(error, (AttributeError, TypeError, ValueError)):
+            return True
+        error_str = str(error).lower()
+        processing_indicators = [
+            "group_departures",
+            "grouping",
+            "direction",
+            "mapping",
+            "parse",
+        ]
+        return any(indicator in error_str for indicator in processing_indicators)
+
+    def _try_use_cached_processed_groups(
+        self,
+        stop_config: StopConfiguration,
+        error_details: ErrorDetails,
+        all_groups: list[DirectionGroupWithMetadata],
+    ) -> bool:
+        """Try to use cached processed groups. Returns True if successful."""
+        if stop_config.station_name not in self.cached_departures:
+            return False
+        cached_groups = self.cached_departures[stop_config.station_name]
+        logger.info(
+            f"Using cached processed departures for {stop_config.station_name} "
+            f"({len(cached_groups)} direction groups) due to {error_details.reason}"
+        )
+        stale_groups = self._build_stale_direction_groups_with_metadata(
+            stop_config, cached_groups
+        )
+        all_groups.extend(stale_groups)
+        return True
+
+    def _try_use_shared_cache_fallback(
+        self,
+        stop_config: StopConfiguration,
+        error_details: ErrorDetails,
+        all_groups: list[DirectionGroupWithMetadata],
+    ) -> bool:
+        """Try to use shared cache as fallback. Returns True if successful."""
+        if self.shared_cache is None:
+            return False
+        raw_departures = self.shared_cache.get(stop_config.station_id, [])
+        if not raw_departures:
+            return False
+        now = datetime.now(UTC)
+        max_age = timedelta(hours=1)
+        recent_departures = [d for d in raw_departures if d.time >= now - max_age]
+        if not recent_departures:
+            return False
+        try:
+            logger.info(
+                f"Falling back to shared cache raw departures for {stop_config.station_name} "
+                f"({len(recent_departures)} departures) due to {error_details.reason}"
+            )
+            groups = self.grouping_service.group_departures(
+                recent_departures, stop_config, reference_time_utc=now
+            )
+            deduplicated_groups = self._deduplicate_departures(groups)
+            stale_groups = self._build_stale_direction_groups_with_metadata(
+                stop_config, deduplicated_groups
+            )
+            all_groups.extend(stale_groups)
+            self.cached_departures[stop_config.station_name] = deduplicated_groups
+            return True
+        except Exception as fallback_error:
+            logger.warning(
+                f"Failed to process shared cache fallback for {stop_config.station_name}: {fallback_error}"
+            )
+            return False
+
     def _handle_processing_error(
         self,
         stop_config: StopConfiguration,
@@ -344,16 +446,28 @@ class ApiPoller(ApiPollerProtocol):
                 "consider adding delays between API calls"
             )
 
-        if stop_config.station_name in self.cached_departures:
-            cached_groups = self.cached_departures[stop_config.station_name]
-            logger.info(
-                f"Using cached processed departures for {stop_config.station_name} "
-                f"({len(cached_groups)} direction groups) due to {error_details.reason}"
+        if self._try_use_cached_processed_groups(stop_config, error_details, all_groups):
+            return
+
+        is_likely_processing_error = self._is_processing_error(error)
+        if is_likely_processing_error:
+            logger.debug(
+                f"Skipping shared cache fallback for {stop_config.station_name} - "
+                f"error appears to be from processing, not API: {error}"
             )
-            stale_groups = self._build_stale_direction_groups_with_metadata(
-                stop_config, cached_groups
+            logger.warning(
+                f"No cached data available for {stop_config.station_name} - "
+                f"no departures will be shown for this stop"
             )
-            all_groups.extend(stale_groups)
+            return
+
+        if self._try_use_shared_cache_fallback(stop_config, error_details, all_groups):
+            return
+
+        logger.warning(
+            f"No cached data available for {stop_config.station_name} - "
+            f"no departures will be shown for this stop"
+        )
 
     def _determine_api_status(self, success_count: int, error_count: int) -> str:
         """Determine API status based on success/error counts."""

@@ -244,3 +244,83 @@ async def test_when_cache_has_data_then_uses_cache(
         assert len(group.departures) == 1
         assert group.departures[0].line == "139"
         assert group.departures[0].destination == "Klinikum Harlaching"
+
+
+@pytest.mark.asyncio
+async def test_when_api_fails_and_no_cached_groups_then_falls_back_to_shared_cache(
+    sample_departures: list[Departure],
+    stop_config: StopConfiguration,
+    mock_state_updater: StateUpdater,
+    mock_state_broadcaster: StateBroadcaster,
+) -> None:
+    """Given API failure and no cached processed groups, when processing, then falls back to shared cache raw departures."""
+    with patch.dict(os.environ, {}, clear=True):
+        # Create a grouping service that will raise an exception when fetching from API
+        repo = MockDepartureRepository(sample_departures)
+
+        async def failing_get_departures(*args, **kwargs):  # noqa: ARG001
+            raise Exception("API call failed: 502 Bad Gateway")
+
+        repo.get_departures = failing_get_departures
+        grouping_service = DepartureGroupingService(repo)
+
+        # Make group_departures raise an exception the first time (in _fetch_groups_for_stop)
+        # but work the second time (in error handler fallback)
+        # This simulates a failure when processing cached data initially, but success in fallback
+        call_count = {"count": 0}
+
+        original_group_departures = grouping_service.group_departures
+
+        def conditional_group_departures(*args, **kwargs):
+            call_count["count"] += 1
+            if call_count["count"] == 1:
+                # First call (in _fetch_groups_for_stop) - raise exception to trigger error handler
+                raise Exception("Failed to process cached data")
+            # Second call (in error handler fallback) - use original implementation
+            return original_group_departures(*args, **kwargs)
+
+        grouping_service.group_departures = conditional_group_departures
+
+        # Create ApiPoller with populated shared cache but empty cached_departures
+        # This simulates the scenario where shared_cache has data but cached_departures is empty
+        cache_with_data: dict[str, list[Departure]] = {stop_config.station_id: sample_departures}
+        config = AppConfig.for_testing(config_file=None)
+        services = ApiPollerServices(
+            grouping_service=grouping_service,
+            state_updater=mock_state_updater,
+            state_broadcaster=mock_state_broadcaster,
+        )
+        configuration = ApiPollerConfiguration(
+            stop_configs=[stop_config],
+            config=config,
+            refresh_interval_seconds=None,
+        )
+        settings = ApiPollerSettings(
+            broadcast_topic="test",
+            shared_cache=cache_with_data,
+        )
+        poller = ApiPoller(services=services, configuration=configuration, settings=settings)
+
+        # Ensure cached_departures is empty (simulating first error or cleared cache)
+        assert stop_config.station_name not in poller.cached_departures
+
+        # Mock the broadcaster to avoid actual pubsub calls
+        mock_state_broadcaster.broadcast_update = AsyncMock()
+
+        # Process and broadcast (should catch exception and fall back to shared_cache)
+        await poller._process_and_broadcast()
+
+        # Verify that shared cache raw departures were processed and used
+        assert len(mock_state_updater.departures_state.direction_groups) == 1
+        group = mock_state_updater.departures_state.direction_groups[0]
+        assert isinstance(group, DirectionGroupWithMetadata)
+        assert group.stop_name == "Chiemgaustr."
+        assert group.direction_name == "->Klinikum"
+        assert len(group.departures) == 1
+        # Departures should be marked as non-realtime (stale) when using fallback
+        assert group.departures[0].is_realtime is False
+        assert group.departures[0].line == "139"
+        assert group.departures[0].destination == "Klinikum Harlaching"
+        # Verify that processed groups were cached for next time
+        assert stop_config.station_name in poller.cached_departures
+        assert len(poller.cached_departures[stop_config.station_name]) == 1
