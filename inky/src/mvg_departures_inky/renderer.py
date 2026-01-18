@@ -1085,13 +1085,13 @@ class InkyRenderer:
                     font=self._platform_font,
                 )  # Black RGB
 
-                # Time position: right-aligned (center-aligned)
+                # Time position: right-aligned (same baseline as route number for horizontal alignment)
                 time_x = right_x - time_width
-                draw.text((time_x, time_baseline), time_text, time_color_rgb, font=font)
+                draw.text((time_x, route_baseline), time_text, time_color_rgb, font=font)
             else:
-                # Just time, right-aligned (center-aligned, green for realtime, black otherwise)
+                # Just time, right-aligned (same baseline as route number for horizontal alignment)
                 time_x = right_x - time_width
-                draw.text((time_x, time_baseline), time_text, time_color_rgb, font=font)
+                draw.text((time_x, route_baseline), time_text, time_color_rgb, font=font)
         elif platform_text:
             # Only platform, right-aligned in fixed column (center-aligned)
             platform_x = right_x - self._platform_column_width
