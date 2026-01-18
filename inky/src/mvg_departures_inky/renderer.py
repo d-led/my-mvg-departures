@@ -285,30 +285,42 @@ class InkyRenderer:
                         icon = bg
                     
                     if icon.mode != "P":
-                        # Convert to grayscale first
-                        icon = icon.convert("L")
-                        
-                        # The SVG icons have dark colored backgrounds with white symbols
+                        # The SVG icons have colored backgrounds (blue, green, red) with white symbols
                         # For e-ink, we want black symbols on white background
-                        # Original: dark background (low values) + white symbols (high values)
-                        # We want: white background + black symbols
-                        # So: invert the image
+                        # Strategy: Extract white pixels (symbols) and make them black, everything else white
                         
-                        # Invert: white symbols (high) -> dark (low), dark backgrounds (low) -> bright (high)
-                        icon = icon.point(lambda p: 255 - p)
+                        # Convert to RGB to work with color channels
+                        if icon.mode != "RGB":
+                            icon = icon.convert("RGB")
                         
-                        # Now we have: bright background + dark symbols
-                        # Apply threshold to get clean black/white
-                        # Dark pixels (symbols, < threshold) -> black, bright pixels (background, >= threshold) -> white
-                        threshold = 140
-                        icon = icon.point(lambda p: 0 if p < threshold else 255, mode="1")
+                        # Create a new image for the result
+                        result = Image.new("L", icon.size, 255)  # Start with white background
+                        pixels = icon.load()
+                        result_pixels = result.load()
+                        
+                        # Extract white symbols: pixels that are close to white (high RGB values)
+                        # White symbols typically have R, G, B all > 200
+                        for y in range(icon.height):
+                            for x in range(icon.width):
+                                r, g, b = pixels[x, y]
+                                # Check if pixel is white (symbol) - all channels high
+                                # Use a threshold: if all RGB values are > 180, it's a white symbol
+                                if r > 180 and g > 180 and b > 180:
+                                    # White symbol -> make it black
+                                    result_pixels[x, y] = 0
+                                else:
+                                    # Colored background -> keep it white
+                                    result_pixels[x, y] = 255
+                        
+                        icon = result
+                        
+                        # Convert to 1-bit mode for clean black/white
+                        icon = icon.convert("1")
                         
                         # Convert to palette mode
                         icon = icon.convert("P")
                         
-                        # Map to e-ink palette if available
-                        if hasattr(self.display, "palette"):
-                            icon.putpalette(self.display.palette)
+                        # Don't set palette here - we'll set it when pasting to match main image
                     
                     # Resize to final size (always resize since we rendered at 2x)
                     # Use high-quality resampling for better icon rendering
@@ -420,9 +432,12 @@ class InkyRenderer:
 
             total_height = (header_height * header_count) + (line_height * total_items)
             
-            # When filling space, use largest font that fits (maximize)
-            # When not filling, just need to fit
-            if total_height <= self.config.usable_height:
+            # When filling space, use full height (no padding since we start at y=0)
+            # When not filling, use usable height (with padding)
+            available_height = self.config.height if self.config.fill_vertical_space else self.config.usable_height
+            
+            # Use largest font that fits within available height
+            if total_height <= available_height:
                 return font_size
 
         return self.config.min_font_size
@@ -479,26 +494,17 @@ class InkyRenderer:
         platform_font_size = max(int(font_size * 0.7), 10)
         self._platform_font = self._get_font(platform_font_size, bold=False)
         
-        # Calculate dynamic icon size based on font size and available space
-        # Icons should scale proportionally with font size
-        # Use font size as base, but ensure icons fit within line height
+        # Calculate line height first (needed for icon size)
         font_bbox = font.getbbox("Mg")
         line_height = font_bbox[3] - font_bbox[1] + self.config.line_spacing
         
-        # Icon size should be proportional to font size, but not exceed line height
-        # Target: icon should be about 1.2x the font size, but capped by line height
-        target_icon_size = int(font_size * 1.2)
-        # Ensure icon fits within line height with some padding
-        max_icon_size = line_height - 4  # Leave 4px padding
-        
-        # Calculate final icon size (clamp to min/max bounds)
-        calculated_icon_size = min(
-            max(target_icon_size, self.config.route_icon_min_size),
-            min(max_icon_size, self.config.route_icon_max_size)
-        )
+        # Icon size MUST be exactly the row height (line height)
+        # This ensures icons fill the vertical space of each row
+        calculated_icon_size = line_height
         
         # Update config with calculated icon size (for this render)
         self._calculated_icon_size = calculated_icon_size
+        logger.info(f"Calculated icon size: {calculated_icon_size} (line height: {line_height})")
         
         # Pre-calculate maximum platform and time widths for vertical alignment (like web version)
         # Use actual font sizes to measure
@@ -597,7 +603,12 @@ class InkyRenderer:
             # Draw header text (with padding from left edge)
             header_x = self.config.padding
             # Center text vertically in header
-            header_text_y = y + (header_height - header_bbox[3] + header_bbox[1]) // 2
+            # Get actual text bounding box for proper centering
+            text_bbox = header_font.getbbox(header)
+            text_height = text_bbox[3] - text_bbox[1]
+            # Center vertically: header_y + (header_height - text_height) / 2
+            # Adjust for text baseline (text_bbox[1] is negative for ascent)
+            header_text_y = y + (header_height - text_height) // 2 - text_bbox[1]
             draw.text((header_x, header_text_y), header, header_text_color, font=header_font)
             y += header_height
 
@@ -633,15 +644,33 @@ class InkyRenderer:
             img = draw._image  # type: ignore[attr-defined]
             # Ensure icon has the same palette as the main image
             if icon.mode == "P":
-                if hasattr(self.display, "palette"):
+                # Get the main image's palette
+                main_palette = img.getpalette()
+                if main_palette:
+                    icon.putpalette(main_palette)
+                elif hasattr(self.display, "palette"):
                     icon.putpalette(self.display.palette)
                 else:
-                    # Use main image's palette
-                    icon.putpalette(img.getpalette() or [255, 255, 255, 0, 0, 0] + [255, 255, 255] * 254)
-            # Paste icon onto main image (ensure no overlap with route number)
-            # Calculate icon position to align with text baseline
+                    # Fallback: use a default palette
+                    default_palette = [0, 0, 0, 255, 255, 255] + [255, 255, 255] * 254
+                    icon.putpalette(default_palette)
+            
+            # Calculate icon position - icon should fill the entire row height
+            # Since icon_size = line_height, it should start at y (no centering needed)
             icon_y = y
-            img.paste(icon, (x, icon_y))
+            
+            # Paste icon onto main image
+            # Use alpha channel if available, otherwise paste directly
+            if icon.mode == "RGBA":
+                # Create a temporary image with alpha channel
+                img.paste(icon, (x, icon_y), icon)
+            else:
+                img.paste(icon, (x, icon_y))
+            
+            logger.debug(f"Pasted icon for {transport_type} at ({x}, {icon_y}), size={icon_size}")
+        else:
+            logger.warning(f"No icon loaded for transport type: {transport_type}")
+        
         # Add proper spacing after icon (icon size + spacing between icon and route number)
         x += icon_size + self.config.route_icon_spacing
 
