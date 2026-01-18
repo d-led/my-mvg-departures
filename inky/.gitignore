@@ -36,3 +36,7 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# Mock output directory
+mock_output/
+*.png

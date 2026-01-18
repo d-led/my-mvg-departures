@@ -115,6 +115,34 @@ async def _fetch_and_display_loop(
 
 async def main() -> None:
     """Main application entry point."""
+    # If CONFIG_FILE is not set, default to config.example.toml in project root
+    import os
+    from pathlib import Path
+    
+    if not os.getenv("CONFIG_FILE"):
+        # Find project root (parent of inky directory)
+        # __file__ is: inky/src/mvg_departures_inky/main.py
+        # So we go: main.py -> mvg_departures_inky -> src -> inky -> project_root
+        # That's 4 levels up from __file__
+        current_file = Path(__file__).resolve()
+        # main.py -> mvg_departures_inky -> src -> inky -> project_root
+        project_root = current_file.parent.parent.parent.parent
+        
+        # Try config.example.toml first, then my.config.toml
+        default_config = project_root / "config.example.toml"
+        if not default_config.exists():
+            default_config = project_root / "my.config.toml"
+        
+        if default_config.exists():
+            os.environ["CONFIG_FILE"] = str(default_config)
+            logger.info(f"Using default config file: {default_config}")
+        else:
+            logger.warning(
+                f"No config file found. Tried: {project_root / 'config.example.toml'} "
+                f"and {project_root / 'my.config.toml'}. "
+                f"Set CONFIG_FILE environment variable to specify a config file."
+            )
+    
     config = AppConfig()
 
     route_configs = _load_route_configurations(config)

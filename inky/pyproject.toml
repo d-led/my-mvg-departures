@@ -19,13 +19,18 @@ classifiers = [
 dependencies = [
     # Parent project must be installed separately: pip install -e ..
     # Then install this with: pip install -e .
-    "inky>=1.4.0",
     "pillow>=10.0.0",
     "pydantic-settings>=2.6.0",
     "aiohttp>=3.13.3",
 ]
 
 [project.optional-dependencies]
+# Hardware dependencies (Linux/Raspberry Pi only)
+# These require Linux kernel headers and won't build on macOS/Windows
+# Install with: pip install -e ".[hardware]"
+hardware = [
+    "inky>=1.4.0",
+]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",

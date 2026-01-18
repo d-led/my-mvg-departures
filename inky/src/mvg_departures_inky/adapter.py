@@ -2,12 +2,14 @@
 
 import asyncio
 import logging
+import os
 from typing import TYPE_CHECKING
 
 from mvg_departures.domain.models.grouped_departures import GroupedDepartures
 from mvg_departures.domain.ports.display_adapter import DisplayAdapter
 
 from .config import InkyDisplayConfig
+from .mock_display import MockInkyDisplay, create_mock_display
 from .renderer import InkyRenderer
 
 logger = logging.getLogger(__name__)
@@ -33,34 +35,70 @@ class InkyDisplayAdapter(DisplayAdapter):
 
     async def start(self) -> None:
         """Start the display adapter."""
-        try:
-            from inky.auto import auto
+        # Check if we should use mock mode
+        use_mock = os.getenv("INKY_MOCK_MODE", "false").lower() in ("true", "1", "yes")
+        output_dir = os.getenv("INKY_MOCK_OUTPUT_DIR", None)
 
-            # Auto-detect Inky display
-            self.display = auto()
-            logger.info(
-                f"Initialized Inky display: {self.display.width}x{self.display.height}, "
-                f"colour: {self.display.colour}"
+        if use_mock:
+            logger.info("Using mock Inky display (INKY_MOCK_MODE=true)")
+            self.display = create_mock_display(
+                width=self.config.width,
+                height=self.config.height,
+                colour="black",
+                output_dir=output_dir,
             )
-
-            # Update config with actual display dimensions
-            self.config.width = self.display.width
-            self.config.height = self.display.height
-
-            # Initialize renderer
-            self.renderer = InkyRenderer(self.config, self.display)
-
-            # Set border color
+        else:
             try:
-                self.display.set_border(self.display.WHITE)
-            except Exception as e:
-                logger.warning(f"Could not set border color: {e}")
+                from inky.auto import auto  # type: ignore[import-untyped]
 
-            self._running = True
-            logger.info("Inky display adapter started")
+                # Auto-detect Inky display
+                self.display = auto()
+                logger.info(
+                    f"Initialized Inky display: {self.display.width}x{self.display.height}, "
+                    f"colour: {self.display.colour}"
+                )
+
+                # Update config with actual display dimensions
+                self.config.width = self.display.width
+                self.config.height = self.display.height
+            except ImportError as e:
+                logger.warning(
+                    f"Inky library not available (likely on non-Linux platform): {e}. "
+                    "Falling back to mock mode. "
+                    "To use real hardware, install with: pip install -e '.[hardware]' "
+                    "or set INKY_MOCK_MODE=true to suppress this warning."
+                )
+                # Fall back to mock mode
+                self.display = create_mock_display(
+                    width=self.config.width,
+                    height=self.config.height,
+                    colour="black",
+                    output_dir=output_dir,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to initialize real Inky display: {e}. "
+                    "Falling back to mock mode. Set INKY_MOCK_MODE=true to suppress this warning."
+                )
+                # Fall back to mock mode
+                self.display = create_mock_display(
+                    width=self.config.width,
+                    height=self.config.height,
+                    colour="black",
+                    output_dir=output_dir,
+                )
+
+        # Initialize renderer
+        self.renderer = InkyRenderer(self.config, self.display)
+
+        # Set border color
+        try:
+            self.display.set_border(self.display.WHITE)
         except Exception as e:
-            logger.error(f"Failed to initialize Inky display: {e}", exc_info=True)
-            raise
+            logger.warning(f"Could not set border color: {e}")
+
+        self._running = True
+        logger.info("Inky display adapter started")
 
     async def stop(self) -> None:
         """Stop the display adapter."""
@@ -91,8 +129,15 @@ class InkyDisplayAdapter(DisplayAdapter):
             self.display.set_image(img)
 
             # Update display (this is the slow part for e-ink)
+            # In mock mode, this saves to file instead
             logger.debug("Updating Inky display...")
-            self.display.show()
+            if isinstance(self.display, MockInkyDisplay):
+                # Generate filename with timestamp for mock mode
+                import time
+                filename = f"departures_{int(time.time())}.png"
+                self.display.show(filename)
+            else:
+                self.display.show()
             logger.debug("Inky display updated")
         except Exception as e:
             logger.error(f"Failed to display departures: {e}", exc_info=True)
