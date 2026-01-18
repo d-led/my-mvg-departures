@@ -59,6 +59,9 @@ class InkyDisplayAdapter(DisplayAdapter):
                 colour="red",  # Use red color mode (Spectra supports all 6 colors: white, black, red, yellow, green, blue)
                 output_dir=output_dir,
             )
+            # Update config with actual display dimensions (even for mock)
+            self.config.width = self.display.width
+            self.config.height = self.display.height
         else:
             try:
                 from inky.auto import auto  # type: ignore[import-untyped]
@@ -87,6 +90,9 @@ class InkyDisplayAdapter(DisplayAdapter):
                     colour="red",  # Use red color mode (Spectra supports all 6 colors: white, black, red, yellow, green, blue)
                     output_dir=output_dir,
                 )
+                # Update config with actual display dimensions
+                self.config.width = self.display.width
+                self.config.height = self.display.height
             except Exception as e:
                 logger.warning(
                     f"Failed to initialize real Inky display: {e}. "
@@ -99,6 +105,9 @@ class InkyDisplayAdapter(DisplayAdapter):
                     colour="red",  # Use red color mode (Spectra supports all 6 colors: white, black, red, yellow, green, blue)
                     output_dir=output_dir,
                 )
+                # Update config with actual display dimensions
+                self.config.width = self.display.width
+                self.config.height = self.display.height
 
         # Initialize renderer with grouping calculator
         if not self.grouping_calculator:

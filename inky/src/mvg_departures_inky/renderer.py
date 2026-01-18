@@ -128,6 +128,13 @@ class InkyRenderer:
         self._use_relative_time = False  # Start with absolute time (HH:MM format)
         self._last_time_toggle = datetime.now(UTC)
         
+        # Use actual display dimensions if available (inky.width, inky.height)
+        # This ensures we use the real display size instead of hardcoded config values
+        if hasattr(display, "width") and hasattr(display, "height"):
+            self.config.width = display.width
+            self.config.height = display.height
+            logger.info(f"Using display dimensions from display object: {display.width}x{display.height}")
+        
         # Store display colors (Inky Impression Spectra supports 7 colors)
         # Order: black, white, green, blue, red, yellow, orange
         self._black = getattr(display, "BLACK", 0)
@@ -250,16 +257,23 @@ class InkyRenderer:
         # Cache key includes size to support dynamic sizing
         cache_key = (transport_type, target_size)
         if cache_key in self._icon_cache:
-            return self._icon_cache[cache_key]
+            cached_icon = self._icon_cache[cache_key]
+            if cached_icon is not None:
+                return cached_icon
+            # If cached as None, don't retry (to avoid repeated failures)
+            logger.debug(f"Icon for {transport_type} was previously cached as None, skipping")
+            return None
 
         # Try to load SVG icon from parent project
         icon_path = self.config.get_route_icon_path(transport_type)
         if not icon_path:
-            logger.warning(f"No icon path configured for transport type: {transport_type}")
+            logger.error(f"No icon path configured for transport type: {transport_type}")
+            # Don't return None - let it fall through to create text icon as last resort
         elif not icon_path.exists():
-            logger.warning(f"Icon file not found at: {icon_path}")
+            logger.error(f"Icon file not found at: {icon_path} (absolute: {icon_path.resolve()})")
+            # Don't return None - let it fall through to create text icon as last resort
         else:
-            logger.info(f"Loading SVG icon for {transport_type} from: {icon_path}")
+            logger.info(f"Loading SVG icon for {transport_type} from: {icon_path} (exists: {icon_path.exists()})")
             try:
                 # Try using cairosvg to convert SVG to PNG
                 try:
@@ -277,50 +291,89 @@ class InkyRenderer:
                     # Load PNG bytes into PIL Image
                     icon = Image.open(BytesIO(png_bytes))
                     
-                    # Convert to palette mode for e-ink display
+                    # Convert to RGB first (handle RGBA if needed)
                     if icon.mode == "RGBA":
-                        # Create a white background
+                        # Create a white background and composite the icon on it
                         bg = Image.new("RGB", icon.size, (255, 255, 255))
                         bg.paste(icon, mask=icon.split()[3])  # Use alpha channel as mask
                         icon = bg
+                    elif icon.mode != "RGB":
+                        icon = icon.convert("RGB")
                     
-                    if icon.mode != "P":
-                        # The SVG icons have colored backgrounds (blue, green, red) with white symbols
-                        # For e-ink, we want black symbols on white background
-                        # Strategy: Extract white pixels (symbols) and make them black, everything else white
-                        
-                        # Convert to RGB to work with color channels
-                        if icon.mode != "RGB":
-                            icon = icon.convert("RGB")
-                        
-                        # Create a new image for the result
-                        result = Image.new("L", icon.size, 255)  # Start with white background
-                        pixels = icon.load()
-                        result_pixels = result.load()
-                        
-                        # Extract white symbols: pixels that are close to white (high RGB values)
-                        # White symbols typically have R, G, B all > 200
-                        for y in range(icon.height):
-                            for x in range(icon.width):
-                                r, g, b = pixels[x, y]
-                                # Check if pixel is white (symbol) - all channels high
-                                # Use a threshold: if all RGB values are > 180, it's a white symbol
-                                if r > 180 and g > 180 and b > 180:
-                                    # White symbol -> make it black
-                                    result_pixels[x, y] = 0
+                    # The SVG icons have colored backgrounds (blue #005d79, green #009551, red #dd0b2f) with white symbols (#fff)
+                    # For e-ink, we want black symbols on white background
+                    # Strategy: Extract white pixels (symbols) and make them black, everything else white
+                    
+                    # Create a new grayscale image for the result
+                    result = Image.new("L", icon.size, 255)  # Start with white background
+                    pixels = icon.load()
+                    result_pixels = result.load()
+                    
+                    # Extract white symbols: pixels that are close to white (high RGB values)
+                    # White symbols are #fff = (255, 255, 255)
+                    # Use a threshold: if all RGB values are > 240, it's a white symbol (very strict)
+                    black_pixels = 0
+                    white_pixels = 0
+                    for y_pos in range(icon.height):
+                        for x_pos in range(icon.width):
+                            r, g, b = pixels[x_pos, y_pos]
+                            # Check if pixel is white (symbol) - all channels very high
+                            # The SVG icons have white symbols (#fff = 255,255,255) on colored backgrounds
+                            # Use strict threshold to catch pure white
+                            if r >= 240 and g >= 240 and b >= 240:
+                                # White symbol -> make it black
+                                result_pixels[x_pos, y_pos] = 0
+                                black_pixels += 1
+                            else:
+                                # Colored background -> keep it white
+                                result_pixels[x_pos, y_pos] = 255
+                                white_pixels += 1
+                    
+                    logger.info(f"Extracted {black_pixels} black pixels (symbols) and {white_pixels} white pixels (background) from {transport_type} icon")
+                    
+                    # Verify we actually extracted something
+                    if black_pixels == 0:
+                        logger.error(f"ERROR: No white symbols found in {transport_type} icon - icon will be invisible! Total pixels: {icon.width * icon.height}")
+                        # Try a lower threshold as fallback
+                        logger.info(f"Trying lower threshold (200) as fallback...")
+                        for y_pos in range(icon.height):
+                            for x_pos in range(icon.width):
+                                r, g, b = pixels[x_pos, y_pos]
+                                if r >= 200 and g >= 200 and b >= 200:
+                                    result_pixels[x_pos, y_pos] = 0
+                                    black_pixels += 1
                                 else:
-                                    # Colored background -> keep it white
-                                    result_pixels[x, y] = 255
-                        
-                        icon = result
-                        
-                        # Convert to 1-bit mode for clean black/white
-                        icon = icon.convert("1")
-                        
-                        # Convert to palette mode
-                        icon = icon.convert("P")
-                        
-                        # Don't set palette here - we'll set it when pasting to match main image
+                                    result_pixels[x_pos, y_pos] = 255
+                                    white_pixels += 1
+                        logger.info(f"After fallback: {black_pixels} black pixels, {white_pixels} white pixels")
+                    
+                    icon = result
+                    
+                    # Convert to palette mode directly (don't use "1" mode as it can cause issues)
+                    # Create a 2-color palette image: 0=black, 1=white
+                    icon_p = Image.new("P", icon.size)
+                    icon_p_pixels = icon_p.load()
+                    
+                    # Map grayscale values to palette indices
+                    # 0 (black) -> palette index 0 (black)
+                    # 255 (white) -> palette index 1 (white)
+                    for y_pos in range(icon.height):
+                        for x_pos in range(icon.width):
+                            gray_value = result_pixels[x_pos, y_pos]
+                            # 0 = black, 255 = white
+                            icon_p_pixels[x_pos, y_pos] = 0 if gray_value == 0 else 1
+                    
+                    icon = icon_p
+                    
+                    # Set palette: black=0, white=1
+                    icon_palette = [0, 0, 0]  # Index 0: Black
+                    icon_palette.extend([255, 255, 255])  # Index 1: White
+                    # Fill remaining slots with white
+                    while len(icon_palette) < 768:
+                        icon_palette.extend([255, 255, 255])
+                    icon.putpalette(icon_palette)
+                    
+                    logger.debug(f"Converted icon to palette mode: size={icon.size}, mode={icon.mode}, palette indices used: {set(icon_p_pixels[x, y] for x in range(min(icon.width, 10)) for y in range(min(icon.height, 10)))}")
                     
                     # Resize to final size (always resize since we rendered at 2x)
                     # Use high-quality resampling for better icon rendering
@@ -364,6 +417,8 @@ class InkyRenderer:
                         logger.debug("svglib not available, using text-based fallback")
             except Exception as e:
                 logger.error(f"Could not load SVG icon for {transport_type} from {icon_path}: {e}", exc_info=True)
+                # Don't fall through to text icon - return None so we can debug
+                return None
 
         # Fallback: Create a simple text-based icon
         abbrev_map = {
@@ -401,12 +456,12 @@ class InkyRenderer:
     def _calculate_font_size(self, total_items: int, header_count: int) -> int:
         """Calculate optimal font size to fit all content and maximize when filling space.
         
-        When fill_vertical_space is enabled, finds the largest font size that fits
-        to maximize use of available vertical space.
+        When fill_vertical_space is enabled, finds the font size that makes total_height
+        equal to available_height (or as close as possible).
         
         Args:
-            total_items: Total number of departure rows.
-            header_count: Number of header rows.
+            total_items: Total number of departure rows (actual count from data).
+            header_count: Number of header rows (actual count from data).
             
         Returns:
             Optimal font size.
@@ -414,33 +469,79 @@ class InkyRenderer:
         if total_items == 0:
             return self.config.max_font_size
 
-        # Try font sizes from max to min to find largest that fits
-        for font_size in range(
-            self.config.max_font_size,
-            self.config.min_font_size - 1,
-            -self.config.font_size_step,
-        ):
-            font = self._get_font(font_size, bold=False)
-            bbox = font.getbbox("Mg")
-            line_height = bbox[3] - bbox[1] + self.config.line_spacing
+        # When filling space, use full height (no padding since we start at y=0)
+        # When not filling, use usable height (with padding)
+        available_height = self.config.height if self.config.fill_vertical_space else self.config.usable_height
+        
+        if self.config.fill_vertical_space:
+            # Binary search for font size that makes total_height = available_height
+            # We want to find the largest font size where total_height <= available_height
+            low_font = self.config.min_font_size
+            high_font = self.config.max_font_size
+            best_font = self.config.min_font_size
             
-            # Calculate header height with corresponding header font size
-            header_font_size = min(font_size + 4, 40)
-            header_font = self._get_font(header_font_size, bold=True)
-            header_bbox = header_font.getbbox("Mg")
-            header_height = header_bbox[3] - header_bbox[1] + self.config.line_spacing + 4
+            # Try all font sizes from max to min to find the largest that fits
+            # This is more reliable than binary search for font sizing
+            for font_size in range(
+                self.config.max_font_size,
+                self.config.min_font_size - 1,
+                -self.config.font_size_step,
+            ):
+                font = self._get_font(font_size, bold=False)
+                bbox = font.getbbox("Mg")
+                font_height = bbox[3] - bbox[1]  # Font height without spacing
+                line_height = font_height + self.config.line_spacing  # Full line height with spacing
+                
+                # Calculate header height with corresponding header font size
+                header_font_size = min(font_size + 4, 40)
+                header_font = self._get_font(header_font_size, bold=True)
+                header_bbox = header_font.getbbox("Mg")
+                header_font_height = header_bbox[3] - header_bbox[1]
+                header_height = header_font_height + self.config.line_spacing + 4  # Header height with spacing
 
-            total_height = (header_height * header_count) + (line_height * total_items)
+                # Calculate total height:
+                # Each row takes line_height (font_height + spacing)
+                # If we have N rows, we have N-1 gaps between them
+                # But line_height already includes spacing for each row, so we're counting N spacings
+                # The last row doesn't need spacing after it, so subtract one spacing
+                total_height = (header_height * header_count) + (line_height * total_items) - self.config.line_spacing
+                
+                if total_height <= available_height:
+                    # This font size fits, use it (it's the largest we've tried so far)
+                    logger.debug(f"Font size {font_size} fits: total_height={total_height} <= available_height={available_height}")
+                    return font_size
             
-            # When filling space, use full height (no padding since we start at y=0)
-            # When not filling, use usable height (with padding)
-            available_height = self.config.height if self.config.fill_vertical_space else self.config.usable_height
-            
-            # Use largest font that fits within available height
-            if total_height <= available_height:
-                return font_size
+            # If no font size fits, return minimum (but log a warning)
+            logger.warning(f"No font size fits! Min font size {self.config.min_font_size} will be used. Available height: {available_height}, total_items: {total_items}, header_count: {header_count}")
+            return self.config.min_font_size
+        else:
+            # When not filling, just find largest that fits
+            for font_size in range(
+                self.config.max_font_size,
+                self.config.min_font_size - 1,
+                -self.config.font_size_step,
+            ):
+                font = self._get_font(font_size, bold=False)
+                bbox = font.getbbox("Mg")
+                font_height = bbox[3] - bbox[1]  # Font height without spacing
+                line_height = font_height + self.config.line_spacing  # Full line height with spacing
+                
+                # Calculate header height with corresponding header font size
+                header_font_size = min(font_size + 4, 40)
+                header_font = self._get_font(header_font_size, bold=True)
+                header_bbox = header_font.getbbox("Mg")
+                header_font_height = header_bbox[3] - header_bbox[1]
+                header_height = header_font_height + self.config.line_spacing + 4  # Header height with spacing
 
-        return self.config.min_font_size
+                # Calculate total height:
+                # Each row takes line_height, but the last row doesn't need spacing after it
+                # So subtract one spacing from total
+                total_height = (header_height * header_count) + (line_height * total_items) - self.config.line_spacing
+                
+                if total_height <= available_height:
+                    return font_size
+
+            return self.config.min_font_size
 
     def _truncate_text(
         self, text: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont, max_width: int
@@ -468,6 +569,10 @@ class InkyRenderer:
     def render(self, direction_groups: list[DirectionGroupWithMetadata]) -> Image.Image:
         """Render departures to PIL Image using same grouping as web version.
         
+        NOTE: This method recalculates the entire layout on each call based on the
+        actual number of departures and headers. This ensures optimal font sizing
+        and vertical space usage when the data changes (e.g., on each API poll).
+        
         Args:
             direction_groups: List of direction groups with metadata (same as web version).
             
@@ -482,11 +587,13 @@ class InkyRenderer:
         if not groups_with_departures:
             return self._render_no_departures()
 
-        # Count total items for font sizing
+        # Count actual departures and headers from current data (not from config)
+        # This ensures layout adapts to the actual number of items on each API update
         total_departures = sum(len(group.get("departures", [])) for group in groups_with_departures)
         header_count = len(groups_with_departures)
         
-        # Calculate optimal font size first
+        # Calculate optimal font size based on actual counts
+        # When fill_vertical_space is enabled, this will maximize font size to fill available height
         font_size = self._calculate_font_size(total_departures, header_count)
         font = self._get_font(font_size, bold=False)
         header_font_size = min(font_size + 4, 40)
@@ -566,14 +673,31 @@ class InkyRenderer:
             img.putpalette(palette)
         draw = ImageDraw.Draw(img)
 
-        # Calculate heights
+        # Calculate heights (must match the calculation in _calculate_font_size)
         bbox = font.getbbox("Mg")
-        line_height = bbox[3] - bbox[1] + self.config.line_spacing
+        font_height = bbox[3] - bbox[1]  # Font height without spacing
+        line_height = font_height + self.config.line_spacing  # Full line height with spacing
         header_bbox = header_font.getbbox("Mg")
-        header_height = header_bbox[3] - header_bbox[1] + self.config.line_spacing + 4
+        header_font_height = header_bbox[3] - header_bbox[1]
+        header_height = header_font_height + self.config.line_spacing + 4  # Header height with spacing
 
         # Calculate total height needed
-        total_height = (header_height * header_count) + (line_height * total_departures)
+        # Each row takes line_height, but the last row doesn't need spacing after it
+        # So subtract one spacing from total
+        total_height = (header_height * header_count) + (line_height * total_departures) - self.config.line_spacing
+        
+        # Verify we're using full height when filling space
+        available_height = self.config.height if self.config.fill_vertical_space else self.config.usable_height
+        logger.info(f"Rendering: Total height needed: {total_height}, Available height: {available_height}, Fill vertical space: {self.config.fill_vertical_space}, Font size: {font_size}, Line height: {line_height}")
+        
+        # If we're not filling the space and there's wasted space, increase font size
+        if self.config.fill_vertical_space and total_height < available_height:
+            # The binary search should have found the optimal font size, but if there's still space,
+            # it might be due to rounding in font_size_step. Try to find a better fit.
+            # Calculate how much we can increase font size
+            height_diff = available_height - total_height
+            if height_diff > 5:  # Only warn if significant space is wasted
+                logger.warning(f"Content height ({total_height}) is {height_diff}px less than available height ({available_height}). Font size: {font_size}, total_departures: {total_departures}, header_count: {header_count}")
         
         # Calculate starting Y position
         # First header should start at the very top (y=0), not at padding
@@ -656,18 +780,51 @@ class InkyRenderer:
                     icon.putpalette(default_palette)
             
             # Calculate icon position - icon should fill the entire row height
-            # Since icon_size = line_height, it should start at y (no centering needed)
-            icon_y = y
+            # Since icon_size = line_height, it should start at y (text baseline)
+            # But we need to align with the text baseline, so adjust for font ascent
+            font_bbox = font.getbbox("Mg")
+            text_ascent = -font_bbox[1]  # Negative y1 is the ascent
+            # Align icon top with text baseline minus ascent (so icon aligns with text)
+            icon_y = y - text_ascent
             
             # Paste icon onto main image
-            # Use alpha channel if available, otherwise paste directly
-            if icon.mode == "RGBA":
+            # For palette mode, ensure icon uses main image's palette before pasting
+            if icon.mode == "P":
+                # Get main image palette
+                main_palette = img.getpalette()
+                if main_palette:
+                    # Icon has: 0=black, 1=white
+                    # Main image has: 0=black, 1=white, 2=green, 3=blue, etc.
+                    # So indices match - just set the palette to main image's palette
+                    icon.putpalette(main_palette)
+                # Paste directly (palette indices should match now)
+                img.paste(icon, (x, icon_y))
+            elif icon.mode == "RGBA":
                 # Create a temporary image with alpha channel
                 img.paste(icon, (x, icon_y), icon)
             else:
+                # For other modes, paste directly
                 img.paste(icon, (x, icon_y))
             
-            logger.debug(f"Pasted icon for {transport_type} at ({x}, {icon_y}), size={icon_size}")
+            # Debug: Check if icon has any black pixels (index 0) BEFORE pasting
+            if icon.mode == "P":
+                icon_pixels = icon.load()
+                black_count = 0
+                white_count = 0
+                total_pixels = icon.width * icon.height
+                for py in range(icon.height):
+                    for px in range(icon.width):
+                        idx = icon_pixels[px, py]
+                        if idx == 0:  # Black
+                            black_count += 1
+                        elif idx == 1:  # White
+                            white_count += 1
+                logger.info(f"Icon for {transport_type}: {black_count}/{total_pixels} black pixels (index 0), {white_count}/{total_pixels} white pixels (index 1)")
+                
+                if black_count == 0:
+                    logger.error(f"WARNING: Icon for {transport_type} has NO black pixels! Icon will be invisible!")
+            
+            logger.info(f"Pasting icon for {transport_type} at ({x}, {icon_y}), size={icon_size}, mode={icon.mode}")
         else:
             logger.warning(f"No icon loaded for transport type: {transport_type}")
         

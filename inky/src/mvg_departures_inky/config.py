@@ -94,19 +94,28 @@ class InkyDisplayConfig:
 
     def get_route_icon_path(self, transport_type: str) -> Path | None:
         """Get path to route icon SVG file."""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         icon_map = {
             "U-Bahn": "ico-subway.svg",
             "S-Bahn": "ico-metropolitan-railway.svg",
             "Tram": "ico-tram.svg",
             "Bus": "ico-bus.svg",
+            "Regionalbus": "ico-bus.svg",  # Map Regionalbus to bus icon
         }
         icon_name = icon_map.get(transport_type)
         if not icon_name:
+            logger.debug(f"Transport type '{transport_type}' not in icon_map. Available keys: {list(icon_map.keys())}")
             return None
 
         # Look for icons in parent project's static/assets directory
-        parent_project = Path(__file__).parent.parent.parent.parent.parent
+        # Path structure: inky/src/mvg_departures_inky/config.py
+        # Need to go up 4 levels: config.py -> mvg_departures_inky -> src -> inky -> project root
+        parent_project = Path(__file__).parent.parent.parent.parent
         icon_path = parent_project / "static" / "assets" / icon_name
+        logger.debug(f"Looking for icon: {icon_path} (exists: {icon_path.exists()})")
         if icon_path.exists():
             return icon_path
+        logger.warning(f"Icon file not found: {icon_path}")
         return None
