@@ -112,12 +112,12 @@ class InkyRenderer:
         self.config = config
         self.display = display
         self.grouping_calculator = grouping_calculator
-        self._font_cache: dict[
-            tuple[int, bool], ImageFont.FreeTypeFont | ImageFont.ImageFont
-        ] = {}  # Cache key includes bold flag
-        self._icon_cache: dict[
-            tuple[str, int], Image.Image | None
-        ] = {}  # Cache key includes size (transport_type, target_size)
+        self._font_cache: dict[tuple[int, bool], ImageFont.FreeTypeFont | ImageFont.ImageFont] = (
+            {}
+        )  # Cache key includes bold flag
+        self._icon_cache: dict[tuple[str, int], Image.Image | None] = (
+            {}
+        )  # Cache key includes size (transport_type, target_size)
         self._use_relative_time = False  # Start with absolute time (HH:MM format)
         self._last_time_toggle = datetime.now(UTC)
 
@@ -249,6 +249,94 @@ class InkyRenderer:
                         self._font_cache[cache_key] = ImageFont.load_default()
         return self._font_cache[cache_key]
 
+    def _convert_colored_icon_to_black_white(
+        self, icon: Image.Image, transport_type: str
+    ) -> Image.Image | None:
+        """Convert colored icon (with colored background and white symbols) to black-on-white.
+
+        The SVG icons have colored backgrounds (blue #005d79, green #009551, red #dd0b2f)
+        with white symbols (#fff). This function extracts the white symbols and converts
+        them to black, making everything else white.
+
+        Args:
+            icon: PIL Image in RGB mode with colored background and white symbols.
+            transport_type: Type of transport (for logging).
+
+        Returns:
+            PIL Image in grayscale mode (L) with black symbols on white background, or None on error.
+        """
+        # Create a new grayscale image for the result
+        result = Image.new("L", icon.size, 255)  # Start with white background
+        pixels = icon.load()
+        result_pixels = result.load()
+
+        # Type check: pixels and result_pixels should not be None
+        if pixels is None or result_pixels is None:
+            logger.error(f"Failed to load pixels for {transport_type} icon")
+            return None
+
+        # Extract white symbols: pixels that are close to white (high RGB values)
+        # White symbols are #fff = (255, 255, 255)
+        # Use a threshold: if all RGB values are > 240, it's a white symbol (very strict)
+        black_pixels = 0
+        white_pixels = 0
+        for y_pos in range(icon.height):
+            for x_pos in range(icon.width):
+                pixel_val = pixels[x_pos, y_pos]
+                if isinstance(pixel_val, tuple) and len(pixel_val) >= 3:
+                    r, g, b = pixel_val[0], pixel_val[1], pixel_val[2]
+                else:
+                    # Single value (shouldn't happen in RGB mode, but handle gracefully)
+                    r, g, b = 255, 255, 255
+                # Check if pixel is white (symbol) - all channels very high
+                # The SVG icons have white symbols (#fff = 255,255,255) on colored backgrounds
+                # Use strict threshold to catch pure white
+                if r >= 240 and g >= 240 and b >= 240:
+                    # White symbol -> make it black
+                    result_pixels[x_pos, y_pos] = 0
+                    black_pixels += 1
+                else:
+                    # Colored background -> keep it white
+                    result_pixels[x_pos, y_pos] = 255
+                    white_pixels += 1
+
+        logger.info(
+            f"Extracted {black_pixels} black pixels (symbols) and {white_pixels} white pixels (background) from {transport_type} icon"
+        )
+
+        # Verify we actually extracted something
+        if black_pixels == 0:
+            logger.error(
+                f"ERROR: No white symbols found in {transport_type} icon - icon will be invisible! Total pixels: {icon.width * icon.height}"
+            )
+            # Try a lower threshold as fallback
+            logger.info("Trying lower threshold (200) as fallback...")
+            if pixels is not None and result_pixels is not None:
+                black_pixels = 0
+                white_pixels = 0
+                for y_pos in range(icon.height):
+                    for x_pos in range(icon.width):
+                        pixel_val = pixels[x_pos, y_pos]
+                        if isinstance(pixel_val, tuple) and len(pixel_val) >= 3:
+                            r, g, b = pixel_val[0], pixel_val[1], pixel_val[2]
+                        else:
+                            r, g, b = 255, 255, 255
+                        if r >= 200 and g >= 200 and b >= 200:
+                            result_pixels[x_pos, y_pos] = 0
+                            black_pixels += 1
+                        else:
+                            result_pixels[x_pos, y_pos] = 255
+                            white_pixels += 1
+            logger.info(f"After fallback: {black_pixels} black pixels, {white_pixels} white pixels")
+
+            if black_pixels == 0:
+                logger.error(
+                    f"Failed to extract any symbols from {transport_type} icon even with fallback threshold"
+                )
+                return None
+
+        return result
+
     def _load_icon(self, transport_type: str, icon_size: int | None = None) -> Image.Image | None:
         """Load route icon for transport type from SVG file.
 
@@ -313,76 +401,19 @@ class InkyRenderer:
                 elif icon.mode != "RGB":
                     icon = icon.convert("RGB")
 
-                    # The SVG icons have colored backgrounds (blue #005d79, green #009551, red #dd0b2f) with white symbols (#fff)
-                    # For e-ink, we want black symbols on white background
-                    # Strategy: Extract white pixels (symbols) and make them black, everything else white
+                # The SVG icons have colored backgrounds (blue #005d79, green #009551, red #dd0b2f) with white symbols (#fff)
+                # For e-ink, we want black symbols on white background
+                # Strategy: Extract white pixels (symbols) and make them black, everything else white
 
-                    # Create a new grayscale image for the result
-                    result = Image.new("L", icon.size, 255)  # Start with white background
-                    pixels = icon.load()
-                    result_pixels = result.load()
-
-                    # Type check: pixels and result_pixels should not be None
-                    if pixels is None or result_pixels is None:
-                        logger.error(f"Failed to load pixels for {transport_type} icon")
-                        self._icon_cache[cache_key] = None
-                        return None
-
-                    # Extract white symbols: pixels that are close to white (high RGB values)
-                    # White symbols are #fff = (255, 255, 255)
-                    # Use a threshold: if all RGB values are > 240, it's a white symbol (very strict)
-                    black_pixels = 0
-                    white_pixels = 0
-                    for y_pos in range(icon.height):
-                        for x_pos in range(icon.width):
-                            r, g, b = pixels[x_pos, y_pos]
-                            # Check if pixel is white (symbol) - all channels very high
-                            # The SVG icons have white symbols (#fff = 255,255,255) on colored backgrounds
-                            # Use strict threshold to catch pure white
-                            if r >= 240 and g >= 240 and b >= 240:
-                                # White symbol -> make it black
-                                result_pixels[x_pos, y_pos] = 0
-                                black_pixels += 1
-                            else:
-                                # Colored background -> keep it white
-                                result_pixels[x_pos, y_pos] = 255
-                                white_pixels += 1
-
-                logger.info(
-                    f"Extracted {black_pixels} black pixels (symbols) and {white_pixels} white pixels (background) from {transport_type} icon"
-                )
-
-                # Verify we actually extracted something
-                if black_pixels == 0:
-                    logger.error(
-                        f"ERROR: No white symbols found in {transport_type} icon - icon will be invisible! Total pixels: {icon.width * icon.height}"
-                    )
-                    # Try a lower threshold as fallback
-                    logger.info("Trying lower threshold (200) as fallback...")
-                    if pixels is not None and result_pixels is not None:
-                        for y_pos in range(icon.height):
-                            for x_pos in range(icon.width):
-                                pixel_val = pixels[x_pos, y_pos]
-                                if isinstance(pixel_val, tuple) and len(pixel_val) >= 3:
-                                    r, g, b = pixel_val[0], pixel_val[1], pixel_val[2]
-                                else:
-                                    # Single value (grayscale) - treat as white
-                                    r, g, b = 255, 255, 255
-                                if r >= 200 and g >= 200 and b >= 200:
-                                    result_pixels[x_pos, y_pos] = 0
-                                    black_pixels += 1
-                                else:
-                                    result_pixels[x_pos, y_pos] = 255
-                                    white_pixels += 1
-                    logger.info(
-                        f"After fallback: {black_pixels} black pixels, {white_pixels} white pixels"
-                    )
-
-                icon = result
+                # Convert colored icon to black-on-white using helper function
+                icon_grayscale = self._convert_colored_icon_to_black_white(icon, transport_type)
+                if icon_grayscale is None:
+                    self._icon_cache[cache_key] = None
+                    return None
 
                 # Convert to palette mode directly (don't use "1" mode as it can cause issues)
                 # Create a 2-color palette image: 0=black, 1=white
-                icon_p: Image.Image = Image.new("P", icon.size)
+                icon_p: Image.Image = Image.new("P", icon_grayscale.size)
                 icon_p_pixels = icon_p.load()
 
                 # Type check: icon_p_pixels should not be None
@@ -391,12 +422,19 @@ class InkyRenderer:
                     self._icon_cache[cache_key] = None
                     return None
 
+                # Get grayscale pixels
+                grayscale_pixels = icon_grayscale.load()
+                if grayscale_pixels is None:
+                    logger.error(f"Failed to load grayscale pixels for {transport_type} icon")
+                    self._icon_cache[cache_key] = None
+                    return None
+
                 # Map grayscale values to palette indices
                 # 0 (black) -> palette index 0 (black)
                 # 255 (white) -> palette index 1 (white)
-                for y_pos in range(icon.height):
-                    for x_pos in range(icon.width):
-                        gray_value = result_pixels[x_pos, y_pos]
+                for y_pos in range(icon_grayscale.height):
+                    for x_pos in range(icon_grayscale.width):
+                        gray_value = grayscale_pixels[x_pos, y_pos]
                         # 0 = black, 255 = white
                         icon_p_pixels[x_pos, y_pos] = 0 if gray_value == 0 else 1
 
@@ -463,7 +501,13 @@ class InkyRenderer:
                         self._icon_cache[cache_key] = icon
                         return icon
                 except ImportError:
-                    logger.debug("svglib not available, using text-based fallback")
+                    logger.debug("svglib not available, no SVG conversion library found")
+                    # Both cairosvg and svglib are not available
+                    logger.error(
+                        f"Neither cairosvg nor svglib available for {transport_type} icon conversion"
+                    )
+                    self._icon_cache[cache_key] = None
+                    return None
         except Exception as e:
             logger.error(
                 f"Could not load SVG icon for {transport_type} from {icon_path}: {e}",
@@ -472,12 +516,6 @@ class InkyRenderer:
             # Cache the failure to avoid repeated attempts
             self._icon_cache[cache_key] = None
             return None
-
-        # If we get here, icon_path was None or didn't exist
-        # Don't create text fallback - return None so we can debug why icons aren't loading
-        logger.error(f"No valid icon path for {transport_type} - returning None (no text fallback)")
-        self._icon_cache[cache_key] = None
-        return None
 
     def _calculate_font_size(self, total_items: int, header_count: int) -> int:
         """Calculate optimal font size to fit all content and maximize when filling space.
@@ -668,17 +706,17 @@ class InkyRenderer:
                 if platform_text:
                     platform_bbox = self._platform_font.getbbox(platform_text)
                     platform_width = platform_bbox[2] - platform_bbox[0]
-                    max_platform_width = max(max_platform_width, platform_width)
+                    max_platform_width = max(max_platform_width, int(platform_width))
 
                 # Measure both relative and absolute time formats
                 time_str_relative = dep_data.get("time_str_relative", "")
                 time_str_absolute = dep_data.get("time_str_absolute", "")
                 if time_str_relative:
                     time_bbox = font.getbbox(time_str_relative)
-                    max_time_width = max(max_time_width, time_bbox[2] - time_bbox[0])
+                    max_time_width = max(max_time_width, int(time_bbox[2] - time_bbox[0]))
                 if time_str_absolute:
                     time_bbox = font.getbbox(time_str_absolute)
-                    max_time_width = max(max_time_width, time_bbox[2] - time_bbox[0])
+                    max_time_width = max(max_time_width, int(time_bbox[2] - time_bbox[0]))
 
         # Add padding for visual breathing room (like web version: fontSizes.platform * 0.3)
         platform_padding = int(platform_font_size * 0.3) if max_platform_width > 0 else 0
@@ -787,7 +825,7 @@ class InkyRenderer:
             text_height = text_bbox[3] - text_bbox[1]
             # Center vertically: header_y + (header_height - text_height) / 2
             # Adjust for text baseline (text_bbox[1] is negative for ascent)
-            header_text_y = int(y + (header_height - text_height) // 2 - text_bbox[1])
+            header_text_y = int(y + int(header_height - text_height) // 2 - int(text_bbox[1]))
             draw.text((header_x, header_text_y), header, header_text_color, font=header_font)
             y += header_height
 

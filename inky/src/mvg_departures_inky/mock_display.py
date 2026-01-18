@@ -123,16 +123,17 @@ class MockInkyDisplay:
             palette = self._current_image.getpalette()
 
             # Map palette indices to RGB values
-            for y in range(self._current_image.height):
-                for x in range(self._current_image.width):
-                    idx = pixels[x, y]
-                    if palette and idx * 3 + 2 < len(palette):
-                        r = palette[idx * 3]
-                        g = palette[idx * 3 + 1]
-                        b = palette[idx * 3 + 2]
-                        rgb_pixels[x, y] = (r, g, b)
-                    else:
-                        rgb_pixels[x, y] = (255, 255, 255)  # Default to white
+            if pixels is not None and rgb_pixels is not None:
+                for y in range(self._current_image.height):
+                    for x in range(self._current_image.width):
+                        idx = pixels[x, y]
+                        if isinstance(idx, int) and palette and idx * 3 + 2 < len(palette):
+                            r = int(palette[idx * 3])
+                            g = int(palette[idx * 3 + 1])
+                            b = int(palette[idx * 3 + 2])
+                            rgb_pixels[x, y] = (r, g, b)
+                        else:
+                            rgb_pixels[x, y] = (255, 255, 255)  # Default to white
 
             rgb_image.save(output_path)
         else:
