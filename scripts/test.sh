@@ -46,24 +46,46 @@ echo ""
 # 1. Check code formatting with Black
 echo "1. Checking code formatting with Black..."
 run_python_module black --check src tests
+if [ -d "inky/src" ]; then
+    echo "  Checking inky folder..."
+    run_python_module black --check inky/src
+fi
 echo "✓ Formatting check passed"
 echo ""
 
 # 2. Lint with Ruff
 echo "2. Linting with Ruff..."
 run_python_module ruff check src tests
+if [ -d "inky/src" ]; then
+    echo "  Linting inky folder..."
+    run_python_module ruff check inky/src
+fi
 echo "✓ Linting passed"
 echo ""
 
 # 3. Type check with mypy
 echo "3. Type checking with mypy..."
 run_python_module mypy src
+if [ -d "inky/src" ]; then
+    echo "  Type checking inky folder..."
+    # Change to inky directory for mypy to use its pyproject.toml config
+    cd inky
+    run_python_module mypy src
+    cd ..
+fi
 echo "✓ Type checking passed"
 echo ""
 
 # 4. Run tests (excluding integration tests by default)
 echo "4. Running tests..."
 run_python_module pytest -m "not integration" "$@"
+if [ -d "inky/tests" ]; then
+    echo "  Running inky tests..."
+    # Change to inky directory for pytest to use its pyproject.toml config
+    cd inky
+    run_python_module pytest -m "not integration" "$@"
+    cd ..
+fi
 echo "✓ Tests passed"
 echo ""
 

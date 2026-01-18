@@ -46,6 +46,10 @@ try {
 # Run black to format code
 Write-Host "Reformatting code with black..."
 & $BLACK_CMD[0] src tests
+if (Test-Path "inky\src") {
+    Write-Host "Reformatting inky folder..."
+    & $BLACK_CMD[0] inky/src
+}
 
 Write-Host "✅ Code reformatted successfully!" -ForegroundColor Green
 

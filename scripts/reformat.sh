@@ -38,6 +38,10 @@ fi
 # Run black to format code
 echo "Reformatting code with black..."
 $BLACK src tests
+if [ -d "inky/src" ]; then
+    echo "Reformatting inky folder..."
+    $BLACK inky/src
+fi
 
 echo "✅ Code reformatted successfully!"
 

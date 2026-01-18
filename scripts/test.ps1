@@ -45,45 +45,79 @@ Write-Host ""
 # 1. Check code formatting with Black
 Write-Host "1. Checking code formatting with Black..."
 run_python_module black --check src tests
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "✓ Formatting check passed" -ForegroundColor Green
-} else {
+if ($LASTEXITCODE -ne 0) {
     Write-Host "✗ Formatting check failed" -ForegroundColor Red
     exit 1
 }
+if (Test-Path "inky\src") {
+    Write-Host "  Checking inky folder..."
+    run_python_module black --check inky/src
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "✗ Inky formatting check failed" -ForegroundColor Red
+        exit 1
+    }
+}
+Write-Host "✓ Formatting check passed" -ForegroundColor Green
 Write-Host ""
 
 # 2. Lint with Ruff
 Write-Host "2. Linting with Ruff..."
 run_python_module ruff check src tests
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "✓ Linting passed" -ForegroundColor Green
-} else {
+if ($LASTEXITCODE -ne 0) {
     Write-Host "✗ Linting failed" -ForegroundColor Red
     exit 1
 }
+if (Test-Path "inky\src") {
+    Write-Host "  Linting inky folder..."
+    run_python_module ruff check inky/src
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "✗ Inky linting failed" -ForegroundColor Red
+        exit 1
+    }
+}
+Write-Host "✓ Linting passed" -ForegroundColor Green
 Write-Host ""
 
 # 3. Type check with mypy
 Write-Host "3. Type checking with mypy..."
 run_python_module mypy src
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "✓ Type checking passed" -ForegroundColor Green
-} else {
+if ($LASTEXITCODE -ne 0) {
     Write-Host "✗ Type checking failed" -ForegroundColor Red
     exit 1
 }
+if (Test-Path "inky\src") {
+    Write-Host "  Type checking inky folder..."
+    Push-Location inky
+    run_python_module mypy src
+    if ($LASTEXITCODE -ne 0) {
+        Pop-Location
+        Write-Host "✗ Inky type checking failed" -ForegroundColor Red
+        exit 1
+    }
+    Pop-Location
+}
+Write-Host "✓ Type checking passed" -ForegroundColor Green
 Write-Host ""
 
 # 4. Run tests (excluding integration tests by default)
 Write-Host "4. Running tests..."
 run_python_module pytest -m "not integration" $args
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "✓ Tests passed" -ForegroundColor Green
-} else {
+if ($LASTEXITCODE -ne 0) {
     Write-Host "✗ Tests failed" -ForegroundColor Red
     exit 1
 }
+if (Test-Path "inky\tests") {
+    Write-Host "  Running inky tests..."
+    Push-Location inky
+    run_python_module pytest -m "not integration" $args
+    if ($LASTEXITCODE -ne 0) {
+        Pop-Location
+        Write-Host "✗ Inky tests failed" -ForegroundColor Red
+        exit 1
+    }
+    Pop-Location
+}
+Write-Host "✓ Tests passed" -ForegroundColor Green
 Write-Host ""
 
 Write-Host "=========================================="
