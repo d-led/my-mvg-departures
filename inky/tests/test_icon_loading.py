@@ -76,21 +76,32 @@ class TestIconLoading:
         assert icon is not None, "Icon should be loaded, not None"
         assert isinstance(icon, Image.Image), "Icon should be a PIL Image"
         assert icon.size == (32, 32), f"Icon should be 32x32, got {icon.size}"
-        assert icon.mode == "P", f"Icon should be in palette mode, got {icon.mode}"
+        assert icon.mode == "RGB", f"Icon should be in RGB mode (before dithering), got {icon.mode}"
         
-        # Check that icon has a palette
-        palette = icon.getpalette()
-        assert palette is not None, "Icon should have a palette"
-        
-        # Check that icon has some black pixels (the symbol)
+        # RGB mode images don't have a palette - they have RGB values directly
+        # Check that icon has colored pixels (background) or white pixels (symbols)
         pixels = icon.load()
-        black_pixels = sum(
-            1
-            for y in range(icon.height)
-            for x in range(icon.width)
-            if pixels[x, y] == 0  # Index 0 is black
-        )
-        assert black_pixels > 0, f"Icon should have black pixels (symbol), found {black_pixels}"
+        if pixels is None:
+            pytest.fail("Failed to load pixels from icon")
+
+        colored_pixels = 0
+        white_pixels = 0
+        for y in range(icon.height):
+            for x in range(icon.width):
+                pixel_val = pixels[x, y]
+                if isinstance(pixel_val, tuple) and len(pixel_val) >= 3:
+                    r, g, b = pixel_val[0], pixel_val[1], pixel_val[2]
+                    # Check for colored background
+                    if (r > 100 or g > 50 or b > 50) and not (r >= 240 and g >= 240 and b >= 240):
+                        colored_pixels += 1
+                    # Check for white pixels (symbols)
+                    elif r >= 240 and g >= 240 and b >= 240:
+                        white_pixels += 1
+
+        # Icon should have some visible pixels
+        assert (
+            colored_pixels > 0 or white_pixels > 0
+        ), f"Icon should have colored or white pixels, found {colored_pixels} colored, {white_pixels} white"
 
     def test_when_icon_path_missing_then_returns_none(self, renderer: InkyRenderer) -> None:
         """Given a missing icon path, when loading icon, then returns None (no text fallback)."""

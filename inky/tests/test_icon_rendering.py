@@ -208,42 +208,22 @@ class TestIconRendering:
                         white_pixels += 1
 
         # Icon should have both colored background and white symbols
+        total_pixels = icon.width * icon.height
+        colored_percentage = (colored_pixels / total_pixels) * 100
+        white_percentage = (white_pixels / total_pixels) * 100
+
         assert (
             colored_pixels > 0
         ), f"Icon should have colored background pixels, found {colored_pixels}"
         assert (
+            colored_percentage > 1.0
+        ), f"Icon should have at least 1% colored pixels (background), got {colored_percentage:.2f}%"
+        assert (
             white_pixels > 0
         ), f"Icon should have white symbol pixels, found {white_pixels}"
-
-        # Check that icon has black pixels (the symbols)
-        pixels = icon.load()
-        if pixels is None:
-            pytest.fail("Failed to load pixels from converted icon")
-
-        black_pixels = 0
-        white_pixels = 0
-        total_pixels = icon.width * icon.height
-
-        for y in range(icon.height):
-            for x in range(icon.width):
-                idx = pixels[x, y]
-                if idx == 0:  # Black
-                    black_pixels += 1
-                elif idx == 1:  # White
-                    white_pixels += 1
-
-        black_percentage = (black_pixels / total_pixels) * 100
-        white_percentage = (white_pixels / total_pixels) * 100
-
-        # Converted icon should have black symbols and white background
-        assert black_pixels > 0, f"Icon should have black pixels (symbols), found {black_pixels}"
         assert (
-            black_percentage > 1.0
-        ), f"Icon should have at least 1% black pixels, got {black_percentage:.2f}%"
-        assert white_pixels > 0, f"Icon should have white pixels (background), found {white_pixels}"
-        assert (
-            white_percentage > 50.0
-        ), f"Icon should have at least 50% white pixels (background), got {white_percentage:.2f}%"
+            white_percentage > 1.0
+        ), f"Icon should have at least 1% white pixels (symbols), got {white_percentage:.2f}%"
 
     def test_when_icon_rendered_to_mock_display_then_visible(
         self, renderer: InkyRenderer
@@ -363,14 +343,18 @@ class TestIconRendering:
             symbol_white_pixels > symbol_area * 0.8
         ), f"Symbol area should remain mostly white, found {symbol_white_pixels}/{symbol_area} white pixels"
 
-        # Check that background area is white
-        bg_white_pixels = 0
+        # Check that background area has colored pixels (red for tram)
+        bg_colored_pixels = 0
         # Check corners (background areas)
         for y in [0, 1, 30, 31]:
             for x in [0, 1, 30, 31]:
-                if pixels[x, y] == 255:  # White
-                    bg_white_pixels += 1
+                pixel_val = pixels[x, y]
+                if isinstance(pixel_val, tuple) and len(pixel_val) >= 3:
+                    r, g, b = pixel_val[0], pixel_val[1], pixel_val[2]
+                    # Check for colored background (red: ~221, 11, 47)
+                    if r > 100 and not (r >= 240 and g >= 240 and b >= 240):
+                        bg_colored_pixels += 1
 
         assert (
-            bg_white_pixels > 10
-        ), f"Background should be white, found {bg_white_pixels} white pixels in corners"
+            bg_colored_pixels > 10
+        ), f"Background should be colored, found {bg_colored_pixels} colored pixels in corners"

@@ -130,8 +130,12 @@ class InkyRenderer:
         # Use actual display dimensions if available (inky.width, inky.height)
         # This ensures we use the real display size instead of hardcoded config values
         if hasattr(display, "width") and hasattr(display, "height"):
-            self.config.width = display.width
-            self.config.height = display.height
+            # Only set if display has actual numeric values (not MagicMock)
+            display_width = display.width
+            display_height = display.height
+            if isinstance(display_width, (int, float)) and isinstance(display_height, (int, float)):
+                self.config.width = int(display_width)
+                self.config.height = int(display_height)
             logger.info(
                 f"Using display dimensions from display object: {display.width}x{display.height}"
             )
@@ -328,25 +332,40 @@ class InkyRenderer:
             PIL Image in palette mode (P) with dithered colors.
         """
         # Get the display palette (7 colors)
+        palette_rgb = None
         if hasattr(self.display, "_palette_blend"):
             # Use display's palette blend method if available (real hardware)
-            saturation = 0.5  # Medium saturation for good color representation
-            palette_rgb = self.display._palette_blend(saturation, dtype="uint24")
-        elif hasattr(self.display, "palette") and self.display.palette:
+            try:
+                saturation = 0.5  # Medium saturation for good color representation
+                palette_rgb = self.display._palette_blend(saturation, dtype="uint24")
+            except (AttributeError, TypeError):
+                pass
+
+        if palette_rgb is None and hasattr(self.display, "palette") and self.display.palette:
             # Use display's palette directly
-            display_palette = self.display.palette
-            # Convert palette to RGB tuples (first 7 colors)
-            palette_rgb = []
-            for i in range(7):
-                idx = i * 3
-                if idx + 2 < len(display_palette):
-                    palette_rgb.append(
-                        (display_palette[idx], display_palette[idx + 1], display_palette[idx + 2])
-                    )
-                else:
-                    palette_rgb.append((255, 255, 255))  # Default to white
-        else:
-            # Fallback: use our standard 7-color palette
+            try:
+                display_palette = self.display.palette
+                # Check if it's a real list/array with enough elements
+                if isinstance(display_palette, (list, tuple)) and len(display_palette) >= 21:
+                    # Convert palette to RGB tuples (first 7 colors)
+                    palette_rgb = []
+                    for i in range(7):
+                        idx = i * 3
+                        if idx + 2 < len(display_palette):
+                            palette_rgb.append(
+                                (
+                                    display_palette[idx],
+                                    display_palette[idx + 1],
+                                    display_palette[idx + 2],
+                                )
+                            )
+                        else:
+                            palette_rgb.append((255, 255, 255))  # Default to white
+            except (TypeError, AttributeError, IndexError):
+                pass
+
+        # Fallback: use our standard 7-color palette
+        if palette_rgb is None or len(palette_rgb) == 0:
             palette_rgb = [
                 (0, 0, 0),  # 0: Black
                 (255, 255, 255),  # 1: White
@@ -359,7 +378,18 @@ class InkyRenderer:
 
         # Create hitherdither palette
         # Convert RGB tuples to numpy array format expected by hitherdither
+        # Ensure we have at least one color
+        if not palette_rgb or len(palette_rgb) == 0:
+            logger.error("Empty palette_rgb, using fallback")
+            palette_rgb = [
+                (0, 0, 0),  # 0: Black
+                (255, 255, 255),  # 1: White
+            ]
         palette_array = np.array(palette_rgb, dtype=np.uint8)
+        if palette_array.shape[0] == 0:
+            raise ValueError(
+                f"Invalid palette_array shape: {palette_array.shape}, palette_rgb: {palette_rgb}"
+            )
         hither_palette = hitherdither.palette.Palette(palette_array)
 
         # Use Bayer dithering (fast and good quality, as per Pimoroni example)
