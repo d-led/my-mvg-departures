@@ -26,17 +26,17 @@ logger = logging.getLogger(__name__)
 
 
 def _hex_to_inky_color(hex_color: str, display: Any) -> int:
-    """Convert hex color to Inky e-ink color.
+    """Convert hex color to Inky Impression Spectra color.
     
-    Maps RGB hex colors to the closest e-ink color (black, white, red, yellow).
-    Uses red or yellow for colored headers, preferring red for blue-ish colors.
+    Maps RGB hex colors to the closest e-ink color.
+    Inky Impression Spectra supports 7 colors: black, white, green, blue, red, yellow, orange.
     
     Args:
         hex_color: Hex color code (e.g., "#A8D5E2").
         display: Inky display instance.
         
     Returns:
-        Inky color constant (WHITE=0, BLACK=1, RED=2, YELLOW=3).
+        Inky color constant (BLACK=0, WHITE=1, GREEN=2, BLUE=3, RED=4, YELLOW=5, ORANGE=6).
     """
     # Remove # if present
     hex_color = hex_color.lstrip("#")
@@ -72,27 +72,36 @@ def _hex_to_inky_color(hex_color: str, display: Any) -> int:
     
     hue_deg = hue * 60
     
-    # Map hue to red or yellow
-    # Red: 0-30, 330-360 degrees (and blue-ish colors 200-270)
-    # Yellow: 30-90 degrees
-    # For blue-ish colors (180-270), use red as substitute
-    if 30 <= hue_deg <= 90:
-        return getattr(display, "YELLOW", 3)
+    # Map hue to closest color (Spectra supports 7 colors)
+    # Red: 0-30, 330-360 degrees -> RED (4)
+    # Yellow: 30-90 degrees -> YELLOW (5)
+    # Green: 90-150 degrees -> GREEN (2)
+    # Blue: 150-270 degrees -> BLUE (3)
+    # Orange: 15-30 degrees (overlap with red) -> ORANGE (6)
+    if 15 <= hue_deg < 30:
+        return getattr(display, "ORANGE", 6)
+    elif 30 <= hue_deg < 90:
+        return getattr(display, "YELLOW", 5)
+    elif 90 <= hue_deg < 150:
+        return getattr(display, "GREEN", 2)
+    elif 150 <= hue_deg < 270:
+        return getattr(display, "BLUE", 3)
     else:
-        # Use red for everything else (including blue-ish colors)
-        return getattr(display, "RED", 2)
+        return getattr(display, "RED", 4)
 
 
 def _get_default_header_color(display: Any) -> int:
-    """Get default header color for e-ink display (blue-ish -> red).
+    """Get default header color for e-ink display.
+    
+    Uses blue for headers (as requested).
     
     Args:
         display: Inky display instance.
         
     Returns:
-        Inky color constant for headers (RED=2).
+        Inky color constant for headers (BLUE=3).
     """
-    return getattr(display, "RED", 2)
+    return getattr(display, "BLUE", 3)
 
 
 class InkyRenderer:
@@ -119,31 +128,99 @@ class InkyRenderer:
         self._use_relative_time = False  # Start with absolute time (HH:MM format)
         self._last_time_toggle = datetime.now(UTC)
         
-        # Store display colors
-        self._white = getattr(display, "WHITE", 0)
-        self._black = getattr(display, "BLACK", 1)
-        self._red = getattr(display, "RED", 2)
-        self._yellow = getattr(display, "YELLOW", 3)
+        # Store display colors (Inky Impression Spectra supports 7 colors)
+        # Order: black, white, green, blue, red, yellow, orange
+        self._black = getattr(display, "BLACK", 0)
+        self._white = getattr(display, "WHITE", 1)
+        self._green = getattr(display, "GREEN", 2)
+        self._blue = getattr(display, "BLUE", 3)
+        self._red = getattr(display, "RED", 4)
+        self._yellow = getattr(display, "YELLOW", 5)
+        self._orange = getattr(display, "ORANGE", 6)
 
-    def _get_font(self, size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-        """Get font at specified size, with caching."""
-        if size not in self._font_cache:
+    def _get_font(self, size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+        """Get font at specified size, with caching.
+        
+        Tries Pimoroni font packages first (like in their examples), then falls back
+        to system fonts. Uses bold variant if requested and available.
+        
+        Args:
+            size: Font size in points.
+            bold: Whether to use bold variant (for headers).
+            
+        Returns:
+            PIL ImageFont instance.
+        """
+        cache_key = (size, bold)
+        if cache_key not in self._font_cache:
+            # Try Pimoroni font packages first (like in their examples)
             try:
-                # Try to use a system font
-                self._font_cache[size] = ImageFont.truetype(
-                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size
-                )
-            except Exception:
+                if bold:
+                    from font_hanken_grotesk import HankenGroteskBold
+                    self._font_cache[cache_key] = ImageFont.truetype(HankenGroteskBold, size)
+                    logger.debug(f"Using HankenGroteskBold font at size {size}")
+                else:
+                    from font_hanken_grotesk import HankenGroteskMedium
+                    self._font_cache[cache_key] = ImageFont.truetype(HankenGroteskMedium, size)
+                    logger.debug(f"Using HankenGroteskMedium font at size {size}")
+            except ImportError:
                 try:
-                    # Fallback to default font
-                    self._font_cache[size] = ImageFont.truetype(
-                        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", size
+                    from font_fredoka_one import FredokaOne
+                    self._font_cache[cache_key] = ImageFont.truetype(FredokaOne, size)
+                    logger.debug(f"Using FredokaOne font at size {size}")
+                except ImportError:
+                    # Fall back to system fonts
+                    try:
+                        if bold:
+                            # Try DejaVu Sans Bold
+                            self._font_cache[cache_key] = ImageFont.truetype(
+                                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size
+                            )
+                            logger.debug(f"Using DejaVu Sans Bold system font at size {size}")
+                        else:
+                            # Try DejaVu Sans (common on Linux)
+                            self._font_cache[cache_key] = ImageFont.truetype(
+                                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size
+                            )
+                            logger.debug(f"Using DejaVu Sans system font at size {size}")
+                    except Exception:
+                        try:
+                            if bold:
+                                # Try Liberation Sans Bold
+                                self._font_cache[cache_key] = ImageFont.truetype(
+                                    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", size
+                                )
+                                logger.debug(f"Using Liberation Sans Bold system font at size {size}")
+                            else:
+                                # Try Liberation Sans
+                                self._font_cache[cache_key] = ImageFont.truetype(
+                                    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", size
+                                )
+                                logger.debug(f"Using Liberation Sans system font at size {size}")
+                        except Exception:
+                            # Last resort: default PIL font
+                            logger.warning(f"Could not load any font, using default PIL font for size {size}")
+                            self._font_cache[cache_key] = ImageFont.load_default()
+            except Exception as e:
+                # If font package import succeeded but truetype failed, try fallbacks
+                logger.debug(f"Font package available but truetype failed: {e}, trying fallbacks")
+                try:
+                    font_path = (
+                        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold
+                        else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
                     )
+                    self._font_cache[cache_key] = ImageFont.truetype(font_path, size)
                 except Exception:
-                    # Last resort: default PIL font
-                    logger.warning(f"Could not load system font, using default for size {size}")
-                    self._font_cache[size] = ImageFont.load_default()
-        return self._font_cache[size]
+                    try:
+                        font_path = (
+                            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold
+                            else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
+                        )
+                        self._font_cache[cache_key] = ImageFont.truetype(font_path, size)
+                    except Exception:
+                        logger.warning(f"Could not load any font, using default PIL font for size {size}")
+                        self._font_cache[cache_key] = ImageFont.load_default()
+        return self._font_cache[cache_key]
 
     def _load_icon(self, transport_type: str) -> Image.Image | None:
         """Load route icon for transport type from SVG file.
@@ -161,7 +238,10 @@ class InkyRenderer:
 
         # Try to load SVG icon from parent project
         icon_path = self.config.get_route_icon_path(transport_type)
+        if icon_path:
+            logger.debug(f"Looking for icon at: {icon_path}")
         if icon_path and icon_path.exists():
+            logger.debug(f"Found icon at: {icon_path}")
             try:
                 # Try using cairosvg to convert SVG to PNG
                 try:
@@ -269,7 +349,7 @@ class InkyRenderer:
             icon_draw = ImageDraw.Draw(icon)
             
             icon_font_size = max(12, self.config.route_icon_size // 2)
-            icon_font = self._get_font(icon_font_size)
+            icon_font = self._get_font(icon_font_size, bold=False)
             
             bbox = icon_font.getbbox(abbrev)
             text_width = bbox[2] - bbox[0]
@@ -287,7 +367,10 @@ class InkyRenderer:
             return None
 
     def _calculate_font_size(self, total_items: int, header_count: int) -> int:
-        """Calculate optimal font size to fit all content.
+        """Calculate optimal font size to fit all content and maximize when filling space.
+        
+        When fill_vertical_space is enabled, finds the largest font size that fits
+        to maximize use of available vertical space.
         
         Args:
             total_items: Total number of departure rows.
@@ -299,23 +382,26 @@ class InkyRenderer:
         if total_items == 0:
             return self.config.max_font_size
 
-        # Estimate header height (larger font)
-        header_font_size = min(self.config.max_font_size + 4, 40)
-        header_font = self._get_font(header_font_size)
-        header_bbox = header_font.getbbox("Mg")
-        header_height = header_bbox[3] - header_bbox[1] + self.config.line_spacing + 4
-
-        # Try font sizes from max to min
+        # Try font sizes from max to min to find largest that fits
         for font_size in range(
             self.config.max_font_size,
             self.config.min_font_size - 1,
             -self.config.font_size_step,
         ):
-            font = self._get_font(font_size)
+            font = self._get_font(font_size, bold=False)
             bbox = font.getbbox("Mg")
             line_height = bbox[3] - bbox[1] + self.config.line_spacing
+            
+            # Calculate header height with corresponding header font size
+            header_font_size = min(font_size + 4, 40)
+            header_font = self._get_font(header_font_size, bold=True)
+            header_bbox = header_font.getbbox("Mg")
+            header_height = header_bbox[3] - header_bbox[1] + self.config.line_spacing + 4
 
             total_height = (header_height * header_count) + (line_height * total_items)
+            
+            # When filling space, use largest font that fits (maximize)
+            # When not filling, just need to fit
             if total_height <= self.config.usable_height:
                 return font_size
 
@@ -365,16 +451,72 @@ class InkyRenderer:
         total_departures = sum(len(group.get("departures", [])) for group in groups_with_departures)
         header_count = len(groups_with_departures)
         
-        # Calculate optimal font size
+        # Calculate optimal font size first
         font_size = self._calculate_font_size(total_departures, header_count)
-        font = self._get_font(font_size)
+        font = self._get_font(font_size, bold=False)
         header_font_size = min(font_size + 4, 40)
-        header_font = self._get_font(header_font_size)
+        header_font = self._get_font(header_font_size, bold=True)
+        platform_font_size = max(int(font_size * 0.7), 10)
+        self._platform_font = self._get_font(platform_font_size, bold=False)
+        
+        # Pre-calculate maximum platform and time widths for vertical alignment (like web version)
+        # Use actual font sizes to measure
+        max_platform_width = 0
+        max_time_width = 0
+        
+        # Measure all platforms and times to find maximum widths
+        for group in groups_with_departures:
+            for dep_data in group.get("departures", []):
+                platform_text = dep_data.get("platform", "") or ""
+                if platform_text:
+                    platform_bbox = self._platform_font.getbbox(platform_text)
+                    platform_width = platform_bbox[2] - platform_bbox[0]
+                    max_platform_width = max(max_platform_width, platform_width)
+                
+                # Measure both relative and absolute time formats
+                time_str_relative = dep_data.get("time_str_relative", "")
+                time_str_absolute = dep_data.get("time_str_absolute", "")
+                if time_str_relative:
+                    time_bbox = font.getbbox(time_str_relative)
+                    max_time_width = max(max_time_width, time_bbox[2] - time_bbox[0])
+                if time_str_absolute:
+                    time_bbox = font.getbbox(time_str_absolute)
+                    max_time_width = max(max_time_width, time_bbox[2] - time_bbox[0])
+        
+        # Add padding for visual breathing room (like web version: fontSizes.platform * 0.3)
+        platform_padding = int(platform_font_size * 0.3) if max_platform_width > 0 else 0
+        time_padding = int(font_size * 0.3)
+        self._platform_column_width = max_platform_width + platform_padding if max_platform_width > 0 else 0
+        self._time_column_width = max_time_width + time_padding
+        self._platform_time_gap = 6  # Gap between platform and time
 
-        # Create image
+        # Create image with proper color palette support
         img = Image.new("P", (self.config.width, self.config.height), self._white)
         if hasattr(self.display, "palette"):
             img.putpalette(self.display.palette)
+        else:
+            # Create a basic color palette for mock mode (white, black, red, yellow)
+            palette = []
+            # Order: black, white, green, blue, red, yellow, orange
+            # Using web version colors for blue and green (less saturated)
+            # Black (index 0)
+            palette.extend([0, 0, 0])
+            # White (index 1)
+            palette.extend([255, 255, 255])
+            # Green (index 2) - for realtime times (#047857 - darker green from web version)
+            palette.extend([4, 120, 87])
+            # Blue (index 3) - for headers (#087BC4 - less saturated blue from web version)
+            palette.extend([8, 123, 196])
+            # Red (index 4)
+            palette.extend([255, 0, 0])
+            # Yellow (index 5)
+            palette.extend([255, 255, 0])
+            # Orange (index 6)
+            palette.extend([255, 165, 0])
+            # Fill remaining palette slots with white
+            while len(palette) < 768:  # 256 colors * 3 RGB values
+                palette.extend([255, 255, 255])
+            img.putpalette(palette)
         draw = ImageDraw.Draw(img)
 
         # Calculate heights
@@ -387,10 +529,8 @@ class InkyRenderer:
         total_height = (header_height * header_count) + (line_height * total_departures)
         
         # Calculate starting Y position
-        if self.config.fill_vertical_space:
-            start_y = self.config.padding + (self.config.usable_height - total_height) // 2
-        else:
-            start_y = self.config.padding
+        # Always start at top when filling vertical space (don't center, fill from top)
+        start_y = self.config.padding
 
         # Render each group with header
         y = start_y
@@ -401,32 +541,8 @@ class InkyRenderer:
             is_first_header = group.get("is_first_header", False)
             
             # Determine header background color
-            # For e-ink, we want ALL headers to be colorful (not just non-first like web version)
-            if header_color_hex:
-                # Use the generated color from grouping calculator, mapped to e-ink color
-                header_bg_color = _hex_to_inky_color(header_color_hex, self.display)
-            else:
-                # Generate a color for this header (even if it's the first one)
-                # Check if random colors are enabled for this group
-                random_colors = group.get("random_header_colors")
-                if random_colors is None:
-                    # Check calculator's default setting
-                    random_colors = self.grouping_calculator.random_header_colors
-                
-                if random_colors:
-                    # Generate color from header text
-                    brightness = group.get("header_background_brightness")
-                    if brightness is None:
-                        brightness = self.grouping_calculator.header_background_brightness
-                    salt = group.get("random_color_salt")
-                    if salt is None:
-                        salt = self.grouping_calculator.random_color_salt
-                    
-                    generated_hex = generate_pastel_color_from_text(header, brightness, 0, salt)
-                    header_bg_color = _hex_to_inky_color(generated_hex, self.display)
-                else:
-                    # Use default blue-ish color (red on e-ink) for all headers
-                    header_bg_color = _get_default_header_color(self.display)
+            # Always use blue for headers (as requested)
+            header_bg_color = self._blue
             
             # White text on colored background
             header_text_color = self._white
@@ -470,15 +586,26 @@ class InkyRenderer:
         icon = self._load_icon(transport_type)
         if icon:
             img = draw._image  # type: ignore[attr-defined]
-            img.paste(icon, (x, y))
-        x += self.config.route_icon_size + self.config.padding
+            # Ensure icon has the same palette as the main image
+            if icon.mode == "P":
+                if hasattr(self.display, "palette"):
+                    icon.putpalette(self.display.palette)
+                else:
+                    # Use main image's palette
+                    icon.putpalette(img.getpalette() or [255, 255, 255, 0, 0, 0] + [255, 255, 255] * 254)
+            # Paste icon onto main image (ensure no overlap with route number)
+            # Calculate icon position to align with text baseline
+            icon_y = y
+            img.paste(icon, (x, icon_y))
+        # Add proper spacing after icon (icon size + spacing between icon and route number)
+        x += self.config.route_icon_size + self.config.route_icon_spacing
 
         # Draw route number
         route_text = dep_data.get("line", "")
         draw.text((x, y), route_text, self._black, font=font)
         x += self.config.route_number_width + self.config.padding
 
-        # Calculate space needed for platform+time first
+        # Get platform and time text
         platform_text = dep_data.get("platform", "") or ""
         
         if self.config.show_time:
@@ -495,25 +622,15 @@ class InkyRenderer:
         else:
             time_text = ""
         
-        # Calculate total width needed for platform+time
-        time_width = 0
-        platform_width = 0
-        platform_font = None
+        # Calculate total width needed for platform+time using pre-calculated column widths
+        # Platform column width (fixed for all rows)
+        effective_platform_width = self._platform_column_width if platform_text else 0
+        # Time column width (fixed for all rows)
+        effective_time_width = self._time_column_width if time_text else 0
+        # Gap between platform and time (only if both exist)
+        effective_gap = self._platform_time_gap if (platform_text and time_text) else 0
         
-        if time_text:
-            time_bbox = font.getbbox(time_text)
-            time_width = time_bbox[2] - time_bbox[0]
-        
-        if platform_text:
-            # Use smaller font for platform (superscript)
-            platform_font_size = max(int(font.size * 0.7), 10)
-            platform_font = self._get_font(platform_font_size)
-            platform_bbox = platform_font.getbbox(platform_text)
-            platform_width = platform_bbox[2] - platform_bbox[0]
-        
-        # Calculate spacing: platform + gap + time
-        platform_time_gap = 6  # Gap between platform and time
-        total_platform_time_width = platform_width + (platform_time_gap if platform_text and time_text else 0) + time_width
+        total_platform_time_width = effective_platform_width + effective_gap + effective_time_width
         
         # Calculate available width for destination (ensuring no overlap)
         right_margin = self.config.padding + total_platform_time_width
@@ -529,34 +646,46 @@ class InkyRenderer:
         if destination_text:
             draw.text((x, y), destination_text, self._black, font=font)
 
-        # Draw platform and time together on the right
+        # Draw platform and time together on the right (vertically aligned like web version)
         # Platform appears as superscript before time (e.g., "1 20:19")
         right_x = self.config.width - self.config.padding
         
         if time_text:
-            if platform_text and platform_font:
-                # Draw platform as superscript (slightly above baseline)
-                platform_y = y - int(font.size * 0.15)  # Slightly above
-                platform_x = right_x - time_width - platform_time_gap - platform_width
-                draw.text((platform_x, platform_y), platform_text, self._black, font=platform_font)
+            # Check if this is a realtime departure (green time in web version)
+            # Use actual green color (Spectra supports green!)
+            is_realtime = dep_data.get("is_realtime", False)
+            time_color = self._green if is_realtime else self._black
+            
+            # Calculate actual time width for this specific time text
+            time_bbox = font.getbbox(time_text)
+            time_width = time_bbox[2] - time_bbox[0]
+            
+            if platform_text:
+                # Calculate baseline alignment for platform and time
+                time_ascent = -time_bbox[1]  # Negative y1 is the ascent
                 
-                # Draw time right-aligned
+                platform_bbox = self._platform_font.getbbox(platform_text)
+                platform_ascent = -platform_bbox[1]
+                
+                # Align baselines: platform should be on same baseline as time
+                baseline_offset = time_ascent - platform_ascent
+                
+                # Platform position: fixed column width, left-aligned within column
+                platform_x = right_x - effective_time_width - effective_gap - self._platform_column_width
+                platform_y = y + baseline_offset
+                draw.text((platform_x, platform_y), platform_text, self._black, font=self._platform_font)
+                
+                # Time position: right-aligned
                 time_x = right_x - time_width
-                draw.text((time_x, y), time_text, self._black, font=font)
+                draw.text((time_x, y), time_text, time_color, font=font)
             else:
-                # Just time, right-aligned
+                # Just time, right-aligned (green for realtime, black otherwise)
                 time_x = right_x - time_width
-                draw.text((time_x, y), time_text, self._black, font=font)
+                draw.text((time_x, y), time_text, time_color, font=font)
         elif platform_text:
-            # Only platform, right-aligned
-            if platform_font:
-                platform_x = right_x - platform_width
-                draw.text((platform_x, y), platform_text, self._black, font=platform_font)
-            else:
-                platform_bbox = font.getbbox(platform_text)
-                platform_width = platform_bbox[2] - platform_bbox[0]
-                platform_x = right_x - platform_width
-                draw.text((platform_x, y), platform_text, self._black, font=font)
+            # Only platform, right-aligned in fixed column
+            platform_x = right_x - self._platform_column_width
+            draw.text((platform_x, y), platform_text, self._black, font=self._platform_font)
 
     def _render_no_departures(self) -> Image.Image:
         """Render 'No departures' message."""
@@ -566,7 +695,7 @@ class InkyRenderer:
         draw = ImageDraw.Draw(img)
 
         font_size = 32
-        font = self._get_font(font_size)
+        font = self._get_font(font_size, bold=False)
         text = "No departures available"
 
         bbox = font.getbbox(text)

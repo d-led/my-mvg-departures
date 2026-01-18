@@ -52,10 +52,11 @@ class InkyDisplayAdapter(DisplayAdapter):
 
         if use_mock:
             logger.info("Using mock Inky display (INKY_MOCK_MODE=true)")
+            # Use "red" color mode to support colored headers
             self.display = create_mock_display(
                 width=self.config.width,
                 height=self.config.height,
-                colour="black",
+                colour="red",  # Use red color mode (Spectra supports all 6 colors: white, black, red, yellow, green, blue)
                 output_dir=output_dir,
             )
         else:
@@ -83,7 +84,7 @@ class InkyDisplayAdapter(DisplayAdapter):
                 self.display = create_mock_display(
                     width=self.config.width,
                     height=self.config.height,
-                    colour="black",
+                    colour="red",  # Use red color mode (Spectra supports all 6 colors: white, black, red, yellow, green, blue)
                     output_dir=output_dir,
                 )
             except Exception as e:
@@ -95,7 +96,7 @@ class InkyDisplayAdapter(DisplayAdapter):
                 self.display = create_mock_display(
                     width=self.config.width,
                     height=self.config.height,
-                    colour="black",
+                    colour="red",  # Use red color mode (Spectra supports all 6 colors: white, black, red, yellow, green, blue)
                     output_dir=output_dir,
                 )
 
@@ -140,8 +141,22 @@ class InkyDisplayAdapter(DisplayAdapter):
             # Render to PIL Image
             img = self.renderer.render(direction_groups)
 
-            # Set image on display
-            self.display.set_image(img)
+            # Resize image to display resolution if needed (as per Pimoroni examples)
+            if hasattr(self.display, "resolution") and img.size != self.display.resolution:
+                img = img.resize(self.display.resolution, Image.Resampling.LANCZOS)
+
+            # Set image on display (with optional saturation parameter for Spectra)
+            # Per Pimoroni examples: inky.set_image(resizedimage, saturation=saturation)
+            if hasattr(self.display, "set_image"):
+                try:
+                    # Try with saturation parameter (for Spectra displays)
+                    self.display.set_image(img, saturation=0.5)
+                except TypeError:
+                    # Fallback if saturation parameter not supported
+                    self.display.set_image(img)
+            else:
+                # For mock display, use set_image method
+                self.display.set_image(img)
 
             # Update display (this is the slow part for e-ink)
             # In mock mode, this saves to file instead

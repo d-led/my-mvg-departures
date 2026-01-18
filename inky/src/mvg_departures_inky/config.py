@@ -10,6 +10,7 @@ INKY_7_5_HEIGHT = 800
 # Layout constants (optimized for portrait mode)
 PADDING = 8
 ROUTE_ICON_SIZE = 32
+ROUTE_ICON_SPACING = 6  # Spacing between icon and route number
 ROUTE_NUMBER_WIDTH = 50
 PLATFORM_WIDTH = 60
 MIN_FONT_SIZE = 14
@@ -17,14 +18,18 @@ MAX_FONT_SIZE = 36
 FONT_SIZE_STEP = 2
 LINE_SPACING = 4
 
-# Colors (will be set based on display type)
-WHITE = 0
-BLACK = 1
-RED = 2
-YELLOW = 3
+# Colors for Inky Impression Spectra (7 colors)
+# Order: black, white, green, blue, red, yellow, orange
+BLACK = 0
+WHITE = 1
+GREEN = 2
+BLUE = 3
+RED = 4
+YELLOW = 5
+ORANGE = 6
 
 # Time display settings
-TIME_TOGGLE_INTERVAL_SECONDS = 5  # Toggle between absolute/relative every 5 seconds
+TIME_TOGGLE_INTERVAL_SECONDS = 10  # Toggle between absolute/relative every 10 seconds
 
 
 @dataclass
@@ -35,6 +40,7 @@ class InkyDisplayConfig:
     height: int = INKY_7_5_HEIGHT
     padding: int = PADDING
     route_icon_size: int = ROUTE_ICON_SIZE
+    route_icon_spacing: int = ROUTE_ICON_SPACING
     route_number_width: int = ROUTE_NUMBER_WIDTH
     platform_width: int = PLATFORM_WIDTH
     min_font_size: int = MIN_FONT_SIZE

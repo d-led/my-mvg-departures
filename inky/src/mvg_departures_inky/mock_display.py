@@ -12,11 +12,15 @@ logger = logging.getLogger(__name__)
 class MockInkyDisplay:
     """Mock Inky display that saves images to file instead of displaying."""
 
-    # Color constants matching Inky display
-    WHITE = 0
-    BLACK = 1
-    RED = 2
-    YELLOW = 3
+    # Color constants matching Inky Impression Spectra (7 colors)
+    # Order from Pimoroni library: black, white, green, blue, red, yellow, orange
+    BLACK = 0
+    WHITE = 1
+    GREEN = 2
+    BLUE = 3
+    RED = 4
+    YELLOW = 5
+    ORANGE = 6
 
     def __init__(
         self,
@@ -41,15 +45,23 @@ class MockInkyDisplay:
         self._output_dir.mkdir(parents=True, exist_ok=True)
         self._image_counter = 0
 
-        # Create palette for color mode
-        if colour == "black":
-            self.palette = [255, 255, 255, 0, 0, 0]  # White, Black
-        elif colour == "red":
-            self.palette = [255, 255, 255, 0, 0, 0, 255, 0, 0]  # White, Black, Red
-        elif colour == "yellow":
-            self.palette = [255, 255, 255, 0, 0, 0, 255, 255, 0]  # White, Black, Yellow
-        else:
-            self.palette = [255, 255, 255, 0, 0, 0]  # Default to black/white
+        # Create palette for Inky Impression Spectra (7 colors)
+        # Order: black, white, green, blue, red, yellow, orange
+        # Using web version colors for blue and green (less saturated)
+        # Blue: #087BC4 (web banner color) -> RGB(8, 123, 196)
+        # Green: #047857 (web realtime color, darker) -> RGB(4, 120, 87)
+        self.palette = [
+            0, 0, 0,        # 0: Black
+            255, 255, 255,  # 1: White
+            4, 120, 87,     # 2: Green (#047857 - darker green for realtime)
+            8, 123, 196,    # 3: Blue (#087BC4 - less saturated blue for headers)
+            255, 0, 0,      # 4: Red
+            255, 255, 0,    # 5: Yellow
+            255, 165, 0,    # 6: Orange
+        ]
+        # Fill remaining palette slots with white
+        while len(self.palette) < 768:  # 256 colors * 3 RGB values
+            self.palette.extend([255, 255, 255])
 
         logger.info(
             f"Initialized MockInkyDisplay: {width}x{height}, colour={colour}, "
@@ -89,10 +101,26 @@ class MockInkyDisplay:
 
         output_path = self._output_dir / filename
 
-        # Convert palette mode to RGB for saving
+        # Convert palette mode to RGB for saving, preserving colors
         if self._current_image.mode == "P":
-            # Create RGB version for better viewing
-            rgb_image = self._current_image.convert("RGB")
+            # Convert to RGB, mapping palette indices to actual colors
+            rgb_image = Image.new("RGB", self._current_image.size)
+            pixels = self._current_image.load()
+            rgb_pixels = rgb_image.load()
+            palette = self._current_image.getpalette()
+            
+            # Map palette indices to RGB values
+            for y in range(self._current_image.height):
+                for x in range(self._current_image.width):
+                    idx = pixels[x, y]
+                    if palette and idx * 3 + 2 < len(palette):
+                        r = palette[idx * 3]
+                        g = palette[idx * 3 + 1]
+                        b = palette[idx * 3 + 2]
+                        rgb_pixels[x, y] = (r, g, b)
+                    else:
+                        rgb_pixels[x, y] = (255, 255, 255)  # Default to white
+            
             rgb_image.save(output_path)
         else:
             self._current_image.save(output_path)
