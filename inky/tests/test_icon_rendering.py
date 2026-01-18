@@ -167,10 +167,10 @@ class TestIconRendering:
         except ImportError:
             pytest.skip("cairosvg not available")
 
-    def test_when_tram_icon_converted_then_has_black_symbols_on_white(
+    def test_when_tram_icon_converted_then_has_white_symbols_on_colored_background(
         self, renderer: InkyRenderer
     ) -> None:
-        """Given tram icon, when converted for e-ink using production code, then has black symbols on white background."""
+        """Given tram icon, when converted for e-ink using production code, then has white symbols on colored background."""
         # Get the actual icon path from config (using production code)
         icon_path = renderer.config.get_route_icon_path("Tram")
 
@@ -185,17 +185,35 @@ class TestIconRendering:
         assert icon is not None, "Icon should be loaded, not None"
         assert isinstance(icon, Image.Image), "Icon should be a PIL Image"
         assert icon.size == (64, 64), f"Icon should be 64x64, got {icon.size}"
-        assert icon.mode == "P", f"Icon should be in palette mode, got {icon.mode}"
+        assert icon.mode == "RGB", f"Icon should be in RGB mode (before dithering), got {icon.mode}"
 
-        # Check that icon has a palette
-        palette = icon.getpalette()
-        assert palette is not None, "Icon should have a palette"
+        # Check that icon has colored background (red for tram) and white symbols
+        pixels = icon.load()
+        if pixels is None:
+            pytest.fail("Failed to load pixels from icon")
 
-        # Check palette colors: index 0 should be black, index 1 should be white
-        assert palette[0] == 0 and palette[1] == 0 and palette[2] == 0, "Palette index 0 should be black"
+        # Check for colored pixels (background) and white pixels (symbols)
+        colored_pixels = 0
+        white_pixels = 0
+        for y in range(icon.height):
+            for x in range(icon.width):
+                pixel_val = pixels[x, y]
+                if isinstance(pixel_val, tuple) and len(pixel_val) >= 3:
+                    r, g, b = pixel_val[0], pixel_val[1], pixel_val[2]
+                    # Check for colored background (red for tram: ~221, 11, 47)
+                    if (r > 100 or g > 50 or b > 50) and not (r >= 240 and g >= 240 and b >= 240):
+                        colored_pixels += 1
+                    # Check for white pixels (symbols)
+                    elif r >= 240 and g >= 240 and b >= 240:
+                        white_pixels += 1
+
+        # Icon should have both colored background and white symbols
         assert (
-            palette[3] == 255 and palette[4] == 255 and palette[5] == 255
-        ), "Palette index 1 should be white"
+            colored_pixels > 0
+        ), f"Icon should have colored background pixels, found {colored_pixels}"
+        assert (
+            white_pixels > 0
+        ), f"Icon should have white symbol pixels, found {white_pixels}"
 
         # Check that icon has black pixels (the symbols)
         pixels = icon.load()
@@ -254,15 +272,15 @@ class TestIconRendering:
             test_image.putpalette(mock_display.palette)
 
             # Paste icon at top-left corner
-            # Ensure icon palette matches test image palette
-            if icon.mode == "P":
-                icon_palette = icon.getpalette()
-                if icon_palette:
-                    # Map icon palette indices to test image palette
-                    # Icon: 0=black, 1=white
-                    # Test image: 0=black, 1=white, 2=green, 3=blue, etc.
-                    # So indices match - just set the palette
-                    icon.putpalette(mock_display.palette)
+            # Icon is in RGB mode, so we need to convert it to palette mode first
+            if icon.mode == "RGB":
+                # Convert RGB icon to palette mode matching the test image
+                # Create a temporary palette image
+                icon_p = icon.quantize(colors=7, method=Image.Quantize.MEDIANCUT)
+                icon_p.putpalette(mock_display.palette)
+                icon = icon_p
+            elif icon.mode == "P":
+                icon.putpalette(mock_display.palette)
 
             test_image.paste(icon, (10, 10))
 
@@ -278,27 +296,31 @@ class TestIconRendering:
             saved_image = Image.open(output_file)
             assert saved_image is not None, "Saved image should load successfully"
 
-            # Check that the icon area has black pixels (the symbol)
+            # Check that the icon area has colored pixels (background) or white pixels (symbol)
             # Icon is at (10, 10) with size 64x64
             icon_area = saved_image.crop((10, 10, 74, 74))
             pixels = icon_area.load()
             if pixels is None:
                 pytest.fail("Failed to load pixels from saved image")
 
-            black_pixels = 0
+            colored_pixels = 0
+            white_pixels = 0
             for y in range(min(64, icon_area.height)):
                 for x in range(min(64, icon_area.width)):
                     pixel_val = pixels[x, y]
                     if isinstance(pixel_val, tuple) and len(pixel_val) >= 3:
                         r, g, b = pixel_val[0], pixel_val[1], pixel_val[2]
-                        # Check for black (or very dark) pixels
-                        if r < 50 and g < 50 and b < 50:
-                            black_pixels += 1
+                        # Check for colored background (red for tram: ~221, 11, 47)
+                        if (r > 100 or g > 50 or b > 50) and not (r >= 240 and g >= 240 and b >= 240):
+                            colored_pixels += 1
+                        # Check for white pixels (symbol)
+                        elif r >= 240 and g >= 240 and b >= 240:
+                            white_pixels += 1
 
-            # Icon should have visible black pixels in the saved image
+            # Icon should have visible colored pixels (background) or white pixels (symbol) in the saved image
             assert (
-                black_pixels > 0
-            ), f"Icon should be visible in saved image with black pixels, found {black_pixels}"
+                colored_pixels > 0 or white_pixels > 0
+            ), f"Icon should be visible in saved image with colored or white pixels, found {colored_pixels} colored, {white_pixels} white"
 
     def test_when_convert_colored_icon_then_extracts_white_symbols(
         self, renderer: InkyRenderer
@@ -315,28 +337,31 @@ class TestIconRendering:
         draw.rectangle([8, 8, 24, 24], fill=(255, 255, 255))  # White symbol
 
         # Convert using the production code method
-        converted = renderer._convert_colored_icon_to_black_white(test_icon, "Tram")
+        converted = renderer._convert_colored_icon_to_rgb_with_colors(test_icon, "Tram")
 
         assert converted is not None, "Conversion should succeed"
-        assert converted.mode == "L", f"Converted icon should be grayscale (L), got {converted.mode}"
+        assert converted.mode == "RGB", f"Converted icon should be RGB mode, got {converted.mode}"
 
-        # Check that white symbol area is now black
+        # Check that white symbol area remains white (preserved)
         pixels = converted.load()
         if pixels is None:
             pytest.fail("Failed to load pixels from converted icon")
 
-        # Check the white symbol area (should be black after conversion)
-        symbol_black_pixels = 0
+        # Check the white symbol area (should remain white after conversion)
+        symbol_white_pixels = 0
         for y in range(8, 24):
             for x in range(8, 24):
-                if pixels[x, y] == 0:  # Black
-                    symbol_black_pixels += 1
+                pixel_val = pixels[x, y]
+                if isinstance(pixel_val, tuple) and len(pixel_val) >= 3:
+                    r, g, b = pixel_val[0], pixel_val[1], pixel_val[2]
+                    if r >= 240 and g >= 240 and b >= 240:  # White
+                        symbol_white_pixels += 1
 
-        # Most of the symbol area should be black
+        # Most of the symbol area should be white (preserved)
         symbol_area = (24 - 8) * (24 - 8)
         assert (
-            symbol_black_pixels > symbol_area * 0.8
-        ), f"Symbol area should be mostly black, found {symbol_black_pixels}/{symbol_area} black pixels"
+            symbol_white_pixels > symbol_area * 0.8
+        ), f"Symbol area should remain mostly white, found {symbol_white_pixels}/{symbol_area} white pixels"
 
         # Check that background area is white
         bg_white_pixels = 0

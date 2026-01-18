@@ -5,6 +5,8 @@ from datetime import UTC, datetime
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+
 if TYPE_CHECKING:
     import hitherdither
 else:
@@ -330,7 +332,7 @@ class InkyRenderer:
             # Use display's palette blend method if available (real hardware)
             saturation = 0.5  # Medium saturation for good color representation
             palette_rgb = self.display._palette_blend(saturation, dtype="uint24")
-        elif hasattr(self.display, "palette"):
+        elif hasattr(self.display, "palette") and self.display.palette:
             # Use display's palette directly
             display_palette = self.display.palette
             # Convert palette to RGB tuples (first 7 colors)
@@ -356,7 +358,9 @@ class InkyRenderer:
             ]
 
         # Create hitherdither palette
-        hither_palette = hitherdither.palette.Palette(palette_rgb)
+        # Convert RGB tuples to numpy array format expected by hitherdither
+        palette_array = np.array(palette_rgb, dtype=np.uint8)
+        hither_palette = hitherdither.palette.Palette(palette_array)
 
         # Use Bayer dithering (fast and good quality, as per Pimoroni example)
         # Thresholds for snapping colors

@@ -50,7 +50,16 @@ class TestColorRendering:
         display.RED = 4
         display.YELLOW = 5
         display.ORANGE = 6
-        display.palette = [0, 0, 0, 255, 255, 255] + [255, 255, 255] * 254
+        # Create 7-color palette: black, white, green, blue, red, yellow, orange
+        display.palette = [
+            0, 0, 0,  # 0: Black
+            255, 255, 255,  # 1: White
+            4, 120, 87,  # 2: Green
+            8, 123, 196,  # 3: Blue
+            255, 0, 0,  # 4: Red
+            255, 255, 0,  # 5: Yellow
+            255, 165, 0,  # 6: Orange
+        ] + [255, 255, 255] * 249  # Fill rest with white
         return display
 
     @pytest.fixture
@@ -98,14 +107,19 @@ class TestColorRendering:
         from datetime import UTC, datetime, timedelta
 
         now = datetime.now(UTC)
+        departure_time = now + timedelta(minutes=5)
         departure = Departure(
-            station_id="de:09162:70",
+            time=departure_time,
+            planned_time=departure_time,
+            delay_seconds=0,
+            platform=1,
+            is_realtime=True,
             line="U2",
             destination="Messestadt Ost",
-            time=now + timedelta(minutes=5),
-            platform="1",
             transport_type="U-Bahn",
-            is_realtime=True,
+            icon="ico-u-bahn.svg",
+            is_cancelled=False,
+            messages=[],
         )
 
         direction_group = DirectionGroupWithMetadata(
@@ -165,14 +179,19 @@ class TestColorRendering:
         from datetime import UTC, datetime, timedelta
 
         now = datetime.now(UTC)
+        departure_time = now + timedelta(minutes=5)
         departure = Departure(
-            station_id="de:09162:70",
+            time=departure_time,
+            planned_time=departure_time,
+            delay_seconds=0,
+            platform=1,
+            is_realtime=True,  # Realtime!
             line="U2",
             destination="Messestadt Ost",
-            time=now + timedelta(minutes=5),
-            platform="1",
             transport_type="U-Bahn",
-            is_realtime=True,  # Realtime!
+            icon="ico-u-bahn.svg",
+            is_cancelled=False,
+            messages=[],
         )
 
         direction_group = DirectionGroupWithMetadata(
@@ -285,14 +304,19 @@ class TestColorRendering:
         from datetime import UTC, datetime, timedelta
 
         now = datetime.now(UTC)
+        departure_time = now + timedelta(minutes=5)
         departure = Departure(
-            station_id="de:09162:70",
+            time=departure_time,
+            planned_time=departure_time,
+            delay_seconds=0,
+            platform=1,
+            is_realtime=True,
             line="U2",
             destination="Messestadt Ost",
-            time=now + timedelta(minutes=5),
-            platform="1",
             transport_type="U-Bahn",
-            is_realtime=True,
+            icon="ico-u-bahn.svg",
+            is_cancelled=False,
+            messages=[],
         )
 
         direction_group = DirectionGroupWithMetadata(

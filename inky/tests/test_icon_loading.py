@@ -40,11 +40,24 @@ class TestIconLoading:
     @pytest.fixture
     def renderer(self, config: InkyDisplayConfig, mock_display: MagicMock) -> InkyRenderer:
         """Create a renderer instance."""
-        from mvg_departures.domain.departure_grouping_calculator import (
+        from mvg_departures.adapters.web.builders.departure_grouping_calculator import (
             DepartureGroupingCalculator,
+            DepartureGroupingCalculatorConfig,
         )
+        from mvg_departures.adapters.web.formatters.departure_formatter import (
+            DepartureFormatter,
+        )
+        from mvg_departures.adapters.config import AppConfig
+        from mvg_departures.adapters.web.builders import HeaderDisplaySettings
 
-        calculator = DepartureGroupingCalculator()
+        app_config = AppConfig()
+        formatter = DepartureFormatter(app_config)
+        calculator_config = DepartureGroupingCalculatorConfig(
+            stop_configs=[], config=app_config
+        )
+        calculator = DepartureGroupingCalculator(
+            calculator_config, formatter, HeaderDisplaySettings()
+        )
         return InkyRenderer(config, mock_display, calculator)
 
     def test_when_icon_path_exists_then_loads_svg_icon(self, renderer: InkyRenderer) -> None:
@@ -144,7 +157,7 @@ class TestIconLoading:
         assert icon32 is not icon48, "Different sizes should create different cache entries"
 
     def test_when_icon_has_black_pixels_then_visible(self, renderer: InkyRenderer) -> None:
-        """Given a loaded icon, when checking pixels, then has black pixels for visibility."""
+        """Given a loaded icon, when checking pixels, then has colored or white pixels for visibility."""
         icon_path = renderer.config.get_route_icon_path("Bus")
         if not icon_path or not icon_path.exists():
             pytest.skip(f"Icon file not found: {icon_path}")
@@ -153,18 +166,29 @@ class TestIconLoading:
         if icon is None:
             pytest.skip("Icon loading failed")
         
-        # Count black pixels (index 0)
+        # Count colored pixels (background) and white pixels (symbols)
         pixels = icon.load()
-        black_count = sum(
-            1
-            for y in range(icon.height)
-            for x in range(icon.width)
-            if pixels[x, y] == 0
-        )
+        if pixels is None:
+            pytest.fail("Failed to load pixels from icon")
         
-        # Icon should have significant black pixels (at least 1% of total)
+        colored_count = 0
+        white_count = 0
+        for y in range(icon.height):
+            for x in range(icon.width):
+                pixel_val = pixels[x, y]
+                if isinstance(pixel_val, tuple) and len(pixel_val) >= 3:
+                    r, g, b = pixel_val[0], pixel_val[1], pixel_val[2]
+                    # Check for colored background
+                    if (r > 100 or g > 50 or b > 50) and not (r >= 240 and g >= 240 and b >= 240):
+                        colored_count += 1
+                    # Check for white pixels (symbols)
+                    elif r >= 240 and g >= 240 and b >= 240:
+                        white_count += 1
+        
+        # Icon should have significant colored or white pixels (at least 1% of total)
         total_pixels = icon.width * icon.height
-        black_percentage = (black_count / total_pixels) * 100
+        visible_pixels = colored_count + white_count
+        visible_percentage = (visible_pixels / total_pixels) * 100
         
-        assert black_count > 0, f"Icon should have black pixels, found {black_count}"
-        assert black_percentage > 1.0, f"Icon should have at least 1% black pixels, got {black_percentage:.2f}%"
+        assert visible_pixels > 0, f"Icon should have colored or white pixels, found {visible_pixels}"
+        assert visible_percentage > 1.0, f"Icon should have at least 1% visible pixels, got {visible_percentage:.2f}%"
