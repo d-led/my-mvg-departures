@@ -569,8 +569,11 @@ class InkyRenderer:
         )
 
         if self.config.fill_vertical_space:
-            # Try all font sizes from max to min to find the largest that fits
-            # This is more reliable than binary search for font sizing
+            # Try all font sizes from max to min to find the one that maximizes space usage
+            # Keep track of the best font size (largest total_height that still fits)
+            best_font_size = None
+            best_total_height = 0
+
             for font_size in range(
                 self.config.max_font_size,
                 self.config.min_font_size - 1,
@@ -604,12 +607,23 @@ class InkyRenderer:
                     - self.config.line_spacing
                 )
 
-                if total_height <= available_height:
-                    # This font size fits, use it (it's the largest we've tried so far)
+                # This font size fits - check if it uses more space than previous best
+                if total_height <= available_height and total_height > best_total_height:
+                    best_font_size = font_size
+                    best_total_height = int(total_height)
                     logger.debug(
                         f"Font size {font_size} fits: total_height={total_height} <= available_height={available_height}"
                     )
-                    return font_size
+
+            if best_font_size is not None:
+                # Log if we're not using all available space
+                height_diff = available_height - best_total_height
+                if height_diff > 2:  # Only warn if more than 2px wasted
+                    logger.debug(
+                        f"Best font size {best_font_size} uses {best_total_height}px of {available_height}px "
+                        f"({height_diff}px unused, likely due to font_size_step={self.config.font_size_step})"
+                    )
+                return best_font_size
 
             # If no font size fits, return minimum (but log a warning)
             logger.warning(
@@ -712,16 +726,11 @@ class InkyRenderer:
         self._platform_font = self._get_font(platform_font_size, bold=False)
 
         # Calculate line height first (needed for icon size)
+        # Note: line_height may be adjusted later to fill remaining vertical space
         font_bbox = font.getbbox("Mg")
         line_height = font_bbox[3] - font_bbox[1] + self.config.line_spacing
 
-        # Icon size MUST be exactly the row height (line height)
-        # This ensures icons fill the vertical space of each row
-        calculated_icon_size = line_height
-
-        # Update config with calculated icon size (for this render)
-        self._calculated_icon_size = int(calculated_icon_size)
-        logger.info(f"Calculated icon size: {calculated_icon_size} (line height: {line_height})")
+        # Icon size will be calculated after line_height is adjusted for remaining space
 
         # Pre-calculate maximum platform and time widths for vertical alignment (like web version)
         # Use actual font sizes to measure
@@ -784,26 +793,53 @@ class InkyRenderer:
         available_height = (
             self.config.height if self.config.fill_vertical_space else self.config.usable_height
         )
+
+        # If filling vertical space and there's remaining space, distribute it evenly among rows
+        if self.config.fill_vertical_space and total_departures > 0:
+            height_diff = available_height - total_height
+            if height_diff > 0:
+                # Distribute remaining space evenly among all departure rows
+                extra_per_row = height_diff / total_departures
+                line_height = int(line_height + extra_per_row)
+                # Recalculate total_height with adjusted line_height
+                total_height = (
+                    (header_height * header_count)
+                    + (line_height * total_departures)
+                    - self.config.line_spacing
+                )
+                logger.debug(
+                    f"Distributed {height_diff}px remaining space: {extra_per_row:.2f}px per row, "
+                    f"new line_height={line_height}, new total_height={total_height}"
+                )
+            elif height_diff < -1:  # More than 1px over (allow 1px rounding error)
+                logger.warning(
+                    f"Content height ({total_height}) exceeds available height ({available_height}) "
+                    f"by {abs(height_diff)}px. This should not happen with optimal font size calculation."
+                )
+
+        # Store adjusted line_height for use in _render_departure_row
+        self._line_height = int(line_height)
+
+        # Recalculate icon size based on final line_height (after space distribution)
+        # Icon size should be exactly row_height - 2 (1 dot gap on top, 1 dot gap on bottom)
+        # This ensures icons don't overlap and have proper spacing
+        calculated_icon_size = line_height - 2
+        # Ensure icon size is at least 1 pixel (can't be negative or zero)
+        if calculated_icon_size < 1:
+            logger.warning(
+                f"Calculated icon size ({calculated_icon_size}) is too small, using minimum of 1 pixel. "
+                f"Line height: {line_height}"
+            )
+            calculated_icon_size = 1
+        self._calculated_icon_size = int(calculated_icon_size)
+        logger.debug(f"Final icon size: {calculated_icon_size} (line height: {line_height})")
+
         logger.info(
-            f"Rendering: Total height needed: {total_height}, "
+            f"Rendering: Total height: {total_height}, "
             f"Available height: {available_height}, "
             f"Fill vertical space: {self.config.fill_vertical_space}, "
             f"Font size: {font_size}, Line height: {line_height}"
         )
-
-        # If we're not filling the space and there's wasted space, increase font size
-        if self.config.fill_vertical_space and total_height < available_height:
-            # The binary search should have found the optimal font size, but if there's still space,
-            # it might be due to rounding in font_size_step. Try to find a better fit.
-            # Calculate how much we can increase font size
-            height_diff = available_height - total_height
-            if height_diff > 5:  # Only warn if significant space is wasted
-                logger.warning(
-                    f"Content height ({total_height}) is {height_diff}px less than "
-                    f"available height ({available_height}). "
-                    f"Font size: {font_size}, total_departures: {total_departures}, "
-                    f"header_count: {header_count}"
-                )
 
         # Calculate starting Y position
         # First header should start at the very top (y=0), not at padding
@@ -831,13 +867,17 @@ class InkyRenderer:
 
             # Draw header text (with padding from left edge)
             header_x = self.config.padding
-            # Center text vertically in header
-            # Get actual text bounding box for proper centering
-            text_bbox = header_font.getbbox(header)
-            text_height = text_bbox[3] - text_bbox[1]
-            # Center vertically: header_y + (header_height - text_height) / 2
-            # Adjust for text baseline (text_bbox[1] is negative for ascent)
-            header_text_y = int(y + int(header_height - text_height) // 2 - int(text_bbox[1]))
+            # Center text vertically in header by capital letters (cap height)
+            # PIL's text() y coordinate is the baseline
+            # Get cap height from a capital letter to center by capitals, not descenders
+            cap_bbox = header_font.getbbox("A")
+            # bbox[1] is top (negative = above baseline), bbox[3] is bottom (positive = below baseline)
+            # Capital center from baseline = (cap_bbox[1] + cap_bbox[3]) / 2
+            capital_center_from_baseline = (cap_bbox[1] + cap_bbox[3]) / 2
+            # Header center = y + header_height / 2
+            # To center capitals: baseline = header_center - capital_center_from_baseline
+            header_center = y + header_height / 2
+            header_text_y = int(header_center - capital_center_from_baseline)
             draw.text((header_x, header_text_y), header, header_text_color_rgb, font=header_font)
             y = int(y + header_height)
 
@@ -863,9 +903,74 @@ class InkyRenderer:
             draw: PIL ImageDraw instance.
             dep_data: Formatted departure data (from DepartureGroupingCalculator).
             font: Font to use.
-            y: Y position for this row.
+            y: Y position for this row (top of the row).
         """
+        # Calculate bottom alignment for all text in this row
+        # Find the maximum bottom offset (bbox[3]) among all text elements
+        route_text = dep_data.get("line", "")
+        destination_text = dep_data.get("destination", "")
+        platform_text = dep_data.get("platform", "") or ""
+
+        # Get bottom offsets for all text elements
+        route_bbox = font.getbbox(route_text) if route_text else (0, 0, 0, 0)
+        destination_bbox = font.getbbox(destination_text) if destination_text else (0, 0, 0, 0)
+        platform_bbox = (
+            self._platform_font.getbbox(platform_text) if platform_text else (0, 0, 0, 0)
+        )
+
+        # Get time text
+        if self.config.show_time:
+            now = datetime.now(UTC)
+            if (now - self._last_time_toggle).total_seconds() >= self.config.time_toggle_interval:
+                self._use_relative_time = not self._use_relative_time
+                self._last_time_toggle = now
+            time_text = (
+                dep_data.get("time_str_relative", "")
+                if self._use_relative_time
+                else dep_data.get("time_str_absolute", "")
+            )
+        else:
+            time_text = ""
+
+        time_bbox = font.getbbox(time_text) if time_text else (0, 0, 0, 0)
+
+        # Calculate baseline for each text element so all are centered vertically in the row
+        # y is the top of the row, row extends from y to y + line_height
+        # Row center = y + line_height / 2
+        # For each text element, calculate its center from baseline and align with row center
+        line_height = getattr(
+            self,
+            "_line_height",
+            self.config.line_spacing + font.getbbox("Mg")[3] - font.getbbox("Mg")[1],
+        )
+        row_center = y + line_height / 2
+
+        # Calculate text center from baseline for each element
+        # bbox[1] is top (negative = above baseline), bbox[3] is bottom (positive = below baseline)
+        # Text center from baseline = (bbox[1] + bbox[3]) / 2
+        route_center_from_baseline = (route_bbox[1] + route_bbox[3]) / 2 if route_text else 0
+        destination_center_from_baseline = (
+            (destination_bbox[1] + destination_bbox[3]) / 2 if destination_text else 0
+        )
+        platform_center_from_baseline = (
+            (platform_bbox[1] + platform_bbox[3]) / 2 if platform_text else 0
+        )
+        time_center_from_baseline = (time_bbox[1] + time_bbox[3]) / 2 if time_text else 0
+
+        # Position each text element so its center aligns with row center
+        # baseline = row_center - text_center_from_baseline
+        route_baseline = int(row_center - route_center_from_baseline) if route_text else 0
+        destination_baseline = (
+            int(row_center - destination_center_from_baseline) if destination_text else 0
+        )
+        platform_baseline = int(row_center - platform_center_from_baseline) if platform_text else 0
+        time_baseline = int(row_center - time_center_from_baseline) if time_text else 0
+
         x = self.config.padding
+
+        # Add at least 1 pixel gap before icon (spacing between icons if multiple)
+        icon_gap_before = 1
+        x += icon_gap_before
 
         # Draw route icon (use dynamically calculated size)
         transport_type = dep_data.get("transport_type", "Bus")
@@ -884,13 +989,18 @@ class InkyRenderer:
                 # Convert palette icon to RGB
                 icon = icon.convert("RGB")
 
-            # Calculate icon position - icon should fill the entire row height
-            # Since icon_size = line_height, it should start at y (text baseline)
-            # But we need to align with the text baseline, so adjust for font ascent
-            font_bbox = font.getbbox("Mg")
-            text_ascent = -font_bbox[1]  # Negative y1 is the ascent
-            # Align icon top with text baseline minus ascent (so icon aligns with text)
-            icon_y = int(y - text_ascent)
+            # Calculate icon position - center icon perfectly in the row
+            # y is the top of the row, row extends from y to y + line_height
+            # Row center = y + line_height / 2
+            # Icon should be centered at row center: icon_y + icon_size / 2 = row_center
+            # Therefore: icon_y = row_center - icon_size / 2 = y + line_height / 2 - icon_size / 2
+            line_height = getattr(
+                self,
+                "_line_height",
+                self.config.line_spacing + font.getbbox("Mg")[3] - font.getbbox("Mg")[1],
+            )
+            row_center = y + line_height / 2
+            icon_y = int(row_center - icon_size / 2)
 
             # Paste icon onto main image (both are RGB now)
             if icon.mode == "RGBA":
@@ -908,29 +1018,14 @@ class InkyRenderer:
             logger.warning(f"No icon loaded for transport type: {transport_type}")
 
         # Add proper spacing after icon (icon size + spacing between icon and route number)
-        x += icon_size + self.config.route_icon_spacing
+        # Add at least 1 pixel gap between icon and route number
+        icon_gap = max(1, self.config.route_icon_spacing)
+        x += icon_size + icon_gap
 
-        # Draw route number
-        route_text = dep_data.get("line", "")
-        draw.text((x, y), route_text, (0, 0, 0), font=font)  # Black RGB
+        # Draw route number (center-aligned)
+        if route_text:
+            draw.text((x, route_baseline), route_text, (0, 0, 0), font=font)  # Black RGB
         x += self.config.route_number_width + self.config.padding
-
-        # Get platform and time text
-        platform_text = dep_data.get("platform", "") or ""
-
-        if self.config.show_time:
-            now = datetime.now(UTC)
-            if (now - self._last_time_toggle).total_seconds() >= self.config.time_toggle_interval:
-                self._use_relative_time = not self._use_relative_time
-                self._last_time_toggle = now
-
-            time_text = (
-                dep_data.get("time_str_relative", "")
-                if self._use_relative_time
-                else dep_data.get("time_str_absolute", "")
-            )
-        else:
-            time_text = ""
 
         # Calculate total width needed for platform+time using pre-calculated column widths
         # Platform column width (fixed for all rows)
@@ -946,8 +1041,7 @@ class InkyRenderer:
         right_margin = self.config.padding + total_platform_time_width
         available_destination_width = self.config.width - x - right_margin
 
-        # Draw destination (truncate if needed to avoid overlap)
-        destination_text = dep_data.get("destination", "")
+        # Truncate destination if needed to avoid overlap
         if available_destination_width > 0:
             destination_text = self._truncate_text(
                 destination_text, font, available_destination_width
@@ -955,11 +1049,17 @@ class InkyRenderer:
         else:
             destination_text = ""  # No space for destination
 
+        # Draw destination (center-aligned)
         if destination_text:
-            draw.text((x, y), destination_text, (0, 0, 0), font=font)  # Black RGB
+            # Recalculate bbox and center alignment for truncated text
+            destination_bbox = font.getbbox(destination_text)
+            destination_center_from_baseline = (destination_bbox[1] + destination_bbox[3]) / 2
+            destination_baseline = int(row_center - destination_center_from_baseline)
+            draw.text(
+                (x, destination_baseline), destination_text, (0, 0, 0), font=font
+            )  # Black RGB
 
-        # Draw platform and time together on the right (vertically aligned like web version)
-        # Platform appears as superscript before time (e.g., "1 20:19")
+        # Draw platform and time together on the right (center-aligned with all text)
         right_x = self.config.width - self.config.padding
 
         if time_text:
@@ -970,43 +1070,32 @@ class InkyRenderer:
             time_color_rgb = (4, 120, 87) if is_realtime else (0, 0, 0)
 
             # Calculate actual time width for this specific time text
-            time_bbox = font.getbbox(time_text)
             time_width = time_bbox[2] - time_bbox[0]
 
             if platform_text:
-                # Calculate baseline alignment for platform and time
-                time_ascent = -time_bbox[1]  # Negative y1 is the ascent
-
-                platform_bbox = self._platform_font.getbbox(platform_text)
-                platform_ascent = -platform_bbox[1]
-
-                # Align baselines: platform should be on same baseline as time
-                baseline_offset = time_ascent - platform_ascent
-
-                # Platform position: fixed column width, left-aligned within column
+                # Platform position: fixed column width, left-aligned within column (center-aligned)
                 platform_x = (
                     right_x - effective_time_width - effective_gap - self._platform_column_width
                 )
-                platform_y = y + baseline_offset
                 draw.text(
-                    (platform_x, platform_y),
+                    (platform_x, platform_baseline),
                     platform_text,
                     (0, 0, 0),
                     font=self._platform_font,
                 )  # Black RGB
 
-                # Time position: right-aligned
+                # Time position: right-aligned (center-aligned)
                 time_x = right_x - time_width
-                draw.text((time_x, y), time_text, time_color_rgb, font=font)
+                draw.text((time_x, time_baseline), time_text, time_color_rgb, font=font)
             else:
-                # Just time, right-aligned (green for realtime, black otherwise)
+                # Just time, right-aligned (center-aligned, green for realtime, black otherwise)
                 time_x = right_x - time_width
-                draw.text((time_x, y), time_text, time_color_rgb, font=font)
+                draw.text((time_x, time_baseline), time_text, time_color_rgb, font=font)
         elif platform_text:
-            # Only platform, right-aligned in fixed column
+            # Only platform, right-aligned in fixed column (center-aligned)
             platform_x = right_x - self._platform_column_width
             draw.text(
-                (platform_x, y), platform_text, (0, 0, 0), font=self._platform_font
+                (platform_x, platform_baseline), platform_text, (0, 0, 0), font=self._platform_font
             )  # Black RGB
 
     def _render_no_departures(self) -> Image.Image:
