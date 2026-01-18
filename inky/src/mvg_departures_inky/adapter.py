@@ -12,6 +12,8 @@ from mvg_departures.adapters.web.builders.departure_grouping_calculator import (
 from mvg_departures.domain.models.direction_group_with_metadata import (
     DirectionGroupWithMetadata,
 )
+from mvg_departures.domain.models.grouped_departures import GroupedDepartures
+from mvg_departures.domain.models.stop_configuration import StopConfiguration
 from mvg_departures.domain.ports.display_adapter import DisplayAdapter
 from PIL import Image
 
@@ -22,9 +24,7 @@ from .renderer import InkyRenderer
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from inky.inky_uc8159 import (
-        Inky as InkyDisplay,  # type: ignore[import-untyped]  # Optional hardware dependency
-    )
+    from inky.inky_uc8159 import Inky as InkyDisplay  # Optional hardware dependency
 
 
 class InkyDisplayAdapter(DisplayAdapter):
@@ -34,15 +34,20 @@ class InkyDisplayAdapter(DisplayAdapter):
         self,
         config: InkyDisplayConfig | None = None,
         grouping_calculator: DepartureGroupingCalculator | None = None,
+        stop_configs: list[StopConfiguration] | None = None,
     ) -> None:
         """Initialize Inky display adapter.
 
         Args:
             config: Optional display configuration. If None, uses defaults.
             grouping_calculator: Departure grouping calculator (same as web version).
+            stop_configs: List of stop configurations for converting GroupedDepartures to
+                         DirectionGroupWithMetadata. Required if display_departures will be
+                         called with GroupedDepartures.
         """
         self.config = config or InkyDisplayConfig()
         self.grouping_calculator = grouping_calculator
+        self.stop_configs = stop_configs or []
         self.display: InkyDisplay | None = None
         self.renderer: InkyRenderer | None = None
         self._update_task: asyncio.Task | None = None
@@ -68,7 +73,7 @@ class InkyDisplayAdapter(DisplayAdapter):
             self.config.height = self.display.height
         else:
             try:
-                from inky.auto import auto  # type: ignore[import-untyped]
+                from inky.auto import auto  # Optional hardware dependency
 
                 # Auto-detect Inky display
                 self.display = auto()
@@ -136,19 +141,67 @@ class InkyDisplayAdapter(DisplayAdapter):
                 await self._update_task
         logger.info("Inky display adapter stopped")
 
-    async def display_departures(self, direction_groups: list[DirectionGroupWithMetadata]) -> None:
+    async def display_departures(self, direction_groups: list[GroupedDepartures]) -> None:
         """Display grouped departures on Inky display.
 
         Args:
-            direction_groups: List of direction groups with metadata (same as web version).
+            direction_groups: List of grouped departures (as per DisplayAdapter interface).
         """
         if not self.renderer or not self.display:
             logger.warning("Display not initialized, skipping render")
             return
 
         try:
+            # Convert GroupedDepartures to DirectionGroupWithMetadata
+            # We need to match each GroupedDepartures to its StopConfiguration
+            # Since GroupedDepartures doesn't have stop info, we'll try to match by
+            # checking which stop config's direction_mappings include the direction_name
+            # We'll also check if any departures in the group have station_id that matches
+            direction_groups_with_metadata: list[DirectionGroupWithMetadata] = []
+            for group in direction_groups:
+                if not group.departures:
+                    continue
+
+                # Try to find matching stop config
+                # Since GroupedDepartures doesn't have stop info, we'll try to match by
+                # checking which stop config's direction_mappings include the direction_name
+                stop_config: StopConfiguration | None = None
+
+                # Try matching by direction_name in direction_mappings
+                for stop_cfg in self.stop_configs:
+                    # Check if this direction_name matches any pattern in this stop's direction_mappings
+                    if group.direction_name in stop_cfg.direction_mappings:
+                        stop_config = stop_cfg
+                        break
+
+                # If no match found, use the first stop config as fallback
+                if not stop_config and self.stop_configs:
+                    stop_config = self.stop_configs[0]
+                    logger.debug(
+                        f"Could not match direction '{group.direction_name}' to a stop config, "
+                        f"using first stop config '{stop_config.station_name}' as fallback"
+                    )
+
+                if not stop_config:
+                    logger.warning(
+                        f"No stop config available for direction '{group.direction_name}', skipping"
+                    )
+                    continue
+
+                direction_groups_with_metadata.append(
+                    DirectionGroupWithMetadata(
+                        station_id=stop_config.station_id,
+                        stop_name=stop_config.station_name,
+                        direction_name=group.direction_name,
+                        departures=group.departures,
+                        random_header_colors=stop_config.random_header_colors,
+                        header_background_brightness=stop_config.header_background_brightness,
+                        random_color_salt=stop_config.random_color_salt,
+                    )
+                )
+
             # Render to PIL Image
-            img = self.renderer.render(direction_groups)
+            img = self.renderer.render(direction_groups_with_metadata)
 
             # Resize image to display resolution if needed (as per Pimoroni examples)
             if hasattr(self.display, "resolution") and img.size != self.display.resolution:

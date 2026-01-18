@@ -3,9 +3,12 @@
 import logging
 from datetime import UTC, datetime
 from io import BytesIO
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-import hitherdither
+if TYPE_CHECKING:
+    import hitherdither
+else:
+    import hitherdither
 from mvg_departures.adapters.web.builders.departure_grouping_calculator import (
     DepartureGroupingCalculator,
 )
@@ -182,7 +185,7 @@ class InkyRenderer:
             # Priority 2: Try Fredoka One (if configured as alternative)
             if self.config.font_family == "fredoka_one":
                 try:
-                    from font_fredoka_one import FredokaOne
+                    from font_fredoka_one import FredokaOne  # Optional dependency
 
                     font_obj = ImageFont.truetype(FredokaOne, size)
                     logger.info(f"Using FredokaOne font at size {size}")
@@ -364,7 +367,8 @@ class InkyRenderer:
         )
 
         # Convert to palette mode
-        return dithered.convert("P")
+        # hitherdither returns Any, but convert("P") returns Image.Image
+        return dithered.convert("P")  # type: ignore[no-any-return]  # hitherdither.bayer_dithering returns Any, but convert() returns Image.Image
 
     def _load_icon(self, transport_type: str, icon_size: int | None = None) -> Image.Image | None:
         """Load route icon for transport type from SVG file.
@@ -419,6 +423,7 @@ class InkyRenderer:
                 )
 
                 # Load PNG bytes into PIL Image
+                # Image.open() returns ImageFile which is compatible with Image.Image
                 icon = Image.open(BytesIO(png_bytes))
 
                 # Convert to RGB first (handle RGBA if needed)
@@ -426,9 +431,9 @@ class InkyRenderer:
                     # Create a white background and composite the icon on it
                     bg = Image.new("RGB", icon.size, (255, 255, 255))
                     bg.paste(icon, mask=icon.split()[3])  # Use alpha channel as mask
-                    icon = bg
+                    icon = bg  # type: ignore[assignment]  # PIL: Image.new() returns Image which is compatible
                 elif icon.mode != "RGB":
-                    icon = icon.convert("RGB")
+                    icon = icon.convert("RGB")  # type: ignore[assignment]  # PIL: convert() returns Image which is compatible
 
                 # The SVG icons have:
                 # - Colored backgrounds (blue #00508c/#005d79, green #009551, red #dd0b2f) - circles/squares
@@ -443,11 +448,11 @@ class InkyRenderer:
                     return None
 
                 # Keep icon in RGB mode - it will be pasted into the RGB image before dithering
-                icon = icon_rgb
+                icon = icon_rgb  # type: ignore[assignment]  # PIL: _convert_colored_icon_to_rgb_with_colors returns Image.Image which is compatible
 
                 # Resize to final size (always resize since we rendered at 2x)
                 # Use high-quality resampling for better icon rendering
-                icon = icon.resize(
+                icon = icon.resize(  # type: ignore[assignment]  # PIL: resize() returns Image which is compatible
                     (target_size, target_size),
                     Image.Resampling.LANCZOS,
                 )
@@ -461,8 +466,8 @@ class InkyRenderer:
                 logger.debug("cairosvg not available, trying alternative methods")
                 # Try using svglib as fallback
                 try:
-                    from reportlab.graphics import renderPM
-                    from svglib.svglib import svg2rlg
+                    from reportlab.graphics import renderPM  # No type stubs
+                    from svglib.svglib import svg2rlg  # Optional dependency
 
                     drawing = svg2rlg(str(icon_path))
                     if drawing:
@@ -474,19 +479,22 @@ class InkyRenderer:
                         if icon.mode != "P":
                             # Convert to grayscale first, then to palette with adaptive colors
                             icon_gray = icon.convert("L")
-                            icon = icon_gray.quantize(colors=2, method=Image.Quantize.MEDIANCUT)
+                            icon = icon_gray.quantize(colors=2, method=Image.Quantize.MEDIANCUT)  # type: ignore[assignment]  # PIL: quantize() returns Image which is compatible
                         if hasattr(self.display, "palette"):
                             icon.putpalette(self.display.palette)
 
                         # Resize to target size
                         if icon.size != (target_size, target_size):
-                            icon = icon.resize(
+                            icon = icon.resize(  # type: ignore[assignment]  # PIL: resize() returns Image which is compatible
                                 (target_size, target_size),
                                 Image.Resampling.LANCZOS,
                             )
 
                         self._icon_cache[cache_key] = icon
                         return icon
+                    # If drawing is None/falsy, fall through to error handling
+                    self._icon_cache[cache_key] = None
+                    return None
                 except ImportError:
                     logger.debug("svglib not available, no SVG conversion library found")
                     # Both cairosvg and svglib are not available
@@ -743,7 +751,10 @@ class InkyRenderer:
             self.config.height if self.config.fill_vertical_space else self.config.usable_height
         )
         logger.info(
-            f"Rendering: Total height needed: {total_height}, Available height: {available_height}, Fill vertical space: {self.config.fill_vertical_space}, Font size: {font_size}, Line height: {line_height}"
+            f"Rendering: Total height needed: {total_height}, "
+            f"Available height: {available_height}, "
+            f"Fill vertical space: {self.config.fill_vertical_space}, "
+            f"Font size: {font_size}, Line height: {line_height}"
         )
 
         # If we're not filling the space and there's wasted space, increase font size
@@ -754,7 +765,10 @@ class InkyRenderer:
             height_diff = available_height - total_height
             if height_diff > 5:  # Only warn if significant space is wasted
                 logger.warning(
-                    f"Content height ({total_height}) is {height_diff}px less than available height ({available_height}). Font size: {font_size}, total_departures: {total_departures}, header_count: {header_count}"
+                    f"Content height ({total_height}) is {height_diff}px less than "
+                    f"available height ({available_height}). "
+                    f"Font size: {font_size}, total_departures: {total_departures}, "
+                    f"header_count: {header_count}"
                 )
 
         # Calculate starting Y position
@@ -791,12 +805,12 @@ class InkyRenderer:
             # Adjust for text baseline (text_bbox[1] is negative for ascent)
             header_text_y = int(y + int(header_height - text_height) // 2 - int(text_bbox[1]))
             draw.text((header_x, header_text_y), header, header_text_color_rgb, font=header_font)
-            y += header_height
+            y = int(y + header_height)
 
             # Render departures in this group
             for dep_data in departures:
                 self._render_departure_row(draw, dep_data, font, y)
-                y += line_height
+                y = int(y + line_height)
 
         # Apply dithering to convert RGB image to 7-color palette
         # This is the key step for proper color rendering on e-ink displays
@@ -853,7 +867,8 @@ class InkyRenderer:
                 img.paste(icon, (x, icon_y))
 
             logger.info(
-                f"Pasting icon for {transport_type} at ({x}, {icon_y}), size={icon_size}, mode={icon.mode}"
+                f"Pasting icon for {transport_type} at ({x}, {icon_y}), "
+                f"size={icon_size}, mode={icon.mode}"
             )
         else:
             logger.warning(f"No icon loaded for transport type: {transport_type}")

@@ -1,8 +1,11 @@
 """Main entry point for Inky display version."""
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import sys
+from typing import TYPE_CHECKING
 
 import aiohttp
 from mvg_departures.adapters.composite_departure_repository import (
@@ -22,8 +25,15 @@ from mvg_departures.application.services import DepartureGroupingService
 from mvg_departures.domain.models.direction_group_with_metadata import (
     DirectionGroupWithMetadata,
 )
-from mvg_departures.domain.models.route_configuration import RouteConfiguration
-from mvg_departures.domain.models.stop_configuration import StopConfiguration
+from mvg_departures.domain.models.route_configuration import (
+    RouteConfiguration,  # noqa: TC002  # Used at runtime (route_config.path, route_config.stop_configs)
+)
+from mvg_departures.domain.models.stop_configuration import (
+    StopConfiguration,  # noqa: TC002  # Used at runtime (stop_config.station_id, etc.)
+)
+
+if TYPE_CHECKING:
+    from mvg_departures.domain.models.grouped_departures import GroupedDepartures
 
 from .adapter import InkyDisplayAdapter
 from .config import InkyDisplayConfig
@@ -42,7 +52,7 @@ logger = logging.getLogger(__name__)
 def _load_route_configurations(config: AppConfig) -> list[RouteConfiguration]:
     """Load and validate route configurations."""
     try:
-        route_configs = RouteConfigurationLoader.load(config)
+        route_configs: list[RouteConfiguration] = RouteConfigurationLoader.load(config)
         logger.info(f"Loaded {len(route_configs)} route(s)")
         return route_configs
     except ValueError as e:
@@ -127,17 +137,14 @@ async def _fetch_and_display_loop(
     while True:
         try:
             # Get grouped departures for all stops in the route
-            # Build DirectionGroupWithMetadata (same as web version)
-            all_direction_groups: list[DirectionGroupWithMetadata] = []
+            # Pass GroupedDepartures directly (adapter will convert to DirectionGroupWithMetadata)
+            all_grouped_departures: list[GroupedDepartures] = []
             for stop_config in route_config.stop_configs:
                 grouped_departures = await grouping_service.get_grouped_departures(stop_config)
-                direction_groups = _build_direction_groups_with_metadata(
-                    stop_config, grouped_departures
-                )
-                all_direction_groups.extend(direction_groups)
+                all_grouped_departures.extend(grouped_departures)
 
-            # Display on Inky
-            await adapter.display_departures(all_direction_groups)
+            # Display on Inky (adapter will convert GroupedDepartures to DirectionGroupWithMetadata)
+            await adapter.display_departures(all_grouped_departures)
 
             # Wait before next update
             refresh_interval = (
@@ -191,13 +198,23 @@ async def main() -> None:
     route_configs = _load_route_configurations(config)
     _validate_route_configurations(route_configs)
 
-    # Use the first route for Inky display
-    if len(route_configs) > 1:
-        logger.warning(
-            f"Multiple routes configured ({len(route_configs)}), "
-            f"using first route '{route_configs[0].path}' for Inky display"
+    # Filter to only "/" route for Inky display (main config only)
+    main_route_configs = [rc for rc in route_configs if rc.path == "/"]
+    if not main_route_configs:
+        logger.error("No route with path '/' found. Inky display requires the main route at '/'.")
+        logger.error(
+            f"Available routes: {[rc.path for rc in route_configs]}. "
+            "Please configure a route with path='/' in your config.toml."
         )
-    route_config = route_configs[0]
+        sys.exit(1)
+    if len(main_route_configs) > 1:
+        logger.warning(
+            f"Multiple routes with path '/' found ({len(main_route_configs)}), "
+            f"using first one for Inky display"
+        )
+    route_config = main_route_configs[0]
+    if len(route_configs) > 1:
+        logger.info(f"Filtered {len(route_configs)} route(s) to main route '/' for Inky display")
 
     # Create Inky display config from TOML
     # Loads from [inky] section and route-specific [[routes.display]] section
@@ -223,8 +240,10 @@ async def main() -> None:
             HeaderDisplaySettings(),  # Use defaults for now
         )
 
-        # Initialize adapter with calculator
-        adapter = InkyDisplayAdapter(inky_config, grouping_calculator)
+        # Initialize adapter with calculator and stop configs
+        adapter = InkyDisplayAdapter(
+            inky_config, grouping_calculator, stop_configs=all_stop_configs
+        )
 
         try:
             # Start adapter
