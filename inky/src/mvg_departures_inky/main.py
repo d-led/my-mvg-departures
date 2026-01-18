@@ -13,7 +13,16 @@ from mvg_departures.adapters.config import AppConfig
 from mvg_departures.adapters.config.route_configuration_loader import (
     RouteConfigurationLoader,
 )
+from mvg_departures.adapters.web.builders.departure_grouping_calculator import (
+    DepartureGroupingCalculator,
+    DepartureGroupingCalculatorConfig,
+    HeaderDisplaySettings,
+)
+from mvg_departures.adapters.web.formatters.departure_formatter import DepartureFormatter
 from mvg_departures.application.services import DepartureGroupingService
+from mvg_departures.domain.models.direction_group_with_metadata import (
+    DirectionGroupWithMetadata,
+)
 from mvg_departures.domain.models.route_configuration import RouteConfiguration
 from mvg_departures.domain.models.stop_configuration import StopConfiguration
 
@@ -76,6 +85,37 @@ def _initialize_services(
     return departure_repo, grouping_service
 
 
+def _build_direction_groups_with_metadata(
+    stop_config: StopConfiguration,
+    grouped_departures: list,
+) -> list[DirectionGroupWithMetadata]:
+    """Build direction groups with metadata from grouped departures (same as web version).
+    
+    Args:
+        stop_config: Stop configuration.
+        grouped_departures: List of grouped departures from DepartureGroupingService.
+        
+    Returns:
+        List of direction groups with metadata.
+    """
+    result: list[DirectionGroupWithMetadata] = []
+    for group in grouped_departures:
+        if not group.departures:
+            continue
+        result.append(
+            DirectionGroupWithMetadata(
+                station_id=stop_config.station_id,
+                stop_name=stop_config.station_name,
+                direction_name=group.direction_name,
+                departures=group.departures,
+                random_header_colors=stop_config.random_header_colors,
+                header_background_brightness=stop_config.header_background_brightness,
+                random_color_salt=stop_config.random_color_salt,
+            )
+        )
+    return result
+
+
 async def _fetch_and_display_loop(
     adapter: InkyDisplayAdapter,
     grouping_service: DepartureGroupingService,
@@ -88,9 +128,13 @@ async def _fetch_and_display_loop(
     while True:
         try:
             # Get grouped departures for all stops in the route
-            all_direction_groups: list = []
+            # Build DirectionGroupWithMetadata (same as web version)
+            all_direction_groups: list[DirectionGroupWithMetadata] = []
             for stop_config in route_config.stop_configs:
-                direction_groups = await grouping_service.get_grouped_departures(stop_config)
+                grouped_departures = await grouping_service.get_grouped_departures(stop_config)
+                direction_groups = _build_direction_groups_with_metadata(
+                    stop_config, grouped_departures
+                )
                 all_direction_groups.extend(direction_groups)
 
             # Display on Inky
@@ -159,15 +203,27 @@ async def main() -> None:
     # Create Inky display config
     inky_config = InkyDisplayConfig(
         fill_vertical_space=route_config.fill_vertical_space or True,
-        show_time=False,  # Don't show time for now
+        show_time=True,  # Show time (alternating between relative and absolute)
     )
-
-    # Initialize adapter
-    adapter = InkyDisplayAdapter(inky_config)
 
     async with aiohttp.ClientSession() as session:
         all_stop_configs = _collect_all_stop_configs(route_configs)
         departure_repo, grouping_service = _initialize_services(all_stop_configs, session)
+
+        # Initialize formatter and calculator (same as web version)
+        formatter = DepartureFormatter(config)
+        calculator_config = DepartureGroupingCalculatorConfig(
+            stop_configs=all_stop_configs,
+            config=config,
+        )
+        grouping_calculator = DepartureGroupingCalculator(
+            calculator_config,
+            formatter,
+            HeaderDisplaySettings(),  # Use defaults for now
+        )
+
+        # Initialize adapter with calculator
+        adapter = InkyDisplayAdapter(inky_config, grouping_calculator)
 
         try:
             # Start adapter

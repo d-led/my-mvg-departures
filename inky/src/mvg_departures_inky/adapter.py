@@ -5,7 +5,12 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
-from mvg_departures.domain.models.grouped_departures import GroupedDepartures
+from mvg_departures.adapters.web.builders.departure_grouping_calculator import (
+    DepartureGroupingCalculator,
+)
+from mvg_departures.domain.models.direction_group_with_metadata import (
+    DirectionGroupWithMetadata,
+)
 from mvg_departures.domain.ports.display_adapter import DisplayAdapter
 
 from .config import InkyDisplayConfig
@@ -21,13 +26,19 @@ if TYPE_CHECKING:
 class InkyDisplayAdapter(DisplayAdapter):
     """Display adapter for Pimoroni Inky e-ink displays."""
 
-    def __init__(self, config: InkyDisplayConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: InkyDisplayConfig | None = None,
+        grouping_calculator: DepartureGroupingCalculator | None = None,
+    ) -> None:
         """Initialize Inky display adapter.
 
         Args:
             config: Optional display configuration. If None, uses defaults.
+            grouping_calculator: Departure grouping calculator (same as web version).
         """
         self.config = config or InkyDisplayConfig()
+        self.grouping_calculator = grouping_calculator
         self.display: InkyDisplay | None = None
         self.renderer: InkyRenderer | None = None
         self._update_task: asyncio.Task | None = None
@@ -88,8 +99,10 @@ class InkyDisplayAdapter(DisplayAdapter):
                     output_dir=output_dir,
                 )
 
-        # Initialize renderer
-        self.renderer = InkyRenderer(self.config, self.display)
+        # Initialize renderer with grouping calculator
+        if not self.grouping_calculator:
+            raise ValueError("grouping_calculator is required")
+        self.renderer = InkyRenderer(self.config, self.display, self.grouping_calculator)
 
         # Set border color
         try:
@@ -111,11 +124,13 @@ class InkyDisplayAdapter(DisplayAdapter):
                 pass
         logger.info("Inky display adapter stopped")
 
-    async def display_departures(self, direction_groups: list[GroupedDepartures]) -> None:
+    async def display_departures(
+        self, direction_groups: list[DirectionGroupWithMetadata]
+    ) -> None:
         """Display grouped departures on Inky display.
 
         Args:
-            direction_groups: List of grouped departures to display.
+            direction_groups: List of direction groups with metadata (same as web version).
         """
         if not self.renderer or not self.display:
             logger.warning("Display not initialized, skipping render")
