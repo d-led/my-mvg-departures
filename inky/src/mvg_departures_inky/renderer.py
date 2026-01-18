@@ -202,13 +202,12 @@ class InkyRenderer:
                     logger.info(f"Using DejaVu Sans Bold system font at size {size}")
                     self._font_cache[cache_key] = font_obj
                     return font_obj
-                else:
-                    # Try DejaVu Sans (common on Linux)
-                    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-                    font_obj = ImageFont.truetype(font_path, size)
-                    logger.info(f"Using DejaVu Sans system font at size {size}")
-                    self._font_cache[cache_key] = font_obj
-                    return font_obj
+                # Try DejaVu Sans (common on Linux)
+                font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+                font_obj = ImageFont.truetype(font_path, size)
+                logger.info(f"Using DejaVu Sans system font at size {size}")
+                self._font_cache[cache_key] = font_obj
+                return font_obj
             except Exception as e3:
                 logger.debug(f"DejaVu fonts not available: {e3}, trying Liberation")
                 try:
@@ -219,13 +218,12 @@ class InkyRenderer:
                         logger.info(f"Using Liberation Sans Bold system font at size {size}")
                         self._font_cache[cache_key] = font_obj
                         return font_obj
-                    else:
-                        # Try Liberation Sans
-                        font_path = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
-                        font_obj = ImageFont.truetype(font_path, size)
-                        logger.info(f"Using Liberation Sans system font at size {size}")
-                        self._font_cache[cache_key] = font_obj
-                        return font_obj
+                    # Try Liberation Sans
+                    font_path = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
+                    font_obj = ImageFont.truetype(font_path, size)
+                    logger.info(f"Using Liberation Sans system font at size {size}")
+                    self._font_cache[cache_key] = font_obj
+                    return font_obj
                 except Exception as e4:
                     # Last resort: default PIL font
                     logger.warning(
@@ -269,8 +267,8 @@ class InkyRenderer:
             return None
 
         # Color thresholds
-        WHITE_THRESHOLD = 240  # Pixels with all RGB >= 240 are considered white
-        BLACK_THRESHOLD = 50  # Pixels with all RGB <= 50 are considered black
+        white_threshold = 240  # Pixels with all RGB >= 240 are considered white
+        black_threshold = 50  # Pixels with all RGB <= 50 are considered black
 
         white_pixels = 0
         colored_pixels = 0
@@ -286,11 +284,11 @@ class InkyRenderer:
                     r, g, b = 255, 255, 255
 
                 # Check if pixel is white (symbol) - keep it white
-                if r >= WHITE_THRESHOLD and g >= WHITE_THRESHOLD and b >= WHITE_THRESHOLD:
+                if r >= white_threshold and g >= white_threshold and b >= white_threshold:
                     result_pixels[x_pos, y_pos] = (255, 255, 255)  # White symbol -> white
                     white_pixels += 1
                 # Check if pixel is black/dark - convert to white
-                elif r <= BLACK_THRESHOLD and g <= BLACK_THRESHOLD and b <= BLACK_THRESHOLD:
+                elif r <= black_threshold and g <= black_threshold and b <= black_threshold:
                     result_pixels[x_pos, y_pos] = (255, 255, 255)  # Black -> white
                     black_pixels += 1
                 else:
@@ -802,9 +800,7 @@ class InkyRenderer:
 
         # Apply dithering to convert RGB image to 7-color palette
         # This is the key step for proper color rendering on e-ink displays
-        img = self._dither_image_to_palette(img)
-
-        return img
+        return self._dither_image_to_palette(img)
 
     def _render_departure_row(
         self,
@@ -960,7 +956,9 @@ class InkyRenderer:
         elif platform_text:
             # Only platform, right-aligned in fixed column
             platform_x = right_x - self._platform_column_width
-            draw.text((platform_x, y), platform_text, (0, 0, 0), font=self._platform_font)  # Black RGB
+            draw.text(
+                (platform_x, y), platform_text, (0, 0, 0), font=self._platform_font
+            )  # Black RGB
 
     def _render_no_departures(self) -> Image.Image:
         """Render 'No departures' message."""

@@ -3,7 +3,6 @@
 import asyncio
 import logging
 import sys
-from typing import Any
 
 import aiohttp
 from mvg_departures.adapters.composite_departure_repository import (

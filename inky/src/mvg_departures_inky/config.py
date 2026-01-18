@@ -67,7 +67,9 @@ class InkyDisplayConfig:
     time_toggle_interval: int = TIME_TOGGLE_INTERVAL_SECONDS
     show_time: bool = False  # Don't show time for now
     fill_vertical_space: bool = True
-    font_family: str = FONT_FAMILY_HK_GROTESK  # Font family: "hk_grotesk" (default) or "fredoka_one"
+    font_family: str = (
+        FONT_FAMILY_HK_GROTESK  # Font family: "hk_grotesk" (default) or "fredoka_one"
+    )
 
     @property
     def route_section_width(self) -> int:
@@ -143,7 +145,10 @@ class InkyDisplayConfig:
 
     @classmethod
     def from_toml(
-        cls, config_file: str | None = None, route_path: str | None = None, route_fill_vertical_space: bool | None = None
+        cls,
+        config_file: str | None = None,
+        route_path: str | None = None,
+        route_fill_vertical_space: bool | None = None,
     ) -> "InkyDisplayConfig":
         """Create InkyDisplayConfig from TOML configuration.
 
@@ -168,7 +173,9 @@ class InkyDisplayConfig:
                         # Load global [inky] section
                         if "inky" in toml_data and isinstance(toml_data["inky"], dict):
                             inky_settings = toml_data["inky"].copy()
-                            logger.debug(f"Loaded inky settings from [inky] section: {inky_settings}")
+                            logger.debug(
+                                f"Loaded inky settings from [inky] section: {inky_settings}"
+                            )
 
                         # Load route-specific inky settings from [[routes.display]] section
                         if route_path and "routes" in toml_data:
@@ -180,7 +187,9 @@ class InkyDisplayConfig:
                                         if isinstance(display, dict):
                                             # Route-specific inky settings override global [inky] section
                                             if "font_family" in display:
-                                                inky_settings["font_family"] = display["font_family"]
+                                                inky_settings["font_family"] = display[
+                                                    "font_family"
+                                                ]
                                             if "show_time" in display:
                                                 inky_settings["show_time"] = display["show_time"]
                                             logger.debug(
