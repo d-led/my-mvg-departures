@@ -1,0 +1,160 @@
+"""Main entry point for Inky display version."""
+
+import asyncio
+import logging
+import sys
+
+import aiohttp
+
+from mvg_departures.adapters.composite_departure_repository import (
+    CompositeDepartureRepository,
+)
+from mvg_departures.adapters.config import AppConfig
+from mvg_departures.adapters.config.route_configuration_loader import (
+    RouteConfigurationLoader,
+)
+from mvg_departures.application.services import DepartureGroupingService
+from mvg_departures.domain.models.route_configuration import RouteConfiguration
+from mvg_departures.domain.models.stop_configuration import StopConfiguration
+
+from .adapter import InkyDisplayAdapter
+from .config import InkyDisplayConfig
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    stream=sys.stderr,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _load_route_configurations(config: AppConfig) -> list[RouteConfiguration]:
+    """Load and validate route configurations."""
+    try:
+        route_configs = RouteConfigurationLoader.load(config)
+        logger.info(f"Loaded {len(route_configs)} route(s)")
+        return route_configs
+    except ValueError as e:
+        logger.error(f"Invalid route configuration: {e}")
+        sys.exit(1)
+
+
+def _validate_route_configurations(route_configs: list[RouteConfiguration]) -> None:
+    """Validate that route configurations are valid."""
+    if not route_configs:
+        logger.error("No routes configured.")
+        logger.error("Please configure routes in your config.toml file.")
+        sys.exit(1)
+
+    for route_config in route_configs:
+        if not route_config.stop_configs:
+            logger.error(f"Route at path '{route_config.path}' has no stops configured.")
+            sys.exit(1)
+
+
+def _collect_all_stop_configs(route_configs: list[RouteConfiguration]) -> list[StopConfiguration]:
+    """Collect all stop configurations from all routes."""
+    all_stop_configs = []
+    for route_config in route_configs:
+        all_stop_configs.extend(route_config.stop_configs)
+    return all_stop_configs
+
+
+def _initialize_services(
+    all_stop_configs: list[StopConfiguration],
+    session: aiohttp.ClientSession,
+) -> tuple[CompositeDepartureRepository, DepartureGroupingService]:
+    """Initialize departure repository and grouping service."""
+    departure_repo = CompositeDepartureRepository(
+        stop_configs=all_stop_configs,
+        session=session,
+    )
+    grouping_service = DepartureGroupingService(departure_repo)
+    return departure_repo, grouping_service
+
+
+async def _fetch_and_display_loop(
+    adapter: InkyDisplayAdapter,
+    grouping_service: DepartureGroupingService,
+    route_config: RouteConfiguration,
+    config: AppConfig,
+) -> None:
+    """Continuously fetch and display departures."""
+    logger.info(f"Starting display loop for route '{route_config.path}'")
+
+    while True:
+        try:
+            # Get grouped departures for all stops in the route
+            all_direction_groups: list = []
+            for stop_config in route_config.stop_configs:
+                direction_groups = await grouping_service.get_grouped_departures(stop_config)
+                all_direction_groups.extend(direction_groups)
+
+            # Display on Inky
+            await adapter.display_departures(all_direction_groups)
+
+            # Wait before next update
+            refresh_interval = (
+                route_config.refresh_interval_seconds
+                if route_config.refresh_interval_seconds is not None
+                else config.refresh_interval_seconds
+            )
+            logger.debug(f"Waiting {refresh_interval} seconds before next update")
+            await asyncio.sleep(refresh_interval)
+        except asyncio.CancelledError:
+            logger.info("Display loop cancelled")
+            raise
+        except Exception as e:
+            logger.error(f"Error in display loop: {e}", exc_info=True)
+            # Wait a bit before retrying
+            await asyncio.sleep(10)
+
+
+async def main() -> None:
+    """Main application entry point."""
+    config = AppConfig()
+
+    route_configs = _load_route_configurations(config)
+    _validate_route_configurations(route_configs)
+
+    # Use the first route for Inky display
+    if len(route_configs) > 1:
+        logger.warning(
+            f"Multiple routes configured ({len(route_configs)}), "
+            f"using first route '{route_configs[0].path}' for Inky display"
+        )
+    route_config = route_configs[0]
+
+    # Create Inky display config
+    inky_config = InkyDisplayConfig(
+        fill_vertical_space=route_config.fill_vertical_space or True,
+        show_time=False,  # Don't show time for now
+    )
+
+    # Initialize adapter
+    adapter = InkyDisplayAdapter(inky_config)
+
+    async with aiohttp.ClientSession() as session:
+        all_stop_configs = _collect_all_stop_configs(route_configs)
+        departure_repo, grouping_service = _initialize_services(all_stop_configs, session)
+
+        try:
+            # Start adapter
+            await adapter.start()
+
+            # Start display loop
+            await _fetch_and_display_loop(adapter, grouping_service, route_config, config)
+        except KeyboardInterrupt:
+            logger.info("Shutting down...")
+            await adapter.stop()
+        except Exception as e:
+            logger.error(f"Fatal error: {e}", exc_info=True)
+            await adapter.stop()
+            raise
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

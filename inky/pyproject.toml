@@ -1,0 +1,76 @@
+[project]
+name = "mvg-departures-inky"
+version = "0.0.1"
+description = "MVG departures display for Pimoroni Inky e-ink displays"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MPL-2.0"}
+authors = [
+    {name = "Dmitry Ledentsov"}
+]
+keywords = ["mvg", "public-transport", "munich", "departures", "inky", "e-ink", "pimoroni"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    # Parent project must be installed separately: pip install -e ..
+    # Then install this with: pip install -e .
+    "inky>=1.4.0",
+    "pillow>=10.0.0",
+    "pydantic-settings>=2.6.0",
+    "aiohttp>=3.13.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "black>=25.12.0",
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+]
+
+[project.scripts]
+mvg-departures-inky = "mvg_departures_inky.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mvg_departures_inky"]
+
+[tool.black]
+line-length = 100
+target-version = ['py312']
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "DTZ", "T10", "SIM", "ARG", "PIE", "PT", "RET", "TCH", "TID", "Q", "RUF"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+
+[[tool.mypy.overrides]]
+module = [
+    "inky.*",
+    "PIL.*",
+]
+ignore_missing_imports = true
