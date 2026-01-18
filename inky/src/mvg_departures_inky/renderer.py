@@ -157,91 +157,109 @@ class InkyRenderer:
             try:
                 if bold:
                     from font_hanken_grotesk import HankenGroteskBold
-                    self._font_cache[cache_key] = ImageFont.truetype(HankenGroteskBold, size)
-                    logger.debug(f"Using HankenGroteskBold font at size {size}")
+                    font_obj = ImageFont.truetype(HankenGroteskBold, size)
+                    logger.info(f"Using HankenGroteskBold font at size {size}")
+                    self._font_cache[cache_key] = font_obj
                 else:
                     from font_hanken_grotesk import HankenGroteskMedium
-                    self._font_cache[cache_key] = ImageFont.truetype(HankenGroteskMedium, size)
-                    logger.debug(f"Using HankenGroteskMedium font at size {size}")
-            except ImportError:
+                    font_obj = ImageFont.truetype(HankenGroteskMedium, size)
+                    logger.info(f"Using HankenGroteskMedium font at size {size}")
+                    self._font_cache[cache_key] = font_obj
+            except ImportError as e:
+                logger.debug(f"font-hanken-grotesk not available: {e}, trying Fredoka One")
                 try:
                     from font_fredoka_one import FredokaOne
-                    self._font_cache[cache_key] = ImageFont.truetype(FredokaOne, size)
-                    logger.debug(f"Using FredokaOne font at size {size}")
-                except ImportError:
+                    font_obj = ImageFont.truetype(FredokaOne, size)
+                    logger.info(f"Using FredokaOne font at size {size}")
+                    self._font_cache[cache_key] = font_obj
+                except ImportError as e2:
+                    logger.debug(f"font-fredoka-one not available: {e2}, trying system fonts")
                     # Fall back to system fonts
                     try:
                         if bold:
                             # Try DejaVu Sans Bold
-                            self._font_cache[cache_key] = ImageFont.truetype(
-                                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", size
-                            )
-                            logger.debug(f"Using DejaVu Sans Bold system font at size {size}")
+                            font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+                            font_obj = ImageFont.truetype(font_path, size)
+                            logger.info(f"Using DejaVu Sans Bold system font at size {size}")
+                            self._font_cache[cache_key] = font_obj
                         else:
                             # Try DejaVu Sans (common on Linux)
-                            self._font_cache[cache_key] = ImageFont.truetype(
-                                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", size
-                            )
-                            logger.debug(f"Using DejaVu Sans system font at size {size}")
-                    except Exception:
+                            font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+                            font_obj = ImageFont.truetype(font_path, size)
+                            logger.info(f"Using DejaVu Sans system font at size {size}")
+                            self._font_cache[cache_key] = font_obj
+                    except Exception as e3:
+                        logger.debug(f"DejaVu fonts not available: {e3}, trying Liberation")
                         try:
                             if bold:
                                 # Try Liberation Sans Bold
-                                self._font_cache[cache_key] = ImageFont.truetype(
-                                    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", size
-                                )
-                                logger.debug(f"Using Liberation Sans Bold system font at size {size}")
+                                font_path = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
+                                font_obj = ImageFont.truetype(font_path, size)
+                                logger.info(f"Using Liberation Sans Bold system font at size {size}")
+                                self._font_cache[cache_key] = font_obj
                             else:
                                 # Try Liberation Sans
-                                self._font_cache[cache_key] = ImageFont.truetype(
-                                    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", size
-                                )
-                                logger.debug(f"Using Liberation Sans system font at size {size}")
-                        except Exception:
+                                font_path = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
+                                font_obj = ImageFont.truetype(font_path, size)
+                                logger.info(f"Using Liberation Sans system font at size {size}")
+                                self._font_cache[cache_key] = font_obj
+                        except Exception as e4:
                             # Last resort: default PIL font
-                            logger.warning(f"Could not load any font, using default PIL font for size {size}")
+                            logger.warning(f"Could not load any font, using default PIL font for size {size}, bold={bold}. Errors: {e}, {e2}, {e3}, {e4}")
                             self._font_cache[cache_key] = ImageFont.load_default()
             except Exception as e:
                 # If font package import succeeded but truetype failed, try fallbacks
-                logger.debug(f"Font package available but truetype failed: {e}, trying fallbacks")
+                logger.warning(f"Font package available but truetype failed: {e}, trying fallbacks")
                 try:
                     font_path = (
                         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold
                         else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
                     )
-                    self._font_cache[cache_key] = ImageFont.truetype(font_path, size)
+                    font_obj = ImageFont.truetype(font_path, size)
+                    logger.info(f"Using fallback DejaVu font at size {size}")
+                    self._font_cache[cache_key] = font_obj
                 except Exception:
                     try:
                         font_path = (
                             "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold
                             else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
                         )
-                        self._font_cache[cache_key] = ImageFont.truetype(font_path, size)
+                        font_obj = ImageFont.truetype(font_path, size)
+                        logger.info(f"Using fallback Liberation font at size {size}")
+                        self._font_cache[cache_key] = font_obj
                     except Exception:
-                        logger.warning(f"Could not load any font, using default PIL font for size {size}")
+                        logger.warning(f"Could not load any font, using default PIL font for size {size}, bold={bold}")
                         self._font_cache[cache_key] = ImageFont.load_default()
         return self._font_cache[cache_key]
 
-    def _load_icon(self, transport_type: str) -> Image.Image | None:
+    def _load_icon(self, transport_type: str, icon_size: int | None = None) -> Image.Image | None:
         """Load route icon for transport type from SVG file.
         
         Converts SVG to PIL Image using cairosvg or falls back to text-based icon.
         
         Args:
             transport_type: Type of transport (U-Bahn, S-Bahn, Tram, Bus).
+            icon_size: Size for the icon (if None, uses config.route_icon_size).
             
         Returns:
             PIL Image with icon, or None if not available.
         """
-        if transport_type in self._icon_cache:
-            return self._icon_cache[transport_type]
+        # Use provided icon_size or fall back to config
+        target_size = icon_size if icon_size is not None else self.config.route_icon_size
+        
+        # Cache key includes size to support dynamic sizing
+        cache_key = (transport_type, target_size)
+        if cache_key in self._icon_cache:
+            return self._icon_cache[cache_key]
 
         # Try to load SVG icon from parent project
         icon_path = self.config.get_route_icon_path(transport_type)
-        if icon_path:
-            logger.debug(f"Looking for icon at: {icon_path}")
-        if icon_path and icon_path.exists():
-            logger.debug(f"Found icon at: {icon_path}")
+        if not icon_path:
+            logger.warning(f"No icon path configured for transport type: {transport_type}")
+        elif not icon_path.exists():
+            logger.warning(f"Icon file not found at: {icon_path}")
+        else:
+            logger.info(f"Loading SVG icon for {transport_type} from: {icon_path}")
             try:
                 # Try using cairosvg to convert SVG to PNG
                 try:
@@ -249,7 +267,7 @@ class InkyRenderer:
                     
                     # Convert SVG to PNG bytes (RGBA format)
                     # Use a larger size for better quality, then resize
-                    render_size = self.config.route_icon_size * 2
+                    render_size = target_size * 2
                     png_bytes = cairosvg.svg2png(
                         url=str(icon_path),
                         output_width=render_size,
@@ -293,12 +311,14 @@ class InkyRenderer:
                             icon.putpalette(self.display.palette)
                     
                     # Resize to final size (always resize since we rendered at 2x)
+                    # Use high-quality resampling for better icon rendering
                     icon = icon.resize(
-                        (self.config.route_icon_size, self.config.route_icon_size),
+                        (target_size, target_size),
                         Image.Resampling.LANCZOS,
                     )
                     
-                    self._icon_cache[transport_type] = icon
+                    logger.info(f"Successfully loaded and converted SVG icon for {transport_type} at size {target_size}")
+                    self._icon_cache[cache_key] = icon
                     return icon
                 except ImportError:
                     logger.debug("cairosvg not available, trying alternative methods")
@@ -319,19 +339,19 @@ class InkyRenderer:
                             if hasattr(self.display, "palette"):
                                 icon.putpalette(self.display.palette)
                             
-                            # Resize if needed
-                            if icon.size != (self.config.route_icon_size, self.config.route_icon_size):
+                            # Resize to target size
+                            if icon.size != (target_size, target_size):
                                 icon = icon.resize(
-                                    (self.config.route_icon_size, self.config.route_icon_size),
+                                    (target_size, target_size),
                                     Image.Resampling.LANCZOS,
                                 )
                             
-                            self._icon_cache[transport_type] = icon
+                            self._icon_cache[cache_key] = icon
                             return icon
                     except ImportError:
                         logger.debug("svglib not available, using text-based fallback")
             except Exception as e:
-                logger.warning(f"Could not load SVG icon for {transport_type} from {icon_path}: {e}")
+                logger.error(f"Could not load SVG icon for {transport_type} from {icon_path}: {e}", exc_info=True)
 
         # Fallback: Create a simple text-based icon
         abbrev_map = {
@@ -343,23 +363,23 @@ class InkyRenderer:
         abbrev = abbrev_map.get(transport_type, "?")
 
         try:
-            icon = Image.new("P", (self.config.route_icon_size, self.config.route_icon_size), self._white)
+            icon = Image.new("P", (target_size, target_size), self._white)
             if hasattr(self.display, "palette"):
                 icon.putpalette(self.display.palette)
             icon_draw = ImageDraw.Draw(icon)
             
-            icon_font_size = max(12, self.config.route_icon_size // 2)
+            icon_font_size = max(12, target_size // 2)
             icon_font = self._get_font(icon_font_size, bold=False)
             
             bbox = icon_font.getbbox(abbrev)
             text_width = bbox[2] - bbox[0]
             text_height = bbox[3] - bbox[1]
-            x = (self.config.route_icon_size - text_width) // 2
-            y = (self.config.route_icon_size - text_height) // 2
+            x = (target_size - text_width) // 2
+            y = (target_size - text_height) // 2
             
             icon_draw.text((x, y), abbrev, self._black, font=icon_font)
             
-            self._icon_cache[transport_type] = icon
+            self._icon_cache[cache_key] = icon
             return icon
         except Exception as e:
             logger.warning(f"Could not create icon for {transport_type}: {e}")
@@ -459,6 +479,27 @@ class InkyRenderer:
         platform_font_size = max(int(font_size * 0.7), 10)
         self._platform_font = self._get_font(platform_font_size, bold=False)
         
+        # Calculate dynamic icon size based on font size and available space
+        # Icons should scale proportionally with font size
+        # Use font size as base, but ensure icons fit within line height
+        font_bbox = font.getbbox("Mg")
+        line_height = font_bbox[3] - font_bbox[1] + self.config.line_spacing
+        
+        # Icon size should be proportional to font size, but not exceed line height
+        # Target: icon should be about 1.2x the font size, but capped by line height
+        target_icon_size = int(font_size * 1.2)
+        # Ensure icon fits within line height with some padding
+        max_icon_size = line_height - 4  # Leave 4px padding
+        
+        # Calculate final icon size (clamp to min/max bounds)
+        calculated_icon_size = min(
+            max(target_icon_size, self.config.route_icon_min_size),
+            min(max_icon_size, self.config.route_icon_max_size)
+        )
+        
+        # Update config with calculated icon size (for this render)
+        self._calculated_icon_size = calculated_icon_size
+        
         # Pre-calculate maximum platform and time widths for vertical alignment (like web version)
         # Use actual font sizes to measure
         max_platform_width = 0
@@ -529,8 +570,8 @@ class InkyRenderer:
         total_height = (header_height * header_count) + (line_height * total_departures)
         
         # Calculate starting Y position
-        # Always start at top when filling vertical space (don't center, fill from top)
-        start_y = self.config.padding
+        # First header should start at the very top (y=0), not at padding
+        start_y = 0
 
         # Render each group with header
         y = start_y
@@ -547,14 +588,17 @@ class InkyRenderer:
             # White text on colored background
             header_text_color = self._white
             
+            # First header starts at y=0, subsequent headers have spacing
             draw.rectangle(
                 [0, y, self.config.width, y + header_height],
                 fill=header_bg_color,
             )
             
-            # Draw header text
+            # Draw header text (with padding from left edge)
             header_x = self.config.padding
-            draw.text((header_x, y + 2), header, header_text_color, font=header_font)
+            # Center text vertically in header
+            header_text_y = y + (header_height - header_bbox[3] + header_bbox[1]) // 2
+            draw.text((header_x, header_text_y), header, header_text_color, font=header_font)
             y += header_height
 
             # Render departures in this group
@@ -581,9 +625,10 @@ class InkyRenderer:
         """
         x = self.config.padding
 
-        # Draw route icon
+        # Draw route icon (use dynamically calculated size)
         transport_type = dep_data.get("transport_type", "Bus")
-        icon = self._load_icon(transport_type)
+        icon_size = getattr(self, "_calculated_icon_size", self.config.route_icon_size)
+        icon = self._load_icon(transport_type, icon_size=icon_size)
         if icon:
             img = draw._image  # type: ignore[attr-defined]
             # Ensure icon has the same palette as the main image
@@ -598,7 +643,7 @@ class InkyRenderer:
             icon_y = y
             img.paste(icon, (x, icon_y))
         # Add proper spacing after icon (icon size + spacing between icon and route number)
-        x += self.config.route_icon_size + self.config.route_icon_spacing
+        x += icon_size + self.config.route_icon_spacing
 
         # Draw route number
         route_text = dep_data.get("line", "")

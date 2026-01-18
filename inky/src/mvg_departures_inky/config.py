@@ -9,7 +9,9 @@ INKY_7_5_HEIGHT = 800
 
 # Layout constants (optimized for portrait mode)
 PADDING = 8
-ROUTE_ICON_SIZE = 32
+ROUTE_ICON_SIZE = 32  # Base size, will be calculated dynamically
+ROUTE_ICON_MIN_SIZE = 24  # Minimum icon size
+ROUTE_ICON_MAX_SIZE = 48  # Maximum icon size
 ROUTE_ICON_SPACING = 6  # Spacing between icon and route number
 ROUTE_NUMBER_WIDTH = 50
 PLATFORM_WIDTH = 60
@@ -39,7 +41,9 @@ class InkyDisplayConfig:
     width: int = INKY_7_5_WIDTH
     height: int = INKY_7_5_HEIGHT
     padding: int = PADDING
-    route_icon_size: int = ROUTE_ICON_SIZE
+    route_icon_size: int = ROUTE_ICON_SIZE  # Base size, will be calculated dynamically
+    route_icon_min_size: int = ROUTE_ICON_MIN_SIZE
+    route_icon_max_size: int = ROUTE_ICON_MAX_SIZE
     route_icon_spacing: int = ROUTE_ICON_SPACING
     route_number_width: int = ROUTE_NUMBER_WIDTH
     platform_width: int = PLATFORM_WIDTH
@@ -56,17 +60,23 @@ class InkyDisplayConfig:
         """Width of route icon + number section."""
         return self.padding + self.route_icon_size + self.padding + self.route_number_width
 
-    @property
-    def destination_section_x(self) -> int:
-        """X position where destination text starts."""
-        return self.route_section_width + self.padding
+    def destination_section_x(self, icon_size: int | None = None) -> int:
+        """X position where destination text starts.
+        
+        Args:
+            icon_size: Icon size to use (if None, uses config.route_icon_size).
+        """
+        return self.route_section_width(icon_size) + self.padding
 
-    @property
-    def destination_section_width(self) -> int:
-        """Available width for destination text."""
+    def destination_section_width(self, icon_size: int | None = None) -> int:
+        """Available width for destination text.
+        
+        Args:
+            icon_size: Icon size to use (if None, uses config.route_icon_size).
+        """
         return (
             self.width
-            - self.destination_section_x
+            - self.destination_section_x(icon_size)
             - self.platform_width
             - self.padding
             - self.padding
