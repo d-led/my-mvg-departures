@@ -994,13 +994,14 @@ class InkyRenderer:
             # Row center = y + line_height / 2
             # Icon should be centered at row center: icon_y + icon_size / 2 = row_center
             # Therefore: icon_y = row_center - icon_size / 2 = y + line_height / 2 - icon_size / 2
+            # Add 1 pixel offset down to prevent touching header (testing)
             line_height = getattr(
                 self,
                 "_line_height",
                 self.config.line_spacing + font.getbbox("Mg")[3] - font.getbbox("Mg")[1],
             )
             row_center = y + line_height / 2
-            icon_y = int(row_center - icon_size / 2)
+            icon_y = int(row_center - icon_size / 2) + 1  # +1 pixel down to test spacing
 
             # Paste icon onto main image (both are RGB now)
             if icon.mode == "RGBA":
