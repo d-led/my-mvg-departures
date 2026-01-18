@@ -1050,14 +1050,14 @@ class InkyRenderer:
         else:
             destination_text = ""  # No space for destination
 
-        # Draw destination (center-aligned)
+        # Draw destination (same baseline as route number for horizontal alignment)
         if destination_text:
-            # Recalculate bbox and center alignment for truncated text
+            # Use the same baseline as route number so they align horizontally
+            # Recalculate bbox for truncated text (for width calculation only)
             destination_bbox = font.getbbox(destination_text)
-            destination_center_from_baseline = (destination_bbox[1] + destination_bbox[3]) / 2
-            destination_baseline = int(row_center - destination_center_from_baseline)
+            # Use route_baseline to ensure destination starts at same level as route number
             draw.text(
-                (x, destination_baseline), destination_text, (0, 0, 0), font=font
+                (x, route_baseline), destination_text, (0, 0, 0), font=font
             )  # Black RGB
 
         # Draw platform and time together on the right (center-aligned with all text)
