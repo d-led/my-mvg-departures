@@ -62,15 +62,23 @@ class InkyDisplayConfig:
 
     def destination_section_x(self, icon_size: int | None = None) -> int:
         """X position where destination text starts.
-        
+
         Args:
             icon_size: Icon size to use (if None, uses config.route_icon_size).
         """
-        return self.route_section_width(icon_size) + self.padding
+        # Use provided icon_size or fall back to config
+        effective_icon_size = icon_size if icon_size is not None else self.route_icon_size
+        return (
+            self.padding
+            + effective_icon_size
+            + self.route_icon_spacing
+            + self.route_number_width
+            + self.padding
+        )
 
     def destination_section_width(self, icon_size: int | None = None) -> int:
         """Available width for destination text.
-        
+
         Args:
             icon_size: Icon size to use (if None, uses config.route_icon_size).
         """
@@ -95,8 +103,9 @@ class InkyDisplayConfig:
     def get_route_icon_path(self, transport_type: str) -> Path | None:
         """Get path to route icon SVG file."""
         import logging
+
         logger = logging.getLogger(__name__)
-        
+
         icon_map = {
             "U-Bahn": "ico-subway.svg",
             "S-Bahn": "ico-metropolitan-railway.svg",
@@ -106,7 +115,9 @@ class InkyDisplayConfig:
         }
         icon_name = icon_map.get(transport_type)
         if not icon_name:
-            logger.debug(f"Transport type '{transport_type}' not in icon_map. Available keys: {list(icon_map.keys())}")
+            logger.debug(
+                f"Transport type '{transport_type}' not in icon_map. Available keys: {list(icon_map.keys())}"
+            )
             return None
 
         # Look for icons in parent project's static/assets directory

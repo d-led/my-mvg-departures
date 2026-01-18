@@ -2,7 +2,6 @@
 
 import logging
 from pathlib import Path
-from typing import Any
 
 from PIL import Image
 
@@ -51,13 +50,27 @@ class MockInkyDisplay:
         # Blue: #087BC4 (web banner color) -> RGB(8, 123, 196)
         # Green: #047857 (web realtime color, darker) -> RGB(4, 120, 87)
         self.palette = [
-            0, 0, 0,        # 0: Black
-            255, 255, 255,  # 1: White
-            4, 120, 87,     # 2: Green (#047857 - darker green for realtime)
-            8, 123, 196,    # 3: Blue (#087BC4 - less saturated blue for headers)
-            255, 0, 0,      # 4: Red
-            255, 255, 0,    # 5: Yellow
-            255, 165, 0,    # 6: Orange
+            0,
+            0,
+            0,  # 0: Black
+            255,
+            255,
+            255,  # 1: White
+            4,
+            120,
+            87,  # 2: Green (#047857 - darker green for realtime)
+            8,
+            123,
+            196,  # 3: Blue (#087BC4 - less saturated blue for headers)
+            255,
+            0,
+            0,  # 4: Red
+            255,
+            255,
+            0,  # 5: Yellow
+            255,
+            165,
+            0,  # 6: Orange
         ]
         # Fill remaining palette slots with white
         while len(self.palette) < 768:  # 256 colors * 3 RGB values
@@ -108,7 +121,7 @@ class MockInkyDisplay:
             pixels = self._current_image.load()
             rgb_pixels = rgb_image.load()
             palette = self._current_image.getpalette()
-            
+
             # Map palette indices to RGB values
             for y in range(self._current_image.height):
                 for x in range(self._current_image.width):
@@ -120,7 +133,7 @@ class MockInkyDisplay:
                         rgb_pixels[x, y] = (r, g, b)
                     else:
                         rgb_pixels[x, y] = (255, 255, 255)  # Default to white
-            
+
             rgb_image.save(output_path)
         else:
             self._current_image.save(output_path)

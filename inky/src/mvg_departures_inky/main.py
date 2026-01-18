@@ -5,7 +5,6 @@ import logging
 import sys
 
 import aiohttp
-
 from mvg_departures.adapters.composite_departure_repository import (
     CompositeDepartureRepository,
 )
@@ -90,11 +89,11 @@ def _build_direction_groups_with_metadata(
     grouped_departures: list,
 ) -> list[DirectionGroupWithMetadata]:
     """Build direction groups with metadata from grouped departures (same as web version).
-    
+
     Args:
         stop_config: Stop configuration.
         grouped_departures: List of grouped departures from DepartureGroupingService.
-        
+
     Returns:
         List of direction groups with metadata.
     """
@@ -162,7 +161,7 @@ async def main() -> None:
     # If CONFIG_FILE is not set, default to config.example.toml in project root
     import os
     from pathlib import Path
-    
+
     if not os.getenv("CONFIG_FILE"):
         # Find project root (parent of inky directory)
         # __file__ is: inky/src/mvg_departures_inky/main.py
@@ -171,12 +170,12 @@ async def main() -> None:
         current_file = Path(__file__).resolve()
         # main.py -> mvg_departures_inky -> src -> inky -> project_root
         project_root = current_file.parent.parent.parent.parent
-        
+
         # Try config.example.toml first, then my.config.toml
         default_config = project_root / "config.example.toml"
         if not default_config.exists():
             default_config = project_root / "my.config.toml"
-        
+
         if default_config.exists():
             os.environ["CONFIG_FILE"] = str(default_config)
             logger.info(f"Using default config file: {default_config}")
@@ -186,7 +185,7 @@ async def main() -> None:
                 f"and {project_root / 'my.config.toml'}. "
                 f"Set CONFIG_FILE environment variable to specify a config file."
             )
-    
+
     config = AppConfig()
 
     route_configs = _load_route_configurations(config)
@@ -208,7 +207,7 @@ async def main() -> None:
 
     async with aiohttp.ClientSession() as session:
         all_stop_configs = _collect_all_stop_configs(route_configs)
-        departure_repo, grouping_service = _initialize_services(all_stop_configs, session)
+        _departure_repo, grouping_service = _initialize_services(all_stop_configs, session)
 
         # Initialize formatter and calculator (same as web version)
         formatter = DepartureFormatter(config)

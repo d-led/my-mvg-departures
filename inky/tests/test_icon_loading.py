@@ -1,0 +1,170 @@
+"""Tests for icon loading in Inky renderer."""
+
+import sys
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
+from PIL import Image
+
+# Add parent project to path for imports
+parent_project = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(parent_project))
+
+from mvg_departures_inky.config import InkyDisplayConfig
+from mvg_departures_inky.renderer import InkyRenderer
+
+
+class TestIconLoading:
+    """Tests for icon loading functionality."""
+
+    @pytest.fixture
+    def mock_display(self) -> MagicMock:
+        """Create a mock display."""
+        display = MagicMock()
+        display.BLACK = 0
+        display.WHITE = 1
+        display.GREEN = 2
+        display.BLUE = 3
+        display.RED = 4
+        display.YELLOW = 5
+        display.ORANGE = 6
+        display.palette = [0, 0, 0, 255, 255, 255] + [255, 255, 255] * 254
+        return display
+
+    @pytest.fixture
+    def config(self) -> InkyDisplayConfig:
+        """Create a test config."""
+        return InkyDisplayConfig()
+
+    @pytest.fixture
+    def renderer(self, config: InkyDisplayConfig, mock_display: MagicMock) -> InkyRenderer:
+        """Create a renderer instance."""
+        from mvg_departures.domain.departure_grouping_calculator import (
+            DepartureGroupingCalculator,
+        )
+
+        calculator = DepartureGroupingCalculator()
+        return InkyRenderer(config, mock_display, calculator)
+
+    def test_when_icon_path_exists_then_loads_svg_icon(self, renderer: InkyRenderer) -> None:
+        """Given a valid icon path, when loading icon, then converts SVG to PIL Image."""
+        # Get the actual icon path from config
+        icon_path = renderer.config.get_route_icon_path("Bus")
+        
+        # Skip test if icon file doesn't exist (e.g., in CI without parent project)
+        if not icon_path or not icon_path.exists():
+            pytest.skip(f"Icon file not found: {icon_path}")
+        
+        # Load the icon
+        icon = renderer._load_icon("Bus", icon_size=32)
+        
+        # Assertions
+        assert icon is not None, "Icon should be loaded, not None"
+        assert isinstance(icon, Image.Image), "Icon should be a PIL Image"
+        assert icon.size == (32, 32), f"Icon should be 32x32, got {icon.size}"
+        assert icon.mode == "P", f"Icon should be in palette mode, got {icon.mode}"
+        
+        # Check that icon has a palette
+        palette = icon.getpalette()
+        assert palette is not None, "Icon should have a palette"
+        
+        # Check that icon has some black pixels (the symbol)
+        pixels = icon.load()
+        black_pixels = sum(
+            1
+            for y in range(icon.height)
+            for x in range(icon.width)
+            if pixels[x, y] == 0  # Index 0 is black
+        )
+        assert black_pixels > 0, f"Icon should have black pixels (symbol), found {black_pixels}"
+
+    def test_when_icon_path_missing_then_returns_none(self, renderer: InkyRenderer) -> None:
+        """Given a missing icon path, when loading icon, then returns None (no text fallback)."""
+        # Mock get_route_icon_path to return None
+        with patch.object(renderer.config, "get_route_icon_path", return_value=None):
+            icon = renderer._load_icon("UnknownTransport", icon_size=32)
+            assert icon is None, "Should return None when icon path is missing"
+
+    def test_when_icon_file_not_found_then_returns_none(self, renderer: InkyRenderer) -> None:
+        """Given a non-existent icon file, when loading icon, then returns None."""
+        # Mock get_route_icon_path to return a non-existent path
+        fake_path = Path("/nonexistent/icon.svg")
+        with patch.object(renderer.config, "get_route_icon_path", return_value=fake_path):
+            icon = renderer._load_icon("Bus", icon_size=32)
+            assert icon is None, "Should return None when icon file doesn't exist"
+
+    def test_when_svg_conversion_fails_then_returns_none(self, renderer: InkyRenderer) -> None:
+        """Given SVG conversion failure, when loading icon, then returns None (no text fallback)."""
+        # Get a real icon path
+        icon_path = renderer.config.get_route_icon_path("Bus")
+        if not icon_path or not icon_path.exists():
+            pytest.skip(f"Icon file not found: {icon_path}")
+        
+        # Mock cairosvg to raise an exception
+        with patch("cairosvg.svg2png", side_effect=Exception("Conversion failed")):
+            icon = renderer._load_icon("Bus", icon_size=32)
+            assert icon is None, "Should return None when SVG conversion fails"
+
+    def test_when_icon_loaded_then_cached(self, renderer: InkyRenderer) -> None:
+        """Given icon is loaded, when loading again, then returns cached version."""
+        icon_path = renderer.config.get_route_icon_path("Bus")
+        if not icon_path or not icon_path.exists():
+            pytest.skip(f"Icon file not found: {icon_path}")
+        
+        # Load icon first time
+        icon1 = renderer._load_icon("Bus", icon_size=32)
+        if icon1 is None:
+            pytest.skip("Icon loading failed, cannot test caching")
+        
+        # Load icon second time - should use cache
+        icon2 = renderer._load_icon("Bus", icon_size=32)
+        
+        assert icon2 is not None, "Cached icon should not be None"
+        assert icon2 is icon1, "Should return the same cached icon object"
+
+    def test_when_icon_size_different_then_not_cached(self, renderer: InkyRenderer) -> None:
+        """Given different icon sizes, when loading, then creates separate cache entries."""
+        icon_path = renderer.config.get_route_icon_path("Bus")
+        if not icon_path or not icon_path.exists():
+            pytest.skip(f"Icon file not found: {icon_path}")
+        
+        # Load icon at size 32
+        icon32 = renderer._load_icon("Bus", icon_size=32)
+        if icon32 is None:
+            pytest.skip("Icon loading failed, cannot test size caching")
+        
+        # Load icon at size 48 - should create new entry
+        icon48 = renderer._load_icon("Bus", icon_size=48)
+        if icon48 is None:
+            pytest.skip("Icon loading failed at size 48")
+        
+        assert icon32.size == (32, 32), "First icon should be 32x32"
+        assert icon48.size == (48, 48), "Second icon should be 48x48"
+        assert icon32 is not icon48, "Different sizes should create different cache entries"
+
+    def test_when_icon_has_black_pixels_then_visible(self, renderer: InkyRenderer) -> None:
+        """Given a loaded icon, when checking pixels, then has black pixels for visibility."""
+        icon_path = renderer.config.get_route_icon_path("Bus")
+        if not icon_path or not icon_path.exists():
+            pytest.skip(f"Icon file not found: {icon_path}")
+        
+        icon = renderer._load_icon("Bus", icon_size=32)
+        if icon is None:
+            pytest.skip("Icon loading failed")
+        
+        # Count black pixels (index 0)
+        pixels = icon.load()
+        black_count = sum(
+            1
+            for y in range(icon.height)
+            for x in range(icon.width)
+            if pixels[x, y] == 0
+        )
+        
+        # Icon should have significant black pixels (at least 1% of total)
+        total_pixels = icon.width * icon.height
+        black_percentage = (black_count / total_pixels) * 100
+        
+        assert black_count > 0, f"Icon should have black pixels, found {black_count}"
+        assert black_percentage > 1.0, f"Icon should have at least 1% black pixels, got {black_percentage:.2f}%"

@@ -1,6 +1,7 @@
 """Inky display adapter."""
 
 import asyncio
+import contextlib
 import logging
 import os
 from typing import TYPE_CHECKING
@@ -12,6 +13,7 @@ from mvg_departures.domain.models.direction_group_with_metadata import (
     DirectionGroupWithMetadata,
 )
 from mvg_departures.domain.ports.display_adapter import DisplayAdapter
+from PIL import Image
 
 from .config import InkyDisplayConfig
 from .mock_display import MockInkyDisplay, create_mock_display
@@ -20,7 +22,9 @@ from .renderer import InkyRenderer
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from inky.inky_uc8159 import Inky as InkyDisplay  # type: ignore[import-untyped]
+    from inky.inky_uc8159 import (
+        Inky as InkyDisplay,  # type: ignore[import-untyped]  # Optional hardware dependency
+    )
 
 
 class InkyDisplayAdapter(DisplayAdapter):
@@ -128,15 +132,11 @@ class InkyDisplayAdapter(DisplayAdapter):
         self._running = False
         if self._update_task:
             self._update_task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._update_task
-            except asyncio.CancelledError:
-                pass
         logger.info("Inky display adapter stopped")
 
-    async def display_departures(
-        self, direction_groups: list[DirectionGroupWithMetadata]
-    ) -> None:
+    async def display_departures(self, direction_groups: list[DirectionGroupWithMetadata]) -> None:
         """Display grouped departures on Inky display.
 
         Args:
@@ -173,6 +173,7 @@ class InkyDisplayAdapter(DisplayAdapter):
             if isinstance(self.display, MockInkyDisplay):
                 # Generate filename with timestamp for mock mode
                 import time
+
                 filename = f"departures_{int(time.time())}.png"
                 self.display.show(filename)
             else:

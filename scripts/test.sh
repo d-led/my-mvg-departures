@@ -37,6 +37,10 @@ echo ""
 
 "$SCRIPT_DIR/reformat.sh"
 
+# Re-source common_env.sh after reformat.sh (which runs in a subshell)
+# to ensure functions are still available
+source "$SCRIPT_DIR/common_env.sh"
+
 # Run all CI checks
 echo "=========================================="
 echo "Running CI checks..."
@@ -69,9 +73,20 @@ run_python_module mypy src
 if [ -d "inky/src" ]; then
     echo "  Type checking inky folder..."
     # Change to inky directory for mypy to use its pyproject.toml config
-    cd inky
-    run_python_module mypy src
-    cd ..
+    # Use absolute path to Python to avoid issues when changing directories
+    (
+        cd inky
+        if [ -n "$RUN_CMD" ]; then
+            PYTHONUNBUFFERED=1 $RUN_CMD -m mypy src
+        else
+            # Use absolute path to Python if it's a relative path
+            if [[ "$PYTHON" == ./* ]] || [[ "$PYTHON" == .venv/* ]]; then
+                "$PROJECT_ROOT/$PYTHON" -u -m mypy src
+            else
+                "$PYTHON" -u -m mypy src
+            fi
+        fi
+    )
 fi
 echo "✓ Type checking passed"
 echo ""
@@ -82,9 +97,20 @@ run_python_module pytest -m "not integration" "$@"
 if [ -d "inky/tests" ]; then
     echo "  Running inky tests..."
     # Change to inky directory for pytest to use its pyproject.toml config
-    cd inky
-    run_python_module pytest -m "not integration" "$@"
-    cd ..
+    # Use absolute path to Python to avoid issues when changing directories
+    (
+        cd inky
+        if [ -n "$RUN_CMD" ]; then
+            PYTHONUNBUFFERED=1 $RUN_CMD -m pytest -m "not integration" "$@"
+        else
+            # Use absolute path to Python if it's a relative path
+            if [[ "$PYTHON" == ./* ]] || [[ "$PYTHON" == .venv/* ]]; then
+                "$PROJECT_ROOT/$PYTHON" -u -m pytest -m "not integration" "$@"
+            else
+                "$PYTHON" -u -m pytest -m "not integration" "$@"
+            fi
+        fi
+    )
 fi
 echo "✓ Tests passed"
 echo ""

@@ -19,9 +19,14 @@ if [ -z "${COMMON_ENV_LOADED:-}" ]; then
     export COMMON_ENV_LOADED=1
     
     # Detect virtual environment and command runner
-    if [ -d ".venv" ]; then
-        export PYTHON=".venv/bin/python"
-        export PIP=".venv/bin/pip"
+    # Get absolute path to project root (where .venv would be)
+    # Try to find project root by looking for common_env.sh's parent directory
+    SCRIPT_DIR_ABS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PROJECT_ROOT_ABS="$(cd "$SCRIPT_DIR_ABS/.." && pwd)"
+    
+    if [ -d "$PROJECT_ROOT_ABS/.venv" ]; then
+        export PYTHON="$PROJECT_ROOT_ABS/.venv/bin/python"
+        export PIP="$PROJECT_ROOT_ABS/.venv/bin/pip"
         export RUN_CMD=""
         echo "Using existing .venv" >&2
     elif command -v uv &> /dev/null; then
@@ -35,32 +40,32 @@ if [ -z "${COMMON_ENV_LOADED:-}" ]; then
         export RUN_CMD=""
         echo "Using system Python (ensure dependencies are installed)" >&2
     fi
-
-    # Function to run Python command with or without uv
-    # Only define if not already defined (allows function redefinition to be safe)
-    if ! type run_python >/dev/null 2>&1; then
-        run_python() {
-            if [ -n "$RUN_CMD" ]; then
-                # uv run handles buffering, but set PYTHONUNBUFFERED for consistency
-                PYTHONUNBUFFERED=1 $RUN_CMD "$@"
-            else
-                # Always use -u flag for unbuffered output to show progress
-                $PYTHON -u "$@"
-            fi
-        }
-    fi
-
-    # Function to run Python module with or without uv
-    if ! type run_python_module >/dev/null 2>&1; then
-        run_python_module() {
-            if [ -n "$RUN_CMD" ]; then
-                # uv run handles buffering, but set PYTHONUNBUFFERED for consistency
-                PYTHONUNBUFFERED=1 $RUN_CMD "$@"
-            else
-                # Always use -u flag for unbuffered output to show progress
-                $PYTHON -u -m "$@"
-            fi
-        }
-    fi
 fi
 
+# Function to run Python command with or without uv
+# Always define (even if already defined) to ensure it's available
+run_python() {
+    if [ -n "$RUN_CMD" ]; then
+        # uv run handles buffering, but set PYTHONUNBUFFERED for consistency
+        PYTHONUNBUFFERED=1 $RUN_CMD "$@"
+    else
+        # Always use -u flag for unbuffered output to show progress
+        $PYTHON -u "$@"
+    fi
+}
+# Export function so it's available in subshells
+export -f run_python
+
+# Function to run Python module with or without uv
+# Always define (even if already defined) to ensure it's available
+run_python_module() {
+    if [ -n "$RUN_CMD" ]; then
+        # uv run handles buffering, but set PYTHONUNBUFFERED for consistency
+        PYTHONUNBUFFERED=1 $RUN_CMD "$@"
+    else
+        # Always use -u flag for unbuffered output to show progress
+        $PYTHON -u -m "$@"
+    fi
+}
+# Export function so it's available in subshells
+export -f run_python_module
