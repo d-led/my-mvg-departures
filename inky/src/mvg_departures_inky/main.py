@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import sys
+from typing import Any
 
 import aiohttp
 from mvg_departures.adapters.composite_departure_repository import (
@@ -199,10 +200,12 @@ async def main() -> None:
         )
     route_config = route_configs[0]
 
-    # Create Inky display config
-    inky_config = InkyDisplayConfig(
-        fill_vertical_space=route_config.fill_vertical_space or True,
-        show_time=True,  # Show time (alternating between relative and absolute)
+    # Create Inky display config from TOML
+    # Loads from [inky] section and route-specific [[routes.display]] section
+    inky_config = InkyDisplayConfig.from_toml(
+        config_file=config.config_file,
+        route_path=route_config.path,
+        route_fill_vertical_space=route_config.fill_vertical_space,
     )
 
     async with aiohttp.ClientSession() as session:

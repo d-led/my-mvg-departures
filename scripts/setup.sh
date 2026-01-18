@@ -101,6 +101,7 @@ fi
 
 # Try to install using available package managers
 INSTALL_SUCCESS=false
+UV_AVAILABLE=false
 
 # Try Poetry first (if poetry.lock exists)
 if [ -f "${PROJECT_ROOT}/poetry.lock" ] && command -v poetry >/dev/null 2>&1; then
@@ -171,6 +172,102 @@ if ! _check_package_installed; then
     echo "Warning: Package installation may have failed. Please check the output above." >&2
     echo "  You can try manually: $PIP install -e \".[dev]\"" >&2
     exit 1
+fi
+
+# Install inky subproject if it exists
+INKY_ROOT="${PROJECT_ROOT}/inky"
+if [ -d "$INKY_ROOT" ] && [ -f "${INKY_ROOT}/pyproject.toml" ]; then
+    echo "" >&2
+    echo "Installing Inky subproject..." >&2
+    cd "$INKY_ROOT"
+    
+    # Check if inky package is already installed
+    if "$PYTHON" -c "import mvg_departures_inky" >/dev/null 2>&1; then
+        echo "✓ Inky package already installed." >&2
+    else
+        # Detect platform: Linux = hardware support, macOS/Windows = dev only
+        INSTALL_HARDWARE=false
+        if [ "$(uname)" = "Linux" ]; then
+            INSTALL_HARDWARE=true
+            echo "Detected Linux - installing with hardware support..." >&2
+        else
+            echo "Detected macOS/Windows - installing in development mode (no hardware dependencies)..." >&2
+        fi
+        
+        # Try to install inky project
+        INKY_INSTALL_SUCCESS=false
+        
+        # Try uv first
+        UV_CMD=""
+        if [ -f "$UV" ]; then
+            UV_CMD="$UV"
+        elif command -v uv >/dev/null 2>&1 && uv --version >/dev/null 2>&1; then
+            UV_CMD="uv"
+        fi
+        
+        if [ -n "$UV_CMD" ]; then
+            if [ "$INSTALL_HARDWARE" = true ]; then
+                echo "Installing Inky dependencies with uv (hardware support)..." >&2
+                if "$UV_CMD" pip install -e ".[dev,hardware]" 2>&1; then
+                    INKY_INSTALL_SUCCESS=true
+                    echo "✓ Inky dependencies installed with uv (hardware support)." >&2
+                fi
+            else
+                echo "Installing Inky dependencies with uv (development mode)..." >&2
+                if "$UV_CMD" pip install -e ".[dev]" 2>&1; then
+                    INKY_INSTALL_SUCCESS=true
+                    echo "✓ Inky dependencies installed with uv (development mode)." >&2
+                fi
+            fi
+        fi
+        
+        # Fall back to pip
+        if [ "$INKY_INSTALL_SUCCESS" = false ]; then
+            if [ "$INSTALL_HARDWARE" = true ]; then
+                echo "Installing Inky dependencies with pip (hardware support)..." >&2
+                if "$PIP" install -e ".[dev,hardware]" 2>&1; then
+                    INKY_INSTALL_SUCCESS=true
+                    echo "✓ Inky dependencies installed with pip (hardware support)." >&2
+                else
+                    echo "Warning: Failed to install with hardware support, trying without..." >&2
+                    if "$PIP" install -e ".[dev]" 2>&1; then
+                        INKY_INSTALL_SUCCESS=true
+                        echo "✓ Inky dependencies installed with pip (development mode)." >&2
+                    fi
+                fi
+            else
+                echo "Installing Inky dependencies with pip (development mode)..." >&2
+                if "$PIP" install -e ".[dev]" 2>&1; then
+                    INKY_INSTALL_SUCCESS=true
+                    echo "✓ Inky dependencies installed with pip (development mode)." >&2
+                else
+                    echo "Warning: Failed to install with dev dependencies, trying core..." >&2
+                    if "$PIP" install -e . 2>&1; then
+                        INKY_INSTALL_SUCCESS=true
+                        echo "✓ Inky core dependencies installed." >&2
+                    fi
+                fi
+            fi
+        fi
+        
+        # Verify inky installation
+        if [ "$INKY_INSTALL_SUCCESS" = true ]; then
+            if "$PYTHON" -c "import mvg_departures_inky" >/dev/null 2>&1; then
+                echo "✓ Inky package verified." >&2
+            else
+                echo "Warning: Inky package installation may have failed." >&2
+            fi
+        else
+            echo "Warning: Failed to install Inky subproject. You can try manually:" >&2
+            if [ "$INSTALL_HARDWARE" = true ]; then
+                echo "  cd inky && $PIP install -e \".[dev,hardware]\"" >&2
+            else
+                echo "  cd inky && $PIP install -e \".[dev]\"" >&2
+            fi
+        fi
+    fi
+    
+    cd "$PROJECT_ROOT"
 fi
 
 echo "" >&2

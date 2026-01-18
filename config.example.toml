@@ -64,6 +64,20 @@ font_size_status_header = "1.875rem"
 [api]
 sleep_ms_between_calls = 500
 
+# Inky e-ink display configuration (optional)
+# This section is only used by the Inky display version and is ignored by the web version
+[inky]
+# Font family to use: "hk_grotesk" (default) or "fredoka_one"
+# HK Grotesk: Bold for headers, Regular for body text
+# Fredoka One: Alternative font option (requires font-fredoka-one package)
+font_family = "hk_grotesk"
+
+# Enable dynamic font sizing to fill display height
+fill_vertical_space = true
+
+# Show departure times (alternating between relative and absolute)
+show_time = true
+
 # Stops configuration
 [[stops]]
 station_id = "de:09162:1110"
@@ -241,6 +255,10 @@ title = "Hohenzollernplatz Departures"
 theme = "light"
 fill_vertical_space = true
 font_scaling_factor_when_filling = 0.8
+
+# Inky e-ink display settings (optional, route-specific)
+# These override the global [inky] section settings for this route
+# font_family = "fredoka_one"  # Use Fredoka One instead of HK Grotesk for this route
 
 # Enable hash-based pastel colors for headers (stable colors based on header text)
 # Colors are designed to work well in both light and dark modes

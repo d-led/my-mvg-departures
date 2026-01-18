@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from io import BytesIO
 from typing import Any
 
+import hitherdither
 from mvg_departures.adapters.web.builders.departure_grouping_calculator import (
     DepartureGroupingCalculator,
 )
@@ -145,8 +146,11 @@ class InkyRenderer:
     ) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
         """Get font at specified size, with caching.
 
-        Tries Pimoroni font packages first (like in their examples), then falls back
-        to system fonts. Uses bold variant if requested and available.
+        Font priority:
+        1. HK Grotesk (Bold for headers, Regular for body) - default
+        2. Fredoka One (if configured as alternative)
+        3. System fonts (DejaVu, Liberation)
+        4. Default PIL font (last resort)
 
         Args:
             size: Font size in points.
@@ -157,116 +161,105 @@ class InkyRenderer:
         """
         cache_key = (size, bold)
         if cache_key not in self._font_cache:
-            # Try Pimoroni font packages first (like in their examples)
-            try:
-                if bold:
-                    from font_hanken_grotesk import HankenGroteskBold
-
-                    font_obj = ImageFont.truetype(HankenGroteskBold, size)
-                    logger.info(f"Using HankenGroteskBold font at size {size}")
-                    self._font_cache[cache_key] = font_obj
+            # Priority 1: Try HK Grotesk (default font family)
+            if self.config.font_family == "hk_grotesk":
+                hk_grotesk_path = self.config.get_hk_grotesk_font_path(bold=bold)
+                if hk_grotesk_path and hk_grotesk_path.exists():
+                    try:
+                        font_obj = ImageFont.truetype(str(hk_grotesk_path), size)
+                        logger.info(
+                            f"Using HK Grotesk {'Bold' if bold else 'Regular'} font at size {size}"
+                        )
+                        self._font_cache[cache_key] = font_obj
+                        return font_obj
+                    except Exception as e:
+                        logger.debug(f"Failed to load HK Grotesk font: {e}, trying alternatives")
                 else:
-                    from font_hanken_grotesk import HankenGroteskMedium
+                    logger.debug(
+                        f"HK Grotesk {'Bold' if bold else 'Regular'} font not found at {hk_grotesk_path}, trying alternatives"
+                    )
 
-                    font_obj = ImageFont.truetype(HankenGroteskMedium, size)
-                    logger.info(f"Using HankenGroteskMedium font at size {size}")
-                    self._font_cache[cache_key] = font_obj
-            except ImportError as e:
-                logger.debug(f"font-hanken-grotesk not available: {e}, trying Fredoka One")
+            # Priority 2: Try Fredoka One (if configured as alternative)
+            if self.config.font_family == "fredoka_one":
                 try:
                     from font_fredoka_one import FredokaOne
 
                     font_obj = ImageFont.truetype(FredokaOne, size)
                     logger.info(f"Using FredokaOne font at size {size}")
                     self._font_cache[cache_key] = font_obj
-                except ImportError as e2:
-                    logger.debug(f"font-fredoka-one not available: {e2}, trying system fonts")
-                    # Fall back to system fonts
-                    try:
-                        if bold:
-                            # Try DejaVu Sans Bold
-                            font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-                            font_obj = ImageFont.truetype(font_path, size)
-                            logger.info(f"Using DejaVu Sans Bold system font at size {size}")
-                            self._font_cache[cache_key] = font_obj
-                        else:
-                            # Try DejaVu Sans (common on Linux)
-                            font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-                            font_obj = ImageFont.truetype(font_path, size)
-                            logger.info(f"Using DejaVu Sans system font at size {size}")
-                            self._font_cache[cache_key] = font_obj
-                    except Exception as e3:
-                        logger.debug(f"DejaVu fonts not available: {e3}, trying Liberation")
-                        try:
-                            if bold:
-                                # Try Liberation Sans Bold
-                                font_path = (
-                                    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
-                                )
-                                font_obj = ImageFont.truetype(font_path, size)
-                                logger.info(
-                                    f"Using Liberation Sans Bold system font at size {size}"
-                                )
-                                self._font_cache[cache_key] = font_obj
-                            else:
-                                # Try Liberation Sans
-                                font_path = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
-                                font_obj = ImageFont.truetype(font_path, size)
-                                logger.info(f"Using Liberation Sans system font at size {size}")
-                                self._font_cache[cache_key] = font_obj
-                        except Exception as e4:
-                            # Last resort: default PIL font
-                            logger.warning(
-                                f"Could not load any font, using default PIL font for size {size}, bold={bold}. Errors: {e}, {e2}, {e3}, {e4}"
-                            )
-                            self._font_cache[cache_key] = ImageFont.load_default()
-            except Exception as e:
-                # If font package import succeeded but truetype failed, try fallbacks
-                logger.warning(f"Font package available but truetype failed: {e}, trying fallbacks")
-                try:
-                    font_path = (
-                        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-                        if bold
-                        else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-                    )
+                    return font_obj
+                except ImportError as e:
+                    logger.debug(f"font-fredoka-one not available: {e}, trying system fonts")
+                except Exception as e:
+                    logger.debug(f"Failed to load FredokaOne font: {e}, trying system fonts")
+
+            # Priority 3: Fall back to system fonts
+            try:
+                if bold:
+                    # Try DejaVu Sans Bold
+                    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
                     font_obj = ImageFont.truetype(font_path, size)
-                    logger.info(f"Using fallback DejaVu font at size {size}")
+                    logger.info(f"Using DejaVu Sans Bold system font at size {size}")
                     self._font_cache[cache_key] = font_obj
-                except Exception:
-                    try:
-                        font_path = (
-                            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
-                            if bold
-                            else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
-                        )
+                    return font_obj
+                else:
+                    # Try DejaVu Sans (common on Linux)
+                    font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+                    font_obj = ImageFont.truetype(font_path, size)
+                    logger.info(f"Using DejaVu Sans system font at size {size}")
+                    self._font_cache[cache_key] = font_obj
+                    return font_obj
+            except Exception as e3:
+                logger.debug(f"DejaVu fonts not available: {e3}, trying Liberation")
+                try:
+                    if bold:
+                        # Try Liberation Sans Bold
+                        font_path = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
                         font_obj = ImageFont.truetype(font_path, size)
-                        logger.info(f"Using fallback Liberation font at size {size}")
+                        logger.info(f"Using Liberation Sans Bold system font at size {size}")
                         self._font_cache[cache_key] = font_obj
-                    except Exception:
-                        logger.warning(
-                            f"Could not load any font, using default PIL font for size {size}, bold={bold}"
-                        )
-                        self._font_cache[cache_key] = ImageFont.load_default()
+                        return font_obj
+                    else:
+                        # Try Liberation Sans
+                        font_path = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
+                        font_obj = ImageFont.truetype(font_path, size)
+                        logger.info(f"Using Liberation Sans system font at size {size}")
+                        self._font_cache[cache_key] = font_obj
+                        return font_obj
+                except Exception as e4:
+                    # Last resort: default PIL font
+                    logger.warning(
+                        f"Could not load any font, using default PIL font for size {size}, bold={bold}. Errors: {e3}, {e4}"
+                    )
+                    self._font_cache[cache_key] = ImageFont.load_default()
+                    return self._font_cache[cache_key]
+
         return self._font_cache[cache_key]
 
-    def _convert_colored_icon_to_black_white(
+    def _convert_colored_icon_to_rgb_with_colors(
         self, icon: Image.Image, transport_type: str
     ) -> Image.Image | None:
-        """Convert colored icon (with colored background and white symbols) to black-on-white.
+        """Convert colored icon preserving colored background and fixing white/black inversion.
 
-        The SVG icons have colored backgrounds (blue #005d79, green #009551, red #dd0b2f)
-        with white symbols (#fff). This function extracts the white symbols and converts
-        them to black, making everything else white.
+        The SVG icons have:
+        - Colored backgrounds (blue #00508c/#005d79, green #009551, red #dd0b2f) - circles/squares
+        - White symbols (#fff = 255,255,255) - should stay white
+        - Black parts - should become white
+
+        This function:
+        1. Preserves the colored background (circle/square)
+        2. Keeps white symbols white
+        3. Converts black/dark parts to white
 
         Args:
             icon: PIL Image in RGB mode with colored background and white symbols.
             transport_type: Type of transport (for logging).
 
         Returns:
-            PIL Image in grayscale mode (L) with black symbols on white background, or None on error.
+            PIL Image in RGB mode with colored background preserved, white symbols white, black->white.
         """
-        # Create a new grayscale image for the result
-        result = Image.new("L", icon.size, 255)  # Start with white background
+        # Create a new RGB image for the result
+        result = Image.new("RGB", icon.size, (255, 255, 255))  # Start with white background
         pixels = icon.load()
         result_pixels = result.load()
 
@@ -275,11 +268,14 @@ class InkyRenderer:
             logger.error(f"Failed to load pixels for {transport_type} icon")
             return None
 
-        # Extract white symbols: pixels that are close to white (high RGB values)
-        # White symbols are #fff = (255, 255, 255)
-        # Use a threshold: if all RGB values are > 240, it's a white symbol (very strict)
-        black_pixels = 0
+        # Color thresholds
+        WHITE_THRESHOLD = 240  # Pixels with all RGB >= 240 are considered white
+        BLACK_THRESHOLD = 50  # Pixels with all RGB <= 50 are considered black
+
         white_pixels = 0
+        colored_pixels = 0
+        black_pixels = 0
+
         for y_pos in range(icon.height):
             for x_pos in range(icon.width):
                 pixel_val = pixels[x_pos, y_pos]
@@ -288,54 +284,89 @@ class InkyRenderer:
                 else:
                     # Single value (shouldn't happen in RGB mode, but handle gracefully)
                     r, g, b = 255, 255, 255
-                # Check if pixel is white (symbol) - all channels very high
-                # The SVG icons have white symbols (#fff = 255,255,255) on colored backgrounds
-                # Use strict threshold to catch pure white
-                if r >= 240 and g >= 240 and b >= 240:
-                    # White symbol -> make it black
-                    result_pixels[x_pos, y_pos] = 0
+
+                # Check if pixel is white (symbol) - keep it white
+                if r >= WHITE_THRESHOLD and g >= WHITE_THRESHOLD and b >= WHITE_THRESHOLD:
+                    result_pixels[x_pos, y_pos] = (255, 255, 255)  # White symbol -> white
+                    white_pixels += 1
+                # Check if pixel is black/dark - convert to white
+                elif r <= BLACK_THRESHOLD and g <= BLACK_THRESHOLD and b <= BLACK_THRESHOLD:
+                    result_pixels[x_pos, y_pos] = (255, 255, 255)  # Black -> white
                     black_pixels += 1
                 else:
-                    # Colored background -> keep it white
-                    result_pixels[x_pos, y_pos] = 255
-                    white_pixels += 1
+                    # Colored background (circle/square) - preserve the color
+                    result_pixels[x_pos, y_pos] = (r, g, b)
+                    colored_pixels += 1
 
         logger.info(
-            f"Extracted {black_pixels} black pixels (symbols) and {white_pixels} white pixels (background) from {transport_type} icon"
+            f"Converted {transport_type} icon: {white_pixels} white pixels (symbols), "
+            f"{colored_pixels} colored pixels (background), {black_pixels} black->white pixels"
         )
 
-        # Verify we actually extracted something
-        if black_pixels == 0:
-            logger.error(
-                f"ERROR: No white symbols found in {transport_type} icon - icon will be invisible! Total pixels: {icon.width * icon.height}"
+        # Verify we have some colored pixels (the background circle/square)
+        if colored_pixels == 0:
+            logger.warning(
+                f"No colored background found in {transport_type} icon - may be invisible! "
+                f"Total pixels: {icon.width * icon.height}"
             )
-            # Try a lower threshold as fallback
-            logger.info("Trying lower threshold (200) as fallback...")
-            if pixels is not None and result_pixels is not None:
-                black_pixels = 0
-                white_pixels = 0
-                for y_pos in range(icon.height):
-                    for x_pos in range(icon.width):
-                        pixel_val = pixels[x_pos, y_pos]
-                        if isinstance(pixel_val, tuple) and len(pixel_val) >= 3:
-                            r, g, b = pixel_val[0], pixel_val[1], pixel_val[2]
-                        else:
-                            r, g, b = 255, 255, 255
-                        if r >= 200 and g >= 200 and b >= 200:
-                            result_pixels[x_pos, y_pos] = 0
-                            black_pixels += 1
-                        else:
-                            result_pixels[x_pos, y_pos] = 255
-                            white_pixels += 1
-            logger.info(f"After fallback: {black_pixels} black pixels, {white_pixels} white pixels")
-
-            if black_pixels == 0:
-                logger.error(
-                    f"Failed to extract any symbols from {transport_type} icon even with fallback threshold"
-                )
-                return None
 
         return result
+
+    def _dither_image_to_palette(self, rgb_image: Image.Image) -> Image.Image:
+        """Dither RGB image to 7-color palette using hitherdither.
+
+        This method converts an RGB image to the Inky Impression Spectra's 7-color palette
+        using dithering for better color representation. Based on Pimoroni's dither.py example.
+
+        Args:
+            rgb_image: PIL Image in RGB mode.
+
+        Returns:
+            PIL Image in palette mode (P) with dithered colors.
+        """
+        # Get the display palette (7 colors)
+        if hasattr(self.display, "_palette_blend"):
+            # Use display's palette blend method if available (real hardware)
+            saturation = 0.5  # Medium saturation for good color representation
+            palette_rgb = self.display._palette_blend(saturation, dtype="uint24")
+        elif hasattr(self.display, "palette"):
+            # Use display's palette directly
+            display_palette = self.display.palette
+            # Convert palette to RGB tuples (first 7 colors)
+            palette_rgb = []
+            for i in range(7):
+                idx = i * 3
+                if idx + 2 < len(display_palette):
+                    palette_rgb.append(
+                        (display_palette[idx], display_palette[idx + 1], display_palette[idx + 2])
+                    )
+                else:
+                    palette_rgb.append((255, 255, 255))  # Default to white
+        else:
+            # Fallback: use our standard 7-color palette
+            palette_rgb = [
+                (0, 0, 0),  # 0: Black
+                (255, 255, 255),  # 1: White
+                (4, 120, 87),  # 2: Green (#047857)
+                (8, 123, 196),  # 3: Blue (#087BC4)
+                (255, 0, 0),  # 4: Red
+                (255, 255, 0),  # 5: Yellow
+                (255, 165, 0),  # 6: Orange
+            ]
+
+        # Create hitherdither palette
+        hither_palette = hitherdither.palette.Palette(palette_rgb)
+
+        # Use Bayer dithering (fast and good quality, as per Pimoroni example)
+        # Thresholds for snapping colors
+        thresholds = [64, 64, 64]
+        # Order 8 for good quality (higher = better but slower)
+        dithered = hitherdither.ordered.bayer.bayer_dithering(
+            rgb_image, hither_palette, thresholds, order=8
+        )
+
+        # Convert to palette mode
+        return dithered.convert("P")
 
     def _load_icon(self, transport_type: str, icon_size: int | None = None) -> Image.Image | None:
         """Load route icon for transport type from SVG file.
@@ -401,62 +432,20 @@ class InkyRenderer:
                 elif icon.mode != "RGB":
                     icon = icon.convert("RGB")
 
-                # The SVG icons have colored backgrounds (blue #005d79, green #009551, red #dd0b2f) with white symbols (#fff)
-                # For e-ink, we want black symbols on white background
-                # Strategy: Extract white pixels (symbols) and make them black, everything else white
+                # The SVG icons have:
+                # - Colored backgrounds (blue #00508c/#005d79, green #009551, red #dd0b2f) - circles/squares
+                # - White symbols (#fff = 255,255,255) - should stay white
+                # - Black parts - should become white
+                # We want to preserve the colored background and keep white symbols white
 
-                # Convert colored icon to black-on-white using helper function
-                icon_grayscale = self._convert_colored_icon_to_black_white(icon, transport_type)
-                if icon_grayscale is None:
+                # Convert icon preserving colors and fixing inversion
+                icon_rgb = self._convert_colored_icon_to_rgb_with_colors(icon, transport_type)
+                if icon_rgb is None:
                     self._icon_cache[cache_key] = None
                     return None
 
-                # Convert to palette mode directly (don't use "1" mode as it can cause issues)
-                # Create a 2-color palette image: 0=black, 1=white
-                icon_p: Image.Image = Image.new("P", icon_grayscale.size)
-                icon_p_pixels = icon_p.load()
-
-                # Type check: icon_p_pixels should not be None
-                if icon_p_pixels is None:
-                    logger.error(f"Failed to load pixels for palette icon for {transport_type}")
-                    self._icon_cache[cache_key] = None
-                    return None
-
-                # Get grayscale pixels
-                grayscale_pixels = icon_grayscale.load()
-                if grayscale_pixels is None:
-                    logger.error(f"Failed to load grayscale pixels for {transport_type} icon")
-                    self._icon_cache[cache_key] = None
-                    return None
-
-                # Map grayscale values to palette indices
-                # 0 (black) -> palette index 0 (black)
-                # 255 (white) -> palette index 1 (white)
-                for y_pos in range(icon_grayscale.height):
-                    for x_pos in range(icon_grayscale.width):
-                        gray_value = grayscale_pixels[x_pos, y_pos]
-                        # 0 = black, 255 = white
-                        icon_p_pixels[x_pos, y_pos] = 0 if gray_value == 0 else 1
-
-                icon = icon_p
-
-                # Set palette: black=0, white=1
-                icon_palette = [0, 0, 0]  # Index 0: Black
-                icon_palette.extend([255, 255, 255])  # Index 1: White
-                # Fill remaining slots with white
-                while len(icon_palette) < 768:
-                    icon_palette.extend([255, 255, 255])
-                icon.putpalette(icon_palette)
-
-                # Get sample palette indices for logging
-                palette_indices: set[int] = set()
-                for x in range(min(icon.width, 10)):
-                    for y in range(min(icon.height, 10)):
-                        if icon_p_pixels is not None:
-                            palette_indices.add(icon_p_pixels[x, y])
-                logger.debug(
-                    f"Converted icon to palette mode: size={icon.size}, mode={icon.mode}, palette indices used: {palette_indices}"
-                )
+                # Keep icon in RGB mode - it will be pasted into the RGB image before dithering
+                icon = icon_rgb
 
                 # Resize to final size (always resize since we rendered at 2x)
                 # Use high-quality resampling for better icon rendering
@@ -727,33 +716,9 @@ class InkyRenderer:
         self._time_column_width = max_time_width + time_padding
         self._platform_time_gap = 6  # Gap between platform and time
 
-        # Create image with proper color palette support
-        img = Image.new("P", (self.config.width, self.config.height), self._white)
-        if hasattr(self.display, "palette"):
-            img.putpalette(self.display.palette)
-        else:
-            # Create a basic color palette for mock mode (white, black, red, yellow)
-            palette = []
-            # Order: black, white, green, blue, red, yellow, orange
-            # Using web version colors for blue and green (less saturated)
-            # Black (index 0)
-            palette.extend([0, 0, 0])
-            # White (index 1)
-            palette.extend([255, 255, 255])
-            # Green (index 2) - for realtime times (#047857 - darker green from web version)
-            palette.extend([4, 120, 87])
-            # Blue (index 3) - for headers (#087BC4 - less saturated blue from web version)
-            palette.extend([8, 123, 196])
-            # Red (index 4)
-            palette.extend([255, 0, 0])
-            # Yellow (index 5)
-            palette.extend([255, 255, 0])
-            # Orange (index 6)
-            palette.extend([255, 165, 0])
-            # Fill remaining palette slots with white
-            while len(palette) < 768:  # 256 colors * 3 RGB values
-                palette.extend([255, 255, 255])
-            img.putpalette(palette)
+        # Create RGB image first (we'll dither it later)
+        # This allows us to use proper RGB colors that will be dithered to the 7-color palette
+        img = Image.new("RGB", (self.config.width, self.config.height), (255, 255, 255))
         draw = ImageDraw.Draw(img)
 
         # Calculate heights (must match the calculation in _calculate_font_size)
@@ -805,16 +770,17 @@ class InkyRenderer:
             departures = group.get("departures", [])
 
             # Determine header background color
-            # Always use blue for headers (as requested)
-            header_bg_color = self._blue
+            # Use blue RGB color for headers (will be dithered to blue palette index)
+            # Blue from web version: #087BC4 = RGB(8, 123, 196)
+            header_bg_color_rgb = (8, 123, 196)
 
             # White text on colored background
-            header_text_color = self._white
+            header_text_color_rgb = (255, 255, 255)
 
             # First header starts at y=0, subsequent headers have spacing
             draw.rectangle(
                 [0, y, self.config.width, y + header_height],
-                fill=header_bg_color,
+                fill=header_bg_color_rgb,
             )
 
             # Draw header text (with padding from left edge)
@@ -826,13 +792,17 @@ class InkyRenderer:
             # Center vertically: header_y + (header_height - text_height) / 2
             # Adjust for text baseline (text_bbox[1] is negative for ascent)
             header_text_y = int(y + int(header_height - text_height) // 2 - int(text_bbox[1]))
-            draw.text((header_x, header_text_y), header, header_text_color, font=header_font)
+            draw.text((header_x, header_text_y), header, header_text_color_rgb, font=header_font)
             y += header_height
 
             # Render departures in this group
             for dep_data in departures:
                 self._render_departure_row(draw, dep_data, font, y)
                 y += line_height
+
+        # Apply dithering to convert RGB image to 7-color palette
+        # This is the key step for proper color rendering on e-ink displays
+        img = self._dither_image_to_palette(img)
 
         return img
 
@@ -864,18 +834,11 @@ class InkyRenderer:
             if img is None:
                 logger.error("Could not access ImageDraw._image")
                 return
-            # Ensure icon has the same palette as the main image
+
+            # Convert icon to RGB if needed (since main image is now RGB)
             if icon.mode == "P":
-                # Get the main image's palette
-                main_palette = img.getpalette()
-                if main_palette:
-                    icon.putpalette(main_palette)
-                elif hasattr(self.display, "palette"):
-                    icon.putpalette(self.display.palette)
-                else:
-                    # Fallback: use a default palette
-                    default_palette = [0, 0, 0, 255, 255, 255] + [255, 255, 255] * 254
-                    icon.putpalette(default_palette)
+                # Convert palette icon to RGB
+                icon = icon.convert("RGB")
 
             # Calculate icon position - icon should fill the entire row height
             # Since icon_size = line_height, it should start at y (text baseline)
@@ -885,47 +848,13 @@ class InkyRenderer:
             # Align icon top with text baseline minus ascent (so icon aligns with text)
             icon_y = int(y - text_ascent)
 
-            # Paste icon onto main image
-            # For palette mode, ensure icon uses main image's palette before pasting
-            if icon.mode == "P":
-                # Get main image palette
-                main_palette = img.getpalette()
-                if main_palette:
-                    # Icon has: 0=black, 1=white
-                    # Main image has: 0=black, 1=white, 2=green, 3=blue, etc.
-                    # So indices match - just set the palette to main image's palette
-                    icon.putpalette(main_palette)
-                # Paste directly (palette indices should match now)
-                img.paste(icon, (x, icon_y))
-            elif icon.mode == "RGBA":
+            # Paste icon onto main image (both are RGB now)
+            if icon.mode == "RGBA":
                 # Create a temporary image with alpha channel
                 img.paste(icon, (x, icon_y), icon)
             else:
-                # For other modes, paste directly
+                # For RGB or other modes, paste directly
                 img.paste(icon, (x, icon_y))
-
-            # Debug: Check if icon has any black pixels (index 0) BEFORE pasting
-            if icon.mode == "P":
-                icon_pixels = icon.load()
-                if icon_pixels is not None:
-                    black_count = 0
-                    white_count = 0
-                    total_pixels = icon.width * icon.height
-                    for py in range(icon.height):
-                        for px in range(icon.width):
-                            idx = icon_pixels[px, py]
-                            if idx == 0:  # Black
-                                black_count += 1
-                            elif idx == 1:  # White
-                                white_count += 1
-                    logger.info(
-                        f"Icon for {transport_type}: {black_count}/{total_pixels} black pixels (index 0), {white_count}/{total_pixels} white pixels (index 1)"
-                    )
-
-                    if black_count == 0:
-                        logger.error(
-                            f"WARNING: Icon for {transport_type} has NO black pixels! Icon will be invisible!"
-                        )
 
             logger.info(
                 f"Pasting icon for {transport_type} at ({x}, {icon_y}), size={icon_size}, mode={icon.mode}"
@@ -938,7 +867,7 @@ class InkyRenderer:
 
         # Draw route number
         route_text = dep_data.get("line", "")
-        draw.text((x, y), route_text, self._black, font=font)
+        draw.text((x, y), route_text, (0, 0, 0), font=font)  # Black RGB
         x += self.config.route_number_width + self.config.padding
 
         # Get platform and time text
@@ -982,7 +911,7 @@ class InkyRenderer:
             destination_text = ""  # No space for destination
 
         if destination_text:
-            draw.text((x, y), destination_text, self._black, font=font)
+            draw.text((x, y), destination_text, (0, 0, 0), font=font)  # Black RGB
 
         # Draw platform and time together on the right (vertically aligned like web version)
         # Platform appears as superscript before time (e.g., "1 20:19")
@@ -990,9 +919,10 @@ class InkyRenderer:
 
         if time_text:
             # Check if this is a realtime departure (green time in web version)
-            # Use actual green color (Spectra supports green!)
+            # Use green RGB color for realtime (will be dithered to green palette index)
+            # Green from web version: #047857 = RGB(4, 120, 87)
             is_realtime = dep_data.get("is_realtime", False)
-            time_color = self._green if is_realtime else self._black
+            time_color_rgb = (4, 120, 87) if is_realtime else (0, 0, 0)
 
             # Calculate actual time width for this specific time text
             time_bbox = font.getbbox(time_text)
@@ -1014,26 +944,27 @@ class InkyRenderer:
                 )
                 platform_y = y + baseline_offset
                 draw.text(
-                    (platform_x, platform_y), platform_text, self._black, font=self._platform_font
-                )
+                    (platform_x, platform_y),
+                    platform_text,
+                    (0, 0, 0),
+                    font=self._platform_font,
+                )  # Black RGB
 
                 # Time position: right-aligned
                 time_x = right_x - time_width
-                draw.text((time_x, y), time_text, time_color, font=font)
+                draw.text((time_x, y), time_text, time_color_rgb, font=font)
             else:
                 # Just time, right-aligned (green for realtime, black otherwise)
                 time_x = right_x - time_width
-                draw.text((time_x, y), time_text, time_color, font=font)
+                draw.text((time_x, y), time_text, time_color_rgb, font=font)
         elif platform_text:
             # Only platform, right-aligned in fixed column
             platform_x = right_x - self._platform_column_width
-            draw.text((platform_x, y), platform_text, self._black, font=self._platform_font)
+            draw.text((platform_x, y), platform_text, (0, 0, 0), font=self._platform_font)  # Black RGB
 
     def _render_no_departures(self) -> Image.Image:
         """Render 'No departures' message."""
-        img = Image.new("P", (self.config.width, self.config.height), self._white)
-        if hasattr(self.display, "palette"):
-            img.putpalette(self.display.palette)
+        img = Image.new("RGB", (self.config.width, self.config.height), (255, 255, 255))
         draw = ImageDraw.Draw(img)
 
         font_size = 32
@@ -1047,5 +978,7 @@ class InkyRenderer:
         x = (self.config.width - text_width) // 2
         y = (self.config.height - text_height) // 2
 
-        draw.text((x, y), text, self._black, font=font)
-        return img
+        draw.text((x, y), text, (0, 0, 0), font=font)  # Black RGB
+
+        # Apply dithering
+        return self._dither_image_to_palette(img)
