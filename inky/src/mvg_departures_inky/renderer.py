@@ -821,9 +821,9 @@ class InkyRenderer:
         self._line_height = int(line_height)
 
         # Recalculate icon size based on final line_height (after space distribution)
-        # Icon size should be exactly row_height - 2 (1 dot gap on top, 1 dot gap on bottom)
-        # This ensures icons don't overlap and have proper spacing
-        calculated_icon_size = line_height - 2
+        # Icon size should be row_height - 3 (1.5 dots gap on top and bottom to prevent touching header)
+        # This ensures icons don't overlap and have proper spacing from headers and adjacent rows
+        calculated_icon_size = line_height - 3
         # Ensure icon size is at least 1 pixel (can't be negative or zero)
         if calculated_icon_size < 1:
             logger.warning(
