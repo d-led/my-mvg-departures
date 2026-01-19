@@ -47,7 +47,7 @@ jobs:
         run: |
           uv pip install --cache-dir ~/.cache/uv -e ".[dev]"
 
-      - name: Install inky subproject
+      - name: Install inky subproject (without hardware dependencies)
         run: |
           cd inky
           uv pip install --cache-dir ~/.cache/uv -e ".[dev]"
@@ -101,7 +101,7 @@ jobs:
         run: |
           uv pip install --cache-dir ~/.cache/uv -e ".[dev]"
 
-      - name: Install inky subproject
+      - name: Install inky subproject (without hardware dependencies)
         run: |
           cd inky
           uv pip install --cache-dir ~/.cache/uv -e ".[dev]"
@@ -153,7 +153,7 @@ jobs:
         run: |
           uv pip install --cache-dir ~/.cache/uv -e ".[dev]"
 
-      - name: Install inky subproject
+      - name: Install inky subproject (without hardware dependencies)
         run: |
           cd inky
           uv pip install --cache-dir ~/.cache/uv -e ".[dev]"
