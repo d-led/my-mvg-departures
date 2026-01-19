@@ -218,10 +218,10 @@ async def main() -> None:
 
     # Create Inky display config from TOML
     # Loads from [inky] section and route-specific [[routes.display]] section
+    # Note: fill_vertical_space is always True for Inky displays (not configurable)
     inky_config = InkyDisplayConfig.from_toml(
         config_file=config.config_file,
         route_path=route_config.path,
-        route_fill_vertical_space=route_config.fill_vertical_space,
     )
 
     async with aiohttp.ClientSession() as session:

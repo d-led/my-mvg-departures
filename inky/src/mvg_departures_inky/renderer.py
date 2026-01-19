@@ -604,11 +604,9 @@ class InkyRenderer:
         if total_items == 0:
             return initial_font_size
 
-        # When filling space, use full height (no padding since we start at y=0)
-        # When not filling, use usable height (with padding)
-        available_height = (
-            self.config.height if self.config.fill_vertical_space else self.config.usable_height
-        )
+        # Always use full height for Inky displays (fill_vertical_space is always enabled)
+        # No padding since we start at y=0
+        available_height = self.config.height
 
         # Calculate header height with the given header font size
         header_font = self._get_font(header_font_size, bold=True)
@@ -616,7 +614,8 @@ class InkyRenderer:
         header_font_height = header_bbox[3] - header_bbox[1]
         header_height = header_font_height + self.config.line_spacing + 4
 
-        if self.config.fill_vertical_space:
+        # Always fill vertical space for Inky displays
+        if True:  # fill_vertical_space is always True for Inky
             # Try font sizes from initial_font_size down to min to find the largest that fits
             # This maximizes font size usage and fills vertical space better
             best_font_size = None
@@ -688,8 +687,8 @@ class InkyRenderer:
     def _calculate_font_size(self, total_items: int, header_count: int) -> int:
         """Calculate optimal font size to fit all content and maximize when filling space.
 
-        When fill_vertical_space is enabled, finds the font size that makes total_height
-        equal to available_height (or as close as possible).
+        Finds the font size that makes total_height equal to available_height (or as close as possible).
+        For Inky displays, fill_vertical_space is always enabled.
 
         Args:
             total_items: Total number of departure rows (actual count from data).
@@ -701,13 +700,12 @@ class InkyRenderer:
         if total_items == 0:
             return self.config.max_font_size
 
-        # When filling space, use full height (no padding since we start at y=0)
-        # When not filling, use usable height (with padding)
-        available_height = (
-            self.config.height if self.config.fill_vertical_space else self.config.usable_height
-        )
+        # Always use full height for Inky displays (fill_vertical_space is always enabled)
+        # No padding since we start at y=0
+        available_height = self.config.height
 
-        if self.config.fill_vertical_space:
+        # Always fill vertical space for Inky displays
+        if True:  # fill_vertical_space is always True for Inky
             # Try all font sizes from max to min to find the one that maximizes space usage
             # Keep track of the best font size (largest total_height that still fits)
             best_font_size = None
@@ -875,7 +873,9 @@ class InkyRenderer:
         # Body font can be up to 110% of header size (slightly larger is OK if it fits better)
         # or max_font_size, whichever is smaller
         max_body_font_size = min(
-            int(header_font_size * 1.1),  # Allow body to be up to 10% larger than header if it fits better
+            int(
+                header_font_size * 1.1
+            ),  # Allow body to be up to 10% larger than header if it fits better
             self.config.max_font_size,  # But also respect max_font_size
         )
         # Verify this font size fits vertically with the calculated header font size
@@ -883,18 +883,18 @@ class InkyRenderer:
         font_size = self._calculate_font_size_with_header(
             total_departures, header_count, header_font_size, max_body_font_size
         )
-        
-        # Apply font scaling factor when filling vertical space (only affects body fonts, not headers)
+
+        # Apply font scaling factor (only affects body fonts, not headers)
         # This allows fine-tuning the body font size independently of header font size
-        if self.config.fill_vertical_space:
-            font_size = max(
-                self.config.min_font_size,
-                int(font_size * self.config.font_scaling_factor_when_filling),
-            )
-            logger.debug(
-                f"Applied font_scaling_factor_when_filling={self.config.font_scaling_factor_when_filling}: "
-                f"body font size adjusted to {font_size}"
-            )
+        # fill_vertical_space is always enabled for Inky displays
+        font_size = max(
+            self.config.min_font_size,
+            int(font_size * self.config.font_scaling_factor_when_filling),
+        )
+        logger.debug(
+            f"Applied font_scaling_factor_when_filling={self.config.font_scaling_factor_when_filling}: "
+            f"body font size adjusted to {font_size}"
+        )
         font = self._get_font(font_size, bold=False)
         platform_font_size = max(int(font_size * 0.7), 10)
         self._platform_font = self._get_font(platform_font_size, bold=False)
@@ -980,13 +980,11 @@ class InkyRenderer:
             - self.config.line_spacing
         )
 
-        # Verify we're using full height when filling space
-        available_height = (
-            self.config.height if self.config.fill_vertical_space else self.config.usable_height
-        )
+        # Always use full height for Inky displays (fill_vertical_space is always enabled)
+        available_height = self.config.height
 
-        # If filling vertical space and there's remaining space, distribute it evenly among rows
-        if self.config.fill_vertical_space and total_departures > 0:
+        # If there's remaining space, distribute it evenly among rows
+        if total_departures > 0:
             height_diff = available_height - total_height
             if height_diff > 0:
                 # Distribute remaining space evenly among all departure rows
@@ -1039,7 +1037,6 @@ class InkyRenderer:
         logger.info(
             f"Rendering: Total height: {total_height}, "
             f"Available height: {available_height}, "
-            f"Fill vertical space: {self.config.fill_vertical_space}, "
             f"Font size: {font_size}, Line height: {line_height}"
         )
 

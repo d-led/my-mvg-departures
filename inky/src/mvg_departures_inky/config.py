@@ -54,7 +54,9 @@ FONT_FAMILY_HK_GROTESK = "hk_grotesk"  # Default: HK Grotesk (Bold for headers, 
 FONT_FAMILY_FREDOKA_ONE = "fredoka_one"  # Alternative: Fredoka One (configurable)
 
 # Font scaling when filling vertical space
-FONT_SCALING_FACTOR_WHEN_FILLING = 0.8  # Scale body fonts by this factor when fill_vertical_space is enabled
+FONT_SCALING_FACTOR_WHEN_FILLING = (
+    0.8  # Scale body fonts by this factor (fill_vertical_space is always enabled for Inky)
+)
 
 
 @dataclass
@@ -76,12 +78,13 @@ class InkyDisplayConfig:
     line_spacing: int = LINE_SPACING
     time_toggle_interval: int = TIME_TOGGLE_INTERVAL_SECONDS
     time_mode: str = TIME_MODE_ABSOLUTE  # "relative", "absolute", or "alternating"
-    fill_vertical_space: bool = True
+    # Note: fill_vertical_space is always True for Inky displays (not configurable)
+    # E-ink displays don't have pagination/scrolling, so we always fill the available space
     font_family: str = (
         FONT_FAMILY_HK_GROTESK  # Font family: "hk_grotesk" (default) or "fredoka_one"
     )
     font_scaling_factor_when_filling: float = (
-        FONT_SCALING_FACTOR_WHEN_FILLING  # Scale body fonts by this factor when fill_vertical_space is enabled (only affects route fonts, not headers)
+        FONT_SCALING_FACTOR_WHEN_FILLING  # Scale body fonts by this factor (only affects route fonts, not headers)
     )
 
     @property
@@ -161,14 +164,12 @@ class InkyDisplayConfig:
         cls,
         config_file: str | None = None,
         route_path: str | None = None,
-        route_fill_vertical_space: bool | None = None,
     ) -> "InkyDisplayConfig":
         """Create InkyDisplayConfig from TOML configuration.
 
         Args:
             config_file: Path to TOML config file. If None, uses defaults.
             route_path: Optional route path to read route-specific inky settings.
-            route_fill_vertical_space: Optional route-specific fill_vertical_space setting.
 
         Returns:
             InkyDisplayConfig instance with values from TOML or defaults.
@@ -222,9 +223,9 @@ class InkyDisplayConfig:
                                                 else:
                                                     inky_settings["time_mode"] = TIME_MODE_ABSOLUTE
                                             if "font_scaling_factor_when_filling" in display:
-                                                inky_settings["font_scaling_factor_when_filling"] = display[
+                                                inky_settings[
                                                     "font_scaling_factor_when_filling"
-                                                ]
+                                                ] = display["font_scaling_factor_when_filling"]
                                             logger.debug(
                                                 f"Loaded route-specific inky settings for '{route_path}': {inky_settings}"
                                             )
@@ -232,13 +233,11 @@ class InkyDisplayConfig:
             except Exception as e:
                 logger.warning(f"Failed to load inky settings from TOML: {e}, using defaults")
 
-        # Route-specific fill_vertical_space overrides everything
-        if route_fill_vertical_space is not None:
-            inky_settings["fill_vertical_space"] = route_fill_vertical_space
+        # Note: fill_vertical_space is always True for Inky displays (not configurable)
+        # E-ink displays don't have pagination/scrolling, so we always fill the available space
 
         # Create config with TOML values or defaults
         return cls(
-            fill_vertical_space=inky_settings.get("fill_vertical_space", True),
             time_mode=inky_settings.get("time_mode", TIME_MODE_ABSOLUTE),
             font_family=inky_settings.get("font_family", FONT_FAMILY_HK_GROTESK),
             font_scaling_factor_when_filling=inky_settings.get(
