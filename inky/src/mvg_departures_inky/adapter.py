@@ -237,17 +237,23 @@ class InkyDisplayAdapter(DisplayAdapter):
             # Use transpose (not rotate) to avoid pixel stretching - it's a perfect 90-degree swap
             if self._needs_rotation:
                 # Rotate 90 degrees clockwise: portrait (480x800) -> landscape (800x480)
-                # Transpose.ROTATE_90 does a perfect pixel swap without interpolation
-                img = img.transpose(Image.Transpose.ROTATE_90)
-                logger.debug(
-                    f"Rotated rendered image: {img.size} (portrait -> landscape, no stretching)"
+                # ROTATE_270 = 270° counter-clockwise = 90° clockwise (perfect pixel swap, no interpolation)
+                original_size = img.size
+                img = img.transpose(Image.Transpose.ROTATE_270)
+                logger.info(
+                    f"Rotated rendered image: {original_size} -> {img.size} "
+                    f"(portrait -> landscape, no stretching)"
                 )
 
             # Verify image matches display resolution (should match after rotation if needed)
-            if hasattr(self.display, "resolution") and img.size != self.display.resolution:
-                logger.warning(
-                    f"Image size {img.size} doesn't match display resolution {self.display.resolution}. "
-                    "This may cause issues. Dimensions should match after rotation."
+            expected_size = (self.display.width, self.display.height)
+            if img.size != expected_size:
+                logger.error(
+                    f"Image size {img.size} doesn't match display resolution {expected_size}. "
+                    f"Rotation flag: {self._needs_rotation}"
+                )
+                raise ValueError(
+                    f"Image size {img.size} doesn't match expected display size {expected_size}"
                 )
 
             # Set image on display (with optional saturation parameter for Spectra)

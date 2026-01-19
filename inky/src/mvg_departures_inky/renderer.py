@@ -351,7 +351,9 @@ class InkyRenderer:
                             palette_rgb.append((r, g, b))
                         elif isinstance(color_value, (tuple, list)) and len(color_value) >= 3:
                             # Already in (R, G, B) format
-                            palette_rgb.append((int(color_value[0]), int(color_value[1]), int(color_value[2])))
+                            palette_rgb.append(
+                                (int(color_value[0]), int(color_value[1]), int(color_value[2]))
+                            )
             except (AttributeError, TypeError, ValueError) as e:
                 logger.debug(f"Could not use _palette_blend: {e}")
                 pass
