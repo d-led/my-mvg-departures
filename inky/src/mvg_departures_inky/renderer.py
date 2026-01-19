@@ -129,16 +129,35 @@ class InkyRenderer:
         self._last_time_toggle = datetime.now(UTC)
 
         # Use actual display dimensions if available (inky.width, inky.height)
-        # This ensures we use the real display size instead of hardcoded config values
+        # BUT: If config dimensions don't match display dimensions, it means the adapter
+        # already swapped them for portrait rendering - don't overwrite!
         if hasattr(display, "width") and hasattr(display, "height"):
             # Only set if display has actual numeric values (not MagicMock)
             display_width = display.width
             display_height = display.height
             if isinstance(display_width, (int, float)) and isinstance(display_height, (int, float)):
-                self.config.width = int(display_width)
-                self.config.height = int(display_height)
+                # Only overwrite if config dimensions match display (no swap was done)
+                # If they don't match, adapter already swapped them for rotation - preserve them!
+                config_before = (self.config.width, self.config.height)
+                if self.config.width == display_width and self.config.height == display_height:
+                    # Config matches display - use display dimensions (no swap needed)
+                    self.config.width = int(display_width)
+                    self.config.height = int(display_height)
+                    logger.debug(
+                        f"Renderer: config matched display, using display dimensions: "
+                        f"{self.config.width}x{self.config.height}"
+                    )
+                else:
+                    # Config was already swapped by adapter - keep the swapped dimensions!
+                    logger.info(
+                        f"Renderer: preserving swapped config dimensions: "
+                        f"{self.config.width}x{self.config.height} "
+                        f"(display is {display_width}x{display_height}, "
+                        f"config was {config_before})"
+                    )
             logger.info(
-                f"Using display dimensions from display object: {display.width}x{display.height}"
+                f"Renderer final dimensions: {self.config.width}x{self.config.height} "
+                f"(display: {display.width}x{display.height})"
             )
 
         # Store display colors (Inky Impression Spectra supports 7 colors)
