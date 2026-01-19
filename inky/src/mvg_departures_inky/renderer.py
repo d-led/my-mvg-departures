@@ -356,7 +356,6 @@ class InkyRenderer:
                             )
             except (AttributeError, TypeError, ValueError) as e:
                 logger.debug(f"Could not use _palette_blend: {e}")
-                pass
 
         if palette_rgb is None and hasattr(self.display, "palette") and self.display.palette:
             # Use display's palette directly
