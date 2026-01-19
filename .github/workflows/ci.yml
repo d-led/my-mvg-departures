@@ -35,7 +35,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/uv
-          key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml') }}
+          key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml', 'inky/pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-uv-
 
@@ -47,9 +47,19 @@ jobs:
         run: |
           uv pip install --cache-dir ~/.cache/uv -e ".[dev]"
 
+      - name: Install inky subproject
+        run: |
+          cd inky
+          uv pip install --cache-dir ~/.cache/uv -e ".[dev]"
+
       - name: Run tests with coverage
         run: |
           uv run pytest --cov=mvg_departures --cov-report=xml --cov-report=term-missing -m "not integration" -x
+
+      - name: Run inky tests
+        run: |
+          cd inky
+          uv run pytest -m "not integration" -x
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -79,7 +89,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/uv
-          key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml') }}
+          key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml', 'inky/pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-uv-
 
@@ -91,13 +101,24 @@ jobs:
         run: |
           uv pip install --cache-dir ~/.cache/uv -e ".[dev]"
 
+      - name: Install inky subproject
+        run: |
+          cd inky
+          uv pip install --cache-dir ~/.cache/uv -e ".[dev]"
+
       - name: Check code formatting with Black
         run: |
           uv run black --check src tests
+          if [ -d "inky/src" ]; then
+            uv run black --check inky/src
+          fi
 
       - name: Lint with Ruff
         run: |
           uv run ruff check src tests
+          if [ -d "inky/src" ]; then
+            uv run ruff check inky/src
+          fi
 
   type-check:
     name: Type Check
@@ -120,7 +141,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/uv
-          key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml') }}
+          key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml', 'inky/pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-uv-
 
@@ -132,9 +153,18 @@ jobs:
         run: |
           uv pip install --cache-dir ~/.cache/uv -e ".[dev]"
 
+      - name: Install inky subproject
+        run: |
+          cd inky
+          uv pip install --cache-dir ~/.cache/uv -e ".[dev]"
+
       - name: Type check with mypy
         run: |
           uv run mypy src
+          if [ -d "inky/src" ]; then
+            cd inky
+            uv run mypy src
+          fi
 
   build:
     name: Build Package
