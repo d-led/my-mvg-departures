@@ -69,25 +69,25 @@ if ! "$PYTHON" -c "import mvg_departures" 2>/dev/null; then
     echo "" >&2
 fi
 
-# Check if inky package is installed
-if ! "$PYTHON" -c "import mvg_departures_inky" 2>/dev/null; then
+# Check if inky package is installed (with hardware dependencies)
+if ! "$PYTHON" -c "import mvg_departures_inky" 2>/dev/null || ! "$PYTHON" -c "import inky" 2>/dev/null; then
     echo "Inky package not installed. Installing..." >&2
     echo "" >&2
     
     # Try uv first, then pip
     if command -v "$UV" >/dev/null 2>&1 && "$UV" --version >/dev/null 2>&1; then
-        echo "Installing with uv..." >&2
-        "$UV" pip install -e . || {
+        echo "Installing with uv (including hardware support)..." >&2
+        "$UV" pip install -e '.[hardware]' || {
             echo "uv failed, trying pip..." >&2
-            "$PIP" install -e . || {
-                echo "Error: Failed to install inky package" >&2
+            "$PIP" install -e '.[hardware]' || {
+                echo "Error: Failed to install inky package with hardware support" >&2
                 exit 1
             }
         }
     else
-        echo "Installing with pip..." >&2
-        "$PIP" install -e . || {
-            echo "Error: Failed to install inky package" >&2
+        echo "Installing with pip (including hardware support)..." >&2
+        "$PIP" install -e '.[hardware]' || {
+            echo "Error: Failed to install inky package with hardware support" >&2
             exit 1
         }
     fi
