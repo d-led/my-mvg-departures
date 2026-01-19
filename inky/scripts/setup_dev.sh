@@ -85,6 +85,36 @@ _print_usage_info() {
     echo "" >&2
 }
 
+# Check and install system dependencies on macOS
+if [[ "$(uname)" == "Darwin" ]]; then
+    echo "Checking macOS system dependencies..." >&2
+    if ! command -v brew >/dev/null 2>&1; then
+        echo "Warning: Homebrew not found. Cairo library may not be available." >&2
+        echo "  Install Homebrew from https://brew.sh, then run:" >&2
+        echo "  brew install cairo librsvg pkg-config" >&2
+        echo "" >&2
+    else
+        # Check if Cairo is installed
+        if ! brew list cairo >/dev/null 2>&1; then
+            echo "Installing Cairo library via Homebrew (required for SVG icon rendering)..." >&2
+            if brew install cairo librsvg pkg-config >&2; then
+                echo "✓ Cairo library installed." >&2
+            else
+                echo "Warning: Failed to install Cairo library. SVG icons may not work." >&2
+                echo "  You can install it manually with: brew install cairo librsvg pkg-config" >&2
+            fi
+            echo "" >&2
+        else
+            echo "✓ Cairo library already installed." >&2
+            echo "" >&2
+        fi
+        
+        # Set PKG_CONFIG_PATH for cairosvg to find Cairo
+        BREW_PREFIX=$(brew --prefix)
+        export PKG_CONFIG_PATH="${BREW_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+    fi
+fi
+
 # Upgrade pip first
 echo "Upgrading pip..." >&2
 "$PYTHON" -m pip install --upgrade pip --quiet >&2
@@ -173,11 +203,11 @@ if [ "$INSTALL_SUCCESS" = false ]; then
     if [ "$UV_AVAILABLE" = true ]; then
         echo "Installing dependencies with uv (without hardware support)..." >&2
         if [ -f "$UV" ]; then
-            if "$UV" pip install -e ".[dev]" 2>&1; then
+            if env PKG_CONFIG_PATH="${PKG_CONFIG_PATH:-}" "$UV" pip install -e ".[dev]" 2>&1; then
                 INSTALL_SUCCESS=true
                 echo "✓ Dependencies installed with uv (development mode)." >&2
             fi
-        elif "$UV" pip install -e ".[dev]" 2>&1; then
+        elif env PKG_CONFIG_PATH="${PKG_CONFIG_PATH:-}" "$UV" pip install -e ".[dev]" 2>&1; then
             INSTALL_SUCCESS=true
             echo "✓ Dependencies installed with uv (development mode)." >&2
         fi
@@ -187,7 +217,7 @@ fi
 # Fall back to pip
 if [ "$INSTALL_SUCCESS" = false ]; then
     echo "Using pip to install dependencies (without hardware support)..." >&2
-    if "$PIP" install -e ".[dev]" 2>&1; then
+    if env PKG_CONFIG_PATH="${PKG_CONFIG_PATH:-}" "$PIP" install -e ".[dev]" 2>&1; then
         INSTALL_SUCCESS=true
         echo "✓ Dependencies installed with pip (development mode)." >&2
     else

@@ -28,6 +28,11 @@ cd inky
 ./scripts/setup_dev.sh
 ```
 
+**Note for macOS:** The setup script will automatically install the Cairo library via Homebrew (if Homebrew is installed). If you don't have Homebrew, install it from https://brew.sh, or manually install Cairo:
+```bash
+brew install cairo librsvg pkg-config
+```
+
 ### Manual Installation
 
 1. First, install the parent project:
@@ -146,6 +151,8 @@ This is useful for:
 
 ## Requirements
 
-- Raspberry Pi with Inky Impression display connected
+- Raspberry Pi with Inky Impression display connected (for hardware mode)
 - Python 3.12+
-- Inky library installed (via pip or system package)
+- Inky library installed (via pip or system package, Linux only)
+- **macOS development:** Cairo library (installed automatically by setup script if Homebrew is available)
+  - If Homebrew is not available, install manually: `brew install cairo librsvg pkg-config`
