@@ -59,7 +59,7 @@ jobs:
       - name: Run inky tests
         run: |
           cd inky
-          uv run pytest -m "not integration" -x
+          uv run python -m pytest -m "not integration" -x
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
@@ -163,7 +163,7 @@ jobs:
           uv run mypy src
           if [ -d "inky/src" ]; then
             cd inky
-            uv run mypy src
+            uv run python -m mypy src
           fi
 
   build:
