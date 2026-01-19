@@ -129,7 +129,7 @@ async def _fetch_and_display_loop(
     adapter: InkyDisplayAdapter,
     grouping_service: DepartureGroupingService,
     route_config: RouteConfiguration,
-    config: AppConfig,
+    inky_config: InkyDisplayConfig,
 ) -> None:
     """Continuously fetch and display departures."""
     logger.info(f"Starting display loop for route '{route_config.path}'")
@@ -150,11 +150,8 @@ async def _fetch_and_display_loop(
             await adapter.display_departures(all_grouped_departures)
 
             # Wait before next update
-            refresh_interval = (
-                route_config.refresh_interval_seconds
-                if route_config.refresh_interval_seconds is not None
-                else config.refresh_interval_seconds
-            )
+            # Use Inky-specific refresh interval (separate from web version)
+            refresh_interval = inky_config.refresh_interval_seconds
             logger.debug(f"Waiting {refresh_interval} seconds before next update")
             await asyncio.sleep(refresh_interval)
         except asyncio.CancelledError:
@@ -253,7 +250,7 @@ async def main() -> None:
             await adapter.start()
 
             # Start display loop
-            await _fetch_and_display_loop(adapter, grouping_service, route_config, config)
+            await _fetch_and_display_loop(adapter, grouping_service, route_config, inky_config)
         except KeyboardInterrupt:
             logger.info("Shutting down...")
             await adapter.stop()

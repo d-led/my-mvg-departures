@@ -52,6 +52,10 @@ FONT_SCALING_FACTOR_WHEN_FILLING = (
     0.8  # Scale body fonts by this factor (fill_vertical_space is always enabled for Inky)
 )
 
+# Default refresh interval for Inky displays (in seconds)
+# E-ink displays update slower than web displays, so a longer interval is often preferred
+DEFAULT_REFRESH_INTERVAL_SECONDS = 60  # 1 minute default for e-ink displays
+
 
 @dataclass
 class InkyDisplayConfig:
@@ -81,6 +85,9 @@ class InkyDisplayConfig:
     dithering_enabled: bool = (
         True  # Enable dithering for better color representation (disable for faster rendering)
     )
+    # Refresh interval (in seconds) - separate from web version
+    # E-ink displays update slower, so a longer interval is often preferred
+    refresh_interval_seconds: int = DEFAULT_REFRESH_INTERVAL_SECONDS
 
     @property
     def route_section_width(self) -> int:
@@ -233,6 +240,9 @@ class InkyDisplayConfig:
                 "font_scaling_factor_when_filling", FONT_SCALING_FACTOR_WHEN_FILLING
             ),
             dithering_enabled=inky_settings.get("dithering_enabled", True),
+            refresh_interval_seconds=inky_settings.get(
+                "refresh_interval_seconds", DEFAULT_REFRESH_INTERVAL_SECONDS
+            ),
         )
 
     def get_route_icon_path(self, transport_type: str) -> Path | None:

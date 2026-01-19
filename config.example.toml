@@ -89,6 +89,12 @@ time_mode = "absolute"
 # Disable for faster rendering (but colors may look less accurate)
 dithering_enabled = true
 
+# Refresh interval (in seconds) - separate from web version's refresh_interval_seconds
+# E-ink displays update slower than web displays, so a longer interval is often preferred
+# Default: 60 seconds (1 minute)
+# This controls how often the Inky display fetches new departure data and updates the screen
+refresh_interval_seconds = 60
+
 # Stops configuration
 [[stops]]
 station_id = "de:09162:1110"
