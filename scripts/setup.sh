@@ -28,35 +28,11 @@ if [ "$(printf '%s\n' "$REQUIRED_VERSION" "$PYTHON_VERSION" | sort -V | head -n1
     echo "" >&2
 fi
 
-# Determine virtual environment path
-VENV_PATH="${PROJECT_ROOT}/.venv"
+# Source common setup functions
+source "${SCRIPT_DIR}/setup-common.sh"
 
-# Create virtual environment if it doesn't exist
-if [ ! -d "$VENV_PATH" ]; then
-    echo "Creating virtual environment at ${VENV_PATH}..." >&2
-    python3 -m venv "$VENV_PATH"
-    echo "✓ Virtual environment created." >&2
-    echo "" >&2
-else
-    echo "✓ Virtual environment already exists at ${VENV_PATH}" >&2
-    echo "" >&2
-fi
-
-# Determine Python and pip paths (cross-platform)
-if [ -f "${VENV_PATH}/bin/python" ]; then
-    PYTHON="${VENV_PATH}/bin/python"
-    PIP="${VENV_PATH}/bin/pip"
-    POETRY="${VENV_PATH}/bin/poetry"
-    UV="${VENV_PATH}/bin/uv"
-elif [ -f "${VENV_PATH}/Scripts/python.exe" ]; then
-    PYTHON="${VENV_PATH}/Scripts/python.exe"
-    PIP="${VENV_PATH}/Scripts/pip.exe"
-    POETRY="${VENV_PATH}/Scripts/poetry.exe"
-    UV="${VENV_PATH}/Scripts/uv.exe"
-else
-    echo "Error: Could not find Python in virtual environment" >&2
-    exit 1
-fi
+# Setup virtual environment
+setup_venv "$PROJECT_ROOT"
 
 # Helper functions
 _check_package_installed() {
@@ -83,12 +59,6 @@ _print_usage_info() {
     echo "" >&2
 }
 
-# Upgrade pip first
-echo "Upgrading pip..." >&2
-"$PYTHON" -m pip install --upgrade pip --quiet >&2
-echo "✓ pip upgraded." >&2
-echo "" >&2
-
 # Check if already installed
 if _check_package_installed; then
     echo "✓ Package already installed." >&2
@@ -99,72 +69,15 @@ if _check_package_installed; then
     exit 0
 fi
 
-# Try to install using available package managers
-INSTALL_SUCCESS=false
-UV_AVAILABLE=false
-
-# Try Poetry first (if poetry.lock exists)
-if [ -f "${PROJECT_ROOT}/poetry.lock" ] && command -v poetry >/dev/null 2>&1; then
-    echo "Using Poetry to install dependencies..." >&2
-    if poetry install --with dev 2>&1; then
-        INSTALL_SUCCESS=true
-        echo "✓ Dependencies installed with Poetry." >&2
-    else
-        echo "Warning: Poetry installation failed, trying alternatives..." >&2
+# Install main project
+if ! install_with_available_manager "$PROJECT_ROOT" ".[dev]"; then
+    echo "Warning: Failed to install with dev dependencies, trying core dependencies..." >&2
+    if ! "$PIP" install -e . 2>&1; then
+        echo "Error: Failed to install package" >&2
+        exit 1
     fi
-fi
-
-# Try uv if Poetry didn't work
-if [ "$INSTALL_SUCCESS" = false ]; then
-    # Install or find uv
-    UV_AVAILABLE=false
-    
-    if [ -f "$UV" ]; then
-        UV_AVAILABLE=true
-        echo "Using uv from virtual environment..." >&2
-    elif command -v uv >/dev/null 2>&1 && uv --version >/dev/null 2>&1; then
-        UV_AVAILABLE=true
-        UV="uv"
-        echo "Using system uv..." >&2
-    else
-        echo "Installing uv..." >&2
-        if "$PYTHON" -m pip install uv --quiet >&2; then
-            UV_AVAILABLE=true
-            echo "✓ uv installed." >&2
-        fi
-    fi
-    
-    if [ "$UV_AVAILABLE" = true ]; then
-        echo "Installing dependencies with uv..." >&2
-        if [ -f "$UV" ]; then
-            if "$UV" pip install -e ".[dev]" 2>&1; then
-                INSTALL_SUCCESS=true
-                echo "✓ Dependencies installed with uv." >&2
-            fi
-        elif "$UV" pip install -e ".[dev]" 2>&1; then
-            INSTALL_SUCCESS=true
-            echo "✓ Dependencies installed with uv." >&2
-        fi
-    fi
-fi
-
-# Fall back to pip
-if [ "$INSTALL_SUCCESS" = false ]; then
-    echo "Using pip to install dependencies..." >&2
-    if "$PIP" install -e ".[dev]" 2>&1; then
-        INSTALL_SUCCESS=true
-        echo "✓ Dependencies installed with pip." >&2
-    else
-        echo "Warning: Failed to install with dev dependencies, trying core dependencies..." >&2
-        if "$PIP" install -e . 2>&1; then
-            echo "✓ Core dependencies installed. Dev dependencies may be missing." >&2
-            echo "  You can install them later with: $PIP install -e \".[dev]\"" >&2
-            INSTALL_SUCCESS=true
-        else
-            echo "Error: Failed to install package" >&2
-            exit 1
-        fi
-    fi
+    echo "✓ Core dependencies installed. Dev dependencies may be missing." >&2
+    echo "  You can install them later with: $PIP install -e \".[dev]\"" >&2
 fi
 
 # Verify installation
@@ -172,102 +85,6 @@ if ! _check_package_installed; then
     echo "Warning: Package installation may have failed. Please check the output above." >&2
     echo "  You can try manually: $PIP install -e \".[dev]\"" >&2
     exit 1
-fi
-
-# Install inky subproject if it exists
-INKY_ROOT="${PROJECT_ROOT}/inky"
-if [ -d "$INKY_ROOT" ] && [ -f "${INKY_ROOT}/pyproject.toml" ]; then
-    echo "" >&2
-    echo "Installing Inky subproject..." >&2
-    cd "$INKY_ROOT"
-    
-    # Check if inky package is already installed
-    if "$PYTHON" -c "import mvg_departures_inky" >/dev/null 2>&1; then
-        echo "✓ Inky package already installed." >&2
-    else
-        # Detect platform: Linux = hardware support, macOS/Windows = dev only
-        INSTALL_HARDWARE=false
-        if [ "$(uname)" = "Linux" ]; then
-            INSTALL_HARDWARE=true
-            echo "Detected Linux - installing with hardware support..." >&2
-        else
-            echo "Detected macOS/Windows - installing in development mode (no hardware dependencies)..." >&2
-        fi
-        
-        # Try to install inky project
-        INKY_INSTALL_SUCCESS=false
-        
-        # Try uv first
-        UV_CMD=""
-        if [ -f "$UV" ]; then
-            UV_CMD="$UV"
-        elif command -v uv >/dev/null 2>&1 && uv --version >/dev/null 2>&1; then
-            UV_CMD="uv"
-        fi
-        
-        if [ -n "$UV_CMD" ]; then
-            if [ "$INSTALL_HARDWARE" = true ]; then
-                echo "Installing Inky dependencies with uv (hardware support)..." >&2
-                if "$UV_CMD" pip install -e ".[dev,hardware]" 2>&1; then
-                    INKY_INSTALL_SUCCESS=true
-                    echo "✓ Inky dependencies installed with uv (hardware support)." >&2
-                fi
-            else
-                echo "Installing Inky dependencies with uv (development mode)..." >&2
-                if "$UV_CMD" pip install -e ".[dev]" 2>&1; then
-                    INKY_INSTALL_SUCCESS=true
-                    echo "✓ Inky dependencies installed with uv (development mode)." >&2
-                fi
-            fi
-        fi
-        
-        # Fall back to pip
-        if [ "$INKY_INSTALL_SUCCESS" = false ]; then
-            if [ "$INSTALL_HARDWARE" = true ]; then
-                echo "Installing Inky dependencies with pip (hardware support)..." >&2
-                if "$PIP" install -e ".[dev,hardware]" 2>&1; then
-                    INKY_INSTALL_SUCCESS=true
-                    echo "✓ Inky dependencies installed with pip (hardware support)." >&2
-                else
-                    echo "Warning: Failed to install with hardware support, trying without..." >&2
-                    if "$PIP" install -e ".[dev]" 2>&1; then
-                        INKY_INSTALL_SUCCESS=true
-                        echo "✓ Inky dependencies installed with pip (development mode)." >&2
-                    fi
-                fi
-            else
-                echo "Installing Inky dependencies with pip (development mode)..." >&2
-                if "$PIP" install -e ".[dev]" 2>&1; then
-                    INKY_INSTALL_SUCCESS=true
-                    echo "✓ Inky dependencies installed with pip (development mode)." >&2
-                else
-                    echo "Warning: Failed to install with dev dependencies, trying core..." >&2
-                    if "$PIP" install -e . 2>&1; then
-                        INKY_INSTALL_SUCCESS=true
-                        echo "✓ Inky core dependencies installed." >&2
-                    fi
-                fi
-            fi
-        fi
-        
-        # Verify inky installation
-        if [ "$INKY_INSTALL_SUCCESS" = true ]; then
-            if "$PYTHON" -c "import mvg_departures_inky" >/dev/null 2>&1; then
-                echo "✓ Inky package verified." >&2
-            else
-                echo "Warning: Inky package installation may have failed." >&2
-            fi
-        else
-            echo "Warning: Failed to install Inky subproject. You can try manually:" >&2
-            if [ "$INSTALL_HARDWARE" = true ]; then
-                echo "  cd inky && $PIP install -e \".[dev,hardware]\"" >&2
-            else
-                echo "  cd inky && $PIP install -e \".[dev]\"" >&2
-            fi
-        fi
-    fi
-    
-    cd "$PROJECT_ROOT"
 fi
 
 echo "" >&2

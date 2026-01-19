@@ -94,6 +94,39 @@ export CONFIG_FILE=my.config.toml
    ./scripts/run_mock.sh
    ```
 
+### Deployment on Raspberry Pi
+
+For production deployment on Raspberry Pi, use the deployment script:
+
+```bash
+cd inky
+sudo ./scripts/deploy-rpi.sh
+```
+
+This script will:
+1. Set up the project and install all dependencies (including numpy via apt to avoid build issues)
+2. Install and start the systemd service
+3. Configure the service to start automatically on boot
+
+**Manual deployment steps** (if you prefer to do it step by step):
+
+1. **Setup the project:**
+   ```bash
+   cd inky
+   ./scripts/setup.sh
+   ```
+   This installs all dependencies including hardware support.
+
+2. **Install as systemd service:**
+   ```bash
+   sudo ./scripts/install-service.sh
+   ```
+
+The service will:
+- Start automatically on boot
+- Restart automatically if it crashes
+- Log to systemd journal (view with `journalctl -u mvg-departures-inky -f`)
+
 ### Configuration
 
 The scripts support the `CONFIG_FILE` environment variable to specify a custom config file:
@@ -156,3 +189,32 @@ This is useful for:
 - Inky library installed (via pip or system package, Linux only)
 - **macOS development:** Cairo library (installed automatically by setup script if Homebrew is available)
   - If Homebrew is not available, install manually: `brew install cairo librsvg pkg-config`
+
+## Troubleshooting
+
+### "No space left on device" error during installation
+
+If you encounter `OSError: [Errno 28] No space left on device` when installing on a Raspberry Pi (especially Pi Zero), this is because pip is trying to build numpy from source, which requires significant temporary space.
+
+**Root cause:** Building numpy from source needs ~500MB+ of temporary space. On Raspberry Pi, `/tmp` is often a tmpfs (RAM-based filesystem) with limited size (typically 214MB), which is insufficient for building numpy and its build dependencies (cmake, patchelf, etc.).
+
+**Solution:** The setup script automatically:
+1. Installs numpy via apt first (pre-built binaries, no compilation needed)
+2. If apt fails, uses `~/.tmp` instead of `/tmp` for build files (which has more space on the main filesystem)
+
+If installing manually:
+
+1. **Preferred:** Install numpy via apt first:
+   ```bash
+   sudo apt-get update
+   sudo apt-get install -y python3-numpy
+   ```
+
+2. **Alternative:** If you must build from source, use a larger temp directory:
+   ```bash
+   export TMPDIR="${HOME}/.tmp"
+   mkdir -p "$TMPDIR"
+   pip install -e ".[hardware]"
+   ```
+
+This avoids the `/tmp` space limitation.
