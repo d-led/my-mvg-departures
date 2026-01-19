@@ -758,9 +758,7 @@ class InkyRenderer:
                 )  # Full line height with spacing
 
                 # Headers use the same height as departure rows for better vertical space distribution
-                # Adjust header font size to fit within line_height
-                header_font_size = max(1, min(int(font_size * 1.1), font_size + 2))
-                header_font = self._get_font(header_font_size, bold=True)
+                # Header font size will be calculated in render method based on final line_height
                 # Headers use the same height as departure rows
                 header_height = line_height
 
@@ -811,10 +809,8 @@ class InkyRenderer:
             line_height = font_height + self.config.line_spacing  # Full line height with spacing
 
             # Headers use the same height as departure rows for better vertical space distribution
-            # Adjust header font size to fit within line_height
-            header_font_size = max(1, min(int(font_size * 1.1), font_size + 2))
+            # Header font size will be calculated in render method based on final line_height
             # Headers use the same height as departure rows
-            # Header font will be created in render method based on final line_height
             header_height = line_height
 
             # Calculate total height:

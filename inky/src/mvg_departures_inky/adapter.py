@@ -7,8 +7,6 @@ import os
 from typing import TYPE_CHECKING
 
 import numpy as np
-from PIL import Image
-
 from mvg_departures.adapters.web.builders.departure_grouping_calculator import (
     DepartureGroupingCalculator,
 )
@@ -18,6 +16,7 @@ from mvg_departures.domain.models.direction_group_with_metadata import (
 from mvg_departures.domain.models.grouped_departures import GroupedDepartures
 from mvg_departures.domain.models.stop_configuration import StopConfiguration
 from mvg_departures.domain.ports.display_adapter import DisplayAdapter
+from PIL import Image
 
 from .config import InkyDisplayConfig
 from .mock_display import MockInkyDisplay, create_mock_display
