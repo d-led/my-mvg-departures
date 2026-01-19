@@ -35,19 +35,13 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           brew install cairo librsvg pkg-config
-          # Verify pkg-config can find Cairo (cairocffi uses this)
-          pkg-config --modversion cairo || exit 1
-          # Set PKG_CONFIG_PATH explicitly for Cairo
           BREW_PREFIX=$(brew --prefix)
           echo "PKG_CONFIG_PATH=${BREW_PREFIX}/lib/pkgconfig" >> $GITHUB_ENV
-          # Verify library exists
-          ls -la ${BREW_PREFIX}/lib/libcairo*.dylib || exit 1
 
       - name: Cache uv dependencies
         uses: actions/cache@v4
         with:
           path: ~/.cache/uv
-          # Cache key includes OS to separate macOS and Linux caches
           key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml', 'inky/pyproject.toml') }}
           restore-keys: |
             ${{ runner.os }}-uv-
@@ -63,27 +57,6 @@ jobs:
           PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
         run: |
           ./inky/scripts/setup_dev.sh
-
-      - name: Rebuild cairosvg after system dependencies (macOS)
-        if: matrix.os == 'macos-latest'
-        env:
-          PKG_CONFIG_PATH: ${{ env.PKG_CONFIG_PATH }}
-        run: |
-          # Force reinstall cairosvg to ensure it's built with Cairo available
-          echo "Rebuilding cairosvg with Cairo system dependencies..."
-          echo "PKG_CONFIG_PATH=${PKG_CONFIG_PATH}"
-          # Verify PKG_CONFIG_PATH is set and Cairo is findable
-          pkg-config --modversion cairo || (echo "Error: pkg-config cannot find Cairo" && exit 1)
-          # Uninstall existing cairosvg packages (use uv pip with venv Python)
-          uv pip uninstall --python .venv/bin/python cairosvg cairocffi pycairo || true
-          # Force build from source to ensure Cairo is linked correctly
-          # Use --no-binary to force building from source (uv pip supports this)
-          uv pip install --python .venv/bin/python --no-binary cairosvg --no-binary cairocffi --no-binary pycairo cairosvg
-          # Verify it works
-          .venv/bin/python -c "import cairosvg; print('✓ cairosvg imported successfully')" || {
-            echo "⚠️  cairosvg import failed, but code has svglib fallback - continuing..."
-            exit 0  # Don't fail - code has fallback
-          }
 
       - name: Run all checks (formatting, linting, type checking, tests)
         run: |
