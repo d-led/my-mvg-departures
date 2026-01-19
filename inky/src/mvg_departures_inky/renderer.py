@@ -4,8 +4,6 @@ import logging
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
-
 if TYPE_CHECKING:
     import hitherdither
 else:
@@ -356,7 +354,7 @@ class InkyRenderer:
                 if palette_uint24 is not None:
                     palette_rgb = []
                     for color_value in palette_uint24:
-                        if isinstance(color_value, (int, np.integer)):
+                        if isinstance(color_value, int):
                             # Extract R, G, B from 24-bit value: 0xRRGGBB
                             r = int((color_value >> 16) & 0xFF)
                             g = int((color_value >> 8) & 0xFF)
@@ -406,7 +404,7 @@ class InkyRenderer:
             ]
 
         # Create hitherdither palette
-        # Convert RGB tuples to numpy array format expected by hitherdither
+        # hitherdither.Palette can accept a list of RGB tuples
         # Ensure we have at least one color
         if not palette_rgb or len(palette_rgb) == 0:
             logger.error("Empty palette_rgb, using fallback")
@@ -414,12 +412,8 @@ class InkyRenderer:
                 (0, 0, 0),  # 0: Black
                 (255, 255, 255),  # 1: White
             ]
-        palette_array = np.array(palette_rgb, dtype=np.uint8)
-        if palette_array.shape[0] == 0:
-            raise ValueError(
-                f"Invalid palette_array shape: {palette_array.shape}, palette_rgb: {palette_rgb}"
-            )
-        hither_palette = hitherdither.palette.Palette(palette_array)
+        # hitherdither.Palette accepts list of RGB tuples (it will convert internally if needed)
+        hither_palette = hitherdither.palette.Palette(palette_rgb)
 
         # Use Bayer dithering (fast and good quality, as per Pimoroni example)
         # Thresholds for snapping colors

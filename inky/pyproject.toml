@@ -24,7 +24,6 @@ dependencies = [
     "aiohttp>=3.13.3",
     "cairosvg>=2.7.0",  # For SVG to PNG conversion
     "font-fredoka-one>=0.0.4",  # Font option (configurable, also used in main project)
-    "numpy>=1.24.0",  # For partial update change detection (image comparison)
     # HK Grotesk fonts must be downloaded manually to inky/fonts/ directory
     # See inky/fonts/README.md for download instructions
     "hitherdither @ git+https://github.com/hbldh/hitherdither.git",  # For dithering images to 7-color palette (Pimoroni example)
