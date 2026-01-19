@@ -75,6 +75,12 @@ font_family = "hk_grotesk"
 # Enable dynamic font sizing to fill display height
 fill_vertical_space = true
 
+# Font scaling factor when filling vertical space (0.0-1.0, default 0.8)
+# Scales only the route/body fonts, not the header fonts (headers are fitted to their text width)
+# Lower values = smaller body fonts, higher values = larger body fonts
+# This allows fine-tuning body font size independently of header font size
+font_scaling_factor_when_filling = 0.8
+
 # Time display mode: "relative", "absolute", or "alternating"
 # - relative: Always show relative time (e.g., "5m", "10m")
 # - absolute: Always show absolute time (e.g., "14:30", "15:45") [default]
@@ -257,7 +263,7 @@ title = "Hohenzollernplatz Departures"
 # Default: 'light'
 theme = "light"
 fill_vertical_space = true
-font_scaling_factor_when_filling = 0.8
+font_scaling_factor_when_filling = 0.9
 
 # Inky e-ink display settings (optional, route-specific)
 # These override the global [inky] section settings for this route

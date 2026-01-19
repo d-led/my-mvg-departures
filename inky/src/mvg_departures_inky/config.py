@@ -53,6 +53,9 @@ TIME_MODE_ALTERNATING = (
 FONT_FAMILY_HK_GROTESK = "hk_grotesk"  # Default: HK Grotesk (Bold for headers, Regular for body)
 FONT_FAMILY_FREDOKA_ONE = "fredoka_one"  # Alternative: Fredoka One (configurable)
 
+# Font scaling when filling vertical space
+FONT_SCALING_FACTOR_WHEN_FILLING = 0.8  # Scale body fonts by this factor when fill_vertical_space is enabled
+
 
 @dataclass
 class InkyDisplayConfig:
@@ -76,6 +79,9 @@ class InkyDisplayConfig:
     fill_vertical_space: bool = True
     font_family: str = (
         FONT_FAMILY_HK_GROTESK  # Font family: "hk_grotesk" (default) or "fredoka_one"
+    )
+    font_scaling_factor_when_filling: float = (
+        FONT_SCALING_FACTOR_WHEN_FILLING  # Scale body fonts by this factor when fill_vertical_space is enabled (only affects route fonts, not headers)
     )
 
     @property
@@ -215,6 +221,10 @@ class InkyDisplayConfig:
                                                     )
                                                 else:
                                                     inky_settings["time_mode"] = TIME_MODE_ABSOLUTE
+                                            if "font_scaling_factor_when_filling" in display:
+                                                inky_settings["font_scaling_factor_when_filling"] = display[
+                                                    "font_scaling_factor_when_filling"
+                                                ]
                                             logger.debug(
                                                 f"Loaded route-specific inky settings for '{route_path}': {inky_settings}"
                                             )
@@ -231,6 +241,9 @@ class InkyDisplayConfig:
             fill_vertical_space=inky_settings.get("fill_vertical_space", True),
             time_mode=inky_settings.get("time_mode", TIME_MODE_ABSOLUTE),
             font_family=inky_settings.get("font_family", FONT_FAMILY_HK_GROTESK),
+            font_scaling_factor_when_filling=inky_settings.get(
+                "font_scaling_factor_when_filling", FONT_SCALING_FACTOR_WHEN_FILLING
+            ),
         )
 
     def get_route_icon_path(self, transport_type: str) -> Path | None:
