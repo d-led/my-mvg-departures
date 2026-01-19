@@ -222,6 +222,10 @@ class InkyDisplayConfig:
                                                 inky_settings[
                                                     "font_scaling_factor_when_filling"
                                                 ] = display["font_scaling_factor_when_filling"]
+                                            if "refresh_interval_seconds" in display:
+                                                inky_settings["refresh_interval_seconds"] = int(
+                                                    display["refresh_interval_seconds"]
+                                                )
                                             logger.debug(
                                                 f"Loaded route-specific inky settings for '{route_path}': {inky_settings}"
                                             )
@@ -240,8 +244,8 @@ class InkyDisplayConfig:
                 "font_scaling_factor_when_filling", FONT_SCALING_FACTOR_WHEN_FILLING
             ),
             dithering_enabled=inky_settings.get("dithering_enabled", True),
-            refresh_interval_seconds=inky_settings.get(
-                "refresh_interval_seconds", DEFAULT_REFRESH_INTERVAL_SECONDS
+            refresh_interval_seconds=int(
+                inky_settings.get("refresh_interval_seconds", DEFAULT_REFRESH_INTERVAL_SECONDS)
             ),
         )
 
