@@ -338,8 +338,22 @@ class InkyRenderer:
             # Use display's palette blend method if available (real hardware)
             try:
                 saturation = 0.5  # Medium saturation for good color representation
-                palette_rgb = self.display._palette_blend(saturation, dtype="uint24")
-            except (AttributeError, TypeError):
+                palette_uint24 = self.display._palette_blend(saturation, dtype="uint24")
+                # Convert 24-bit RGB values (0xRRGGBB) to (R, G, B) tuples
+                if palette_uint24 is not None:
+                    palette_rgb = []
+                    for color_value in palette_uint24:
+                        if isinstance(color_value, (int, np.integer)):
+                            # Extract R, G, B from 24-bit value: 0xRRGGBB
+                            r = int((color_value >> 16) & 0xFF)
+                            g = int((color_value >> 8) & 0xFF)
+                            b = int(color_value & 0xFF)
+                            palette_rgb.append((r, g, b))
+                        elif isinstance(color_value, (tuple, list)) and len(color_value) >= 3:
+                            # Already in (R, G, B) format
+                            palette_rgb.append((int(color_value[0]), int(color_value[1]), int(color_value[2])))
+            except (AttributeError, TypeError, ValueError) as e:
+                logger.debug(f"Could not use _palette_blend: {e}")
                 pass
 
         if palette_rgb is None and hasattr(self.display, "palette") and self.display.palette:
