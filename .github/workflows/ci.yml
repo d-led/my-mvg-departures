@@ -39,6 +39,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-uv-
 
+      - name: Install macOS system dependencies
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew install cairo librsvg pkg-config
+
       - name: Setup main project
         run: |
           ./scripts/setup.sh
