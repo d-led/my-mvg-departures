@@ -1357,7 +1357,7 @@ class InkyRenderer:
                 # For RGB or other modes, paste directly
                 img.paste(icon, (x, icon_y))
 
-            logger.info(
+            logger.debug(
                 f"Pasting icon for {transport_type} at ({x}, {icon_y}), "
                 f"size={icon_size}, mode={icon.mode}"
             )

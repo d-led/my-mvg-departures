@@ -274,7 +274,7 @@ class InkyDisplayAdapter(DisplayAdapter):
                 # ROTATE_270 = 270° counter-clockwise = 90° clockwise (perfect pixel swap, no interpolation)
                 original_size = img.size
                 img = img.transpose(Image.Transpose.ROTATE_270)
-                logger.info(
+                logger.debug(
                     f"Rotated rendered image: {original_size} -> {img.size} "
                     f"(portrait -> landscape, no stretching)"
                 )
@@ -384,10 +384,17 @@ class InkyDisplayAdapter(DisplayAdapter):
             for prev_dep, curr_dep in zip(
                 prev_group.departures, curr_group.departures, strict=True
             ):
+                # Normalize datetime comparisons to minute precision (ignore seconds/microseconds)
+                # This avoids false positives from microsecond differences in API responses
+                prev_time_minute = prev_dep.time.replace(second=0, microsecond=0)
+                curr_time_minute = curr_dep.time.replace(second=0, microsecond=0)
+                prev_planned_minute = prev_dep.planned_time.replace(second=0, microsecond=0)
+                curr_planned_minute = curr_dep.planned_time.replace(second=0, microsecond=0)
+
                 # Compare fields that affect rendering
                 if (
-                    prev_dep.time != curr_dep.time
-                    or prev_dep.planned_time != curr_dep.planned_time
+                    prev_time_minute != curr_time_minute
+                    or prev_planned_minute != curr_planned_minute
                     or prev_dep.delay_seconds != curr_dep.delay_seconds
                     or prev_dep.platform != curr_dep.platform
                     or prev_dep.is_realtime != curr_dep.is_realtime
