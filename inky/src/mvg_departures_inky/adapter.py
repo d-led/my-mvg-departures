@@ -73,8 +73,10 @@ class InkyDisplayAdapter(DisplayAdapter):
                 output_dir=output_dir,
             )
             # Update config with actual display dimensions (even for mock)
-            self.config.width = self.display.width
-            self.config.height = self.display.height
+            display_width = self.display.width
+            display_height = self.display.height
+            self.config.width = display_width
+            self.config.height = display_height
         else:
             try:
                 from inky.auto import auto  # Optional hardware dependency
@@ -87,25 +89,6 @@ class InkyDisplayAdapter(DisplayAdapter):
                     f"Initialized Inky display: {display_width}x{display_height}, "
                     f"colour: {self.display.colour}"
                 )
-
-                # For hardware, we want text to run along the shortest side (portrait orientation)
-                # If hardware is landscape (width > height), swap dimensions for rendering
-                # This makes the renderer think it's portrait, so text flows along the short side
-                if display_width > display_height:
-                    # Landscape hardware: render as portrait (text along short side)
-                    self.config.width = display_height  # Use height as width for rendering
-                    self.config.height = display_width  # Use width as height for rendering
-                    self._needs_rotation = True  # Mark that we need to rotate the final image
-                    logger.info(
-                        f"Hardware is landscape ({display_width}x{display_height}), "
-                        f"rendering as portrait ({self.config.width}x{self.config.height}) "
-                        f"for text along short side"
-                    )
-                else:
-                    # Already portrait or square: use as-is
-                    self.config.width = display_width
-                    self.config.height = display_height
-                    self._needs_rotation = False
             except ImportError as e:
                 logger.warning(
                     f"Inky library not available (likely on non-Linux platform): {e}. "
@@ -120,9 +103,8 @@ class InkyDisplayAdapter(DisplayAdapter):
                     colour="red",  # Use red color mode (Spectra supports all 6 colors: white, black, red, yellow, green, blue)
                     output_dir=output_dir,
                 )
-                # Update config with actual display dimensions
-                self.config.width = self.display.width
-                self.config.height = self.display.height
+                display_width = self.display.width
+                display_height = self.display.height
             except Exception as e:
                 logger.warning(
                     f"Failed to initialize real Inky display: {e}. "
@@ -135,9 +117,64 @@ class InkyDisplayAdapter(DisplayAdapter):
                     colour="red",  # Use red color mode (Spectra supports all 6 colors: white, black, red, yellow, green, blue)
                     output_dir=output_dir,
                 )
-                # Update config with actual display dimensions
-                self.config.width = self.display.width
-                self.config.height = self.display.height
+                display_width = self.display.width
+                display_height = self.display.height
+
+        # Determine hardware orientation
+        hardware_is_landscape = display_width > display_height
+
+        # Determine desired rendering orientation based on landscape_mode setting
+        render_landscape = self.config.landscape_mode
+
+        # Set rendering dimensions based on landscape_mode
+        if render_landscape:
+            # Render in landscape: width > height
+            # If hardware is portrait, we need to swap dimensions for rendering
+            if not hardware_is_landscape:
+                # Hardware is portrait, but we want to render landscape
+                # Swap dimensions for rendering
+                self.config.width = display_height  # Use height as width for rendering
+                self.config.height = display_width  # Use width as height for rendering
+                self._needs_rotation = True  # Need to rotate final image to match hardware
+                logger.info(
+                    f"Hardware is portrait ({display_width}x{display_height}), "
+                    f"rendering as landscape ({self.config.width}x{self.config.height}) "
+                    f"(landscape_mode=true)"
+                )
+            else:
+                # Hardware is landscape, and we want to render landscape - no swap needed
+                self.config.width = display_width
+                self.config.height = display_height
+                self._needs_rotation = False
+                logger.info(
+                    f"Hardware is landscape ({display_width}x{display_height}), "
+                    f"rendering as landscape ({self.config.width}x{self.config.height}) "
+                    f"(landscape_mode=true, no rotation needed)"
+                )
+        else:
+            # Render in portrait: height > width (default)
+            # If hardware is landscape, we need to swap dimensions for rendering
+            if hardware_is_landscape:
+                # Hardware is landscape, but we want to render portrait
+                # Swap dimensions for rendering
+                self.config.width = display_height  # Use height as width for rendering
+                self.config.height = display_width  # Use width as height for rendering
+                self._needs_rotation = True  # Need to rotate final image to match hardware
+                logger.info(
+                    f"Hardware is landscape ({display_width}x{display_height}), "
+                    f"rendering as portrait ({self.config.width}x{self.config.height}) "
+                    f"(landscape_mode=false, default)"
+                )
+            else:
+                # Hardware is portrait, and we want to render portrait - no swap needed
+                self.config.width = display_width
+                self.config.height = display_height
+                self._needs_rotation = False
+                logger.info(
+                    f"Hardware is portrait ({display_width}x{display_height}), "
+                    f"rendering as portrait ({self.config.width}x{self.config.height}) "
+                    f"(landscape_mode=false, default, no rotation needed)"
+                )
 
         # Initialize renderer with grouping calculator
         if not self.grouping_calculator:
@@ -267,16 +304,16 @@ class InkyDisplayAdapter(DisplayAdapter):
             # Store current data for next comparison
             self._previous_direction_groups = direction_groups_with_metadata.copy()
 
-            # If hardware is landscape but we rendered as portrait, rotate the image to match hardware
+            # If rendering orientation doesn't match hardware orientation, rotate the image
             # Use transpose (not rotate) to avoid pixel stretching - it's a perfect 90-degree swap
             if self._needs_rotation:
-                # Rotate 90 degrees clockwise: portrait (480x800) -> landscape (800x480)
+                # Rotate 90 degrees clockwise to match hardware orientation
                 # ROTATE_270 = 270° counter-clockwise = 90° clockwise (perfect pixel swap, no interpolation)
                 original_size = img.size
                 img = img.transpose(Image.Transpose.ROTATE_270)
                 logger.debug(
                     f"Rotated rendered image: {original_size} -> {img.size} "
-                    f"(portrait -> landscape, no stretching)"
+                    f"(to match hardware orientation, no stretching)"
                 )
 
             # Verify image matches display resolution (should match after rotation if needed)
@@ -298,6 +335,15 @@ class InkyDisplayAdapter(DisplayAdapter):
                     f"Mock display: Input-level changes detected: {len(changed_sections)} section(s). "
                     f"Changed sections: {changed_sections}. Performing full update for visualization."
                 )
+                # For mock display, rotate landscape mode images for better viewing on computer screen
+                # Portrait mode images should NOT be rotated
+                if self.config.landscape_mode:
+                    # Landscape mode: rotate 90° for better viewing
+                    original_size = img.size
+                    img = img.transpose(Image.Transpose.ROTATE_90)
+                    logger.debug(
+                        f"Mock display: Rotated landscape image for legibility: {original_size} -> {img.size}"
+                    )
             else:
                 logger.debug(
                     f"Input-level changes detected: {len(changed_sections)} section(s) changed. "
@@ -332,10 +378,12 @@ class InkyDisplayAdapter(DisplayAdapter):
         # In mock mode, this saves to file instead
         logger.debug("Performing full display update...")
         if isinstance(self.display, MockInkyDisplay):
-            # Generate filename with timestamp for mock mode
-            import time
+            # Generate filename with timestamp for mock mode (human-readable format)
+            from datetime import UTC, datetime
 
-            filename = f"departures_{int(time.time())}.png"
+            # Use local timezone for filename timestamps (more intuitive for users)
+            timestamp = datetime.now(UTC).astimezone().strftime("%Y%m%d-%H-%M-%S")
+            filename = f"departures_{timestamp}.png"
             self.display.show(filename)
         else:
             self.display.show()

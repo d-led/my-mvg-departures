@@ -1041,6 +1041,7 @@ class InkyRenderer:
         )
 
         # Always use full height for Inky displays (fill_vertical_space is always enabled)
+        # Use full height - no padding, content should fill from top to bottom
         available_height = self.config.height
 
         # Calculate exact line_height needed to fill the available height
@@ -1148,7 +1149,7 @@ class InkyRenderer:
         )
 
         # Calculate starting Y position
-        # First header should start at the very top (y=0), not at padding
+        # First header should start at the very top (y=0), no padding
         start_y = 0
 
         # Track which row we're on (for distributing extra pixels)

@@ -95,6 +95,13 @@ dithering_enabled = true
 # This controls how often the Inky display fetches new departure data and updates the screen
 refresh_interval_seconds = 60
 
+# Landscape mode: if true, render in landscape orientation (width > height)
+# If false (default), render in portrait orientation (height > width)
+# Short lists may look better in landscape mode, while longer lists work better in portrait
+# The rendered image will be automatically rotated if needed to match hardware orientation
+# Default: false (portrait mode)
+landscape_mode = false
+
 # Stops configuration
 [[stops]]
 station_id = "de:09162:1110"

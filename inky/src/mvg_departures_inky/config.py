@@ -88,6 +88,10 @@ class InkyDisplayConfig:
     # Refresh interval (in seconds) - separate from web version
     # E-ink displays update slower, so a longer interval is often preferred
     refresh_interval_seconds: int = DEFAULT_REFRESH_INTERVAL_SECONDS
+    # Landscape mode: if True, render in landscape orientation (width > height)
+    # If False (default), render in portrait orientation (height > width)
+    # The rendered image will be rotated if needed to match hardware orientation
+    landscape_mode: bool = False
 
     @property
     def route_section_width(self) -> int:
@@ -226,6 +230,10 @@ class InkyDisplayConfig:
                                                 inky_settings["refresh_interval_seconds"] = int(
                                                     display["refresh_interval_seconds"]
                                                 )
+                                            if "landscape_mode" in display:
+                                                inky_settings["landscape_mode"] = bool(
+                                                    display["landscape_mode"]
+                                                )
                                             logger.debug(
                                                 f"Loaded route-specific inky settings for '{route_path}': {inky_settings}"
                                             )
@@ -247,6 +255,7 @@ class InkyDisplayConfig:
             refresh_interval_seconds=int(
                 inky_settings.get("refresh_interval_seconds", DEFAULT_REFRESH_INTERVAL_SECONDS)
             ),
+            landscape_mode=inky_settings.get("landscape_mode", False),
         )
 
     def get_route_icon_path(self, transport_type: str) -> Path | None:

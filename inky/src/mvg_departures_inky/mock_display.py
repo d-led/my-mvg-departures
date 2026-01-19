@@ -139,9 +139,12 @@ class MockInkyDisplay:
                         else:
                             rgb_pixels[x, y] = (255, 255, 255)  # Default to white
 
-            rgb_image.save(output_path)
+            image_to_save = rgb_image
         else:
-            self._current_image.save(output_path)
+            image_to_save = self._current_image
+
+        # Save image as-is (rotation is handled by adapter based on landscape_mode config)
+        image_to_save.save(output_path)
 
         if regions:
             logger.info(
