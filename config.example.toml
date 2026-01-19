@@ -75,8 +75,11 @@ font_family = "hk_grotesk"
 # Enable dynamic font sizing to fill display height
 fill_vertical_space = true
 
-# Show departure times (alternating between relative and absolute)
-show_time = true
+# Time display mode: "relative", "absolute", or "alternating"
+# - relative: Always show relative time (e.g., "5m", "10m")
+# - absolute: Always show absolute time (e.g., "14:30", "15:45") [default]
+# - alternating: Toggle between relative and absolute every time_toggle_interval seconds (default: 10s)
+time_mode = "absolute"
 
 # Stops configuration
 [[stops]]
