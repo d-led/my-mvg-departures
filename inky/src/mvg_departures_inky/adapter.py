@@ -61,6 +61,11 @@ class InkyDisplayAdapter(DisplayAdapter):
 
     async def start(self) -> None:
         """Start the display adapter."""
+        # Log partial update configuration and display capabilities
+        logger.info(
+            f"Partial updates: enabled={self.config.partial_update_enabled}, "
+            f"full_refresh_interval={self.config.full_refresh_interval}"
+        )
         # Check if we should use mock mode
         use_mock = os.getenv("INKY_MOCK_MODE", "false").lower() in ("true", "1", "yes")
         output_dir = os.getenv("INKY_MOCK_OUTPUT_DIR", None)
@@ -268,12 +273,15 @@ class InkyDisplayAdapter(DisplayAdapter):
                 logger.debug("Mock display: performing full update (always shows complete image).")
                 self._perform_full_update(img)
             elif self.config.partial_update_enabled:
+                logger.debug("Partial updates enabled, checking for changes...")
                 # Real e-paper: use partial updates when enabled
                 changed_regions = self._find_changed_regions(self._previous_image, img)
 
                 if not changed_regions:
-                    logger.debug("No changes detected, skipping display update.")
+                    logger.info("No changes detected, skipping display update.")
                     return
+
+                logger.info(f"Detected {len(changed_regions)} changed region(s): {changed_regions}")
 
                 # Check for forced full refresh
                 if (
@@ -292,12 +300,16 @@ class InkyDisplayAdapter(DisplayAdapter):
                     img.height,
                 ):
                     # If the entire image changed (e.g., first render or major layout change)
-                    logger.info("Full image changed, performing full refresh.")
+                    logger.info(
+                        f"Full image changed (region: {changed_regions[0]}), performing full refresh."
+                    )
                     self._partial_update_count = 0
                     self._perform_full_update(img)
                 else:
                     # Perform partial update
-                    logger.debug(f"Performing partial update for {len(changed_regions)} regions.")
+                    logger.info(
+                        f"Performing partial update for {len(changed_regions)} region(s): {changed_regions}"
+                    )
                     self._partial_update_count += 1
                     self._perform_partial_update(img, changed_regions)
             else:
@@ -362,18 +374,29 @@ class InkyDisplayAdapter(DisplayAdapter):
             logger.warning("Mock display reached partial update path, falling back to full update.")
             self._perform_full_update(img)
             return
+
+        # Log available methods for debugging
+        display_methods = [m for m in dir(self.display) if not m.startswith("_")]
+        logger.debug(f"Display object methods: {display_methods}")
+
         if hasattr(self.display, "show_partial"):
             # Some Inky displays might have show_partial (e.g., older versions or specific models)
+            logger.info(f"Using show_partial() for {len(regions)} region(s)")
             for x, y, w, h in regions:
+                logger.debug(f"  Updating region: x={x}, y={y}, w={w}, h={h}")
                 self.display.show_partial(x, y, w, h)
         elif hasattr(self.display, "partial_update"):
             # Newer Inky libraries might have a partial_update method
+            logger.info(f"Using partial_update() for {len(regions)} region(s)")
             for x, y, w, h in regions:
+                logger.debug(f"  Updating region: x={x}, y={y}, w={w}, h={h}")
                 self.display.partial_update(x, y, w, h)
         else:
             # Partial update not supported, fall back to full update
             logger.warning(
-                "Partial update not supported by Inky library, falling back to full update."
+                f"Partial update not supported by Inky library (no show_partial or partial_update methods). "
+                f"Available methods: {[m for m in display_methods if 'partial' in m.lower() or 'update' in m.lower()]}. "
+                f"Falling back to full update."
             )
             self._perform_full_update(img)
 
