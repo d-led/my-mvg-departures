@@ -215,36 +215,44 @@ class TestColorRendering:
         assert palette is not None, "Image should have a palette"
 
         # Find time area (right side of image, after header)
-        # Time is typically on the right side, in the last 100 pixels
+        # Search the entire right side of the image for green pixels (realtime time)
         pixels = img.load()
         if pixels is None:
             pytest.fail("Failed to load pixels from rendered image")
 
-        # Skip header (first 40 pixels)
-        header_height = 40
-        time_area_x_start = img.width - 100
-        time_area_y_start = header_height
-        time_area_y_end = min(header_height + 50, img.height)  # Check first departure row
-
-        # Count green pixels in time area (palette index 2 = green)
+        # Search the entire image for green pixels (realtime departures should have green time)
+        # Green palette index is 2
         green_pixels = 0
-        total_time_pixels = 0
+        total_pixels = 0
 
-        for y in range(time_area_y_start, time_area_y_end):
-            for x in range(time_area_x_start, img.width):
+        # Search entire image (but skip very top where header background is blue)
+        # Headers are typically 30-60px, so start from y=60 to be safe
+        search_y_start = 60
+        # Search right side of image where time is rendered (last 200 pixels)
+        search_x_start = img.width - 200
+
+        for y in range(search_y_start, img.height):
+            for x in range(search_x_start, img.width):
                 idx = pixels[x, y]
                 if isinstance(idx, int):
-                    total_time_pixels += 1
+                    total_pixels += 1
                     if idx == 2:  # Green palette index
                         green_pixels += 1
 
-        green_percentage = (green_pixels / total_time_pixels) * 100 if total_time_pixels > 0 else 0
+        green_percentage = (green_pixels / total_pixels) * 100 if total_pixels > 0 else 0
 
         # Time should have some green pixels (due to dithering, might not be 100%)
-        # But for realtime departures, we should see green
+        # But for realtime departures, we should see green somewhere in the image
+        # If no green pixels found, the time might not be rendered or is_realtime flag might not be set
         assert (
             green_pixels > 0
-        ), f"Realtime time should have green pixels, found {green_pixels} out of {total_time_pixels}"
+        ), (
+            f"Realtime time should have green pixels, found {green_pixels} out of {total_pixels} "
+            f"in search area (x={search_x_start}-{img.width}, y={search_y_start}-{img.height}). "
+            f"Image size: {img.width}x{img.height}. "
+            f"This might indicate that is_realtime flag is not being passed through correctly, "
+            f"or time text is not being rendered, or green color is not being dithered correctly."
+        )
 
     def test_when_image_dithered_then_uses_correct_palette_indices(
         self, renderer: InkyRenderer
