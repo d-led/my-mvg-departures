@@ -178,10 +178,10 @@ async def main() -> None:
         # main.py -> mvg_departures_inky -> src -> inky -> project_root
         project_root = current_file.parent.parent.parent.parent
 
-        # Try config.example.toml first, then my.config.toml
-        default_config = project_root / "config.example.toml"
+        # Try my.config.toml first, then fall back to config.example.toml
+        default_config = project_root / "my.config.toml"
         if not default_config.exists():
-            default_config = project_root / "my.config.toml"
+            default_config = project_root / "config.example.toml"
 
         if default_config.exists():
             os.environ["CONFIG_FILE"] = str(default_config)
