@@ -617,12 +617,17 @@ class InkyRenderer:
         header_height = header_font_height + self.config.line_spacing + 4
 
         if self.config.fill_vertical_space:
-            # Try font sizes from initial down to min to find the largest that fits
+            # Try font sizes from initial_font_size down to min to find the largest that fits
+            # This maximizes font size usage and fills vertical space better
             best_font_size = None
             best_total_height = 0
 
+            # Start from initial_font_size (which is already constrained to header_font_size or max_font_size)
+            # and work down to find the largest that fits
+            start_font_size = initial_font_size
+
             for font_size in range(
-                initial_font_size,
+                start_font_size,
                 self.config.min_font_size - 1,
                 -self.config.font_size_step,
             ):
@@ -646,6 +651,8 @@ class InkyRenderer:
                     )
 
             if best_font_size is not None:
+                # If we have unused space, try to distribute it by increasing line_height
+                # This will be handled in the render method by adjusting line_height
                 return best_font_size
 
             # If no font size fits, return minimum
@@ -862,16 +869,19 @@ class InkyRenderer:
         header_font_size = self._calculate_header_font_size(longest_header, available_header_width)
         header_font = self._get_font(header_font_size, bold=True)
 
-        # Calculate body font size to be smaller than header (about 85% of header size)
-        # This ensures headers are more prominent while body text fits more content
-        # But also verify it fits vertically with the header font size
-        initial_font_size = max(
-            self.config.min_font_size,
-            int(header_font_size * 0.85),  # Body font is 85% of header font
+        # Calculate body font size - try to maximize it to fill vertical space
+        # Start from max_font_size and work down, but ensure body doesn't exceed header by too much
+        # This allows us to use larger fonts when there's vertical space available
+        # Body font can be up to 110% of header size (slightly larger is OK if it fits better)
+        # or max_font_size, whichever is smaller
+        max_body_font_size = min(
+            int(header_font_size * 1.1),  # Allow body to be up to 10% larger than header if it fits better
+            self.config.max_font_size,  # But also respect max_font_size
         )
         # Verify this font size fits vertically with the calculated header font size
+        # Start from max_body_font_size and work down to find the largest that fits
         font_size = self._calculate_font_size_with_header(
-            total_departures, header_count, header_font_size, initial_font_size
+            total_departures, header_count, header_font_size, max_body_font_size
         )
         font = self._get_font(font_size, bold=False)
         platform_font_size = max(int(font_size * 0.7), 10)
