@@ -261,33 +261,121 @@ class InkyDisplayAdapter(DisplayAdapter):
                     f"Image size {img.size} doesn't match expected display size {expected_size}"
                 )
 
-            # Set image on display (with optional saturation parameter for Spectra)
-            # Per Pimoroni examples: inky.set_image(resizedimage, saturation=saturation)
-            if hasattr(self.display, "set_image"):
-                try:
-                    # Try with saturation parameter (for Spectra displays)
-                    self.display.set_image(img, saturation=0.5)
-                except TypeError:
-                    # Fallback if saturation parameter not supported
-                    self.display.set_image(img)
-            else:
-                # For mock display, use set_image method
-                self.display.set_image(img)
-
-            # Update display (this is the slow part for e-ink)
-            # In mock mode, this saves to file instead
-            logger.debug("Updating Inky display...")
+            # Mock display always does full updates (for easier debugging/visualization)
+            # Real e-paper display uses partial updates when enabled (to reduce flicker)
             if isinstance(self.display, MockInkyDisplay):
-                # Generate filename with timestamp for mock mode
-                import time
+                # Mock display: always perform full update to show complete image
+                logger.debug("Mock display: performing full update (always shows complete image).")
+                self._perform_full_update(img)
+            elif self.config.partial_update_enabled:
+                # Real e-paper: use partial updates when enabled
+                changed_regions = self._find_changed_regions(self._previous_image, img)
 
-                filename = f"departures_{int(time.time())}.png"
-                self.display.show(filename)
+                if not changed_regions:
+                    logger.debug("No changes detected, skipping display update.")
+                    return
+
+                # Check for forced full refresh
+                if (
+                    self.config.full_refresh_interval > 0
+                    and self._partial_update_count >= self.config.full_refresh_interval
+                ):
+                    logger.info(
+                        f"Forcing full refresh after {self._partial_update_count} partial updates."
+                    )
+                    self._partial_update_count = 0
+                    self._perform_full_update(img)
+                elif len(changed_regions) == 1 and changed_regions[0] == (
+                    0,
+                    0,
+                    img.width,
+                    img.height,
+                ):
+                    # If the entire image changed (e.g., first render or major layout change)
+                    logger.info("Full image changed, performing full refresh.")
+                    self._partial_update_count = 0
+                    self._perform_full_update(img)
+                else:
+                    # Perform partial update
+                    logger.debug(f"Performing partial update for {len(changed_regions)} regions.")
+                    self._partial_update_count += 1
+                    self._perform_partial_update(img, changed_regions)
             else:
-                self.display.show()
+                # Partial updates disabled, always perform full update
+                logger.debug("Partial updates disabled, performing full refresh.")
+                self._perform_full_update(img)
+
+            self._previous_image = img.copy()  # Store current image for next comparison
             logger.debug("Inky display updated")
         except Exception as e:
             logger.error(f"Failed to display departures: {e}", exc_info=True)
+
+    def _perform_full_update(self, img: Image.Image) -> None:
+        """Perform a full display update."""
+        # Set image on display (with optional saturation parameter for Spectra)
+        # Per Pimoroni examples: inky.set_image(resizedimage, saturation=saturation)
+        if hasattr(self.display, "set_image"):
+            try:
+                # Try with saturation parameter (for Spectra displays)
+                self.display.set_image(img, saturation=0.5)
+            except TypeError:
+                # Fallback if saturation parameter not supported
+                self.display.set_image(img)
+        else:
+            # For mock display, use set_image method
+            self.display.set_image(img)
+
+        # Update display (this is the slow part for e-ink)
+        # In mock mode, this saves to file instead
+        logger.debug("Performing full display update...")
+        if isinstance(self.display, MockInkyDisplay):
+            # Generate filename with timestamp for mock mode
+            import time
+
+            filename = f"departures_{int(time.time())}.png"
+            self.display.show(filename)
+        else:
+            self.display.show()
+
+    def _perform_partial_update(
+        self, img: Image.Image, regions: list[tuple[int, int, int, int]]
+    ) -> None:
+        """Perform a partial display update for specified regions.
+
+        Args:
+            img: Full image to display.
+            regions: List of (x, y, width, height) tuples for changed regions.
+        """
+        # Set image on display first (required before partial update)
+        if hasattr(self.display, "set_image"):
+            try:
+                self.display.set_image(img, saturation=0.5)
+            except TypeError:
+                self.display.set_image(img)
+        else:
+            self.display.set_image(img)
+
+        # Try to use partial update if supported
+        # Note: Mock display should never reach here (it always does full updates)
+        if isinstance(self.display, MockInkyDisplay):
+            # This shouldn't happen, but if it does, do a full update
+            logger.warning("Mock display reached partial update path, falling back to full update.")
+            self._perform_full_update(img)
+            return
+        if hasattr(self.display, "show_partial"):
+            # Some Inky displays might have show_partial (e.g., older versions or specific models)
+            for x, y, w, h in regions:
+                self.display.show_partial(x, y, w, h)
+        elif hasattr(self.display, "partial_update"):
+            # Newer Inky libraries might have a partial_update method
+            for x, y, w, h in regions:
+                self.display.partial_update(x, y, w, h)
+        else:
+            # Partial update not supported, fall back to full update
+            logger.warning(
+                "Partial update not supported by Inky library, falling back to full update."
+            )
+            self._perform_full_update(img)
 
     def _find_changed_regions(
         self, previous_img: Image.Image | None, current_img: Image.Image

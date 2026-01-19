@@ -98,11 +98,13 @@ class MockInkyDisplay:
         """
         logger.debug(f"Border color set to {color}")
 
-    def show(self, filename: str | None = None) -> None:
+    def show(self, filename: str | None = None, regions: list[tuple[int, int, int, int]] | None = None) -> None:
         """Show the image by saving it to disk.
 
         Args:
             filename: Optional filename. If not provided, generates one automatically.
+            regions: Optional list of (x, y, width, height) tuples for partial updates.
+                    If provided, only these regions are considered changed (for testing).
         """
         if self._current_image is None:
             logger.warning("No image set, cannot show")
@@ -139,8 +141,15 @@ class MockInkyDisplay:
         else:
             self._current_image.save(output_path)
 
-        logger.info(f"Mock display output saved to: {output_path}")
-        print(f"📺 Mock Inky display: Image saved to {output_path}")
+        if regions:
+            logger.info(
+                f"Mock display output saved to: {output_path} "
+                f"(partial update: {len(regions)} region(s))"
+            )
+            print(f"📺 Mock Inky display: Partial update saved to {output_path} ({len(regions)} region(s))")
+        else:
+            logger.info(f"Mock display output saved to: {output_path}")
+            print(f"📺 Mock Inky display: Image saved to {output_path}")
 
     def get_palette(self) -> list[int]:
         """Get the color palette for this display.
