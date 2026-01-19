@@ -19,6 +19,51 @@ A server-side rendered live dashboard for Munich public transport (MVG) departur
 
 ![DIY dashboard](./docs/img/diy_setup.jpg)
 
+## Why This Dashboard?
+
+### The Problem with Plain Departure Displays
+
+Traditional departure displays show a simple list of upcoming departures from a single stop. While this works for basic information, it falls short when you need to make strategic decisions about your journey.
+
+**Real-world scenario:** You're at home and need to get to work. You check multiple stops:
+
+- Your local stop (e.g., "Giesing")
+- A transfer stop (e.g., "Marienplatz")
+- Your destination stop
+
+A plain display shows you raw departure times from each stop, but your brain has to:
+
+1. **Remember** departure times from multiple stops
+2. **Calculate** transfer windows and connection possibilities
+3. **Compare** different route options
+4. **Decide** which combination minimizes waiting time
+
+This mental calculation becomes overwhelming when you're dealing with:
+
+- Multiple routes per stop
+- Different directions (some going your way, some not)
+- Transfer connections with tight windows
+- Real-time delays that affect your strategy
+
+### How This Dashboard Helps
+
+**Direction Grouping for Quick Comprehension:**
+Instead of scrolling through a long list of mixed destinations, departures are grouped by direction (e.g., "->Balanstr.", "->Klinikum"). This lets you instantly see:
+
+- Which routes are going your way
+- How many options you have in each direction
+- The timing spread across your preferred routes
+
+**Strategic Limiting:**
+By limiting departures per route and per group, the dashboard shows you the **most relevant information** without cognitive overload:
+
+- **`max_departures_per_route`**: Shows 1-2 departures per route, so you see the next immediate options without being overwhelmed by future departures of the same route
+- **`max_departures_per_stop`**: Limits total departures per direction, focusing on the near-term decisions you need to make
+
+This design philosophy recognizes that **you don't need to see every departure**—you need to see the departures that matter for your immediate decision-making. The limits ensure the information density matches your cognitive capacity for quick strategic planning.
+
+**Result:** Instead of mental arithmetic across multiple stops, you can quickly scan grouped departures, identify your best options, and make confident decisions about when to leave and which route to take.
+
 ## Requirements
 
 - Python 3.12+
@@ -440,50 +485,6 @@ For even more automation, you can use the Shortcuts app to automatically open th
 4. Disable "Ask Before Running"
 5. The dashboard will automatically open when the iPad wakes
 
-## Why This Dashboard?
-
-### The Problem with Plain Departure Displays
-
-Traditional departure displays show a simple list of upcoming departures from a single stop. While this works for basic information, it falls short when you need to make strategic decisions about your journey.
-
-**Real-world scenario:** You're at home and need to get to work. You check multiple stops:
-
-- Your local stop (e.g., "Giesing")
-- A transfer stop (e.g., "Marienplatz")
-- Your destination stop
-
-A plain display shows you raw departure times from each stop, but your brain has to:
-
-1. **Remember** departure times from multiple stops
-2. **Calculate** transfer windows and connection possibilities
-3. **Compare** different route options
-4. **Decide** which combination minimizes waiting time
-
-This mental calculation becomes overwhelming when you're dealing with:
-
-- Multiple routes per stop
-- Different directions (some going your way, some not)
-- Transfer connections with tight windows
-- Real-time delays that affect your strategy
-
-### How This Dashboard Helps
-
-**Direction Grouping for Quick Comprehension:**
-Instead of scrolling through a long list of mixed destinations, departures are grouped by direction (e.g., "->Balanstr.", "->Klinikum"). This lets you instantly see:
-
-- Which routes are going your way
-- How many options you have in each direction
-- The timing spread across your preferred routes
-
-**Strategic Limiting:**
-By limiting departures per route and per group, the dashboard shows you the **most relevant information** without cognitive overload:
-
-- **`max_departures_per_route`**: Shows 1-2 departures per route, so you see the next immediate options without being overwhelmed by future departures of the same route
-- **`max_departures_per_stop`**: Limits total departures per direction, focusing on the near-term decisions you need to make
-
-This design philosophy recognizes that **you don't need to see every departure**—you need to see the departures that matter for your immediate decision-making. The limits ensure the information density matches your cognitive capacity for quick strategic planning.
-
-**Result:** Instead of mental arithmetic across multiple stops, you can quickly scan grouped departures, identify your best options, and make confident decisions about when to leave and which route to take.
 
 ## UI Features
 
