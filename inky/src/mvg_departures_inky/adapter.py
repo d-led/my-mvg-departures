@@ -55,7 +55,13 @@ class InkyDisplayAdapter(DisplayAdapter):
         self._running = False
         self._needs_rotation = False  # Whether to rotate image to match hardware orientation
         self._previous_image: Image.Image | None = (
-            None  # Previous rendered image for partial updates
+            None  # Previous rendered image for partial updates (RGB, before dithering)
+        )
+        self._previous_dithered_image: Image.Image | None = (
+            None  # Previous dithered image (for display)
+        )
+        self._previous_direction_groups: list[DirectionGroupWithMetadata] | None = (
+            None  # Previous direction groups for input-level change detection
         )
         self._partial_update_count = 0  # Count of partial updates (for periodic full refresh)
 
@@ -238,10 +244,44 @@ class InkyDisplayAdapter(DisplayAdapter):
                     )
                 )
 
-            # Render to PIL Image
-            # The renderer uses config.width and config.height which may be swapped for portrait mode
-            # on real hardware (e.g., 480x800) so text runs along the short side
-            img = self.renderer.render(direction_groups_with_metadata)
+            # Input-level change detection: compare departure data instead of images
+            # This avoids false positives from dithering and is more efficient
+            changed_sections = self._detect_input_changes(
+                self._previous_direction_groups, direction_groups_with_metadata
+            )
+
+            # If row count changed, we need a full refresh (layout changes)
+            total_previous_rows = self._count_total_rows(self._previous_direction_groups)
+            total_current_rows = self._count_total_rows(direction_groups_with_metadata)
+            row_count_changed = total_previous_rows != total_current_rows
+
+            if row_count_changed:
+                logger.info(
+                    f"Row count changed: {total_previous_rows} -> {total_current_rows}, "
+                    "performing full refresh (layout changed)"
+                )
+                # Render full image
+                img = self.renderer.render(direction_groups_with_metadata)
+                rgb_img = getattr(self.renderer, "_last_rgb_image", None)
+            elif not changed_sections:
+                # No changes at input level - skip update
+                logger.info("No changes detected at input level, skipping display update.")
+                # Still store the current data for next comparison
+                self._previous_direction_groups = direction_groups_with_metadata.copy()
+                return
+            else:
+                # Some sections changed - render only changed sections
+                logger.info(
+                    f"Input-level changes detected: {len(changed_sections)} section(s) changed. "
+                    f"Changed sections: {changed_sections}"
+                )
+                # For now, render full image (we can optimize to render only changed sections later)
+                # TODO: Implement partial rendering of only changed sections
+                img = self.renderer.render(direction_groups_with_metadata)
+                rgb_img = getattr(self.renderer, "_last_rgb_image", None)
+
+            # Store current data for next comparison
+            self._previous_direction_groups = direction_groups_with_metadata.copy()
 
             # If hardware is landscape but we rendered as portrait, rotate the image to match hardware
             # Use transpose (not rotate) to avoid pixel stretching - it's a perfect 90-degree swap
@@ -269,19 +309,31 @@ class InkyDisplayAdapter(DisplayAdapter):
             # Mock display always does full updates (for easier debugging/visualization)
             # Real e-paper display uses partial updates when enabled (to reduce flicker)
             if isinstance(self.display, MockInkyDisplay):
-                # Mock display: always perform full update to show complete image
-                logger.debug("Mock display: performing full update (always shows complete image).")
+                # Mock display: log input-level changes, but always do full update
+                logger.info(
+                    f"Mock display: Input-level changes detected: {len(changed_sections)} section(s). "
+                    f"Changed sections: {changed_sections}. Performing full update for visualization."
+                )
+
+                # Mock display: always perform full update to show complete image (for debugging)
                 self._perform_full_update(img)
             elif self.config.partial_update_enabled:
-                logger.debug("Partial updates enabled, checking for changes...")
+                logger.debug("Partial updates enabled, using input-level change detection...")
                 # Real e-paper: use partial updates when enabled
-                changed_regions = self._find_changed_regions(self._previous_image, img)
+                # We already detected changes at input level above, now convert to image regions
+                # For now, we'll use image-based region detection for the changed sections
+                # TODO: Map changed_sections to actual image regions (y coordinates) for more precise updates
+                comparison_img = rgb_img if rgb_img is not None else img
+                changed_regions = self._find_changed_regions(self._previous_image, comparison_img)
 
                 if not changed_regions:
-                    logger.info("No changes detected, skipping display update.")
+                    logger.info("No changes detected in image comparison, skipping display update.")
                     return
 
-                logger.info(f"Detected {len(changed_regions)} changed region(s): {changed_regions}")
+                logger.info(
+                    f"Detected {len(changed_regions)} changed region(s) in image: {changed_regions} "
+                    f"(from {len(changed_sections)} input-level changes in sections: {changed_sections})"
+                )
 
                 # Check for forced full refresh
                 if (
@@ -317,13 +369,28 @@ class InkyDisplayAdapter(DisplayAdapter):
                 logger.debug("Partial updates disabled, performing full refresh.")
                 self._perform_full_update(img)
 
-            self._previous_image = img.copy()  # Store current image for next comparison
+            # Store RGB image (before dithering) for next comparison (for image-based fallback)
+            # Input-level change detection is primary, but we keep image comparison as fallback
+            if rgb_img is not None:
+                self._previous_image = rgb_img.copy()
+            elif img.mode != "P":
+                # If not dithered, store as-is
+                self._previous_image = img.copy()
+            else:
+                # Dithered image - we can't compare palette images directly
+                # Convert back to RGB for comparison (lossy, but better than nothing)
+                self._previous_image = img.convert("RGB")
+            self._previous_dithered_image = img.copy()  # Store dithered image for display
             logger.debug("Inky display updated")
         except Exception as e:
             logger.error(f"Failed to display departures: {e}", exc_info=True)
 
     def _perform_full_update(self, img: Image.Image) -> None:
         """Perform a full display update."""
+        if self.display is None:
+            logger.error("Display not initialized, cannot perform update")
+            return
+
         # Set image on display (with optional saturation parameter for Spectra)
         # Per Pimoroni examples: inky.set_image(resizedimage, saturation=saturation)
         if hasattr(self.display, "set_image"):
@@ -358,6 +425,10 @@ class InkyDisplayAdapter(DisplayAdapter):
             img: Full image to display.
             regions: List of (x, y, width, height) tuples for changed regions.
         """
+        if self.display is None:
+            logger.error("Display not initialized, cannot perform partial update")
+            return
+
         # Set image on display first (required before partial update)
         if hasattr(self.display, "set_image"):
             try:
@@ -441,6 +512,15 @@ class InkyDisplayAdapter(DisplayAdapter):
         min_y, max_y = int(changed_y.min()), int(changed_y.max())
         min_x, max_x = int(changed_x.min()), int(changed_x.max())
 
+        # Log how many pixels changed (for debugging)
+        num_changed_pixels = len(changed_y)
+        total_pixels = current_img.width * current_img.height
+        changed_percentage = (num_changed_pixels / total_pixels) * 100
+        logger.debug(
+            f"Change detection: {num_changed_pixels} pixels changed ({changed_percentage:.2f}% of image), "
+            f"bounding box: ({min_x}, {min_y}) to ({max_x}, {max_y})"
+        )
+
         # Add some padding to ensure we update edges properly
         padding = 2
         x = max(0, min_x - padding)
@@ -451,6 +531,93 @@ class InkyDisplayAdapter(DisplayAdapter):
         # If changed region is too large (>50% of image), just return full region
         # This avoids partial update overhead when most of the screen changed
         if width * height > 0.5 * current_img.width * current_img.height:
+            logger.debug(
+                f"Changed region too large ({width}x{height} = {width*height}px, "
+                f">{0.5 * current_img.width * current_img.height}px), using full refresh"
+            )
             return [(0, 0, current_img.width, current_img.height)]
 
+        logger.debug(
+            f"Changed region: ({x}, {y}) size {width}x{height} = {width*height}px "
+            f"({(width*height/total_pixels)*100:.2f}% of image)"
+        )
         return [(x, y, width, height)]
+
+    def _detect_input_changes(
+        self,
+        previous_groups: list[DirectionGroupWithMetadata] | None,
+        current_groups: list[DirectionGroupWithMetadata],
+    ) -> list[int]:
+        """Detect which sections changed by comparing input data.
+
+        Args:
+            previous_groups: Previous direction groups (None if first render).
+            current_groups: Current direction groups.
+
+        Returns:
+            List of section indices (0-based) that changed. Empty list if no changes.
+        """
+        if previous_groups is None:
+            # First render: all sections are "changed" (need to render everything)
+            return list(range(len(current_groups)))
+
+        if len(previous_groups) != len(current_groups):
+            # Number of groups changed: return all indices (full refresh needed)
+            return list(range(len(current_groups)))
+
+        changed_sections: list[int] = []
+        for i, (prev_group, curr_group) in enumerate(
+            zip(previous_groups, current_groups, strict=True)
+        ):
+            # Compare group metadata
+            if (
+                prev_group.station_id != curr_group.station_id
+                or prev_group.stop_name != curr_group.stop_name
+                or prev_group.direction_name != curr_group.direction_name
+            ):
+                changed_sections.append(i)
+                continue
+
+            # Compare departures
+            if len(prev_group.departures) != len(curr_group.departures):
+                changed_sections.append(i)
+                continue
+
+            # Compare each departure (compare key fields that affect display)
+            for prev_dep, curr_dep in zip(
+                prev_group.departures, curr_group.departures, strict=True
+            ):
+                # Compare fields that affect rendering
+                if (
+                    prev_dep.time != curr_dep.time
+                    or prev_dep.planned_time != curr_dep.planned_time
+                    or prev_dep.delay_seconds != curr_dep.delay_seconds
+                    or prev_dep.platform != curr_dep.platform
+                    or prev_dep.is_realtime != curr_dep.is_realtime
+                    or prev_dep.line != curr_dep.line
+                    or prev_dep.destination != curr_dep.destination
+                    or prev_dep.transport_type != curr_dep.transport_type
+                    or prev_dep.is_cancelled != curr_dep.is_cancelled
+                ):
+                    changed_sections.append(i)
+                    break  # This section changed, no need to check more departures
+
+        return changed_sections
+
+    def _count_total_rows(self, groups: list[DirectionGroupWithMetadata] | None) -> int:
+        """Count total number of rows (headers + departures).
+
+        Args:
+            groups: List of direction groups (None if empty).
+
+        Returns:
+            Total number of rows.
+        """
+        if not groups:
+            return 0
+
+        total = 0
+        for group in groups:
+            total += 1  # Header
+            total += len(group.departures)  # Departure rows
+        return total

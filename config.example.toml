@@ -84,6 +84,26 @@ font_scaling_factor_when_filling = 0.8
 # - alternating: Toggle between relative and absolute every time_toggle_interval seconds (default: 10s)
 time_mode = "absolute"
 
+# Partial update settings (to reduce flicker on e-ink displays)
+# Enable partial updates to reduce flicker (default: true)
+# When enabled, only changed regions of the display are updated instead of the entire screen
+# Note: Requires hardware support - if the Inky library doesn't support partial updates,
+# the code will automatically fall back to full updates
+partial_update_enabled = true
+
+# Do a full refresh every N partial updates to clear ghosting (default: 50)
+# Set to 0 to disable forced full refreshes (not recommended - can cause ghosting)
+# Higher values = fewer full refreshes = less flicker, but more ghosting over time
+# Lower values = more frequent full refreshes = more flicker, but cleaner display
+# Recommended range: 20-100 (50 is a good balance)
+full_refresh_interval = 50
+
+# Dithering settings
+# Enable dithering for better color representation on e-ink displays (default: true)
+# Dithering converts RGB colors to the 7-color palette with better quality
+# Disable for faster rendering (but colors may look less accurate)
+dithering_enabled = true
+
 # Stops configuration
 [[stops]]
 station_id = "de:09162:1110"

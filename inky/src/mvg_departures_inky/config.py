@@ -89,6 +89,10 @@ class InkyDisplayConfig:
     full_refresh_interval: int = (
         50  # Do full refresh every N partial updates to clear ghosting (0 = disable forced full refreshes)
     )
+    # Dithering settings
+    dithering_enabled: bool = (
+        True  # Enable dithering for better color representation (disable for faster rendering)
+    )
 
     @property
     def route_section_width(self) -> int:
@@ -242,6 +246,9 @@ class InkyDisplayConfig:
             font_scaling_factor_when_filling=inky_settings.get(
                 "font_scaling_factor_when_filling", FONT_SCALING_FACTOR_WHEN_FILLING
             ),
+            partial_update_enabled=inky_settings.get("partial_update_enabled", True),
+            full_refresh_interval=inky_settings.get("full_refresh_interval", 50),
+            dithering_enabled=inky_settings.get("dithering_enabled", True),
         )
 
     def get_route_icon_path(self, transport_type: str) -> Path | None:

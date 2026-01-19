@@ -437,6 +437,49 @@ class InkyRenderer:
         # hitherdither returns Any, but convert("P") returns Image.Image
         return dithered.convert("P")  # type: ignore[no-any-return]  # hitherdither.bayer_dithering returns Any, but convert() returns Image.Image
 
+    def _get_display_palette_rgb(self) -> list[tuple[int, int, int]]:
+        """Get the 7-color palette as RGB tuples.
+
+        Returns:
+            List of (R, G, B) tuples for the 7 colors.
+        """
+        palette_rgb: list[tuple[int, int, int]] | None = None
+        if hasattr(self.display, "palette") and self.display.palette:
+            try:
+                display_palette = self.display.palette
+                # Check if it's a real list/array with enough elements
+                if isinstance(display_palette, (list, tuple)) and len(display_palette) >= 21:
+                    # Convert palette to RGB tuples (first 7 colors)
+                    palette_rgb = []
+                    for i in range(7):
+                        idx = i * 3
+                        if idx + 2 < len(display_palette):
+                            palette_rgb.append(
+                                (
+                                    int(display_palette[idx]),
+                                    int(display_palette[idx + 1]),
+                                    int(display_palette[idx + 2]),
+                                )
+                            )
+                        else:
+                            palette_rgb.append((255, 255, 255))  # Default to white
+            except (TypeError, AttributeError, IndexError) as e:
+                logger.debug(f"Could not use display.palette: {e}")
+
+        # Fallback to default 7-color palette if display palette not available
+        if palette_rgb is None or len(palette_rgb) < 7:
+            palette_rgb = [
+                (0, 0, 0),  # 0: Black
+                (255, 255, 255),  # 1: White
+                (4, 120, 87),  # 2: Green (#047857 - darker green for realtime)
+                (8, 123, 196),  # 3: Blue (#087BC4 - less saturated blue for headers)
+                (255, 0, 0),  # 4: Red
+                (255, 255, 0),  # 5: Yellow
+                (255, 165, 0),  # 6: Orange
+            ]
+
+        return palette_rgb
+
     def _load_icon(self, transport_type: str, icon_size: int | None = None) -> Image.Image | None:
         """Load route icon for transport type from SVG file.
 
@@ -1136,9 +1179,9 @@ class InkyRenderer:
             header_text_color_rgb = (255, 255, 255)
 
             # Get actual header height for this row (base + extra pixel if applicable)
-            actual_header_height = self._header_height
+            actual_header_height = int(self._header_height)
             if row_index < len(getattr(self, "_line_height_extra_pixels", [])):
-                actual_header_height += self._line_height_extra_pixels[row_index]
+                actual_header_height += int(self._line_height_extra_pixels[row_index])
 
             # First header starts at y=0, subsequent headers have spacing
             draw.rectangle(
@@ -1166,17 +1209,40 @@ class InkyRenderer:
             # Render departures in this group
             for dep_data in departures:
                 # Get actual line height for this row (base + extra pixel if applicable)
-                actual_line_height = self._line_height
+                actual_line_height = int(self._line_height)
                 if row_index < len(getattr(self, "_line_height_extra_pixels", [])):
-                    actual_line_height += self._line_height_extra_pixels[row_index]
+                    actual_line_height += int(self._line_height_extra_pixels[row_index])
 
-                self._render_departure_row(draw, dep_data, font, y, actual_line_height)
-                y += actual_line_height
+                self._render_departure_row(draw, dep_data, font, int(y), actual_line_height)
+                y = int(y + actual_line_height)
                 row_index += 1
 
-        # Apply dithering to convert RGB image to 7-color palette
+        # Store RGB image before dithering for change detection
+        # (dithering is deterministic, but comparing RGB is more stable)
+        self._last_rgb_image = img.copy()
+
+        # Apply dithering to convert RGB image to 7-color palette (if enabled)
         # This is the key step for proper color rendering on e-ink displays
-        return self._dither_image_to_palette(img)
+        if self.config.dithering_enabled:
+            return self._dither_image_to_palette(img)
+
+        # Dithering disabled: convert RGB to palette mode using nearest color matching
+        # This is faster but colors may be less accurate (no dithering)
+        # We still need to use the 7-color palette for the display
+        palette_rgb = self._get_display_palette_rgb()
+
+        # Create a palette image with the 7 colors
+        palette_img = Image.new("P", (1, 1))
+        palette_data = []
+        for r, g, b in palette_rgb:
+            palette_data.extend([r, g, b])
+        # Fill remaining palette slots with white
+        while len(palette_data) < 768:  # 256 colors * 3 RGB values
+            palette_data.extend([255, 255, 255])
+        palette_img.putpalette(palette_data)
+
+        # Quantize the RGB image to the palette (nearest color, no dithering)
+        return img.quantize(palette=palette_img, dither=Image.Dither.NONE)
 
     def _render_departure_row(
         self,
@@ -1232,11 +1298,16 @@ class InkyRenderer:
         # For each text element, calculate its center from baseline and align with row center
         # Use provided line_height if available, otherwise fall back to stored value
         if line_height is None:
-            line_height = getattr(
-                self,
-                "_line_height",
-                self.config.line_spacing + font.getbbox("Mg")[3] - font.getbbox("Mg")[1],
-            )
+            stored_line_height = getattr(self, "_line_height", None)
+            if stored_line_height is not None:
+                line_height = int(stored_line_height)
+            else:
+                line_height = int(
+                    self.config.line_spacing + font.getbbox("Mg")[3] - font.getbbox("Mg")[1]
+                )
+        else:
+            line_height = int(line_height)
+        # line_height is now guaranteed to be int
         row_center = y + line_height / 2
 
         # Calculate text center from baseline for route and platform
@@ -1283,6 +1354,18 @@ class InkyRenderer:
             # Icon should be centered at row center: icon_y + icon_size / 2 = row_center
             # Therefore: icon_y = row_center - icon_size / 2 = y + line_height / 2 - icon_size / 2
             # line_height is already set above from the function parameter or stored value
+            # Ensure line_height is an int (it should be set above, but handle None case)
+            if line_height is None:
+                stored_line_height = getattr(self, "_line_height", None)
+                if stored_line_height is not None:
+                    line_height = int(stored_line_height)
+                else:
+                    line_height = int(
+                        self.config.line_spacing + font.getbbox("Mg")[3] - font.getbbox("Mg")[1]
+                    )
+            else:
+                line_height = int(line_height)
+            # line_height is now guaranteed to be int
             row_center = y + line_height / 2
             icon_y = int(row_center - icon_size / 2)
 

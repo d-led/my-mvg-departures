@@ -98,7 +98,9 @@ class MockInkyDisplay:
         """
         logger.debug(f"Border color set to {color}")
 
-    def show(self, filename: str | None = None, regions: list[tuple[int, int, int, int]] | None = None) -> None:
+    def show(
+        self, filename: str | None = None, regions: list[tuple[int, int, int, int]] | None = None
+    ) -> None:
         """Show the image by saving it to disk.
 
         Args:
@@ -146,7 +148,9 @@ class MockInkyDisplay:
                 f"Mock display output saved to: {output_path} "
                 f"(partial update: {len(regions)} region(s))"
             )
-            print(f"📺 Mock Inky display: Partial update saved to {output_path} ({len(regions)} region(s))")
+            print(
+                f"📺 Mock Inky display: Partial update saved to {output_path} ({len(regions)} region(s))"
+            )
         else:
             logger.info(f"Mock display output saved to: {output_path}")
             print(f"📺 Mock Inky display: Image saved to {output_path}")
