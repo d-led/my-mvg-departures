@@ -306,3 +306,6 @@ cypress/downloads/
 test-results/
 node_modules/
 package-lock.json
+
+# Raspberry Pi power optimization backups
+.pi-power-backup/
