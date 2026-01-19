@@ -125,19 +125,6 @@ else
 fi
 
 echo ""
-echo "5. WiFi power management..."
-if command -v iwconfig >/dev/null 2>&1; then
-    WLAN_INTERFACE=$(iwconfig 2>/dev/null | grep -o '^[^ ]*' | head -1)
-    if [ -n "$WLAN_INTERFACE" ]; then
-        CURRENT_POWER=$(iwconfig "$WLAN_INTERFACE" 2>/dev/null | grep -o 'Power Management:[^ ]*' || echo "off")
-        echo "  WiFi interface: $WLAN_INTERFACE"
-        echo "  Current power management: $CURRENT_POWER"
-        echo "  Note: Disabling WiFi power management improves stability but uses slightly more power"
-        echo "        To disable: sudo iwconfig $WLAN_INTERFACE power off"
-    fi
-fi
-
-echo ""
 echo "=== Optimization Complete ==="
 echo ""
 echo "Summary of changes:"
