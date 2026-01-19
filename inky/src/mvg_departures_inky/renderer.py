@@ -500,7 +500,9 @@ class InkyRenderer:
         icon_path = parent_project / "static" / "assets" / "refresh-icon.svg"
 
         if not icon_path.exists():
-            logger.error(f"Refresh icon file not found at: {icon_path} (absolute: {icon_path.resolve()})")
+            logger.error(
+                f"Refresh icon file not found at: {icon_path} (absolute: {icon_path.resolve()})"
+            )
             self._icon_cache[cache_key] = None
             return None
 
@@ -543,7 +545,12 @@ class InkyRenderer:
                         if isinstance(pixel_val, tuple) and len(pixel_val) >= 4:
                             r, g, b, a = pixel_val[0], pixel_val[1], pixel_val[2], pixel_val[3]
                             # If pixel is black/dark and not transparent, make it white
-                            if a > 0 and r <= black_threshold and g <= black_threshold and b <= black_threshold:
+                            if (
+                                a > 0
+                                and r <= black_threshold
+                                and g <= black_threshold
+                                and b <= black_threshold
+                            ):
                                 pixels[x_pos, y_pos] = (255, 255, 255, a)  # White with same alpha
                             # Otherwise keep the color and alpha as is
 
@@ -581,10 +588,25 @@ class InkyRenderer:
                                 for x_pos in range(icon.width):
                                     pixel_val = pixels[x_pos, y_pos]
                                     if isinstance(pixel_val, tuple) and len(pixel_val) >= 4:
-                                        r, g, b, a = pixel_val[0], pixel_val[1], pixel_val[2], pixel_val[3]
+                                        r, g, b, a = (
+                                            pixel_val[0],
+                                            pixel_val[1],
+                                            pixel_val[2],
+                                            pixel_val[3],
+                                        )
                                         # If pixel is black/dark and not transparent, make it white
-                                        if a > 0 and r <= black_threshold and g <= black_threshold and b <= black_threshold:
-                                            pixels[x_pos, y_pos] = (255, 255, 255, a)  # White with same alpha
+                                        if (
+                                            a > 0
+                                            and r <= black_threshold
+                                            and g <= black_threshold
+                                            and b <= black_threshold
+                                        ):
+                                            pixels[x_pos, y_pos] = (
+                                                255,
+                                                255,
+                                                255,
+                                                a,
+                                            )  # White with same alpha
 
                         # Resize to target size
                         if icon.size != (icon_size, icon_size):
@@ -599,7 +621,9 @@ class InkyRenderer:
                     return None
                 except ImportError:
                     logger.debug("svglib not available, no SVG conversion library found")
-                    logger.error("Neither cairosvg nor svglib available for refresh icon conversion")
+                    logger.error(
+                        "Neither cairosvg nor svglib available for refresh icon conversion"
+                    )
                     self._icon_cache[cache_key] = None
                     return None
         except Exception as e:
@@ -788,7 +812,8 @@ class InkyRenderer:
                 gap = 10
                 # Time text width (e.g., "14:30" - 5 characters)
                 # Calculate time text width using the same font
-                time_text = datetime.now().strftime("%H:%M")
+                # Use local time for display (not UTC)
+                time_text = datetime.now().strftime("%H:%M")  # noqa: DTZ005
                 time_bbox = header_font.getbbox(time_text)
                 time_width = time_bbox[2] - time_bbox[0]
                 # Gap between icon and time
@@ -1092,15 +1117,16 @@ class InkyRenderer:
         # Available width for header = display width - 2 * padding (left and right)
         # For the first header, we also need to account for the refresh icon + time on the right
         available_header_width = self.config.width - (2 * self.config.padding)
-        
+
         # Store current time for rendering
-        current_time = datetime.now().strftime("%H:%M")
+        # Use local time for display (not UTC)
+        current_time = datetime.now().strftime("%H:%M")  # noqa: DTZ005
         self._update_time = current_time
 
         # Calculate font size: icon size will be proportional to font size (0.8x)
         # We need to find a font size where both first header (with icon) and longest header (without icon) fit
         # Use iterative approach: try different icon sizes and find the best font size
-        
+
         # Calculate font size for first header with refresh icon
         # Start by assuming icon size is 0.8x of max font size, then iterate
         first_header_font_size_with_icon = self.config.max_font_size
@@ -1122,30 +1148,30 @@ class InkyRenderer:
                     break
                 # Otherwise, the calculated size is the best we can do
                 first_header_font_size_with_icon = calculated_font_size
-        
+
         # Calculate font size for longest header without icon (if different from first)
         longest_header_font_size = self.config.max_font_size
         if longest_header and longest_header != first_header:
             longest_header_font_size = self._calculate_header_font_size(
                 longest_header, available_header_width, refresh_icon_size=None
             )
-        
+
         # Use the smaller font size to ensure both fit
         header_font_size = min(first_header_font_size_with_icon, longest_header_font_size)
-        
+
         # Calculate icon size based on final font size (0.8x, minimum 12px)
         refresh_icon_size = max(int(header_font_size * 0.8), 12)
-        
+
         # Store icon size for rendering
         self._refresh_icon_size = refresh_icon_size
-        
+
         # Pre-cache the refresh icon at the calculated size
         # This ensures it's ready when we need to render it
         if first_header:
             refresh_icon = self._load_refresh_icon(refresh_icon_size)
             if refresh_icon is None:
                 logger.warning(f"Failed to pre-cache refresh icon at size {refresh_icon_size}")
-        
+
         header_font = self._get_font(header_font_size, bold=True)
 
         # Calculate body font size - try to maximize it to fill vertical space
@@ -1423,47 +1449,56 @@ class InkyRenderer:
 
             # Add refresh icon + time text right-aligned for the first header
             if row_index == 0:
-                refresh_icon_size = getattr(self, "_refresh_icon_size", None)
+                cached_refresh_icon_size: int | None = getattr(self, "_refresh_icon_size", None)
                 update_time = getattr(self, "_update_time", "")
-                
-                if refresh_icon_size and update_time:
+
+                if cached_refresh_icon_size is not None and update_time:
                     # Load refresh icon (should be cached from pre-loading during font size calculation)
-                    refresh_icon = self._load_refresh_icon(refresh_icon_size)
-                    
+                    refresh_icon = self._load_refresh_icon(cached_refresh_icon_size)
+
                     # Calculate time text width
                     time_bbox = header_font.getbbox(update_time)
                     time_width = time_bbox[2] - time_bbox[0]
-                    
+
                     # Position elements from right edge
                     right_x = self.config.width - self.config.padding
-                    
+
                     # Time text position (right-aligned)
                     time_x = right_x - time_width
-                    
+
                     # Gap between icon and time
                     icon_time_gap = 4
-                    
+
                     # Icon position (to the left of time text)
-                    icon_x = time_x - icon_time_gap - refresh_icon_size
-                    
+                    icon_x = time_x - icon_time_gap - cached_refresh_icon_size
+
                     # Center icon vertically in header
-                    icon_y = int(header_center - refresh_icon_size / 2)
-                    
+                    icon_y = int(header_center - cached_refresh_icon_size / 2)
+
                     # Draw time text
-                    draw.text((time_x, header_text_y), update_time, header_text_color_rgb, font=header_font)
-                    
+                    draw.text(
+                        (time_x, header_text_y),
+                        update_time,
+                        header_text_color_rgb,
+                        font=header_font,
+                    )
+
                     # Draw refresh icon
                     if refresh_icon:
                         # Access internal _image attribute for pasting icons
-                        img = getattr(draw, "_image", None)
-                        if img is not None:
+                        refresh_img: Image.Image | None = getattr(draw, "_image", None)
+                        if refresh_img is not None:
                             # Convert icon to RGB if needed
+                            icon_x_int = int(icon_x)
+                            icon_y_int = int(icon_y)
                             if refresh_icon.mode == "RGBA":
-                                img.paste(refresh_icon, (icon_x, icon_y), refresh_icon)
+                                refresh_img.paste(
+                                    refresh_icon, (icon_x_int, icon_y_int), refresh_icon
+                                )
                             else:
-                                img.paste(refresh_icon, (icon_x, icon_y))
+                                refresh_img.paste(refresh_icon, (icon_x_int, icon_y_int))
                             logger.debug(
-                                f"Pasted refresh icon at ({icon_x}, {icon_y}), size={refresh_icon_size}"
+                                f"Pasted refresh icon at ({icon_x}, {icon_y}), size={cached_refresh_icon_size}"
                             )
                         else:
                             logger.error("Could not access ImageDraw._image for refresh icon")

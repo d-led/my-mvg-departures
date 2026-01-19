@@ -3,8 +3,6 @@
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from mvg_departures.adapters.config.app_config import AppConfig
-from mvg_departures.adapters.web.formatters.departure_formatter import DepartureFormatter
 from mvg_departures.domain.contracts.departure_formatter import DepartureFormatterProtocol
 from mvg_departures.domain.models.departure import Departure
 

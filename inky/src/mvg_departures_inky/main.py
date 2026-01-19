@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
+from datetime import datetime  # noqa: TC003  # Used at runtime in update_last_update_time
 from typing import TYPE_CHECKING
 
 import aiohttp
@@ -21,8 +22,6 @@ from mvg_departures.adapters.web.builders.departure_grouping_calculator import (
     HeaderDisplaySettings,
 )
 from mvg_departures.adapters.web.formatters.departure_formatter import DepartureFormatter
-
-from .formatter import InkyDepartureFormatter
 from mvg_departures.application.services import DepartureGroupingService
 from mvg_departures.domain.models.direction_group_with_metadata import (
     DirectionGroupWithMetadata,
@@ -39,6 +38,7 @@ if TYPE_CHECKING:
 
 from .adapter import InkyDisplayAdapter
 from .config import InkyDisplayConfig
+from .formatter import InkyDepartureFormatter
 
 # Configure logging
 logging.basicConfig(
@@ -132,37 +132,110 @@ async def _fetch_and_display_loop(
     grouping_service: DepartureGroupingService,
     route_config: RouteConfiguration,
     inky_config: InkyDisplayConfig,
+    app_config: AppConfig,
 ) -> None:
-    """Continuously fetch and display departures."""
+    """Continuously fetch and display departures using ApiPoller logic."""
+    from mvg_departures.adapters.web.pollers.api_poller import (
+        ApiPoller,
+        ApiPollerConfiguration,
+        ApiPollerServices,
+        ApiPollerSettings,
+    )
+
     logger.info(f"Starting display loop for route '{route_config.path}'")
 
-    while True:
-        try:
-            # Get grouped departures for all stops in the route
-            # Pass tuples of (GroupedDepartures, StopConfiguration) to preserve stop association
-            # This ensures headers show the correct stop names (e.g., "Giesing → ..." vs "Chiemgaustr → ...")
-            all_grouped_departures: list[tuple[GroupedDepartures, StopConfiguration]] = []
-            for stop_config in route_config.stop_configs:
-                grouped_departures = await grouping_service.get_grouped_departures(stop_config)
-                # Associate each group with its stop_config
-                for group in grouped_departures:
-                    all_grouped_departures.append((group, stop_config))
+    # Create a minimal state updater and broadcaster (not used, but required by ApiPoller)
+    # We'll intercept the broadcast to call the Inky adapter instead
+    class InkyStateUpdater:
+        def __init__(self) -> None:
+            self.all_groups: list[DirectionGroupWithMetadata] = []
 
-            # Display on Inky (adapter will convert to DirectionGroupWithMetadata with correct stop names)
-            await adapter.display_departures(all_grouped_departures)
+        def update_departures(self, groups: list[DirectionGroupWithMetadata]) -> None:
+            self.all_groups = groups
 
-            # Wait before next update
-            # Use Inky-specific refresh interval (separate from web version)
-            refresh_interval = inky_config.refresh_interval_seconds
-            logger.debug(f"Waiting {refresh_interval} seconds before next update")
-            await asyncio.sleep(refresh_interval)
-        except asyncio.CancelledError:
-            logger.info("Display loop cancelled")
-            raise
-        except Exception as e:
-            logger.error(f"Error in display loop: {e}", exc_info=True)
-            # Wait a bit before retrying
-            await asyncio.sleep(10)
+        def update_last_update_time(self, time: datetime) -> None:
+            pass
+
+        def update_api_status(self, status: str) -> None:
+            pass
+
+    class InkyStateBroadcaster:
+        def __init__(self, adapter: InkyDisplayAdapter, route_config: RouteConfiguration) -> None:
+            self.adapter = adapter
+            self.route_config = route_config
+            self.state_updater: InkyStateUpdater | None = None
+
+        async def broadcast_update(self, _topic: str) -> None:
+            # Instead of broadcasting, display on Inky
+            if self.state_updater and self.state_updater.all_groups:
+                # Convert DirectionGroupWithMetadata to (GroupedDepartures, StopConfiguration) tuples
+                # Group by stop_config to match what adapter expects
+                from mvg_departures.domain.models.grouped_departures import GroupedDepartures
+
+                grouped_by_stop: dict[str, list[GroupedDepartures]] = {}
+                stop_configs_by_name: dict[str, StopConfiguration] = {}
+
+                for group in self.state_updater.all_groups:
+                    stop_name = group.stop_name
+                    if stop_name not in grouped_by_stop:
+                        grouped_by_stop[stop_name] = []
+                        # Find matching stop_config
+                        for stop_config in self.route_config.stop_configs:
+                            if stop_config.station_name == stop_name:
+                                stop_configs_by_name[stop_name] = stop_config
+                                break
+
+                    grouped_departures = GroupedDepartures(
+                        direction_name=group.direction_name, departures=group.departures
+                    )
+                    grouped_by_stop[stop_name].append(grouped_departures)
+
+                # Build tuples of (GroupedDepartures, StopConfiguration)
+                all_grouped_departures: list[tuple[GroupedDepartures, StopConfiguration]] = []
+                for stop_name, groups in grouped_by_stop.items():
+                    cached_stop_config: StopConfiguration | None = stop_configs_by_name.get(
+                        stop_name
+                    )
+                    if cached_stop_config is not None:
+                        for group_item in groups:
+                            # group_item is GroupedDepartures from the groups list
+                            all_grouped_departures.append((group_item, cached_stop_config))
+
+                if all_grouped_departures:
+                    await self.adapter.display_departures(all_grouped_departures)
+
+    state_updater = InkyStateUpdater()
+    state_broadcaster = InkyStateBroadcaster(adapter, route_config)
+    state_broadcaster.state_updater = state_updater
+
+    # Create ApiPoller with Inky-specific settings
+    # InkyStateUpdater and InkyStateBroadcaster implement the required protocols
+    services = ApiPollerServices(
+        grouping_service=grouping_service,
+        state_updater=state_updater,
+        state_broadcaster=state_broadcaster,
+    )
+    configuration = ApiPollerConfiguration(
+        stop_configs=route_config.stop_configs,
+        config=app_config,
+        refresh_interval_seconds=inky_config.refresh_interval_seconds,
+    )
+    settings = ApiPollerSettings(
+        broadcast_topic="inky_display",  # Not used, but required
+        shared_cache=None,  # No shared cache for Inky
+    )
+
+    poller = ApiPoller(services=services, configuration=configuration, settings=settings)
+
+    try:
+        await poller.start()
+        # Keep running until cancelled
+        while True:
+            await asyncio.sleep(60)  # Just keep the loop alive
+    except asyncio.CancelledError:
+        logger.info("Display loop cancelled")
+        await poller.stop()
+        raise
 
 
 async def main() -> None:
@@ -254,7 +327,9 @@ async def main() -> None:
             await adapter.start()
 
             # Start display loop
-            await _fetch_and_display_loop(adapter, grouping_service, route_config, inky_config)
+            await _fetch_and_display_loop(
+                adapter, grouping_service, route_config, inky_config, config
+            )
         except KeyboardInterrupt:
             logger.info("Shutting down...")
             await adapter.stop()

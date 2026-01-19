@@ -244,19 +244,22 @@ class InkyDisplayConfig:
                                                     display["landscape_mode"]
                                                 )
                                             if "account_for_slow_refresh_seconds" in display:
-                                                inky_settings["account_for_slow_refresh_seconds"] = int(
-                                                    display["account_for_slow_refresh_seconds"]
-                                                )
+                                                inky_settings[
+                                                    "account_for_slow_refresh_seconds"
+                                                ] = int(display["account_for_slow_refresh_seconds"])
                                             logger.debug(
                                                 f"Loaded route-specific inky settings for '{route_path}': {inky_settings}"
                                             )
                                         break
                         # Also check global [inky] section for account_for_slow_refresh_seconds
-                        if "inky" in toml_data and isinstance(toml_data["inky"], dict):
-                            if "account_for_slow_refresh_seconds" in toml_data["inky"]:
-                                inky_settings["account_for_slow_refresh_seconds"] = int(
-                                    toml_data["inky"]["account_for_slow_refresh_seconds"]
-                                )
+                        if (
+                            "inky" in toml_data
+                            and isinstance(toml_data["inky"], dict)
+                            and "account_for_slow_refresh_seconds" in toml_data["inky"]
+                        ):
+                            inky_settings["account_for_slow_refresh_seconds"] = int(
+                                toml_data["inky"]["account_for_slow_refresh_seconds"]
+                            )
             except Exception as e:
                 logger.warning(f"Failed to load inky settings from TOML: {e}, using defaults")
 
