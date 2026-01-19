@@ -72,10 +72,8 @@ sleep_ms_between_calls = 500
 # Fredoka One: Alternative font option (requires font-fredoka-one package)
 font_family = "hk_grotesk"
 
-# Enable dynamic font sizing to fill display height
-fill_vertical_space = true
-
-# Font scaling factor when filling vertical space (0.0-1.0, default 0.8)
+# Font scaling factor (0.0-1.0, default 0.8)
+# Note: fill_vertical_space is always enabled for Inky displays (not configurable)
 # Scales only the route/body fonts, not the header fonts (headers are fitted to their text width)
 # Lower values = smaller body fonts, higher values = larger body fonts
 # This allows fine-tuning body font size independently of header font size
@@ -262,7 +260,6 @@ title = "Hohenzollernplatz Departures"
 # UI theme: 'light', 'dark', or 'auto' (follows system preference)
 # Default: 'light'
 theme = "light"
-fill_vertical_space = true
 font_scaling_factor_when_filling = 0.9
 
 # Inky e-ink display settings (optional, route-specific)
@@ -320,7 +317,6 @@ path = "/berlin-hardenbergstrasse"
 [[routes.display]]
 title = "Berlin Hardenbergstraße Departures"
 theme = "light"
-fill_vertical_space = true
 random_header_colors = true
 font_scaling_factor_when_filling = 0.8
 # Poller interval: fetch departures every 60 seconds (1 minute)
