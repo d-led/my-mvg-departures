@@ -31,18 +31,25 @@ jobs:
         with:
           version: "latest"
 
-      - name: Cache uv dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/uv
-          key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml', 'inky/pyproject.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-uv-
-
       - name: Install macOS system dependencies
         if: matrix.os == 'macos-latest'
         run: |
           brew install cairo librsvg pkg-config
+          # Verify pkg-config can find Cairo (cairocffi uses this)
+          pkg-config --modversion cairo || exit 1
+          # Set PKG_CONFIG_PATH explicitly (though Homebrew paths are usually in default search)
+          echo "PKG_CONFIG_PATH=$(brew --prefix)/lib/pkgconfig" >> $GITHUB_ENV
+          # Verify library exists
+          ls -la $(brew --prefix)/lib/libcairo*.dylib || exit 1
+
+      - name: Cache uv dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          # Cache key includes OS to separate macOS and Linux caches
+          key: ${{ runner.os }}-uv-${{ hashFiles('pyproject.toml', 'inky/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-
 
       - name: Setup main project
         run: |
@@ -51,6 +58,21 @@ jobs:
       - name: Setup inky subproject (dev mode, no hardware)
         run: |
           ./inky/scripts/setup_dev.sh
+
+      - name: Verify cairosvg installation (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          source .venv/bin/activate || true
+          # Test import
+          python -c "import cairosvg; print('✓ cairosvg imported successfully')" || {
+            echo "❌ cairosvg import failed, checking cairocffi..."
+            python -c "import cairocffi; print('cairocffi imported')" || {
+              echo "❌ cairocffi also failed, attempting to reinstall..."
+              pip uninstall -y cairosvg cairocffi pycairo || true
+              pip install --no-cache-dir --force-reinstall cairosvg
+              python -c "import cairosvg; print('✓ cairosvg imported successfully after reinstall')"
+            }
+          }
 
       - name: Run all checks (formatting, linting, type checking, tests)
         run: |
