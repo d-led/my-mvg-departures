@@ -52,6 +52,7 @@ class InkyDisplayAdapter(DisplayAdapter):
         self.renderer: InkyRenderer | None = None
         self._update_task: asyncio.Task | None = None
         self._running = False
+        self._needs_rotation = False  # Whether to rotate image to match hardware orientation
 
     async def start(self) -> None:
         """Start the display adapter."""
@@ -77,24 +78,31 @@ class InkyDisplayAdapter(DisplayAdapter):
 
                 # Auto-detect Inky display
                 self.display = auto()
+                display_width = self.display.width
+                display_height = self.display.height
                 logger.info(
-                    f"Initialized Inky display: {self.display.width}x{self.display.height}, "
+                    f"Initialized Inky display: {display_width}x{display_height}, "
                     f"colour: {self.display.colour}"
                 )
 
-                # Real hardware returns dimensions in landscape mode, but we need portrait mode
-                # Swap width and height for real hardware (mock is already correct)
-                # For 7.5" Inky Impression Spectra: hardware returns 800x480 (landscape), we need 480x800 (portrait)
-                display_width = self.display.width
-                display_height = self.display.height
-                
-                # Swap for portrait mode on real hardware
-                self.config.width = display_height  # Use height as width (portrait)
-                self.config.height = display_width  # Use width as height (portrait)
-                logger.info(
-                    f"Swapped dimensions for portrait mode: {display_width}x{display_height} -> "
-                    f"{self.config.width}x{self.config.height}"
-                )
+                # For hardware, we want text to run along the shortest side (portrait orientation)
+                # If hardware is landscape (width > height), swap dimensions for rendering
+                # This makes the renderer think it's portrait, so text flows along the short side
+                if display_width > display_height:
+                    # Landscape hardware: render as portrait (text along short side)
+                    self.config.width = display_height  # Use height as width for rendering
+                    self.config.height = display_width  # Use width as height for rendering
+                    self._needs_rotation = True  # Mark that we need to rotate the final image
+                    logger.info(
+                        f"Hardware is landscape ({display_width}x{display_height}), "
+                        f"rendering as portrait ({self.config.width}x{self.config.height}) "
+                        f"for text along short side"
+                    )
+                else:
+                    # Already portrait or square: use as-is
+                    self.config.width = display_width
+                    self.config.height = display_height
+                    self._needs_rotation = False
             except ImportError as e:
                 logger.warning(
                     f"Inky library not available (likely on non-Linux platform): {e}. "
@@ -221,18 +229,25 @@ class InkyDisplayAdapter(DisplayAdapter):
                 )
 
             # Render to PIL Image
-            # The renderer uses config.width and config.height which are already swapped for portrait mode
-            # on real hardware (480x800), or correct for mock (480x800)
+            # The renderer uses config.width and config.height which may be swapped for portrait mode
+            # on real hardware (e.g., 480x800) so text runs along the short side
             img = self.renderer.render(direction_groups_with_metadata)
 
-            # Resize image to display resolution if needed (as per Pimoroni examples)
-            # Note: For real hardware, the image is rendered in portrait (480x800) but display is landscape (800x480)
-            # The display.set_image() should handle the orientation, so we don't rotate/transpose here
-            if hasattr(self.display, "resolution") and img.size != self.display.resolution:
-                # Only resize if dimensions don't match - but be careful not to stretch
-                # For portrait rendering on landscape display, this should not be needed
+            # If hardware is landscape but we rendered as portrait, rotate the image to match hardware
+            # Use transpose (not rotate) to avoid pixel stretching - it's a perfect 90-degree swap
+            if self._needs_rotation:
+                # Rotate 90 degrees clockwise: portrait (480x800) -> landscape (800x480)
+                # Transpose.ROTATE_90 does a perfect pixel swap without interpolation
+                img = img.transpose(Image.Transpose.ROTATE_90)
                 logger.debug(
-                    f"Image size {img.size}, display resolution {self.display.resolution}"
+                    f"Rotated rendered image: {img.size} (portrait -> landscape, no stretching)"
+                )
+
+            # Verify image matches display resolution (should match after rotation if needed)
+            if hasattr(self.display, "resolution") and img.size != self.display.resolution:
+                logger.warning(
+                    f"Image size {img.size} doesn't match display resolution {self.display.resolution}. "
+                    "This may cause issues. Dimensions should match after rotation."
                 )
 
             # Set image on display (with optional saturation parameter for Spectra)
