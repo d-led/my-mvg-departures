@@ -40,14 +40,8 @@ YELLOW = 5
 ORANGE = 6
 
 # Time display settings
-TIME_TOGGLE_INTERVAL_SECONDS = (
-    15  # Toggle between absolute/relative every 10 seconds (for alternating mode)
-)
 TIME_MODE_RELATIVE = "relative"  # Always show relative time (e.g., "5m")
 TIME_MODE_ABSOLUTE = "absolute"  # Always show absolute time (e.g., "14:30")
-TIME_MODE_ALTERNATING = (
-    "alternating"  # Toggle between relative and absolute every time_toggle_interval seconds
-)
 
 # Fonts are hardcoded:
 # - Headers: HK Grotesk Bold
@@ -76,18 +70,12 @@ class InkyDisplayConfig:
     max_font_size: int = MAX_FONT_SIZE
     font_size_step: int = FONT_SIZE_STEP
     line_spacing: int = LINE_SPACING
-    time_toggle_interval: int = TIME_TOGGLE_INTERVAL_SECONDS
-    time_mode: str = TIME_MODE_ABSOLUTE  # "relative", "absolute", or "alternating"
+    time_mode: str = TIME_MODE_ABSOLUTE  # "relative" or "absolute"
     # Note: fill_vertical_space is always True for Inky displays (not configurable)
     # E-ink displays don't have pagination/scrolling, so we always fill the available space
     # Fonts are hardcoded: HK Grotesk Bold for headers, Fredoka One for routes
     font_scaling_factor_when_filling: float = (
         FONT_SCALING_FACTOR_WHEN_FILLING  # Scale body fonts by this factor (only affects route fonts, not headers)
-    )
-    # Partial update settings
-    partial_update_enabled: bool = True  # Enable partial updates to reduce flicker
-    full_refresh_interval: int = (
-        50  # Do full refresh every N partial updates to clear ghosting (0 = disable forced full refreshes)
     )
     # Dithering settings
     dithering_enabled: bool = (
@@ -197,7 +185,7 @@ class InkyDisplayConfig:
                             # Convert legacy show_time to time_mode if present
                             if "show_time" in inky_settings and "time_mode" not in inky_settings:
                                 if inky_settings["show_time"]:
-                                    inky_settings["time_mode"] = TIME_MODE_ALTERNATING
+                                    inky_settings["time_mode"] = TIME_MODE_RELATIVE
                                 else:
                                     inky_settings["time_mode"] = TIME_MODE_ABSOLUTE
                                 # Remove show_time to avoid confusion
@@ -220,9 +208,7 @@ class InkyDisplayConfig:
                                             elif "show_time" in display:
                                                 # Legacy support: convert show_time bool to time_mode
                                                 if display["show_time"]:
-                                                    inky_settings["time_mode"] = (
-                                                        TIME_MODE_ALTERNATING
-                                                    )
+                                                    inky_settings["time_mode"] = TIME_MODE_RELATIVE
                                                 else:
                                                     inky_settings["time_mode"] = TIME_MODE_ABSOLUTE
                                             if "font_scaling_factor_when_filling" in display:
@@ -246,8 +232,6 @@ class InkyDisplayConfig:
             font_scaling_factor_when_filling=inky_settings.get(
                 "font_scaling_factor_when_filling", FONT_SCALING_FACTOR_WHEN_FILLING
             ),
-            partial_update_enabled=inky_settings.get("partial_update_enabled", True),
-            full_refresh_interval=inky_settings.get("full_refresh_interval", 50),
             dithering_enabled=inky_settings.get("dithering_enabled", True),
         )
 

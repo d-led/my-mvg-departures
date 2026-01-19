@@ -1,7 +1,6 @@
 """Renderer for Inky display."""
 
 import logging
-from datetime import UTC, datetime
 from io import BytesIO
 from typing import TYPE_CHECKING, Any
 
@@ -124,9 +123,6 @@ class InkyRenderer:
         self._icon_cache: dict[tuple[str, int], Image.Image | None] = (
             {}
         )  # Cache key includes size (transport_type, target_size)
-        # Time mode state (for alternating mode)
-        self._use_relative_time = False  # Start with absolute time (HH:MM format)
-        self._last_time_toggle = datetime.now(UTC)
 
         # Use actual display dimensions if available (inky.width, inky.height)
         # BUT: If config dimensions don't match display dimensions, it means the adapter
@@ -1277,18 +1273,8 @@ class InkyRenderer:
         # Time is always shown, but the format depends on the mode
         if self.config.time_mode == "relative":
             time_text = dep_data.get("time_str_relative", "")
-        elif self.config.time_mode == "absolute":
+        else:  # absolute (default)
             time_text = dep_data.get("time_str_absolute", "")
-        else:  # alternating
-            now = datetime.now(UTC)
-            if (now - self._last_time_toggle).total_seconds() >= self.config.time_toggle_interval:
-                self._use_relative_time = not self._use_relative_time
-                self._last_time_toggle = now
-            time_text = (
-                dep_data.get("time_str_relative", "")
-                if self._use_relative_time
-                else dep_data.get("time_str_absolute", "")
-            )
 
         time_bbox = font.getbbox(time_text) if time_text else (0, 0, 0, 0)
 

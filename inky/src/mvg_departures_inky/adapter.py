@@ -6,7 +6,6 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
-import numpy as np
 from mvg_departures.adapters.web.builders.departure_grouping_calculator import (
     DepartureGroupingCalculator,
 )
@@ -54,24 +53,12 @@ class InkyDisplayAdapter(DisplayAdapter):
         self._update_task: asyncio.Task | None = None
         self._running = False
         self._needs_rotation = False  # Whether to rotate image to match hardware orientation
-        self._previous_image: Image.Image | None = (
-            None  # Previous rendered image for partial updates (RGB, before dithering)
-        )
-        self._previous_dithered_image: Image.Image | None = (
-            None  # Previous dithered image (for display)
-        )
         self._previous_direction_groups: list[DirectionGroupWithMetadata] | None = (
             None  # Previous direction groups for input-level change detection
         )
-        self._partial_update_count = 0  # Count of partial updates (for periodic full refresh)
 
     async def start(self) -> None:
         """Start the display adapter."""
-        # Log partial update configuration and display capabilities
-        logger.info(
-            f"Partial updates: enabled={self.config.partial_update_enabled}, "
-            f"full_refresh_interval={self.config.full_refresh_interval}"
-        )
         # Check if we should use mock mode
         use_mock = os.getenv("INKY_MOCK_MODE", "false").lower() in ("true", "1", "yes")
         output_dir = os.getenv("INKY_MOCK_OUTPUT_DIR", None)
@@ -262,7 +249,6 @@ class InkyDisplayAdapter(DisplayAdapter):
                 )
                 # Render full image
                 img = self.renderer.render(direction_groups_with_metadata)
-                rgb_img = getattr(self.renderer, "_last_rgb_image", None)
             elif not changed_sections:
                 # No changes at input level - skip update
                 logger.info("No changes detected at input level, skipping display update.")
@@ -275,10 +261,8 @@ class InkyDisplayAdapter(DisplayAdapter):
                     f"Input-level changes detected: {len(changed_sections)} section(s) changed. "
                     f"Changed sections: {changed_sections}"
                 )
-                # For now, render full image (we can optimize to render only changed sections later)
-                # TODO: Implement partial rendering of only changed sections
+                # Render full image
                 img = self.renderer.render(direction_groups_with_metadata)
-                rgb_img = getattr(self.renderer, "_last_rgb_image", None)
 
             # Store current data for next comparison
             self._previous_direction_groups = direction_groups_with_metadata.copy()
@@ -306,81 +290,21 @@ class InkyDisplayAdapter(DisplayAdapter):
                     f"Image size {img.size} doesn't match expected display size {expected_size}"
                 )
 
-            # Mock display always does full updates (for easier debugging/visualization)
-            # Real e-paper display uses partial updates when enabled (to reduce flicker)
+            # Always perform full update (Inky Impression doesn't support partial updates)
+            # Input-level change detection is used to skip updates when nothing changed
             if isinstance(self.display, MockInkyDisplay):
-                # Mock display: log input-level changes, but always do full update
+                # Mock display: log input-level changes
                 logger.info(
                     f"Mock display: Input-level changes detected: {len(changed_sections)} section(s). "
                     f"Changed sections: {changed_sections}. Performing full update for visualization."
                 )
-
-                # Mock display: always perform full update to show complete image (for debugging)
-                self._perform_full_update(img)
-            elif self.config.partial_update_enabled:
-                logger.debug("Partial updates enabled, using input-level change detection...")
-                # Real e-paper: use partial updates when enabled
-                # We already detected changes at input level above, now convert to image regions
-                # For now, we'll use image-based region detection for the changed sections
-                # TODO: Map changed_sections to actual image regions (y coordinates) for more precise updates
-                comparison_img = rgb_img if rgb_img is not None else img
-                changed_regions = self._find_changed_regions(self._previous_image, comparison_img)
-
-                if not changed_regions:
-                    logger.info("No changes detected in image comparison, skipping display update.")
-                    return
-
-                logger.info(
-                    f"Detected {len(changed_regions)} changed region(s) in image: {changed_regions} "
-                    f"(from {len(changed_sections)} input-level changes in sections: {changed_sections})"
+            else:
+                logger.debug(
+                    f"Input-level changes detected: {len(changed_sections)} section(s) changed. "
+                    "Performing full refresh."
                 )
 
-                # Check for forced full refresh
-                if (
-                    self.config.full_refresh_interval > 0
-                    and self._partial_update_count >= self.config.full_refresh_interval
-                ):
-                    logger.info(
-                        f"Forcing full refresh after {self._partial_update_count} partial updates."
-                    )
-                    self._partial_update_count = 0
-                    self._perform_full_update(img)
-                elif len(changed_regions) == 1 and changed_regions[0] == (
-                    0,
-                    0,
-                    img.width,
-                    img.height,
-                ):
-                    # If the entire image changed (e.g., first render or major layout change)
-                    logger.info(
-                        f"Full image changed (region: {changed_regions[0]}), performing full refresh."
-                    )
-                    self._partial_update_count = 0
-                    self._perform_full_update(img)
-                else:
-                    # Perform partial update
-                    logger.info(
-                        f"Performing partial update for {len(changed_regions)} region(s): {changed_regions}"
-                    )
-                    self._partial_update_count += 1
-                    self._perform_partial_update(img, changed_regions)
-            else:
-                # Partial updates disabled, always perform full update
-                logger.debug("Partial updates disabled, performing full refresh.")
-                self._perform_full_update(img)
-
-            # Store RGB image (before dithering) for next comparison (for image-based fallback)
-            # Input-level change detection is primary, but we keep image comparison as fallback
-            if rgb_img is not None:
-                self._previous_image = rgb_img.copy()
-            elif img.mode != "P":
-                # If not dithered, store as-is
-                self._previous_image = img.copy()
-            else:
-                # Dithered image - we can't compare palette images directly
-                # Convert back to RGB for comparison (lossy, but better than nothing)
-                self._previous_image = img.convert("RGB")
-            self._previous_dithered_image = img.copy()  # Store dithered image for display
+            self._perform_full_update(img)
             logger.debug("Inky display updated")
         except Exception as e:
             logger.error(f"Failed to display departures: {e}", exc_info=True)
@@ -415,133 +339,6 @@ class InkyDisplayAdapter(DisplayAdapter):
             self.display.show(filename)
         else:
             self.display.show()
-
-    def _perform_partial_update(
-        self, img: Image.Image, regions: list[tuple[int, int, int, int]]
-    ) -> None:
-        """Perform a partial display update for specified regions.
-
-        Args:
-            img: Full image to display.
-            regions: List of (x, y, width, height) tuples for changed regions.
-        """
-        if self.display is None:
-            logger.error("Display not initialized, cannot perform partial update")
-            return
-
-        # Set image on display first (required before partial update)
-        if hasattr(self.display, "set_image"):
-            try:
-                self.display.set_image(img, saturation=0.5)
-            except TypeError:
-                self.display.set_image(img)
-        else:
-            self.display.set_image(img)
-
-        # Try to use partial update if supported
-        # Note: Mock display should never reach here (it always does full updates)
-        if isinstance(self.display, MockInkyDisplay):
-            # This shouldn't happen, but if it does, do a full update
-            logger.warning("Mock display reached partial update path, falling back to full update.")
-            self._perform_full_update(img)
-            return
-
-        # Log available methods for debugging
-        display_methods = [m for m in dir(self.display) if not m.startswith("_")]
-        logger.debug(f"Display object methods: {display_methods}")
-
-        if hasattr(self.display, "show_partial"):
-            # Some Inky displays might have show_partial (e.g., older versions or specific models)
-            logger.info(f"Using show_partial() for {len(regions)} region(s)")
-            for x, y, w, h in regions:
-                logger.debug(f"  Updating region: x={x}, y={y}, w={w}, h={h}")
-                self.display.show_partial(x, y, w, h)
-        elif hasattr(self.display, "partial_update"):
-            # Newer Inky libraries might have a partial_update method
-            logger.info(f"Using partial_update() for {len(regions)} region(s)")
-            for x, y, w, h in regions:
-                logger.debug(f"  Updating region: x={x}, y={y}, w={w}, h={h}")
-                self.display.partial_update(x, y, w, h)
-        else:
-            # Partial update not supported, fall back to full update
-            logger.warning(
-                f"Partial update not supported by Inky library (no show_partial or partial_update methods). "
-                f"Available methods: {[m for m in display_methods if 'partial' in m.lower() or 'update' in m.lower()]}. "
-                f"Falling back to full update."
-            )
-            self._perform_full_update(img)
-
-    def _find_changed_regions(
-        self, previous_img: Image.Image | None, current_img: Image.Image
-    ) -> list[tuple[int, int, int, int]]:
-        """Find changed regions between two images.
-
-        Args:
-            previous_img: Previous image (None if first render).
-            current_img: Current image.
-
-        Returns:
-            List of (x, y, width, height) tuples for changed regions.
-            Returns empty list if no previous image or if images are identical.
-        """
-        if previous_img is None:
-            # First render: return full image region
-            return [(0, 0, current_img.width, current_img.height)]
-
-        if previous_img.size != current_img.size:
-            # Size changed: return full image region
-            return [(0, 0, current_img.width, current_img.height)]
-
-        # Convert images to numpy arrays for comparison
-        # Convert to RGB if needed for comparison
-        prev_array = np.array(previous_img.convert("RGB"))
-        curr_array = np.array(current_img.convert("RGB"))
-
-        # Find pixels that changed
-        diff = np.any(prev_array != curr_array, axis=2)
-
-        if not np.any(diff):
-            # No changes
-            return []
-
-        # Find bounding box of changed region
-        changed_y, changed_x = np.where(diff)
-        if len(changed_y) == 0:
-            return []
-
-        min_y, max_y = int(changed_y.min()), int(changed_y.max())
-        min_x, max_x = int(changed_x.min()), int(changed_x.max())
-
-        # Log how many pixels changed (for debugging)
-        num_changed_pixels = len(changed_y)
-        total_pixels = current_img.width * current_img.height
-        changed_percentage = (num_changed_pixels / total_pixels) * 100
-        logger.debug(
-            f"Change detection: {num_changed_pixels} pixels changed ({changed_percentage:.2f}% of image), "
-            f"bounding box: ({min_x}, {min_y}) to ({max_x}, {max_y})"
-        )
-
-        # Add some padding to ensure we update edges properly
-        padding = 2
-        x = max(0, min_x - padding)
-        y = max(0, min_y - padding)
-        width = min(current_img.width - x, max_x - min_x + 1 + 2 * padding)
-        height = min(current_img.height - y, max_y - min_y + 1 + 2 * padding)
-
-        # If changed region is too large (>50% of image), just return full region
-        # This avoids partial update overhead when most of the screen changed
-        if width * height > 0.5 * current_img.width * current_img.height:
-            logger.debug(
-                f"Changed region too large ({width}x{height} = {width*height}px, "
-                f">{0.5 * current_img.width * current_img.height}px), using full refresh"
-            )
-            return [(0, 0, current_img.width, current_img.height)]
-
-        logger.debug(
-            f"Changed region: ({x}, {y}) size {width}x{height} = {width*height}px "
-            f"({(width*height/total_pixels)*100:.2f}% of image)"
-        )
-        return [(x, y, width, height)]
 
     def _detect_input_changes(
         self,
