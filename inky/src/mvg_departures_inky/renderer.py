@@ -642,11 +642,9 @@ class InkyRenderer:
         # No padding since we start at y=0
         available_height = self.config.height
 
-        # Calculate header height with the given header font size
-        header_font = self._get_font(header_font_size, bold=True)
-        header_bbox = header_font.getbbox("Mg")
-        header_font_height = header_bbox[3] - header_bbox[1]
-        header_height = header_font_height + self.config.line_spacing + 4
+        # Headers will use the same height as departure rows (line_height) for better vertical space distribution
+        # We'll calculate the actual header_height based on line_height in the loop below
+        header_font = self._get_font(header_font_size, bold=True)  # Keep for later use
 
         # Always fill vertical space for Inky displays
         if True:  # fill_vertical_space is always True for Inky
@@ -668,9 +666,12 @@ class InkyRenderer:
                 bbox = font.getbbox("Mg")
                 font_height = bbox[3] - bbox[1]
                 line_height = font_height + self.config.line_spacing
+                
+                # Headers use the same height as departure rows for better vertical space distribution
+                header_height = line_height
 
                 total_height = (
-                    (header_height * header_count)
+                    (header_height * header_count)  # Headers same height as rows
                     + (line_height * total_items)
                     - self.config.line_spacing
                 )
@@ -757,16 +758,12 @@ class InkyRenderer:
                     font_height + self.config.line_spacing
                 )  # Full line height with spacing
 
-                # Calculate header height with corresponding header font size
-                # Make header only slightly larger than body text (10% larger, max +2)
-                # Ensure header scales down proportionally with body font (no minimum constraint)
+                # Headers use the same height as departure rows for better vertical space distribution
+                # Adjust header font size to fit within line_height
                 header_font_size = max(1, min(int(font_size * 1.1), font_size + 2))
                 header_font = self._get_font(header_font_size, bold=True)
-                header_bbox = header_font.getbbox("Mg")
-                header_font_height = header_bbox[3] - header_bbox[1]
-                header_height = (
-                    header_font_height + self.config.line_spacing + 4
-                )  # Header height with spacing
+                # Headers use the same height as departure rows
+                header_height = line_height
 
                 # Calculate total height:
                 # Each row takes line_height (font_height + spacing)
@@ -774,7 +771,7 @@ class InkyRenderer:
                 # But line_height already includes spacing for each row, so we're counting N spacings
                 # The last row doesn't need spacing after it, so subtract one spacing
                 total_height = (
-                    (header_height * header_count)
+                    (header_height * header_count)  # Headers same height as rows
                     + (line_height * total_items)
                     - self.config.line_spacing
                 )
@@ -814,22 +811,18 @@ class InkyRenderer:
             font_height = bbox[3] - bbox[1]  # Font height without spacing
             line_height = font_height + self.config.line_spacing  # Full line height with spacing
 
-            # Calculate header height with corresponding header font size
-            # Make header only slightly larger than body text (10% larger, max +2)
-            # Ensure header scales down proportionally with body font (no minimum constraint)
+            # Headers use the same height as departure rows for better vertical space distribution
+            # Adjust header font size to fit within line_height
             header_font_size = max(1, min(int(font_size * 1.1), font_size + 2))
             header_font = self._get_font(header_font_size, bold=True)
-            header_bbox = header_font.getbbox("Mg")
-            header_font_height = header_bbox[3] - header_bbox[1]
-            header_height = (
-                header_font_height + self.config.line_spacing + 4
-            )  # Header height with spacing
+            # Headers use the same height as departure rows
+            header_height = line_height
 
             # Calculate total height:
             # Each row takes line_height, but the last row doesn't need spacing after it
             # So subtract one spacing from total
             total_height = (
-                (header_height * header_count)
+                (header_height * header_count)  # Headers same height as rows
                 + (line_height * total_items)
                 - self.config.line_spacing
             )
@@ -933,10 +926,9 @@ class InkyRenderer:
         platform_font_size = max(int(font_size * 0.7), 10)
         self._platform_font = self._get_font(platform_font_size, bold=False)
 
-        # Calculate header height using the pre-calculated header font size
-        header_bbox = header_font.getbbox("Mg")
-        header_font_height = header_bbox[3] - header_bbox[1]
-        header_height = header_font_height + self.config.line_spacing + 4
+        # Header height will be set to match line_height in the render method
+        # We'll adjust header font size to fit within that height
+        # For now, just store the header font (will be adjusted later)
 
         # Calculate route number column width dynamically to fit at least 4 characters
         # This prevents overlap when route numbers are longer
@@ -999,11 +991,17 @@ class InkyRenderer:
         bbox = font.getbbox("Mg")
         font_height = bbox[3] - bbox[1]  # Font height without spacing
         line_height = font_height + self.config.line_spacing  # Full line height with spacing
-        header_bbox = header_font.getbbox("Mg")
-        header_font_height = header_bbox[3] - header_bbox[1]
-        header_height = (
-            header_font_height + self.config.line_spacing + 4
-        )  # Header height with spacing
+        
+        # Headers should have the same height as departure rows for better vertical space distribution
+        header_height = line_height  # Same as departure row height
+        
+        # Adjust header font size to fit within the header height
+        # We want the font to fit within line_height, leaving some padding
+        # Try to fit the header text within the available height
+        max_header_font_size = int(line_height * 0.85)  # Use 85% of line height for font
+        # Ensure header font is at least as large as body font, but not larger than max_header_font_size
+        header_font_size = min(max(header_font_size, font_size), max_header_font_size)
+        header_font = self._get_font(header_font_size, bold=True)
 
         # Calculate total height needed
         # Each row takes line_height, but the last row doesn't need spacing after it
@@ -1017,27 +1015,39 @@ class InkyRenderer:
         # Always use full height for Inky displays (fill_vertical_space is always enabled)
         available_height = self.config.height
 
-        # If there's remaining space, distribute it evenly among rows
-        if total_departures > 0:
+        # Calculate exact line_height needed to fill the available height
+        # Since headers are now the same height as departure rows, we distribute among all rows
+        total_rows = header_count + total_departures
+        if total_rows > 0:
+            # Formula: total_height = (line_height * total_rows) - line_spacing = available_height
+            # Therefore: line_height = (available_height + line_spacing) / total_rows
+            # This ensures we fill exactly to the bottom with no wasted space
+            line_height = (available_height + self.config.line_spacing) / total_rows
+            header_height = line_height  # Headers same height as rows
+            
+            # Convert to int for rendering
+            line_height = int(line_height)
+            header_height = int(header_height)
+            
+            # Recalculate total_height to verify it matches (should be very close)
+            total_height = (
+                (header_height * header_count)  # Headers same height as rows
+                + (line_height * total_departures)
+                - self.config.line_spacing
+            )
+            
+            logger.debug(
+                f"Filled vertical space: line_height={line_height}, "
+                f"total_height={total_height}, available_height={available_height}, "
+                f"total_rows={total_rows}"
+            )
+            
+            # Check if we're within 1px (allow for rounding)
             height_diff = available_height - total_height
-            if height_diff > 0:
-                # Distribute remaining space evenly among all departure rows
-                extra_per_row = height_diff / total_departures
-                line_height = int(line_height + extra_per_row)
-                # Recalculate total_height with adjusted line_height
-                total_height = (
-                    (header_height * header_count)
-                    + (line_height * total_departures)
-                    - self.config.line_spacing
-                )
-                logger.debug(
-                    f"Distributed {height_diff}px remaining space: {extra_per_row:.2f}px per row, "
-                    f"new line_height={line_height}, new total_height={total_height}"
-                )
-            elif height_diff < -1:  # More than 1px over (allow 1px rounding error)
+            if abs(height_diff) > 1:
                 logger.warning(
-                    f"Content height ({total_height}) exceeds available height ({available_height}) "
-                    f"by {abs(height_diff)}px. This should not happen with optimal font size calculation."
+                    f"Height mismatch: total_height={total_height}, "
+                    f"available_height={available_height}, diff={height_diff}px"
                 )
 
         # Store adjusted line_height for use in _render_departure_row
