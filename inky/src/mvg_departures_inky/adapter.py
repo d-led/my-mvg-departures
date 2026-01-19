@@ -220,22 +220,20 @@ class InkyDisplayAdapter(DisplayAdapter):
                     )
                 )
 
-            # Render to PIL Image (in portrait mode: 480x800)
+            # Render to PIL Image
+            # The renderer uses config.width and config.height which are already swapped for portrait mode
+            # on real hardware (480x800), or correct for mock (480x800)
             img = self.renderer.render(direction_groups_with_metadata)
 
-            # For real hardware (not mock), rotate image 90 degrees clockwise
-            # Hardware display is physically 800x480 (landscape), but we render 480x800 (portrait)
-            # So we need to rotate the portrait image to match the landscape display
-            if not isinstance(self.display, MockInkyDisplay):
-                # Rotate 90 degrees clockwise to convert portrait (480x800) to landscape (800x480)
-                img = img.rotate(-90, expand=True)  # -90 = 90 degrees clockwise
-                logger.debug(
-                    f"Rotated image for hardware display: {img.size} (portrait -> landscape)"
-                )
-
             # Resize image to display resolution if needed (as per Pimoroni examples)
+            # Note: For real hardware, the image is rendered in portrait (480x800) but display is landscape (800x480)
+            # The display.set_image() should handle the orientation, so we don't rotate/transpose here
             if hasattr(self.display, "resolution") and img.size != self.display.resolution:
-                img = img.resize(self.display.resolution, Image.Resampling.LANCZOS)
+                # Only resize if dimensions don't match - but be careful not to stretch
+                # For portrait rendering on landscape display, this should not be needed
+                logger.debug(
+                    f"Image size {img.size}, display resolution {self.display.resolution}"
+                )
 
             # Set image on display (with optional saturation parameter for Spectra)
             # Per Pimoroni examples: inky.set_image(resizedimage, saturation=saturation)
