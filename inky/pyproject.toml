@@ -51,6 +51,9 @@ mvg-departures-inky = "mvg_departures_inky.main:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.metadata]
+allow-direct-references = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/mvg_departures_inky"]
 

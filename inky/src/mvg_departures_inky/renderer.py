@@ -911,9 +911,8 @@ class InkyRenderer:
         destination_text = dep_data.get("destination", "")
         platform_text = dep_data.get("platform", "") or ""
 
-        # Get bottom offsets for all text elements
+        # Get bounding boxes for route and platform (destination and time use route_baseline)
         route_bbox = font.getbbox(route_text) if route_text else (0, 0, 0, 0)
-        destination_bbox = font.getbbox(destination_text) if destination_text else (0, 0, 0, 0)
         platform_bbox = (
             self._platform_font.getbbox(platform_text) if platform_text else (0, 0, 0, 0)
         )
@@ -945,26 +944,20 @@ class InkyRenderer:
         )
         row_center = y + line_height / 2
 
-        # Calculate text center from baseline for each element
+        # Calculate text center from baseline for route and platform
         # bbox[1] is top (negative = above baseline), bbox[3] is bottom (positive = below baseline)
         # Text center from baseline = (bbox[1] + bbox[3]) / 2
+        # We use route_baseline for route, destination, and time to align them horizontally
         route_center_from_baseline = (route_bbox[1] + route_bbox[3]) / 2 if route_text else 0
-        destination_center_from_baseline = (
-            (destination_bbox[1] + destination_bbox[3]) / 2 if destination_text else 0
-        )
         platform_center_from_baseline = (
             (platform_bbox[1] + platform_bbox[3]) / 2 if platform_text else 0
         )
-        time_center_from_baseline = (time_bbox[1] + time_bbox[3]) / 2 if time_text else 0
 
         # Position each text element so its center aligns with row center
         # baseline = row_center - text_center_from_baseline
+        # We use route_baseline for route, destination, and time to align them horizontally
         route_baseline = int(row_center - route_center_from_baseline) if route_text else 0
-        destination_baseline = (
-            int(row_center - destination_center_from_baseline) if destination_text else 0
-        )
         platform_baseline = int(row_center - platform_center_from_baseline) if platform_text else 0
-        time_baseline = int(row_center - time_center_from_baseline) if time_text else 0
 
         x = self.config.padding
 
@@ -1052,13 +1045,8 @@ class InkyRenderer:
 
         # Draw destination (same baseline as route number for horizontal alignment)
         if destination_text:
-            # Use the same baseline as route number so they align horizontally
-            # Recalculate bbox for truncated text (for width calculation only)
-            destination_bbox = font.getbbox(destination_text)
             # Use route_baseline to ensure destination starts at same level as route number
-            draw.text(
-                (x, route_baseline), destination_text, (0, 0, 0), font=font
-            )  # Black RGB
+            draw.text((x, route_baseline), destination_text, (0, 0, 0), font=font)  # Black RGB
 
         # Draw platform and time together on the right (center-aligned with all text)
         right_x = self.config.width - self.config.padding
