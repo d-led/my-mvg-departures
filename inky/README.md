@@ -218,3 +218,26 @@ If installing manually:
    ```
 
 This avoids the `/tmp` space limitation.
+
+### "Illegal instruction" error when running
+
+If you get an `Illegal instruction` error when trying to run the application, this means the virtual environment or packages were created on a different architecture or CPU variant and are being run on a different one.
+
+**Common causes:**
+- Moving from macOS/Windows (x86_64) to Raspberry Pi (ARM)
+- Moving between different Raspberry Pi models (e.g., Pi 2 to Pi Zero - different ARM variants)
+- Binary packages compiled for a different CPU architecture
+
+**Solution:** Recreate the virtual environment on the target device:
+
+```bash
+cd inky
+./scripts/fix-venv-architecture.sh
+```
+
+This script will:
+1. Remove the existing virtual environment
+2. Create a new one for the current architecture/CPU
+3. Reinstall all dependencies (including numpy via apt)
+
+**Prevention:** Always create the virtual environment on the target device. If you transfer the project from another machine or different Pi model, don't transfer the `.venv` directory - let it be created fresh on the target device.
