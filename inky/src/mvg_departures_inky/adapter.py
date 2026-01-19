@@ -82,9 +82,19 @@ class InkyDisplayAdapter(DisplayAdapter):
                     f"colour: {self.display.colour}"
                 )
 
-                # Update config with actual display dimensions
-                self.config.width = self.display.width
-                self.config.height = self.display.height
+                # Real hardware returns dimensions in landscape mode, but we need portrait mode
+                # Swap width and height for real hardware (mock is already correct)
+                # For 7.5" Inky Impression Spectra: hardware returns 800x480 (landscape), we need 480x800 (portrait)
+                display_width = self.display.width
+                display_height = self.display.height
+                
+                # Swap for portrait mode on real hardware
+                self.config.width = display_height  # Use height as width (portrait)
+                self.config.height = display_width  # Use width as height (portrait)
+                logger.info(
+                    f"Swapped dimensions for portrait mode: {display_width}x{display_height} -> "
+                    f"{self.config.width}x{self.config.height}"
+                )
             except ImportError as e:
                 logger.warning(
                     f"Inky library not available (likely on non-Linux platform): {e}. "
@@ -210,8 +220,18 @@ class InkyDisplayAdapter(DisplayAdapter):
                     )
                 )
 
-            # Render to PIL Image
+            # Render to PIL Image (in portrait mode: 480x800)
             img = self.renderer.render(direction_groups_with_metadata)
+
+            # For real hardware (not mock), rotate image 90 degrees clockwise
+            # Hardware display is physically 800x480 (landscape), but we render 480x800 (portrait)
+            # So we need to rotate the portrait image to match the landscape display
+            if not isinstance(self.display, MockInkyDisplay):
+                # Rotate 90 degrees clockwise to convert portrait (480x800) to landscape (800x480)
+                img = img.rotate(-90, expand=True)  # -90 = 90 degrees clockwise
+                logger.debug(
+                    f"Rotated image for hardware display: {img.size} (portrait -> landscape)"
+                )
 
             # Resize image to display resolution if needed (as per Pimoroni examples)
             if hasattr(self.display, "resolution") and img.size != self.display.resolution:
