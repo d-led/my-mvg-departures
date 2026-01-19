@@ -137,13 +137,16 @@ async def _fetch_and_display_loop(
     while True:
         try:
             # Get grouped departures for all stops in the route
-            # Pass GroupedDepartures directly (adapter will convert to DirectionGroupWithMetadata)
-            all_grouped_departures: list[GroupedDepartures] = []
+            # Pass tuples of (GroupedDepartures, StopConfiguration) to preserve stop association
+            # This ensures headers show the correct stop names (e.g., "Giesing → ..." vs "Chiemgaustr → ...")
+            all_grouped_departures: list[tuple[GroupedDepartures, StopConfiguration]] = []
             for stop_config in route_config.stop_configs:
                 grouped_departures = await grouping_service.get_grouped_departures(stop_config)
-                all_grouped_departures.extend(grouped_departures)
+                # Associate each group with its stop_config
+                for group in grouped_departures:
+                    all_grouped_departures.append((group, stop_config))
 
-            # Display on Inky (adapter will convert GroupedDepartures to DirectionGroupWithMetadata)
+            # Display on Inky (adapter will convert to DirectionGroupWithMetadata with correct stop names)
             await adapter.display_departures(all_grouped_departures)
 
             # Wait before next update

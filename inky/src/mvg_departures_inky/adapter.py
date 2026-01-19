@@ -141,11 +141,15 @@ class InkyDisplayAdapter(DisplayAdapter):
                 await self._update_task
         logger.info("Inky display adapter stopped")
 
-    async def display_departures(self, direction_groups: list[GroupedDepartures]) -> None:
+    async def display_departures(
+        self, direction_groups: list[GroupedDepartures] | list[tuple[GroupedDepartures, StopConfiguration]]
+    ) -> None:
         """Display grouped departures on Inky display.
 
         Args:
-            direction_groups: List of grouped departures (as per DisplayAdapter interface).
+            direction_groups: List of grouped departures, or list of tuples (group, stop_config).
+                            If tuples are provided, uses the stop_config directly.
+                            Otherwise, tries to match groups to stop configs.
         """
         if not self.renderer or not self.display:
             logger.warning("Display not initialized, skipping render")
@@ -153,34 +157,37 @@ class InkyDisplayAdapter(DisplayAdapter):
 
         try:
             # Convert GroupedDepartures to DirectionGroupWithMetadata
-            # We need to match each GroupedDepartures to its StopConfiguration
-            # Since GroupedDepartures doesn't have stop info, we'll try to match by
-            # checking which stop config's direction_mappings include the direction_name
-            # We'll also check if any departures in the group have station_id that matches
+            # If direction_groups contains tuples, use the stop_config directly
+            # Otherwise, try to match groups to stop configs
             direction_groups_with_metadata: list[DirectionGroupWithMetadata] = []
-            for group in direction_groups:
+            for item in direction_groups:
+                # Check if item is a tuple (group, stop_config) or just a group
+                if isinstance(item, tuple) and len(item) == 2:
+                    group, stop_config = item
+                else:
+                    # Legacy: item is just a GroupedDepartures, try to match
+                    group = item
+                    stop_config = None
+
                 if not group.departures:
                     continue
 
-                # Try to find matching stop config
-                # Since GroupedDepartures doesn't have stop info, we'll try to match by
-                # checking which stop config's direction_mappings include the direction_name
-                stop_config: StopConfiguration | None = None
+                # If stop_config not provided, try to find matching stop config
+                if not stop_config:
+                    # Try matching by direction_name in direction_mappings
+                    for stop_cfg in self.stop_configs:
+                        # Check if this direction_name matches any pattern in this stop's direction_mappings
+                        if group.direction_name in stop_cfg.direction_mappings:
+                            stop_config = stop_cfg
+                            break
 
-                # Try matching by direction_name in direction_mappings
-                for stop_cfg in self.stop_configs:
-                    # Check if this direction_name matches any pattern in this stop's direction_mappings
-                    if group.direction_name in stop_cfg.direction_mappings:
-                        stop_config = stop_cfg
-                        break
-
-                # If no match found, use the first stop config as fallback
-                if not stop_config and self.stop_configs:
-                    stop_config = self.stop_configs[0]
-                    logger.debug(
-                        f"Could not match direction '{group.direction_name}' to a stop config, "
-                        f"using first stop config '{stop_config.station_name}' as fallback"
-                    )
+                    # If no match found, use the first stop config as fallback
+                    if not stop_config and self.stop_configs:
+                        stop_config = self.stop_configs[0]
+                        logger.debug(
+                            f"Could not match direction '{group.direction_name}' to a stop config, "
+                            f"using first stop config '{stop_config.station_name}' as fallback"
+                        )
 
                 if not stop_config:
                     logger.warning(
