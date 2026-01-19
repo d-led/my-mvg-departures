@@ -547,6 +547,137 @@ class InkyRenderer:
             self._icon_cache[cache_key] = None
             return None
 
+    def _calculate_header_font_size(self, header_text: str, available_width: int) -> int:
+        """Calculate optimal header font size to fit the longest header text.
+
+        Args:
+            header_text: The header text to fit (should be the longest header).
+            available_width: Available width for header text (display width - 2 * padding).
+
+        Returns:
+            Optimal header font size.
+        """
+        if not header_text:
+            return self.config.max_font_size
+
+        # Try font sizes from max to min to find the largest that fits
+        for font_size in range(
+            self.config.max_font_size,
+            self.config.min_font_size - 1,
+            -self.config.font_size_step,
+        ):
+            header_font = self._get_font(font_size, bold=True)
+            header_bbox = header_font.getbbox(header_text)
+            header_width = header_bbox[2] - header_bbox[0]
+
+            if header_width <= available_width:
+                logger.debug(
+                    f"Header font size {font_size} fits: width={header_width} <= available={available_width}"
+                )
+                return font_size
+
+        # If no font size fits, return minimum
+        logger.warning(
+            f"No header font size fits! Min font size {self.config.min_font_size} will be used. "
+            f"Header text: '{header_text}', available width: {available_width}"
+        )
+        return self.config.min_font_size
+
+    def _calculate_font_size_with_header(
+        self,
+        total_items: int,
+        header_count: int,
+        header_font_size: int,
+        initial_font_size: int,
+    ) -> int:
+        """Calculate optimal body font size that fits vertically with given header font size.
+
+        Args:
+            total_items: Total number of departure rows (actual count from data).
+            header_count: Number of header rows (actual count from data).
+            header_font_size: Pre-calculated header font size (based on longest header text).
+            initial_font_size: Initial body font size to try (typically 85% of header).
+
+        Returns:
+            Optimal body font size that fits vertically.
+        """
+        if total_items == 0:
+            return initial_font_size
+
+        # When filling space, use full height (no padding since we start at y=0)
+        # When not filling, use usable height (with padding)
+        available_height = (
+            self.config.height if self.config.fill_vertical_space else self.config.usable_height
+        )
+
+        # Calculate header height with the given header font size
+        header_font = self._get_font(header_font_size, bold=True)
+        header_bbox = header_font.getbbox("Mg")
+        header_font_height = header_bbox[3] - header_bbox[1]
+        header_height = header_font_height + self.config.line_spacing + 4
+
+        if self.config.fill_vertical_space:
+            # Try font sizes from initial down to min to find the largest that fits
+            best_font_size = None
+            best_total_height = 0
+
+            for font_size in range(
+                initial_font_size,
+                self.config.min_font_size - 1,
+                -self.config.font_size_step,
+            ):
+                font = self._get_font(font_size, bold=False)
+                bbox = font.getbbox("Mg")
+                font_height = bbox[3] - bbox[1]
+                line_height = font_height + self.config.line_spacing
+
+                total_height = (
+                    (header_height * header_count)
+                    + (line_height * total_items)
+                    - self.config.line_spacing
+                )
+
+                if total_height <= available_height and total_height > best_total_height:
+                    best_font_size = font_size
+                    best_total_height = int(total_height)
+                    logger.debug(
+                        f"Body font size {font_size} fits with header {header_font_size}: "
+                        f"total_height={total_height} <= available_height={available_height}"
+                    )
+
+            if best_font_size is not None:
+                return best_font_size
+
+            # If no font size fits, return minimum
+            logger.warning(
+                f"No body font size fits with header {header_font_size}! "
+                f"Min font size {self.config.min_font_size} will be used. "
+                f"Available height: {available_height}, total_items: {total_items}, header_count: {header_count}"
+            )
+            return self.config.min_font_size
+
+        # When not filling, just find largest that fits
+        for font_size in range(
+            initial_font_size,
+            self.config.min_font_size - 1,
+            -self.config.font_size_step,
+        ):
+            font = self._get_font(font_size, bold=False)
+            bbox = font.getbbox("Mg")
+            font_height = bbox[3] - bbox[1]
+            line_height = font_height + self.config.line_spacing
+
+            total_height = (
+                (header_height * header_count)
+                + (line_height * total_items)
+                - self.config.line_spacing
+            )
+
+            if total_height <= available_height:
+                return font_size
+
+        return self.config.min_font_size
+
     def _calculate_font_size(self, total_items: int, header_count: int) -> int:
         """Calculate optimal font size to fit all content and maximize when filling space.
 
@@ -589,7 +720,8 @@ class InkyRenderer:
 
                 # Calculate header height with corresponding header font size
                 # Make header only slightly larger than body text (10% larger, max +2)
-                header_font_size = min(int(font_size * 1.1), font_size + 2)
+                # Ensure header scales down proportionally with body font (no minimum constraint)
+                header_font_size = max(1, min(int(font_size * 1.1), font_size + 2))
                 header_font = self._get_font(header_font_size, bold=True)
                 header_bbox = header_font.getbbox("Mg")
                 header_font_height = header_bbox[3] - header_bbox[1]
@@ -645,7 +777,8 @@ class InkyRenderer:
 
             # Calculate header height with corresponding header font size
             # Make header only slightly larger than body text (10% larger, max +2)
-            header_font_size = min(int(font_size * 1.1), font_size + 2)
+            # Ensure header scales down proportionally with body font (no minimum constraint)
+            header_font_size = max(1, min(int(font_size * 1.1), font_size + 2))
             header_font = self._get_font(header_font_size, bold=True)
             header_bbox = header_font.getbbox("Mg")
             header_font_height = header_bbox[3] - header_bbox[1]
@@ -716,15 +849,50 @@ class InkyRenderer:
         total_departures = sum(len(group.get("departures", [])) for group in groups_with_departures)
         header_count = len(groups_with_departures)
 
-        # Calculate optimal font size based on actual counts
-        # When fill_vertical_space is enabled, this will maximize font size to fill available height
-        font_size = self._calculate_font_size(total_departures, header_count)
-        font = self._get_font(font_size, bold=False)
-        # Make header only slightly larger than body text (10% larger, max +2)
-        header_font_size = min(int(font_size * 1.1), font_size + 2)
+        # Find the longest header text to ensure it fits in the available width
+        longest_header = ""
+        for group in groups_with_departures:
+            header = group.get("header", "")
+            if len(header) > len(longest_header):
+                longest_header = header
+
+        # Calculate header font size based on fitting the longest header into available width
+        # Available width for header = display width - 2 * padding (left and right)
+        available_header_width = self.config.width - (2 * self.config.padding)
+        header_font_size = self._calculate_header_font_size(longest_header, available_header_width)
         header_font = self._get_font(header_font_size, bold=True)
+
+        # Calculate body font size to be smaller than header (about 85% of header size)
+        # This ensures headers are more prominent while body text fits more content
+        # But also verify it fits vertically with the header font size
+        initial_font_size = max(
+            self.config.min_font_size,
+            int(header_font_size * 0.85),  # Body font is 85% of header font
+        )
+        # Verify this font size fits vertically with the calculated header font size
+        font_size = self._calculate_font_size_with_header(
+            total_departures, header_count, header_font_size, initial_font_size
+        )
+        font = self._get_font(font_size, bold=False)
         platform_font_size = max(int(font_size * 0.7), 10)
         self._platform_font = self._get_font(platform_font_size, bold=False)
+
+        # Calculate header height using the pre-calculated header font size
+        header_bbox = header_font.getbbox("Mg")
+        header_font_height = header_bbox[3] - header_bbox[1]
+        header_height = header_font_height + self.config.line_spacing + 4
+
+        # Calculate route number column width dynamically to fit at least 4 characters
+        # This prevents overlap when route numbers are longer
+        # Measure width of 4 characters (e.g., "U123" or "N123") to ensure they fit
+        # Use "U123" as representative of typical route numbers (U-Bahn, Bus, etc.)
+        test_text = "U123"  # 4 characters: letter + 3 digits (typical route format)
+        route_bbox = font.getbbox(test_text)
+        route_number_width = max(
+            route_bbox[2] - route_bbox[0] + self.config.padding,  # Width of 4 chars + padding
+            self.config.route_number_width,  # But at least the configured minimum
+        )
+        self._route_number_width = int(route_number_width)
 
         # Calculate line height first (needed for icon size)
         # Note: line_height may be adjusted later to fill remaining vertical space
@@ -821,19 +989,30 @@ class InkyRenderer:
         # Store adjusted line_height for use in _render_departure_row
         self._line_height = int(line_height)
 
-        # Recalculate icon size based on final line_height (after space distribution)
-        # Icon size should be row_height - 3 (1.5 dots gap on top and bottom to prevent touching header)
-        # This ensures icons don't overlap and have proper spacing from headers and adjacent rows
-        calculated_icon_size = line_height - 3
-        # Ensure icon size is at least 1 pixel (can't be negative or zero)
-        if calculated_icon_size < 1:
-            logger.warning(
-                f"Calculated icon size ({calculated_icon_size}) is too small, using minimum of 1 pixel. "
-                f"Line height: {line_height}"
-            )
-            calculated_icon_size = 1
+        # Calculate icon size based on font size (like web version: height: 1em)
+        # Icon should scale with font size to save horizontal space when font is smaller
+        # But also ensure it fits within the row with proper spacing
+        # Use font_size as base (1em equivalent), but constrain to row height - 3 for spacing
+        # This adapts icon size to font size, saving horizontal space when needed
+        icon_size_from_font = font_size  # 1em equivalent (web version uses height: 1em)
+        icon_size_from_row = line_height - 3  # Maximum size to fit in row with spacing
+
+        # Use the smaller of the two to ensure it fits and scales with font
+        calculated_icon_size = min(icon_size_from_font, icon_size_from_row)
+
+        # Apply a very small minimum (8px) only for visibility, not to force larger icons
+        # This allows icons to scale down with small fonts, saving horizontal space
+        calculated_icon_size = max(calculated_icon_size, 8)
+
+        # But also ensure it doesn't exceed the maximum configured size
+        calculated_icon_size = min(calculated_icon_size, self.config.route_icon_max_size)
+
         self._calculated_icon_size = int(calculated_icon_size)
-        logger.debug(f"Final icon size: {calculated_icon_size} (line height: {line_height})")
+        logger.debug(
+            f"Final icon size: {calculated_icon_size} "
+            f"(font_size: {font_size}, line_height: {line_height}, "
+            f"from_font: {icon_size_from_font}, from_row: {icon_size_from_row})"
+        )
 
         logger.info(
             f"Rendering: Total height: {total_height}, "
@@ -1023,7 +1202,9 @@ class InkyRenderer:
         # Draw route number (center-aligned)
         if route_text:
             draw.text((x, route_baseline), route_text, (0, 0, 0), font=font)  # Black RGB
-        x += self.config.route_number_width + self.config.padding
+        # Use dynamically calculated route number width
+        route_number_width = getattr(self, "_route_number_width", self.config.route_number_width)
+        x += route_number_width + self.config.padding
 
         # Calculate total width needed for platform+time using pre-calculated column widths
         # Platform column width (fixed for all rows)

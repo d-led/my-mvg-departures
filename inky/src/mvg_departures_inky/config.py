@@ -24,9 +24,9 @@ ROUTE_ICON_MAX_SIZE = 48  # Maximum icon size
 ROUTE_ICON_SPACING = 6  # Spacing between icon and route number
 ROUTE_NUMBER_WIDTH = 50
 PLATFORM_WIDTH = 60
-MIN_FONT_SIZE = 14
+MIN_FONT_SIZE = 6  # Minimum font size for very small displays or many departures
 MAX_FONT_SIZE = 36
-FONT_SIZE_STEP = 2
+FONT_SIZE_STEP = 1  # Smaller step for finer font size control
 LINE_SPACING = 4
 
 # Colors for Inky Impression Spectra (7 colors)
