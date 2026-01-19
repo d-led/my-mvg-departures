@@ -142,7 +142,10 @@ class InkyDisplayAdapter(DisplayAdapter):
         logger.info("Inky display adapter stopped")
 
     async def display_departures(
-        self, direction_groups: list[GroupedDepartures] | list[tuple[GroupedDepartures, StopConfiguration]]
+        self,
+        direction_groups: (
+            list[GroupedDepartures] | list[tuple[GroupedDepartures, StopConfiguration]]
+        ),
     ) -> None:
         """Display grouped departures on Inky display.
 
