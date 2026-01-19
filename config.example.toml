@@ -95,6 +95,17 @@ dithering_enabled = true
 # This controls how often the Inky display fetches new departure data and updates the screen
 refresh_interval_seconds = 60
 
+# Slow refresh compensation (in seconds)
+# Accounts for the time it takes for the e-ink display to update
+# When calculating relative departure times (e.g., "5m", "10m"), the formatter assumes
+# we are at now() + compensation seconds (when the display will finish updating)
+# This ensures displayed times are accurate when the display finishes refreshing
+# Default: 30 seconds
+# Example: If a departure is in 5 minutes and compensation is 30 seconds, it will display
+# as "4.5m" (or "4m") so that when the display finishes updating 30 seconds later,
+# the actual remaining time matches what's displayed
+account_for_slow_refresh_seconds = 30
+
 # Landscape mode: if true, render in landscape orientation (width > height)
 # If false (default), render in portrait orientation (height > width)
 # Short lists may look better in landscape mode, while longer lists work better in portrait

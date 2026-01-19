@@ -56,6 +56,11 @@ FONT_SCALING_FACTOR_WHEN_FILLING = (
 # E-ink displays update slower than web displays, so a longer interval is often preferred
 DEFAULT_REFRESH_INTERVAL_SECONDS = 60  # 1 minute default for e-ink displays
 
+# Default compensation for slow refresh (in seconds)
+# Accounts for the time it takes for the e-ink display to update
+# Times are adjusted forward by this amount so they're accurate when the display finishes updating
+DEFAULT_SLOW_REFRESH_COMPENSATION_SECONDS = 30  # 30 seconds default
+
 
 @dataclass
 class InkyDisplayConfig:
@@ -92,6 +97,10 @@ class InkyDisplayConfig:
     # If False (default), render in portrait orientation (height > width)
     # The rendered image will be rotated if needed to match hardware orientation
     landscape_mode: bool = False
+    # Compensation for slow refresh (in seconds)
+    # Accounts for the time it takes for the e-ink display to update
+    # Departure times are adjusted forward by this amount so they're accurate when the display finishes updating
+    account_for_slow_refresh_seconds: int = DEFAULT_SLOW_REFRESH_COMPENSATION_SECONDS
 
     @property
     def route_section_width(self) -> int:
@@ -234,10 +243,20 @@ class InkyDisplayConfig:
                                                 inky_settings["landscape_mode"] = bool(
                                                     display["landscape_mode"]
                                                 )
+                                            if "account_for_slow_refresh_seconds" in display:
+                                                inky_settings["account_for_slow_refresh_seconds"] = int(
+                                                    display["account_for_slow_refresh_seconds"]
+                                                )
                                             logger.debug(
                                                 f"Loaded route-specific inky settings for '{route_path}': {inky_settings}"
                                             )
                                         break
+                        # Also check global [inky] section for account_for_slow_refresh_seconds
+                        if "inky" in toml_data and isinstance(toml_data["inky"], dict):
+                            if "account_for_slow_refresh_seconds" in toml_data["inky"]:
+                                inky_settings["account_for_slow_refresh_seconds"] = int(
+                                    toml_data["inky"]["account_for_slow_refresh_seconds"]
+                                )
             except Exception as e:
                 logger.warning(f"Failed to load inky settings from TOML: {e}, using defaults")
 
@@ -256,6 +275,11 @@ class InkyDisplayConfig:
                 inky_settings.get("refresh_interval_seconds", DEFAULT_REFRESH_INTERVAL_SECONDS)
             ),
             landscape_mode=inky_settings.get("landscape_mode", False),
+            account_for_slow_refresh_seconds=int(
+                inky_settings.get(
+                    "account_for_slow_refresh_seconds", DEFAULT_SLOW_REFRESH_COMPENSATION_SECONDS
+                )
+            ),
         )
 
     def get_route_icon_path(self, transport_type: str) -> Path | None:

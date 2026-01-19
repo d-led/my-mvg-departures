@@ -256,6 +256,8 @@ class InkyDisplayAdapter(DisplayAdapter):
                     )
                     continue
 
+                # Compensation is now applied in InkyDepartureFormatter when calculating times
+                # No need to modify departure objects here
                 direction_groups_with_metadata.append(
                     DirectionGroupWithMetadata(
                         station_id=stop_config.station_id,

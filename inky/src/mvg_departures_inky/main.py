@@ -21,6 +21,8 @@ from mvg_departures.adapters.web.builders.departure_grouping_calculator import (
     HeaderDisplaySettings,
 )
 from mvg_departures.adapters.web.formatters.departure_formatter import DepartureFormatter
+
+from .formatter import InkyDepartureFormatter
 from mvg_departures.application.services import DepartureGroupingService
 from mvg_departures.domain.models.direction_group_with_metadata import (
     DirectionGroupWithMetadata,
@@ -228,8 +230,10 @@ async def main() -> None:
         all_stop_configs = _collect_all_stop_configs(route_configs)
         _departure_repo, grouping_service = _initialize_services(all_stop_configs, session)
 
-        # Initialize formatter and calculator (same as web version)
-        formatter = DepartureFormatter(config)
+        # Initialize formatter and calculator
+        # Use Inky-specific formatter that applies slow refresh compensation
+        base_formatter = DepartureFormatter(config)
+        formatter = InkyDepartureFormatter(base_formatter, inky_config)
         calculator_config = DepartureGroupingCalculatorConfig(
             stop_configs=all_stop_configs,
             config=config,
