@@ -6,6 +6,9 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
+import numpy as np
+from PIL import Image
+
 from mvg_departures.adapters.web.builders.departure_grouping_calculator import (
     DepartureGroupingCalculator,
 )
@@ -15,7 +18,6 @@ from mvg_departures.domain.models.direction_group_with_metadata import (
 from mvg_departures.domain.models.grouped_departures import GroupedDepartures
 from mvg_departures.domain.models.stop_configuration import StopConfiguration
 from mvg_departures.domain.ports.display_adapter import DisplayAdapter
-from PIL import Image
 
 from .config import InkyDisplayConfig
 from .mock_display import MockInkyDisplay, create_mock_display
@@ -53,6 +55,10 @@ class InkyDisplayAdapter(DisplayAdapter):
         self._update_task: asyncio.Task | None = None
         self._running = False
         self._needs_rotation = False  # Whether to rotate image to match hardware orientation
+        self._previous_image: Image.Image | None = (
+            None  # Previous rendered image for partial updates
+        )
+        self._partial_update_count = 0  # Count of partial updates (for periodic full refresh)
 
     async def start(self) -> None:
         """Start the display adapter."""
@@ -283,3 +289,58 @@ class InkyDisplayAdapter(DisplayAdapter):
             logger.debug("Inky display updated")
         except Exception as e:
             logger.error(f"Failed to display departures: {e}", exc_info=True)
+
+    def _find_changed_regions(
+        self, previous_img: Image.Image | None, current_img: Image.Image
+    ) -> list[tuple[int, int, int, int]]:
+        """Find changed regions between two images.
+
+        Args:
+            previous_img: Previous image (None if first render).
+            current_img: Current image.
+
+        Returns:
+            List of (x, y, width, height) tuples for changed regions.
+            Returns empty list if no previous image or if images are identical.
+        """
+        if previous_img is None:
+            # First render: return full image region
+            return [(0, 0, current_img.width, current_img.height)]
+
+        if previous_img.size != current_img.size:
+            # Size changed: return full image region
+            return [(0, 0, current_img.width, current_img.height)]
+
+        # Convert images to numpy arrays for comparison
+        # Convert to RGB if needed for comparison
+        prev_array = np.array(previous_img.convert("RGB"))
+        curr_array = np.array(current_img.convert("RGB"))
+
+        # Find pixels that changed
+        diff = np.any(prev_array != curr_array, axis=2)
+
+        if not np.any(diff):
+            # No changes
+            return []
+
+        # Find bounding box of changed region
+        changed_y, changed_x = np.where(diff)
+        if len(changed_y) == 0:
+            return []
+
+        min_y, max_y = int(changed_y.min()), int(changed_y.max())
+        min_x, max_x = int(changed_x.min()), int(changed_x.max())
+
+        # Add some padding to ensure we update edges properly
+        padding = 2
+        x = max(0, min_x - padding)
+        y = max(0, min_y - padding)
+        width = min(current_img.width - x, max_x - min_x + 1 + 2 * padding)
+        height = min(current_img.height - y, max_y - min_y + 1 + 2 * padding)
+
+        # If changed region is too large (>50% of image), just return full region
+        # This avoids partial update overhead when most of the screen changed
+        if width * height > 0.5 * current_img.width * current_img.height:
+            return [(0, 0, current_img.width, current_img.height)]
+
+        return [(x, y, width, height)]

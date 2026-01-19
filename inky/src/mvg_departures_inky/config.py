@@ -49,9 +49,9 @@ TIME_MODE_ALTERNATING = (
     "alternating"  # Toggle between relative and absolute every time_toggle_interval seconds
 )
 
-# Font family options
-FONT_FAMILY_HK_GROTESK = "hk_grotesk"  # Default: HK Grotesk (Bold for headers, Regular for body)
-FONT_FAMILY_FREDOKA_ONE = "fredoka_one"  # Alternative: Fredoka One (configurable)
+# Fonts are hardcoded:
+# - Headers: HK Grotesk Bold
+# - Routes: Fredoka One
 
 # Font scaling when filling vertical space
 FONT_SCALING_FACTOR_WHEN_FILLING = (
@@ -80,11 +80,14 @@ class InkyDisplayConfig:
     time_mode: str = TIME_MODE_ABSOLUTE  # "relative", "absolute", or "alternating"
     # Note: fill_vertical_space is always True for Inky displays (not configurable)
     # E-ink displays don't have pagination/scrolling, so we always fill the available space
-    font_family: str = (
-        FONT_FAMILY_HK_GROTESK  # Font family: "hk_grotesk" (default) or "fredoka_one"
-    )
+    # Fonts are hardcoded: HK Grotesk Bold for headers, Fredoka One for routes
     font_scaling_factor_when_filling: float = (
         FONT_SCALING_FACTOR_WHEN_FILLING  # Scale body fonts by this factor (only affects route fonts, not headers)
+    )
+    # Partial update settings
+    partial_update_enabled: bool = True  # Enable partial updates to reduce flicker
+    full_refresh_interval: int = (
+        50  # Do full refresh every N partial updates to clear ghosting (0 = disable forced full refreshes)
     )
 
     @property
@@ -208,10 +211,6 @@ class InkyDisplayConfig:
                                         display = route.get("display")
                                         if isinstance(display, dict):
                                             # Route-specific inky settings override global [inky] section
-                                            if "font_family" in display:
-                                                inky_settings["font_family"] = display[
-                                                    "font_family"
-                                                ]
                                             if "time_mode" in display:
                                                 inky_settings["time_mode"] = display["time_mode"]
                                             elif "show_time" in display:
@@ -237,9 +236,9 @@ class InkyDisplayConfig:
         # E-ink displays don't have pagination/scrolling, so we always fill the available space
 
         # Create config with TOML values or defaults
+        # Fonts are hardcoded: HK Grotesk Bold for headers, Fredoka One for routes
         return cls(
             time_mode=inky_settings.get("time_mode", TIME_MODE_ABSOLUTE),
-            font_family=inky_settings.get("font_family", FONT_FAMILY_HK_GROTESK),
             font_scaling_factor_when_filling=inky_settings.get(
                 "font_scaling_factor_when_filling", FONT_SCALING_FACTOR_WHEN_FILLING
             ),

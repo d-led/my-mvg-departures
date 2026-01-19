@@ -175,46 +175,44 @@ class InkyRenderer:
     ) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
         """Get font at specified size, with caching.
 
-        Font priority:
-        1. HK Grotesk (Bold for headers, Regular for body) - default
-        2. Fredoka One (if configured as alternative)
-        3. System fonts (DejaVu, Liberation)
-        4. Default PIL font (last resort)
+        Font selection:
+        - Headers (bold=True): HK Grotesk Bold
+        - Routes (bold=False): Fredoka One
+        - Fallback: System fonts (DejaVu, Liberation) or default PIL font
 
         Args:
             size: Font size in points.
-            bold: Whether to use bold variant (for headers).
+            bold: Whether to use bold variant (True for headers, False for routes).
 
         Returns:
             PIL ImageFont instance.
         """
         cache_key = (size, bold)
         if cache_key not in self._font_cache:
-            # Priority 1: Try HK Grotesk (default font family)
-            if self.config.font_family == "hk_grotesk":
-                hk_grotesk_path = self.config.get_hk_grotesk_font_path(bold=bold)
+            if bold:
+                # Headers: Use HK Grotesk Bold
+                hk_grotesk_path = self.config.get_hk_grotesk_font_path(bold=True)
                 if hk_grotesk_path and hk_grotesk_path.exists():
                     try:
                         font_obj = ImageFont.truetype(str(hk_grotesk_path), size)
-                        logger.info(
-                            f"Using HK Grotesk {'Bold' if bold else 'Regular'} font at size {size}"
-                        )
+                        logger.info(f"Using HK Grotesk Bold font at size {size} for header")
                         self._font_cache[cache_key] = font_obj
                         return font_obj
                     except Exception as e:
-                        logger.debug(f"Failed to load HK Grotesk font: {e}, trying alternatives")
+                        logger.debug(
+                            f"Failed to load HK Grotesk Bold font: {e}, trying alternatives"
+                        )
                 else:
                     logger.debug(
-                        f"HK Grotesk {'Bold' if bold else 'Regular'} font not found at {hk_grotesk_path}, trying alternatives"
+                        f"HK Grotesk Bold font not found at {hk_grotesk_path}, trying alternatives"
                     )
-
-            # Priority 2: Try Fredoka One (if configured as alternative)
-            if self.config.font_family == "fredoka_one":
+            else:
+                # Routes: Use Fredoka One
                 try:
-                    from font_fredoka_one import FredokaOne  # Optional dependency
+                    from font_fredoka_one import FredokaOne
 
                     font_obj = ImageFont.truetype(FredokaOne, size)
-                    logger.info(f"Using FredokaOne font at size {size}")
+                    logger.info(f"Using FredokaOne font at size {size} for route")
                     self._font_cache[cache_key] = font_obj
                     return font_obj
                 except ImportError as e:
@@ -644,7 +642,8 @@ class InkyRenderer:
 
         # Headers will use the same height as departure rows (line_height) for better vertical space distribution
         # We'll calculate the actual header_height based on line_height in the loop below
-        header_font = self._get_font(header_font_size, bold=True)  # Keep for later use
+        # Header font will be recalculated in the render method based on final line_height
+        # (header_font_size is used in the loop, but header_font itself is created in render method)
 
         # Always fill vertical space for Inky displays
         if True:  # fill_vertical_space is always True for Inky
@@ -666,7 +665,7 @@ class InkyRenderer:
                 bbox = font.getbbox("Mg")
                 font_height = bbox[3] - bbox[1]
                 line_height = font_height + self.config.line_spacing
-                
+
                 # Headers use the same height as departure rows for better vertical space distribution
                 header_height = line_height
 
@@ -814,8 +813,8 @@ class InkyRenderer:
             # Headers use the same height as departure rows for better vertical space distribution
             # Adjust header font size to fit within line_height
             header_font_size = max(1, min(int(font_size * 1.1), font_size + 2))
-            header_font = self._get_font(header_font_size, bold=True)
             # Headers use the same height as departure rows
+            # Header font will be created in render method based on final line_height
             header_height = line_height
 
             # Calculate total height:
@@ -991,10 +990,10 @@ class InkyRenderer:
         bbox = font.getbbox("Mg")
         font_height = bbox[3] - bbox[1]  # Font height without spacing
         line_height = font_height + self.config.line_spacing  # Full line height with spacing
-        
+
         # Headers should have the same height as departure rows for better vertical space distribution
         header_height = line_height  # Same as departure row height
-        
+
         # Adjust header font size to fit within the header height
         # We want the font to fit within line_height, leaving some padding
         # Try to fit the header text within the available height
@@ -1024,24 +1023,24 @@ class InkyRenderer:
             # This ensures we fill exactly to the bottom with no wasted space
             line_height = (available_height + self.config.line_spacing) / total_rows
             header_height = line_height  # Headers same height as rows
-            
+
             # Convert to int for rendering
             line_height = int(line_height)
             header_height = int(header_height)
-            
+
             # Recalculate total_height to verify it matches (should be very close)
             total_height = (
                 (header_height * header_count)  # Headers same height as rows
                 + (line_height * total_departures)
                 - self.config.line_spacing
             )
-            
+
             logger.debug(
                 f"Filled vertical space: line_height={line_height}, "
                 f"total_height={total_height}, available_height={available_height}, "
                 f"total_rows={total_rows}"
             )
-            
+
             # Check if we're within 1px (allow for rounding)
             height_diff = available_height - total_height
             if abs(height_diff) > 1:
