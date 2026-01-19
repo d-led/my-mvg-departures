@@ -1,0 +1,26 @@
+[Unit]
+Description=MVG Departures Inky Display Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+Group=%i
+WorkingDirectory=%h/my-mvg-departures/inky
+Environment="PATH=%h/my-mvg-departures/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="CONFIG_FILE=%h/my-mvg-departures/my.config.toml"
+ExecStartPre=/bin/bash -c 'if [ ! -f "%h/my-mvg-departures/my.config.toml" ]; then export CONFIG_FILE="%h/my-mvg-departures/config.example.toml"; fi'
+ExecStart=%h/my-mvg-departures/.venv/bin/python -m mvg_departures_inky.main
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mvg-departures-inky
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -40,7 +40,14 @@ YELLOW = 5
 ORANGE = 6
 
 # Time display settings
-TIME_TOGGLE_INTERVAL_SECONDS = 10  # Toggle between absolute/relative every 10 seconds
+TIME_TOGGLE_INTERVAL_SECONDS = (
+    15  # Toggle between absolute/relative every 10 seconds (for alternating mode)
+)
+TIME_MODE_RELATIVE = "relative"  # Always show relative time (e.g., "5m")
+TIME_MODE_ABSOLUTE = "absolute"  # Always show absolute time (e.g., "14:30")
+TIME_MODE_ALTERNATING = (
+    "alternating"  # Toggle between relative and absolute every time_toggle_interval seconds
+)
 
 # Font family options
 FONT_FAMILY_HK_GROTESK = "hk_grotesk"  # Default: HK Grotesk (Bold for headers, Regular for body)
@@ -65,7 +72,7 @@ class InkyDisplayConfig:
     font_size_step: int = FONT_SIZE_STEP
     line_spacing: int = LINE_SPACING
     time_toggle_interval: int = TIME_TOGGLE_INTERVAL_SECONDS
-    show_time: bool = False  # Don't show time for now
+    time_mode: str = TIME_MODE_ABSOLUTE  # "relative", "absolute", or "alternating"
     fill_vertical_space: bool = True
     font_family: str = (
         FONT_FAMILY_HK_GROTESK  # Font family: "hk_grotesk" (default) or "fredoka_one"
@@ -173,6 +180,14 @@ class InkyDisplayConfig:
                         # Load global [inky] section
                         if "inky" in toml_data and isinstance(toml_data["inky"], dict):
                             inky_settings = toml_data["inky"].copy()
+                            # Convert legacy show_time to time_mode if present
+                            if "show_time" in inky_settings and "time_mode" not in inky_settings:
+                                if inky_settings["show_time"]:
+                                    inky_settings["time_mode"] = TIME_MODE_ALTERNATING
+                                else:
+                                    inky_settings["time_mode"] = TIME_MODE_ABSOLUTE
+                                # Remove show_time to avoid confusion
+                                del inky_settings["show_time"]
                             logger.debug(
                                 f"Loaded inky settings from [inky] section: {inky_settings}"
                             )
@@ -190,8 +205,16 @@ class InkyDisplayConfig:
                                                 inky_settings["font_family"] = display[
                                                     "font_family"
                                                 ]
-                                            if "show_time" in display:
-                                                inky_settings["show_time"] = display["show_time"]
+                                            if "time_mode" in display:
+                                                inky_settings["time_mode"] = display["time_mode"]
+                                            elif "show_time" in display:
+                                                # Legacy support: convert show_time bool to time_mode
+                                                if display["show_time"]:
+                                                    inky_settings["time_mode"] = (
+                                                        TIME_MODE_ALTERNATING
+                                                    )
+                                                else:
+                                                    inky_settings["time_mode"] = TIME_MODE_ABSOLUTE
                                             logger.debug(
                                                 f"Loaded route-specific inky settings for '{route_path}': {inky_settings}"
                                             )
@@ -206,7 +229,7 @@ class InkyDisplayConfig:
         # Create config with TOML values or defaults
         return cls(
             fill_vertical_space=inky_settings.get("fill_vertical_space", True),
-            show_time=inky_settings.get("show_time", True),
+            time_mode=inky_settings.get("time_mode", TIME_MODE_ABSOLUTE),
             font_family=inky_settings.get("font_family", FONT_FAMILY_HK_GROTESK),
         )
 
