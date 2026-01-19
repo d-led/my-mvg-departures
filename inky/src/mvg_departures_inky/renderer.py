@@ -1017,36 +1017,71 @@ class InkyRenderer:
             # Formula: total_height = (line_height * total_rows) - line_spacing = available_height
             # Therefore: line_height = (available_height + line_spacing) / total_rows
             # This ensures we fill exactly to the bottom with no wasted space
-            line_height = (available_height + self.config.line_spacing) / total_rows
-            header_height = line_height  # Headers same height as rows
+            # Keep as float to avoid quantization - we'll distribute fractional pixels across rows
+            line_height_float = (available_height + self.config.line_spacing) / total_rows
+            header_height_float = line_height_float  # Headers same height as rows
 
-            # Convert to int for rendering
-            line_height = int(line_height)
-            header_height = int(header_height)
+            # Store the float value for precise calculation
+            # We'll use integer positions when rendering, but accumulate fractional parts
+            # to ensure we reach exactly available_height at the end
+            self._line_height_float = line_height_float
+            self._header_height_float = header_height_float
 
-            # Recalculate total_height to verify it matches (should be very close)
+            # For rendering, we'll use integer positions but track fractional accumulation
+            # Store the base integer height (floor)
+            line_height_base = int(line_height_float)
+            header_height_base = int(header_height_float)
+
+            # Calculate how many extra pixels we need to distribute
+            # Total height with base integer heights
+            total_height_base = (
+                (header_height_base * header_count)
+                + (line_height_base * total_departures)
+                - self.config.line_spacing
+            )
+            extra_pixels = available_height - total_height_base
+
+            # Distribute extra pixels across rows (one pixel per row until we run out)
+            # This ensures we fill exactly to available_height
+            self._line_height_extra_pixels = [0] * total_rows
+            for i in range(min(extra_pixels, total_rows)):
+                self._line_height_extra_pixels[i] = 1
+
+            # Calculate final line_height for rendering (base + extra if any)
+            # Most rows will be line_height_base, some will be line_height_base + 1
+            line_height = line_height_base
+            header_height = header_height_base
+
+            # Verify we'll fill exactly
             total_height = (
-                (header_height * header_count)  # Headers same height as rows
-                + (line_height * total_departures)
+                (header_height_base * header_count)
+                + (line_height_base * total_departures)
+                + sum(self._line_height_extra_pixels)
                 - self.config.line_spacing
             )
 
             logger.debug(
-                f"Filled vertical space: line_height={line_height}, "
-                f"total_height={total_height}, available_height={available_height}, "
-                f"total_rows={total_rows}"
+                f"Filled vertical space: line_height_base={line_height_base}, "
+                f"extra_pixels={extra_pixels}, total_height={total_height}, "
+                f"available_height={available_height}, total_rows={total_rows}"
             )
 
-            # Check if we're within 1px (allow for rounding)
-            height_diff = available_height - total_height
-            if abs(height_diff) > 1:
+            if total_height != available_height:
                 logger.warning(
                     f"Height mismatch: total_height={total_height}, "
-                    f"available_height={available_height}, diff={height_diff}px"
+                    f"available_height={available_height}, diff={available_height - total_height}px"
                 )
+        else:
+            # No rows, use default
+            line_height = font_height + self.config.line_spacing
+            header_height = line_height
+            self._line_height_float = float(line_height)
+            self._header_height_float = float(header_height)
+            self._line_height_extra_pixels = []
 
-        # Store adjusted line_height for use in _render_departure_row
-        self._line_height = int(line_height)
+        # Store base line_height for use in _render_departure_row
+        self._line_height = line_height
+        self._header_height = header_height
 
         # Calculate icon size based on font size (like web version: height: 1em)
         # Icon should scale with font size to save horizontal space when font is smaller
@@ -1083,6 +1118,9 @@ class InkyRenderer:
         # First header should start at the very top (y=0), not at padding
         start_y = 0
 
+        # Track which row we're on (for distributing extra pixels)
+        row_index = 0
+
         # Render each group with header
         y = start_y
         for group in groups_with_departures:
@@ -1097,9 +1135,14 @@ class InkyRenderer:
             # White text on colored background
             header_text_color_rgb = (255, 255, 255)
 
+            # Get actual header height for this row (base + extra pixel if applicable)
+            actual_header_height = self._header_height
+            if row_index < len(getattr(self, "_line_height_extra_pixels", [])):
+                actual_header_height += self._line_height_extra_pixels[row_index]
+
             # First header starts at y=0, subsequent headers have spacing
             draw.rectangle(
-                [0, y, self.config.width, y + header_height],
+                [0, y, self.config.width, y + actual_header_height],
                 fill=header_bg_color_rgb,
             )
 
@@ -1112,17 +1155,24 @@ class InkyRenderer:
             # bbox[1] is top (negative = above baseline), bbox[3] is bottom (positive = below baseline)
             # Capital center from baseline = (cap_bbox[1] + cap_bbox[3]) / 2
             capital_center_from_baseline = (cap_bbox[1] + cap_bbox[3]) / 2
-            # Header center = y + header_height / 2
+            # Header center = y + actual_header_height / 2
             # To center capitals: baseline = header_center - capital_center_from_baseline
-            header_center = y + header_height / 2
+            header_center = y + actual_header_height / 2
             header_text_y = int(header_center - capital_center_from_baseline)
             draw.text((header_x, header_text_y), header, header_text_color_rgb, font=header_font)
-            y = int(y + header_height)
+            y += actual_header_height
+            row_index += 1
 
             # Render departures in this group
             for dep_data in departures:
-                self._render_departure_row(draw, dep_data, font, y)
-                y = int(y + line_height)
+                # Get actual line height for this row (base + extra pixel if applicable)
+                actual_line_height = self._line_height
+                if row_index < len(getattr(self, "_line_height_extra_pixels", [])):
+                    actual_line_height += self._line_height_extra_pixels[row_index]
+
+                self._render_departure_row(draw, dep_data, font, y, actual_line_height)
+                y += actual_line_height
+                row_index += 1
 
         # Apply dithering to convert RGB image to 7-color palette
         # This is the key step for proper color rendering on e-ink displays
@@ -1134,6 +1184,7 @@ class InkyRenderer:
         dep_data: dict[str, Any],
         font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
         y: int,
+        line_height: int | None = None,
     ) -> None:
         """Render a single departure row.
 
@@ -1142,6 +1193,7 @@ class InkyRenderer:
             dep_data: Formatted departure data (from DepartureGroupingCalculator).
             font: Font to use.
             y: Y position for this row (top of the row).
+            line_height: Optional line height for this row. If None, uses stored _line_height.
         """
         # Calculate bottom alignment for all text in this row
         # Find the maximum bottom offset (bbox[3]) among all text elements
@@ -1178,11 +1230,13 @@ class InkyRenderer:
         # y is the top of the row, row extends from y to y + line_height
         # Row center = y + line_height / 2
         # For each text element, calculate its center from baseline and align with row center
-        line_height = getattr(
-            self,
-            "_line_height",
-            self.config.line_spacing + font.getbbox("Mg")[3] - font.getbbox("Mg")[1],
-        )
+        # Use provided line_height if available, otherwise fall back to stored value
+        if line_height is None:
+            line_height = getattr(
+                self,
+                "_line_height",
+                self.config.line_spacing + font.getbbox("Mg")[3] - font.getbbox("Mg")[1],
+            )
         row_center = y + line_height / 2
 
         # Calculate text center from baseline for route and platform
@@ -1228,14 +1282,9 @@ class InkyRenderer:
             # Row center = y + line_height / 2
             # Icon should be centered at row center: icon_y + icon_size / 2 = row_center
             # Therefore: icon_y = row_center - icon_size / 2 = y + line_height / 2 - icon_size / 2
-            # Add 1 pixel offset down to prevent touching header (testing)
-            line_height = getattr(
-                self,
-                "_line_height",
-                self.config.line_spacing + font.getbbox("Mg")[3] - font.getbbox("Mg")[1],
-            )
+            # line_height is already set above from the function parameter or stored value
             row_center = y + line_height / 2
-            icon_y = int(row_center - icon_size / 2) + 1  # +1 pixel down to test spacing
+            icon_y = int(row_center - icon_size / 2)
 
             # Paste icon onto main image (both are RGB now)
             if icon.mode == "RGBA":
