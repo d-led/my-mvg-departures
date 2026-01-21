@@ -13,6 +13,7 @@
   let configText = $state("");
   let errorMessage = $state<string | null>(null);
   let isSaving = $state(false);
+  let isLoadingExample = $state(false);
   const configStorage = new LocalStorageConfigStorage();
   const configParser = new ConfigParser();
 
@@ -29,6 +30,29 @@
       errorMessage = null;
     }
   });
+
+  async function loadExampleConfig() {
+    isLoadingExample = true;
+    errorMessage = null;
+    
+    try {
+      const response = await fetch("/config.example.toml");
+      if (response.ok) {
+        const exampleToml = await response.text();
+        configText = exampleToml;
+        console.log("Loaded example config from /config.example.toml");
+      } else {
+        errorMessage = `Failed to load example config: ${response.status} ${response.statusText}`;
+        console.error("Failed to fetch example config:", response.status, response.statusText);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errorMessage = `Failed to load example config: ${message}`;
+      console.error("Failed to load example config:", error);
+    } finally {
+      isLoadingExample = false;
+    }
+  }
 
   async function handleSave() {
     if (!configText.trim()) {
@@ -85,8 +109,16 @@
       ></textarea>
     </div>
     <div class="modal-footer">
-      <button class="button button-secondary" onclick={onCancel} disabled={isSaving}>Cancel</button>
-      <button class="button button-primary" onclick={handleSave} disabled={!configText.trim() || isSaving}>
+      <button 
+        class="button button-example" 
+        onclick={loadExampleConfig} 
+        disabled={isSaving || isLoadingExample}
+        title="Load example configuration"
+      >
+        {isLoadingExample ? "Loading..." : "Example"}
+      </button>
+      <button class="button button-secondary" onclick={onCancel} disabled={isSaving || isLoadingExample}>Cancel</button>
+      <button class="button button-primary" onclick={handleSave} disabled={!configText.trim() || isSaving || isLoadingExample}>
         {isSaving ? "Saving..." : "Save"}
       </button>
     </div>
@@ -230,6 +262,28 @@
     gap: 0.75rem;
     flex-shrink: 0; /* Don't shrink the footer */
     margin-top: auto; /* Push footer to bottom */
+  }
+
+  .button-example {
+    background-color: #f3f4f6;
+    color: #111827;
+    border: 1px solid #d1d5db;
+  }
+
+  .button-example:hover:not(:disabled) {
+    background-color: #e5e7eb;
+    border-color: #9ca3af;
+  }
+
+  [data-theme="dark"] .button-example {
+    background-color: #374151;
+    color: #f9fafb;
+    border-color: #4b5563;
+  }
+
+  [data-theme="dark"] .button-example:hover:not(:disabled) {
+    background-color: #4b5563;
+    border-color: #6b7280;
   }
 
   .button {
