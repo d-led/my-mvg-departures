@@ -15,6 +15,7 @@ export interface StopConfiguration {
   platformFilterRoutes?: string[];
   apiProvider?: string;
   randomHeaderColors?: boolean;
+  headerBackgroundBrightness?: number;
   randomColorSalt?: number;
 }
 

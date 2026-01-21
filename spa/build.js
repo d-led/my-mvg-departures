@@ -368,9 +368,13 @@ if (isWatch) {
     console.log("✓ HTML updated");
   });
 
-  // Serve
-  const { port } = await buildContext.serve({ servedir: "dist", port: 8000 });
-  console.log(`\n🚀 Server running at http://localhost:${port}\n`);
+  // Serve - bind to all interfaces (0.0.0.0) to allow remote access
+  const { port, host } = await buildContext.serve({ 
+    servedir: "dist", 
+    port: 8000,
+    host: "0.0.0.0" // Allow access from remote hosts (e.g., cmr-r)
+  });
+  console.log(`\n🚀 Server running at http://${host}:${port}\n`);
 
   process.on("SIGINT", async () => {
     if (buildContext) {

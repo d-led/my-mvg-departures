@@ -82,6 +82,37 @@
     return departure.delaySeconds != null && departure.delaySeconds > 60;
   }
 
+  function formatHeaderTime(departure: any): string {
+    // Format time for header: "(in X+ min)" or "(in X min)"
+    const now = new Date();
+    const diffMs = departure.time.getTime() - now.getTime();
+    const diffMinutes = Math.floor(diffMs / 60000);
+
+    if (diffMinutes < 0) {
+      return "(now)";
+    } else if (diffMinutes < 60) {
+      return `(in ${diffMinutes}+ min)`;
+    } else {
+      const hours = Math.floor(diffMinutes / 60);
+      const mins = diffMinutes % 60;
+      if (mins === 0) {
+        return `(in ${hours}+ h)`;
+      }
+      return `(in ${hours}+ h ${mins}+ min)`;
+    }
+  }
+
+  function getHeaderText(group: any): string {
+    // Format: "StopName → DirectionName (in X+ min)" if there are departures
+    const baseText = `${group.stopName} → ${group.directionName}`;
+    if (group.departures && group.departures.length > 0) {
+      const firstDeparture = group.departures[0];
+      const timeText = formatHeaderTime(firstDeparture);
+      return `${baseText} ${timeText}`;
+    }
+    return baseText;
+  }
+
   function getTransportTypeCss(transportType: string): string {
     const map: Record<string, string> = {
       "U-Bahn": "ubahn",
@@ -104,15 +135,16 @@
         class="direction-header" 
         role="heading" 
         aria-level="2"
+        style={group.headerColor ? `background-color: ${group.headerColor};` : undefined}
         data-fill-vertical-space={display?.fillVerticalSpace && groupIndex === 0 ? "true" : undefined}
       >
         {#if groupIndex === 0}
-          <span class="direction-header-text">{group.stopName} → {group.directionName}</span>
+          <span class="direction-header-text">{getHeaderText(group)}</span>
           <div class="direction-header-time status-header-item" id="datetime-display" aria-label="Current date and time">
             {new Date().toLocaleString("de-DE")}
           </div>
         {:else}
-          {group.stopName} → {group.directionName}
+          {getHeaderText(group)}
         {/if}
       </h2>
       <ul role="list" aria-label="Departures for {group.directionName}">

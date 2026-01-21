@@ -48,6 +48,7 @@ export interface TomlStopData {
   platform_filter_routes?: string[];
   api_provider?: string;
   random_header_colors?: boolean;
+  header_background_brightness?: number;
   random_color_salt?: number;
 }
 

@@ -30,6 +30,30 @@
   let departureRepository: CompositeDepartureRepository | null = null;
   let groupingService: DepartureGroupingService | null = null;
 
+  // Initialize all - matches Python version's initializeAll() function
+  function initializeAll() {
+    // Initialize time format toggle
+    if (currentRoute?.display?.timeFormatToggleSeconds !== undefined) {
+      initTimeFormatToggle(currentRoute.display.timeFormatToggleSeconds);
+    }
+    
+    // Initialize destination scrolling for clipped text
+    initDestinationScrolling();
+    
+    // Calculate dynamic font sizes if fill_vertical_space is enabled
+    // This matches Python: if (window.DEPARTURES_CONFIG && window.DEPARTURES_CONFIG.fillVerticalSpace) { requestAnimationFrame(() => { calculateFillVerticalSpace(); }); }
+    if (currentRoute?.display?.fillVerticalSpace && groupedDepartures.length > 0) {
+      // Use requestAnimationFrame to ensure DOM is fully rendered (matches Python exactly)
+      requestAnimationFrame(() => {
+        calculateFillVerticalSpace({
+          fillVerticalSpace: true,
+          fontScalingFactorWhenFilling: currentRoute?.display?.fontScalingFactorWhenFilling ?? 1.0,
+        });
+        initDestinationScrolling();
+      });
+    }
+  }
+
   onMount(async () => {
     await loadConfig();
     
@@ -56,42 +80,25 @@
     // Listen for hash changes (hash-based routing)
     window.addEventListener("hashchange", handleHashChange);
     
-    // Listen for window resize to recalculate font sizes
+    // Listen for window resize to recalculate font sizes (matches Python exactly)
+    // Handle window resize for fill_vertical_space (matches Python: lines 1426-1436)
     let resizeTimeout: number | null = null;
     window.addEventListener("resize", () => {
-      if (resizeTimeout) clearTimeout(resizeTimeout);
-      resizeTimeout = window.setTimeout(() => {
-        if (currentRoute?.display?.fillVerticalSpace && groupedDepartures.length > 0) {
-          requestAnimationFrame(() => {
-            calculateFillVerticalSpace({
-              fillVerticalSpace: true,
-              fontScalingFactorWhenFilling: currentRoute?.display?.fontScalingFactorWhenFilling ?? 1.0,
-            });
-            initDestinationScrolling();
+      if (currentRoute?.display?.fillVerticalSpace) {
+        // Debounce resize events (matches Python: 150ms)
+        if (resizeTimeout) clearTimeout(resizeTimeout);
+        resizeTimeout = window.setTimeout(() => {
+          calculateFillVerticalSpace({
+            fillVerticalSpace: true,
+            fontScalingFactorWhenFilling: currentRoute?.display?.fontScalingFactorWhenFilling ?? 1.0,
           });
-        }
-      }, 150);
+        }, 150);
+      }
     });
-    
-    // Initial font scaling calculation after first render (if enabled)
-    if (currentRoute?.display?.fillVerticalSpace) {
-      // Wait for initial departures to load
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          if (groupedDepartures.length > 0) {
-            calculateFillVerticalSpace({
-              fillVerticalSpace: true,
-              fontScalingFactorWhenFilling: currentRoute?.display?.fontScalingFactorWhenFilling ?? 1.0,
-            });
-            initDestinationScrolling();
-          }
-        }, 100);
-      });
-    }
   });
 
   // Recalculate font sizes after departures update
-  // Use $effect to react to changes, but ensure DOM is ready with proper timing
+  // This matches Python's phx:update handler: requestAnimationFrame(() => { calculateFillVerticalSpace(); })
   $effect(async () => {
     // Access reactive values to trigger effect
     const _ = groupedDepartures;
@@ -101,28 +108,23 @@
       // Wait for Svelte to finish rendering
       await tick();
       
-      // Use requestAnimationFrame to ensure DOM is fully laid out
-      // Then add a small delay like the original (50ms) to ensure all DOM updates are complete
+      // Use requestAnimationFrame to ensure DOM is fully laid out (matches Python exactly)
       requestAnimationFrame(() => {
-        setTimeout(() => {
-          console.log("Recalculating font sizes (fillVerticalSpace enabled)");
-          calculateFillVerticalSpace({
-            fillVerticalSpace: true,
-            fontScalingFactorWhenFilling: currentRoute?.display?.fontScalingFactorWhenFilling ?? 1.0,
-          });
-          // Also initialize destination scrolling (for clipped text)
-          initDestinationScrolling();
-          // Initialize time format toggle (will reinitialize if already running)
-          initTimeFormatToggle(currentRoute?.display?.timeFormatToggleSeconds ?? 0);
-        }, 50);
+        console.log("Recalculating font sizes (fillVerticalSpace enabled)");
+        calculateFillVerticalSpace({
+          fillVerticalSpace: true,
+          fontScalingFactorWhenFilling: currentRoute?.display?.fontScalingFactorWhenFilling ?? 1.0,
+        });
+        // Also initialize destination scrolling (for clipped text)
+        initDestinationScrolling();
+        // Initialize time format toggle (will reinitialize if already running)
+        initTimeFormatToggle(currentRoute?.display?.timeFormatToggleSeconds ?? 0);
       });
     } else if (!currentRoute?.display?.fillVerticalSpace) {
       console.log("fillVerticalSpace is disabled, using default font sizes");
       // Still initialize time format toggle even if fillVerticalSpace is disabled
       requestAnimationFrame(() => {
-        setTimeout(() => {
-          initTimeFormatToggle(currentRoute?.display?.timeFormatToggleSeconds ?? 0);
-        }, 50);
+        initTimeFormatToggle(currentRoute?.display?.timeFormatToggleSeconds ?? 0);
       });
     }
   });
@@ -233,7 +235,11 @@
             groupedDepartures = groups;
             apiStatus = "success";
             lastUpdateTime = new Date();
-            // Font scaling will be triggered by afterUpdate when DOM is ready
+            // Call initializeAll after data update (matches Python's phx:update handler)
+            // Use requestAnimationFrame to ensure DOM is ready
+            requestAnimationFrame(() => {
+              initializeAll();
+            });
           },
           onError: (error) => {
             console.error("API poll error:", error);
@@ -243,6 +249,12 @@
       );
 
       await poller.start();
+      
+      // Call initializeAll after initial poll completes (matches Python's initializeAll on page load)
+      // Wait a bit for DOM to be ready
+      requestAnimationFrame(() => {
+        initializeAll();
+      });
     }
   }
 

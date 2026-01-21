@@ -63,9 +63,11 @@ export class MultiStopPoller {
     let successCount = 0;
     let errorCount = 0;
 
-    // Poll all stops in parallel
-    console.log(`Polling ${this.stopConfigs.length} stop(s) in parallel${this.isInitialPoll ? " (initial poll - fetching fresh)" : ""}`);
-    const pollPromises = this.stopConfigs.map(async (stopConfig) => {
+    // Process stops SEQUENTIALLY to preserve TOML order (matches Python: for stop_config in self.stop_configs)
+    // This ensures stops appear in the same order as defined in the TOML configuration
+    console.log(`Polling ${this.stopConfigs.length} stop(s)${this.isInitialPoll ? " (initial poll - fetching fresh)" : ""}`);
+    
+    for (const stopConfig of this.stopConfigs) {
       console.log(`Polling stop: ${stopConfig.stationName} (${stopConfig.stationId})`);
       try {
         // On initial poll, always fetch fresh data (don't use cache)
@@ -75,7 +77,12 @@ export class MultiStopPoller {
           if (cached && cached.length > 0) {
             console.log(`Using cached data for ${stopConfig.stationName} (${cached.length} departures)`);
             const groups = this.groupingService.groupDepartures(cached, stopConfig);
-            return { groups, stopConfig, fromCache: true };
+            // Add groups from this stop in order (preserves direction order from TOML)
+            groups.forEach((group) => {
+              allGroups.push({ ...group });
+            });
+            successCount++;
+            continue;
           }
         } else {
           console.log(`Initial poll: fetching fresh data for ${stopConfig.stationName} (skipping cache)`);
@@ -96,40 +103,100 @@ export class MultiStopPoller {
           // Update cache
           await this.cache.set(stopConfig.stationId, departures, 60);
 
-          // Group departures
+          // Group departures (preserves direction order from TOML)
           const groups = this.groupingService.groupDepartures(departures, stopConfig);
-          return { groups, stopConfig, fromCache: false };
+          // Add groups from this stop in order
+          groups.forEach((group) => {
+            allGroups.push({ ...group });
+          });
+          successCount++;
         }
-
-        return { groups: [], stopConfig, fromCache: false };
       } catch (error) {
         errorCount++;
         const err = error instanceof Error ? error : new Error(String(error));
         console.error(`API poll error for ${stopConfig.stationName}:`, err);
-        return { groups: [], stopConfig, error: err };
       }
-    });
+    }
 
-    const results = await Promise.all(pollPromises);
-
-    // Combine groups from all stops
-    // Keep groups separate per stop (don't merge by direction name)
-    // This matches Python version where each stop creates its own groups with "StopName → DirectionName" headers
-    results.forEach((result) => {
-      if (result.groups.length > 0) {
-        successCount++;
-        // Add all groups from this stop (each group already has stopName set)
-        result.groups.forEach((group) => {
-          allGroups.push({ ...group });
-        });
-      } else if (result.error) {
-        errorCount++;
-      }
-    });
+    // Generate header colors for non-first headers (matches Python's _generate_header_colors)
+    this.generateHeaderColors(allGroups);
 
     // Update state with combined groups
     this.allGroups = allGroups;
     console.log(`Combined ${allGroups.length} direction groups from ${successCount} successful stop(s), ${errorCount} error(s)`);
     this.callbacks.onUpdate([...allGroups]);
+  }
+
+  private generateHeaderColors(groups: GroupedDepartures[]): void {
+    // Generate header colors for non-first headers (matches Python: _generate_header_colors)
+    // Only generate colors if random_header_colors is enabled for the stop
+    for (let i = 1; i < groups.length; i++) {
+      const group = groups[i];
+      // Check if any stop config has random_header_colors enabled
+      // For now, we'll generate colors for all non-first headers if any stop has it enabled
+      // This is a simplification - in Python, each stop can have its own setting
+      const stopConfig = this.stopConfigs.find(s => s.stationName === group.stopName);
+      if (stopConfig?.randomHeaderColors) {
+        const headerText = `${group.stopName} → ${group.directionName}`;
+        group.headerColor = this.generatePastelColor(
+          headerText,
+          stopConfig.headerBackgroundBrightness ?? 0.7,
+          stopConfig.randomColorSalt ?? 0
+        );
+      }
+    }
+  }
+
+  private generatePastelColor(text: string, brightness: number = 0.7, salt: number = 0): string {
+    // Generate a stable pastel color from text using hash-based mapping (matches Python's generate_pastel_color_from_text)
+    // Use a simple hash function (MD5 would be ideal but requires a library)
+    // This implementation uses a djb2-like hash for consistency
+    let hash = 5381;
+    const str = `${text}:${salt}`;
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) + hash) + str.charCodeAt(i);
+    }
+    
+    // Use hash as a 32-bit unsigned integer
+    const hashInt = Math.abs(hash >>> 0);
+    
+    // Extract parts for HSL calculation (matches Python's _calculate_hsl_from_hash)
+    const hashPart1 = (hashInt >> 16) & 0xFFFF; // Upper 16 bits
+    const hashPart2 = hashInt & 0xFFFF; // Lower 16 bits
+    
+    const hueBase = hashPart1 % 360;
+    const hueVariation = (hashPart2 % 60) - 30; // -30 to +30 degrees
+    const hue = (hueBase + hueVariation) % 360;
+    
+    const saturation = 55 + (hashInt % 26); // 55-80%
+    
+    const brightnessAdjusted = Math.pow(brightness, 1.5);
+    const baseLightnessMin = 30 + (brightnessAdjusted * 45); // 30-75
+    const baseLightnessMax = 40 + (brightnessAdjusted * 45); // 40-85
+    const lightnessRange = Math.max(1, baseLightnessMax - baseLightnessMin);
+    const lightness = baseLightnessMin + (hashInt % lightnessRange);
+    
+    // Convert HSL to RGB (matches Python's _hsl_to_rgb)
+    const h = hue / 360;
+    const s = saturation / 100;
+    const l = lightness / 100;
+    
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs((h * 6) % 2 - 1));
+    const m = l - c / 2;
+    
+    let r = 0, g = 0, b = 0;
+    if (h < 1/6) { r = c; g = x; b = 0; }
+    else if (h < 2/6) { r = x; g = c; b = 0; }
+    else if (h < 3/6) { r = 0; g = c; b = x; }
+    else if (h < 4/6) { r = 0; g = x; b = c; }
+    else if (h < 5/6) { r = x; g = 0; b = c; }
+    else { r = c; g = 0; b = x; }
+    
+    r = Math.round((r + m) * 255);
+    g = Math.round((g + m) * 255);
+    b = Math.round((b + m) * 255);
+    
+    return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
   }
 }

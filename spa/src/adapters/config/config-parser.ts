@@ -135,6 +135,7 @@ export class ConfigParser {
           platformFilterRoutes: stop.platform_filter_routes,
           apiProvider: stop.api_provider,
           randomHeaderColors: stop.random_header_colors,
+          headerBackgroundBrightness: stop.header_background_brightness,
           randomColorSalt: stop.random_color_salt,
         });
       });
