@@ -280,7 +280,8 @@
             console.error("API poll error:", error);
             apiStatus = "error";
           },
-        }
+        },
+        route.display // Pass route display config for header color inheritance
       );
 
       await poller.start();
