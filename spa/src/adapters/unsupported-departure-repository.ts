@@ -9,14 +9,17 @@ export class UnsupportedDepartureRepository implements DepartureRepository {
   constructor(private readonly provider: string) {}
 
   async getDepartures(
-    _stationId: string,
-    _options?: {
+    stationId: string,
+    options?: {
       limit?: number;
       offsetMinutes?: number;
       transportTypes?: string[];
       durationMinutes?: number;
     },
   ): Promise<Departure[]> {
+    // Mark parameters as intentionally unused (required by interface but not used)
+    void stationId;
+    void options;
     // Return empty array instead of throwing - UI will handle displaying the message
     return [];
   }
