@@ -74,7 +74,12 @@ export class DepartureGroupingService {
           directionName, 
           stopName: stopConfig.stationName,
           stationId: stopConfig.stationId, // Store stationId to match stop config correctly
-          departures: groupDepartures 
+          departures: groupDepartures,
+          // Store color settings from stop config (matches Python's DirectionGroupWithMetadata)
+          // This ensures each group knows its own settings even when multiple stops share stationId
+          randomHeaderColors: stopConfig.randomHeaderColors,
+          headerBackgroundBrightness: stopConfig.headerBackgroundBrightness,
+          randomColorSalt: stopConfig.randomColorSalt,
         });
       }
     }
@@ -87,6 +92,10 @@ export class DepartureGroupingService {
         stopName: stopConfig.stationName,
         stationId: stopConfig.stationId, // Store stationId to match stop config correctly
         departures: processedUngrouped,
+        // Store color settings from stop config (matches Python's DirectionGroupWithMetadata)
+        randomHeaderColors: stopConfig.randomHeaderColors,
+        headerBackgroundBrightness: stopConfig.headerBackgroundBrightness,
+        randomColorSalt: stopConfig.randomColorSalt,
       });
     }
 

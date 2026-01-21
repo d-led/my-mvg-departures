@@ -131,22 +131,26 @@ export class MultiStopPoller {
 
   private generateHeaderColors(groups: GroupedDepartures[]): void {
     // Generate header colors for non-first headers (matches Python: _generate_header_colors)
-    // Python logic: use stop-level config if set, otherwise fall back to route display config
+    // Python logic: use group-level config if set, otherwise fall back to route display config
     // First header (index 0) ALWAYS uses default banner_color - never generate a color for it
     console.log(`[header-colors] Generating colors for ${groups.length} groups, routeDisplay.randomHeaderColors=${this.routeDisplay?.randomHeaderColors}, routeDisplay.headerBackgroundBrightness=${this.routeDisplay?.headerBackgroundBrightness}`);
     
     for (let i = 1; i < groups.length; i++) {
       const group = groups[i];
-      // Match by stationId (not stationName) because multiple stops can have the same name!
-      // This is critical for per-stop header color configuration
-      const stopConfig = this.stopConfigs.find(s => s.stationId === group.stationId);
       
-      // Use stop-level config if set, otherwise fall back to route display config (matches Python lines 339-349)
-      const useRandomColors = stopConfig?.randomHeaderColors ?? this.routeDisplay?.randomHeaderColors ?? false;
-      const brightness = stopConfig?.headerBackgroundBrightness ?? this.routeDisplay?.headerBackgroundBrightness ?? 0.7;
-      const salt = stopConfig?.randomColorSalt ?? 0; // Salt is only per-stop, no route-level fallback
+      // Use group-level config if set (stored when group was created), otherwise fall back to route display config
+      // This matches Python lines 339-349: group_random_colors if group_random_colors is not None else self.random_header_colors
+      const useRandomColors = group.randomHeaderColors !== undefined && group.randomHeaderColors !== null
+        ? group.randomHeaderColors
+        : (this.routeDisplay?.randomHeaderColors ?? false);
+      const brightness = group.headerBackgroundBrightness !== undefined && group.headerBackgroundBrightness !== null
+        ? group.headerBackgroundBrightness
+        : (this.routeDisplay?.headerBackgroundBrightness ?? 0.7);
+      const salt = group.randomColorSalt !== undefined && group.randomColorSalt !== null
+        ? group.randomColorSalt
+        : 0; // Salt is only per-stop, no route-level fallback
       
-      console.log(`[header-colors] Group ${i} (${group.stopName} [${group.stationId}] → ${group.directionName}): stopConfig.randomHeaderColors=${stopConfig?.randomHeaderColors}, useRandomColors=${useRandomColors}, brightness=${brightness}`);
+      console.log(`[header-colors] Group ${i} (${group.stopName} [${group.stationId}] → ${group.directionName}): group.randomHeaderColors=${group.randomHeaderColors}, useRandomColors=${useRandomColors}, brightness=${brightness}, salt=${salt}`);
       
       if (useRandomColors) {
         // Strip "->" prefix from direction name (matches Python: direction_clean = group.direction_name.lstrip("->"))
