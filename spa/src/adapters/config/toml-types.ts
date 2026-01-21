@@ -24,6 +24,7 @@ export interface TomlDisplayData {
   font_size_delay_amount?: string;
   font_size_no_departures?: string;
   font_size_status_header?: string;
+  route_icon_display?: "icon_with_text" | "badge" | "none";
 }
 
 export interface TomlApiData {
@@ -54,7 +55,7 @@ export interface TomlStopData {
 
 export interface TomlRouteData {
   path?: string;
-  display?: TomlDisplayData;
+  display?: TomlDisplayData | TomlDisplayData[]; // Can be dict or array (for [[routes.display]])
   stops?: TomlStopData[];
   refresh_interval_seconds?: number;
 }

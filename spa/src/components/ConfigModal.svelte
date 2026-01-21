@@ -1,28 +1,59 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { LocalStorageConfigStorage } from "../adapters/storage/local-storage-config-storage.js";
+  import { ConfigParser } from "../adapters/config/config-parser.js";
 
   let {
-    currentConfig = null,
     onSave,
     onCancel,
   }: {
-    currentConfig?: unknown;
-    onSave: (config: string) => void;
+    onSave: (config: string) => Promise<void>;
     onCancel: () => void;
   } = $props();
 
   let configText = $state("");
+  let errorMessage = $state<string | null>(null);
+  let isSaving = $state(false);
+  const configStorage = new LocalStorageConfigStorage();
+  const configParser = new ConfigParser();
 
-  onMount(() => {
-    // Load current config as TOML string if available
-    // For now, we'll just show an empty textarea
-    // In a real implementation, you'd convert the config back to TOML
-    configText = "";
+  // Load raw TOML from storage when modal opens
+  $effect(async () => {
+    const storedToml = await configStorage.getConfigToml();
+    configText = storedToml || "";
+    errorMessage = null; // Clear error when loading
   });
 
-  function handleSave() {
-    if (configText.trim()) {
-      onSave(configText);
+  // Clear error when text changes
+  $effect(() => {
+    if (configText && errorMessage) {
+      errorMessage = null;
+    }
+  });
+
+  async function handleSave() {
+    if (!configText.trim()) {
+      return;
+    }
+
+    // Validate TOML syntax and parsing before saving
+    errorMessage = null;
+    isSaving = true;
+
+    try {
+      // Try to parse the TOML to validate it
+      configParser.parseToml(configText);
+      
+      // If parsing succeeds, call onSave
+      await onSave(configText);
+      // onSave will close the modal on success
+    } catch (error) {
+      // Extract error message
+      const message = error instanceof Error ? error.message : String(error);
+      errorMessage = `Invalid TOML configuration: ${message}`;
+      console.error("Config validation failed:", error);
+      // Don't close modal, let user fix the error
+    } finally {
+      isSaving = false;
     }
   }
 
@@ -41,17 +72,22 @@
     </div>
     <div class="modal-body">
       <p>Paste your TOML configuration below:</p>
+      {#if errorMessage}
+        <div class="error-message" role="alert">
+          {errorMessage}
+        </div>
+      {/if}
       <textarea
         bind:value={configText}
         class="config-textarea"
+        class:error={!!errorMessage}
         placeholder="Paste TOML config here..."
-        rows="20"
       ></textarea>
     </div>
     <div class="modal-footer">
-      <button class="button button-secondary" onclick={onCancel}>Cancel</button>
-      <button class="button button-primary" onclick={handleSave} disabled={!configText.trim()}>
-        Save
+      <button class="button button-secondary" onclick={onCancel} disabled={isSaving}>Cancel</button>
+      <button class="button button-primary" onclick={handleSave} disabled={!configText.trim() || isSaving}>
+        {isSaving ? "Saving..." : "Save"}
       </button>
     </div>
   </div>
@@ -77,10 +113,12 @@
     padding: 1.5rem;
     max-width: 90vw;
     max-height: 90vh;
+    min-height: 500px;
     width: 800px;
     display: flex;
     flex-direction: column;
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    overflow: hidden; /* Prevent content from overflowing */
   }
 
   [data-theme="dark"] .modal-content {
@@ -128,21 +166,56 @@
   }
 
   .modal-body {
-    flex: 1;
-    overflow-y: auto;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0; /* Critical for flexbox children to shrink */
     margin-bottom: 1rem;
+    overflow: hidden; /* Prevent body from scrolling, let textarea handle it */
+  }
+
+  .modal-body p {
+    margin: 0 0 0.75rem 0;
+    flex-shrink: 0; /* Don't shrink the label */
+  }
+
+  .error-message {
+    background-color: #fee2e2;
+    border: 1px solid #fca5a5;
+    border-radius: 0.375rem;
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+    color: #991b1b;
+    font-size: 0.875rem;
+    flex-shrink: 0;
+  }
+
+  [data-theme="dark"] .error-message {
+    background-color: #7f1d1d;
+    border-color: #dc2626;
+    color: #fca5a5;
+  }
+
+  .config-textarea.error {
+    border-color: #dc2626;
+  }
+
+  [data-theme="dark"] .config-textarea.error {
+    border-color: #f87171;
   }
 
   .config-textarea {
     width: 100%;
-    min-height: 400px;
+    flex: 1 1 auto; /* Fill available space in modal-body */
+    min-height: 0; /* Critical for flexbox to work */
     font-family: monospace;
     font-size: 0.875rem;
     padding: 0.75rem;
     border: 1px solid #d1d5db;
     border-radius: 0.375rem;
-    resize: vertical;
+    resize: none; /* Disable manual resize, let flexbox handle it */
     box-sizing: border-box;
+    overflow-y: auto; /* Scroll inside textarea if content is too long */
   }
 
   [data-theme="dark"] .config-textarea {
@@ -155,6 +228,8 @@
     display: flex;
     justify-content: flex-end;
     gap: 0.75rem;
+    flex-shrink: 0; /* Don't shrink the footer */
+    margin-top: auto; /* Push footer to bottom */
   }
 
   .button {

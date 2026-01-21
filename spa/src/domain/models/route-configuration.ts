@@ -25,6 +25,7 @@ export interface DisplayConfiguration {
   fontSizeDelayAmount?: string;
   fontSizeNoDepartures?: string;
   fontSizeStatusHeader?: string;
+  routeIconDisplay?: "icon_with_text" | "badge" | "none";
 }
 
 export interface RouteConfiguration {

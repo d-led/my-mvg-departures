@@ -369,12 +369,15 @@ if (isWatch) {
   });
 
   // Serve - bind to all interfaces (0.0.0.0) to allow remote access
-  const { port, host } = await buildContext.serve({ 
+  const serveOptions = { 
     servedir: "dist", 
     port: 8000,
     host: "0.0.0.0" // Allow access from remote hosts (e.g., cmr-r)
-  });
-  console.log(`\n🚀 Server running at http://${host}:${port}\n`);
+  };
+  const serveResult = await buildContext.serve(serveOptions);
+  const port = serveResult.port;
+  // esbuild serve() may not return host, so use localhost for display (0.0.0.0 is for binding, not display)
+  console.log(`\n🚀 Server running at http://localhost:${port}\n`);
 
   process.on("SIGINT", async () => {
     if (buildContext) {

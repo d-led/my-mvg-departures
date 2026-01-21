@@ -137,7 +137,9 @@ export class MultiStopPoller {
       // This is a simplification - in Python, each stop can have its own setting
       const stopConfig = this.stopConfigs.find(s => s.stationName === group.stopName);
       if (stopConfig?.randomHeaderColors) {
-        const headerText = `${group.stopName} → ${group.directionName}`;
+        // Strip "->" prefix from direction name (matches Python: direction_clean = group.direction_name.lstrip("->"))
+        const directionClean = group.directionName.replace(/^->/, "");
+        const headerText = `${group.stopName} → ${directionClean}`;
         group.headerColor = this.generatePastelColor(
           headerText,
           stopConfig.headerBackgroundBrightness ?? 0.7,

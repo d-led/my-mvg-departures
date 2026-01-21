@@ -8,6 +8,120 @@ export interface FontScalingConfig {
   fontScalingFactorWhenFilling?: number;
 }
 
+/**
+ * Set font sizes from config values (when fillVerticalSpace is disabled)
+ * This ensures proper font sizes and line-heights to prevent overlap
+ */
+export function setFontSizesFromConfig(display?: {
+  fontSizeRouteNumber?: string;
+  fontSizeDestination?: string;
+  fontSizePlatform?: string;
+  fontSizeTime?: string;
+  fontSizeDirectionHeader?: string;
+  fontSizeStopHeader?: string;
+  fontSizeNoDepartures?: string;
+  fontSizePaginationIndicator?: string;
+  fontSizeCountdownText?: string;
+  fontSizeDelayAmount?: string;
+  fontSizeStatusHeader?: string;
+}): void {
+  const root = document.documentElement;
+  
+  // Set font sizes from config (if provided), otherwise use defaults
+  // Convert rem to px based on root font size (typically 16px)
+  const rootFontSize = parseFloat(getComputedStyle(root).fontSize) || 16;
+  
+  const remToPx = (rem: string | undefined, defaultRem: number): number => {
+    if (!rem) return defaultRem * rootFontSize;
+    const remValue = parseFloat(rem.replace("rem", ""));
+    return isNaN(remValue) ? defaultRem * rootFontSize : remValue * rootFontSize;
+  };
+  
+  root.style.setProperty("--font-size-route-number", display?.fontSizeRouteNumber || "4rem");
+  root.style.setProperty("--font-size-destination", display?.fontSizeDestination || "4rem");
+  root.style.setProperty("--font-size-platform", display?.fontSizePlatform || "2.5rem");
+  root.style.setProperty("--font-size-time", display?.fontSizeTime || "4rem");
+  root.style.setProperty("--font-size-direction-header", display?.fontSizeDirectionHeader || "2.5rem");
+  root.style.setProperty("--font-size-stop-header", display?.fontSizeStopHeader || "3rem");
+  root.style.setProperty("--font-size-no-departures", display?.fontSizeNoDepartures || "2.5rem");
+  root.style.setProperty("--font-size-pagination-indicator", display?.fontSizePaginationIndicator || "2rem");
+  root.style.setProperty("--font-size-countdown-text", display?.fontSizeCountdownText || "1.8rem");
+  root.style.setProperty("--font-size-delay-amount", display?.fontSizeDelayAmount || "2rem");
+  root.style.setProperty("--font-size-status-header", display?.fontSizeStatusHeader || "1.875rem");
+  
+  // Ensure proper line-heights to prevent overlap (matches Python CSS: line-height: 1.2)
+  root.style.setProperty("--line-height", "1.2");
+  
+  // Calculate column widths dynamically (same as fillVerticalSpace mode)
+  const departuresEl = document.getElementById("departures");
+  if (!departuresEl) return;
+  
+  // Get font sizes in px for width calculations
+  const routeNumberPx = remToPx(display?.fontSizeRouteNumber, 4);
+  const platformPx = remToPx(display?.fontSizePlatform, 2.5);
+  const timePx = remToPx(display?.fontSizeTime, 4);
+  
+  // Temporarily set auto widths to allow content measurement
+  root.style.setProperty("--route-column-width", "auto");
+  root.style.setProperty("--time-container-width", "auto");
+  root.style.setProperty("--platform-column-width", "auto");
+  root.style.setProperty("--time-column-width", "auto");
+  
+  // Force reflow
+  void departuresEl.offsetHeight;
+  
+  // Measure route numbers
+  let maxRouteWidth = 0;
+  const routeNumbers = departuresEl.querySelectorAll(".route-number");
+  routeNumbers.forEach((el) => {
+    const width = (el as HTMLElement).scrollWidth;
+    if (width > maxRouteWidth) maxRouteWidth = width;
+  });
+  const routeColumnWidth = Math.max(maxRouteWidth + routeNumberPx * 0.3, routeNumberPx * 2.5);
+  root.style.setProperty("--route-column-width", routeColumnWidth + "px");
+  
+  // Measure platforms
+  let maxPlatformWidth = 0;
+  const platforms = departuresEl.querySelectorAll(".time-container .platform");
+  platforms.forEach((el) => {
+    const width = (el as HTMLElement).scrollWidth;
+    if (width > maxPlatformWidth) maxPlatformWidth = width;
+  });
+  const platformColumnWidth = maxPlatformWidth > 0 ? maxPlatformWidth + platformPx * 0.3 : 0;
+  root.style.setProperty("--platform-column-width", platformColumnWidth > 0 ? platformColumnWidth + "px" : "0px");
+  
+  // Measure times
+  let maxTimeWidth = 0;
+  const times = departuresEl.querySelectorAll(".time-container .time");
+  times.forEach((el) => {
+    const width = (el as HTMLElement).scrollWidth;
+    if (width > maxTimeWidth) maxTimeWidth = width;
+  });
+  const timeColumnWidth = maxTimeWidth + timePx * 0.3;
+  root.style.setProperty("--time-column-width", timeColumnWidth + "px");
+  
+  // Calculate time container width
+  const timeContainerGap = timePx * 0.2;
+  root.style.setProperty("--time-container-gap", timeContainerGap + "px");
+  const containerPadding = 12;
+  const effectiveGap = platformColumnWidth > 0 ? timeContainerGap : 0;
+  const timeContainerWidth = platformColumnWidth + effectiveGap + timeColumnWidth + containerPadding * 2;
+  root.style.setProperty("--time-container-width", timeContainerWidth + "px");
+  
+  // Ensure proper line-heights on elements to prevent overlap
+  const departureRows = departuresEl.querySelectorAll(".departure-row");
+  departureRows.forEach((row) => {
+    const r = row as HTMLElement;
+    r.style.lineHeight = "1.2"; // Match body line-height
+  });
+  
+  const directionHeaders = departuresEl.querySelectorAll(".direction-header");
+  directionHeaders.forEach((header) => {
+    const h = header as HTMLElement;
+    h.style.lineHeight = "1.2"; // Match body line-height
+  });
+}
+
 export function calculateFillVerticalSpace(config: FontScalingConfig): void {
   if (!config.fillVerticalSpace) {
     console.log("[font-scaling] fillVerticalSpace is false, skipping calculation");

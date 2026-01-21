@@ -75,9 +75,25 @@ export class ConfigParser {
     defaultDisplay: DisplayConfiguration,
   ): RouteConfiguration | null {
     const path = routeData.path || "/";
-    const routeDisplay = routeData.display
-      ? this.parseDisplayConfig(routeData.display)
-      : { ...defaultDisplay };
+    
+    // Handle display data (can be dict or array for [[routes.display]] syntax)
+    // Matches Python: _parse_display_data which handles both dict and list
+    let routeDisplay: DisplayConfiguration;
+    if (routeData.display) {
+      if (Array.isArray(routeData.display) && routeData.display.length > 0) {
+        // [[routes.display]] creates an array - use first element (matches Python: lines 294-297)
+        routeDisplay = this.parseDisplayConfig(routeData.display[0]);
+      } else if (!Array.isArray(routeData.display)) {
+        // Single display object
+        routeDisplay = this.parseDisplayConfig(routeData.display);
+      } else {
+        // Empty array - use defaults
+        routeDisplay = { ...defaultDisplay };
+      }
+    } else {
+      routeDisplay = { ...defaultDisplay };
+    }
+    
     const stops = this.parseStops(routeData.stops || []);
 
     if (stops.length === 0) {
@@ -175,6 +191,7 @@ export class ConfigParser {
       fontSizeDelayAmount: displayData.font_size_delay_amount,
       fontSizeNoDepartures: displayData.font_size_no_departures,
       fontSizeStatusHeader: displayData.font_size_status_header,
+      routeIconDisplay: displayData.route_icon_display,
     };
   }
 }

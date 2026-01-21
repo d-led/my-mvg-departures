@@ -7,7 +7,7 @@
   import { DepartureGroupingService } from "../application/services/departure-grouping-service.js";
   import { MultiStopPoller } from "../application/services/multi-stop-poller.js";
   import type { AppConfig, RouteConfiguration, GroupedDepartures } from "../domain/models/index.js";
-  import { calculateFillVerticalSpace } from "../utils/font-scaling.js";
+  import { calculateFillVerticalSpace, setFontSizesFromConfig } from "../utils/font-scaling.js";
   import { initDestinationScrolling } from "../utils/destination-scrolling.js";
   import { initTimeFormatToggle, cleanupTimeFormatToggle } from "../utils/time-format-toggle.js";
   import ConfigModal from "./ConfigModal.svelte";
@@ -22,6 +22,14 @@
   let lastUpdateTime = $state<Date | null>(null);
   let refreshIntervalSeconds = $state<number>(20);
   let poller: MultiStopPoller | null = null;
+
+  function formatDate(date: Date): string {
+    // Format date as YYYY-MM-DD (e.g., "2026-01-21")
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
 
   const configStorage = new LocalStorageConfigStorage();
   const configParser = new ConfigParser();
@@ -49,6 +57,12 @@
           fillVerticalSpace: true,
           fontScalingFactorWhenFilling: currentRoute?.display?.fontScalingFactorWhenFilling ?? 1.0,
         });
+        initDestinationScrolling();
+      });
+    } else if (!currentRoute?.display?.fillVerticalSpace && groupedDepartures.length > 0) {
+      // When fillVerticalSpace is disabled, still set font sizes from config to prevent overlap
+      requestAnimationFrame(() => {
+        setFontSizesFromConfig(currentRoute?.display);
         initDestinationScrolling();
       });
     }
@@ -121,10 +135,14 @@
         initTimeFormatToggle(currentRoute?.display?.timeFormatToggleSeconds ?? 0);
       });
     } else if (!currentRoute?.display?.fillVerticalSpace) {
-      console.log("fillVerticalSpace is disabled, using default font sizes");
-      // Still initialize time format toggle even if fillVerticalSpace is disabled
+      console.log("fillVerticalSpace is disabled, setting font sizes from config");
+      // When fillVerticalSpace is disabled, still set font sizes from config and ensure proper line-heights
+      // This prevents font overlap (matches Python: CSS variables are always set)
+      await tick();
       requestAnimationFrame(() => {
+        setFontSizesFromConfig(currentRoute?.display);
         initTimeFormatToggle(currentRoute?.display?.timeFormatToggleSeconds ?? 0);
+        initDestinationScrolling();
       });
     }
   });
@@ -141,7 +159,24 @@
   }
 
   async function loadConfig() {
-    const stored = await configStorage.getConfig();
+    // Try to load parsed config first (faster)
+    let stored = await configStorage.getConfig();
+    
+    // If no parsed config but we have TOML, parse it
+    if (!stored) {
+      const tomlString = await configStorage.getConfigToml();
+      if (tomlString) {
+        try {
+          stored = configParser.parseToml(tomlString);
+          // Save the parsed version for faster access next time
+          await configStorage.saveConfig(stored);
+          console.log("Parsed TOML config and cached parsed version");
+        } catch (error) {
+          console.error("Failed to parse stored TOML config:", error);
+        }
+      }
+    }
+    
     if (stored) {
       config = stored;
       console.log(`Loaded config with ${stored.routes.length} route(s)`);
@@ -251,25 +286,30 @@
       await poller.start();
       
       // Call initializeAll after initial poll completes (matches Python's initializeAll on page load)
-      // Wait a bit for DOM to be ready
+      // Use multiple requestAnimationFrame calls + small delay to ensure DOM is fully ready
+      // This is critical on page reload (Ctrl+R) when DOM might be ready but layout not yet calculated
       requestAnimationFrame(() => {
-        initializeAll();
+        requestAnimationFrame(() => {
+          // Additional small delay to ensure layout is calculated (especially on page reload)
+          setTimeout(() => {
+            initializeAll();
+          }, 50);
+        });
       });
     }
   }
 
-  function handleConfigSave(tomlConfig: string) {
-    try {
-      const parsed = configParser.parseToml(tomlConfig);
-      configStorage.saveConfig(parsed).then(() => {
-        config = parsed;
-        showConfigModal = false;
-        initializeRoute();
-      });
-    } catch (error) {
-      console.error("Failed to parse config:", error);
-      alert("Failed to parse TOML config. Please check the format.");
-    }
+  async function handleConfigSave(tomlConfig: string): Promise<void> {
+    // Validation is done in ConfigModal before calling this
+    // But we still validate here as a safety check
+    const parsed = configParser.parseToml(tomlConfig);
+    
+    // Store both: parsed config (for app use) and raw TOML (for editing)
+    await configStorage.saveConfig(parsed);
+    await configStorage.saveConfigToml(tomlConfig);
+    config = parsed;
+    showConfigModal = false;
+    await initializeRoute();
   }
 
   function handleConfigCancel() {
@@ -296,7 +336,7 @@
     <h1>{currentRoute?.display?.title ?? "MVG Departures"}</h1>
     <div class="last-update" aria-live="polite" aria-atomic="true">
       {#if lastUpdateTime}
-        Last updated: {lastUpdateTime.toLocaleTimeString()}
+        Last updated: {formatDate(lastUpdateTime)} {lastUpdateTime.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}
       {/if}
     </div>
   </div>
@@ -317,7 +357,6 @@
 
   {#if showConfigModal}
     <ConfigModal
-      currentConfig={config}
       onSave={handleConfigSave}
       onCancel={handleConfigCancel}
     />

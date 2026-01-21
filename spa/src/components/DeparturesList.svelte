@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import type { GroupedDepartures, DisplayConfiguration } from "../domain/models/index.js";
 
   let {
@@ -103,14 +104,23 @@
   }
 
   function getHeaderText(group: any): string {
-    // Format: "StopName → DirectionName (in X+ min)" if there are departures
-    const baseText = `${group.stopName} → ${group.directionName}`;
-    if (group.departures && group.departures.length > 0) {
-      const firstDeparture = group.departures[0];
-      const timeText = formatHeaderTime(firstDeparture);
-      return `${baseText} ${timeText}`;
-    }
-    return baseText;
+    // Format: "StopName → DirectionName" (matches Python - no time suffix)
+    // Strip "->" prefix from direction name (matches Python: direction_clean = group.direction_name.lstrip("->"))
+    const directionClean = group.directionName.replace(/^->/, "");
+    return `${group.stopName} → ${directionClean}`;
+  }
+
+  function getIconPath(transportType: string): string {
+    // Map transport type to icon filename (matches Python template)
+    if (transportType === "U-Bahn") return "ico-subway.svg";
+    if (transportType === "S-Bahn") return "ico-metropolitan-railway.svg";
+    if (transportType === "Tram") return "ico-tram.svg";
+    return "ico-bus.svg"; // Default to bus
+  }
+
+  function getRouteIconDisplay(): "icon_with_text" | "badge" | "none" {
+    // Default to "icon_with_text" (matches Python default)
+    return display?.routeIconDisplay ?? "icon_with_text";
   }
 
   function getTransportTypeCss(transportType: string): string {
@@ -122,6 +132,35 @@
     };
     return map[transportType] || "regional";
   }
+
+  function formatDate(date: Date): string {
+    // Format date as YYYY-MM-DD (e.g., "2026-01-21")
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  function formatDateTime(date: Date): string {
+    // Format date and time as "YYYY-MM-DD HH:MM" (matches Python: lines 150-163)
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  }
+
+  // Update datetime every second (matches Python: setInterval(updateDateTime, 1000))
+  let currentDateTime = $state(formatDateTime(new Date()));
+  
+  onMount(() => {
+    const interval = setInterval(() => {
+      currentDateTime = formatDateTime(new Date());
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  });
 </script>
 
 {#if groupedDepartures.length === 0}
@@ -140,8 +179,8 @@
       >
         {#if groupIndex === 0}
           <span class="direction-header-text">{getHeaderText(group)}</span>
-          <div class="direction-header-time status-header-item" id="datetime-display" aria-label="Current date and time">
-            {new Date().toLocaleString("de-DE")}
+          <div class="direction-header-time status-header-item" id="datetime-display" aria-label="Current date and time: {currentDateTime}">
+            {currentDateTime}
           </div>
         {:else}
           {getHeaderText(group)}
@@ -156,9 +195,24 @@
           >
             <div class="route-container" aria-hidden="true">
               <span class="route-number">
-                <span class="route-badge route-badge-{getTransportTypeCss(departure.transportType)}">
+                {#if getRouteIconDisplay() === "icon_with_text"}
+                  <!-- icon_with_text mode: icon + route number text (default, matches Python) -->
+                  <img 
+                    class="route-icon" 
+                    src={`/static/assets/${getIconPath(departure.transportType)}`}
+                    alt={departure.transportType}
+                    aria-hidden="true"
+                  />
+                  <span class="route-line-text">{departure.line}</span>
+                {:else if getRouteIconDisplay() === "badge"}
+                  <!-- badge mode: route number in colored transport type shape -->
+                  <span class="route-badge route-badge-{getTransportTypeCss(departure.transportType)}">
+                    {departure.line}
+                  </span>
+                {:else}
+                  <!-- none mode: text only -->
                   {departure.line}
-                </span>
+                {/if}
               </span>
               <span class="destination">
                 <span class="destination-text">{departure.destination}</span>
