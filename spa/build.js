@@ -106,7 +106,6 @@ function copyExampleConfig() {
 }
 
 function copyHtml() {
-  const src = "departures.html";
   const dest = "dist/index.html";
   
   // Create minimal HTML template for Svelte

@@ -1,5 +1,5 @@
-import type { DepartureRepository } from "../../domain/ports/departure-repository.js";
-import type { StopConfiguration } from "../../domain/models/stop-configuration.js";
+import type { DepartureRepository } from "../domain/ports/departure-repository.js";
+import type { StopConfiguration } from "../domain/models/stop-configuration.js";
 import { MvgDepartureRepository } from "./mvg/mvg-departure-repository.js";
 // TODO: Add DB and VBB repositories when implemented
 // import { DbDepartureRepository } from "./db/db-departure-repository.js";
@@ -33,13 +33,18 @@ export class CompositeDepartureRepository implements DepartureRepository {
     // Extract base station ID from a potential stop_point_global_id
     // Format: de:09162:1108:3:3 -> de:09162:1108
     const parts = stationId.split(":");
-    if (parts.length >= 5 && parts[parts.length - 1] === parts[parts.length - 2]) {
+    if (
+      parts.length >= 5 &&
+      parts[parts.length - 1] === parts[parts.length - 2]
+    ) {
       return parts.slice(0, 3).join(":");
     }
     return stationId;
   }
 
-  private createRepositoryForProvider(apiProvider: string): DepartureRepository {
+  private createRepositoryForProvider(
+    apiProvider: string,
+  ): DepartureRepository {
     // Normalize to lowercase
     const provider = apiProvider.toLowerCase();
 
@@ -66,7 +71,10 @@ export class CompositeDepartureRepository implements DepartureRepository {
 
       // Create repository if we haven't seen this API provider
       if (!repoCache.has(apiProvider)) {
-        repoCache.set(apiProvider, this.createRepositoryForProvider(apiProvider));
+        repoCache.set(
+          apiProvider,
+          this.createRepositoryForProvider(apiProvider),
+        );
       }
 
       // Map this station_id (including base IDs) to the appropriate repository

@@ -114,9 +114,9 @@
   // Recalculate font sizes after departures update
   // This matches Python's phx:update handler: requestAnimationFrame(() => { calculateFillVerticalSpace(); })
   $effect(async () => {
-    // Access reactive values to trigger effect
-    const _ = groupedDepartures;
-    const __ = currentRoute;
+    // Access reactive values to trigger effect (intentionally unused to trigger reactivity)
+    void groupedDepartures;
+    void currentRoute;
     
     if (currentRoute?.display?.fillVerticalSpace && groupedDepartures.length > 0) {
       // Wait for Svelte to finish rendering

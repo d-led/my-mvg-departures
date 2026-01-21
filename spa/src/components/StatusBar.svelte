@@ -4,7 +4,6 @@
 
   let {
     apiStatus,
-    showConfigModal,
     onConfigClick,
     routes = [],
     currentRoutePath = null,
@@ -12,7 +11,6 @@
     refreshIntervalSeconds = 20,
   }: {
     apiStatus: "success" | "error" | "degraded" | "unknown";
-    showConfigModal: boolean;
     onConfigClick: () => void;
     routes?: RouteConfiguration[];
     currentRoutePath?: string | null;
@@ -101,9 +99,9 @@
 
   // Restart countdown when refresh interval changes or when API status changes (new update)
   $effect(() => {
-    // Access reactive values to trigger effect
-    const _ = refreshIntervalSeconds;
-    const __ = apiStatus;
+    // Access reactive values to trigger effect (intentionally unused to trigger reactivity)
+    void refreshIntervalSeconds;
+    void apiStatus;
     
     // Restart countdown when interval changes or on successful update
     if (apiStatus === "success") {
@@ -198,7 +196,7 @@
       
       {#if showRouteSelector}
         <div class="route-selector-dropdown" role="menu" aria-label="Available routes" onclick={(e) => e.stopPropagation()}>
-          {#each routes as route}
+          {#each routes as route (route.path)}
             <button
               class="route-selector-item {currentRoutePath === route.path ? 'active' : ''}"
               onclick={() => selectRoute(route.path)}

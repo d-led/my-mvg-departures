@@ -97,25 +97,6 @@
     return departure.delaySeconds != null && departure.delaySeconds > 60;
   }
 
-  function formatHeaderTime(departure: any): string {
-    // Format time for header: "(in X+ min)" or "(in X min)"
-    const now = new Date();
-    const diffMs = departure.time.getTime() - now.getTime();
-    const diffMinutes = Math.floor(diffMs / 60000);
-
-    if (diffMinutes < 0) {
-      return "(now)";
-    } else if (diffMinutes < 60) {
-      return `(in ${diffMinutes}+ min)`;
-    } else {
-      const hours = Math.floor(diffMinutes / 60);
-      const mins = diffMinutes % 60;
-      if (mins === 0) {
-        return `(in ${hours}+ h)`;
-      }
-      return `(in ${hours}+ h ${mins}+ min)`;
-    }
-  }
 
   function getHeaderText(group: any): string {
     // Format: "StopName → DirectionName" (matches Python - no time suffix)
@@ -147,13 +128,6 @@
     return map[transportType] || "regional";
   }
 
-  function formatDate(date: Date): string {
-    // Format date as YYYY-MM-DD (e.g., "2026-01-21")
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  }
 
   function formatDateTime(date: Date): string {
     // Format date and time as "YYYY-MM-DD HH:MM" (matches Python: lines 150-163)

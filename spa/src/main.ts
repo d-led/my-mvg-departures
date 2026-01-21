@@ -4,7 +4,7 @@ import { mount } from "svelte";
 function init() {
   // Find the container element
   const target = document.querySelector(".container[data-phx-main]");
-  
+
   if (!target) {
     console.error("Container element not found");
     return;

@@ -70,8 +70,8 @@ export class DepartureGroupingService {
     )) {
       const groupDepartures = processedGroups[directionName];
       if (groupDepartures && groupDepartures.length > 0) {
-        result.push({ 
-          directionName, 
+        result.push({
+          directionName,
           stopName: stopConfig.stationName,
           stationId: stopConfig.stationId, // Store stationId to match stop config correctly
           departures: groupDepartures,

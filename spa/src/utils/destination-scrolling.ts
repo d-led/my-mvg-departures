@@ -5,9 +5,14 @@
 
 export function initDestinationScrolling(): void {
   document.querySelectorAll(".destination-text").forEach((textEl) => {
+    // Type guard: ensure textEl is HTMLElement to access style property
+    if (!(textEl instanceof HTMLElement)) {
+      return;
+    }
+
     const container = textEl.closest(".destination");
     if (!container) return;
-    
+
     // Check if text is clipped (text width > container width)
     const textWidth = textEl.scrollWidth;
     const containerWidth = container.clientWidth;
@@ -17,11 +22,15 @@ export function initDestinationScrolling(): void {
     if (isClipped) {
       // Text is clipped - add clipped class and calculate exact scroll distance
       const scrollDistance = containerWidth - textWidth;
-      const currentScrollDistance = textEl.style.getPropertyValue("--scroll-distance");
+      const currentScrollDistance =
+        textEl.style.getPropertyValue("--scroll-distance");
 
       // Only update if clipping state changed or scroll distance changed significantly
       // This prevents restarting animation unnecessarily when time format changes
-      if (!wasClipped || Math.abs(parseFloat(currentScrollDistance) - scrollDistance) > 1) {
+      if (
+        !wasClipped ||
+        Math.abs(parseFloat(currentScrollDistance) - scrollDistance) > 1
+      ) {
         textEl.classList.add("clipped");
         // Set CSS variable with the exact scroll distance
         textEl.style.setProperty("--scroll-distance", scrollDistance + "px");

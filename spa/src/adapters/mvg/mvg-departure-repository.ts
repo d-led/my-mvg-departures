@@ -40,7 +40,9 @@ export class MvgDepartureRepository implements DepartureRepository {
         return [];
       }
 
-      console.log(`[MVG API] Received ${results.length} departures for ${stationId}`);
+      console.log(
+        `[MVG API] Received ${results.length} departures for ${stationId}`,
+      );
       return results.map((result) => this.parseDeparture(result));
     } catch (error) {
       console.error(`Failed to fetch departures for ${stationId}:`, error);
@@ -52,12 +54,17 @@ export class MvgDepartureRepository implements DepartureRepository {
     // Match Python version exactly:
     // time = datetime.fromtimestamp(result["realtimeDepartureTime"] / 1000, tz=UTC)
     // Python always uses realtimeDepartureTime (no fallback)
+    // Handle undefined case: if realtimeDepartureTime is missing, fall back to plannedDepartureTime
+    if (result.realtimeDepartureTime === undefined) {
+      throw new Error("realtimeDepartureTime is required but was undefined");
+    }
     const time = new Date(result.realtimeDepartureTime);
     // planned_time = datetime.fromtimestamp(result["plannedDepartureTime"] / 1000, tz=UTC)
     const plannedTime = new Date(result.plannedDepartureTime);
     // delay_seconds = result.get("delayInMinutes", 0) * 60 if result.get("delayInMinutes") else 0
     // Match Python: if delayInMinutes exists, convert to seconds, otherwise None (not 0)
-    const delaySeconds = result.delayInMinutes != null ? result.delayInMinutes * 60 : null;
+    const delaySeconds =
+      result.delayInMinutes != null ? result.delayInMinutes * 60 : null;
 
     const transportTypeEnum = result.transportType ?? "";
     const transportTypeMap: Record<string, string> = {

@@ -6,7 +6,9 @@
 let timeFormatToggleInterval: number | null = null;
 let currentTimeFormat: "relative" | "absolute" = "relative";
 
-export function initTimeFormatToggle(timeFormatToggleSeconds: number = 0): void {
+export function initTimeFormatToggle(
+  timeFormatToggleSeconds: number = 0,
+): void {
   // Clear any existing interval
   if (timeFormatToggleInterval !== null) {
     clearInterval(timeFormatToggleInterval);
@@ -81,7 +83,8 @@ function toggleTimeFormat(): void {
     }, 150);
   });
 
-  currentTimeFormat = currentTimeFormat === "relative" ? "absolute" : "relative";
+  currentTimeFormat =
+    currentTimeFormat === "relative" ? "absolute" : "relative";
 
   // Recalculate destination clipping after layout settles (time format change may affect container widths)
   setTimeout(() => {

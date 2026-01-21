@@ -75,7 +75,7 @@ export class ConfigParser {
     defaultDisplay: DisplayConfiguration,
   ): RouteConfiguration | null {
     const path = routeData.path || "/";
-    
+
     // Handle display data (can be dict or array for [[routes.display]] syntax)
     // Matches Python: _parse_display_data which handles both dict and list
     // Routes inherit from defaultDisplay for missing fields (matches user requirement)
@@ -98,7 +98,7 @@ export class ConfigParser {
       const definedRouteDisplay: DisplayConfiguration = {};
       for (const [key, value] of Object.entries(parsedDisplay)) {
         if (value !== undefined) {
-          (definedRouteDisplay as any)[key] = value;
+          (definedRouteDisplay as Record<string, unknown>)[key] = value;
         }
       }
       routeDisplay = { ...defaultDisplay, ...definedRouteDisplay };
@@ -113,7 +113,7 @@ export class ConfigParser {
       // No route display config - use default display config
       routeDisplay = { ...defaultDisplay };
     }
-    
+
     const stops = this.parseStops(routeData.stops || []);
 
     if (stops.length === 0) {
@@ -122,16 +122,20 @@ export class ConfigParser {
 
     // Always include display config if route has any display settings (even if merged with defaults)
     // This ensures route.display is available for header color inheritance
-    const hasRouteDisplay = routeData.display !== undefined && routeData.display !== null;
-    const finalDisplay = hasRouteDisplay || Object.keys(routeDisplay).length > 0 ? routeDisplay : undefined;
-    
+    const hasRouteDisplay =
+      routeData.display !== undefined && routeData.display !== null;
+    const finalDisplay =
+      hasRouteDisplay || Object.keys(routeDisplay).length > 0
+        ? routeDisplay
+        : undefined;
+
     console.log(`[config-parser] Route ${path} final display:`, {
       hasRouteDisplay,
       routeDisplayKeys: Object.keys(routeDisplay),
       finalDisplay,
       randomHeaderColors: finalDisplay?.randomHeaderColors,
     });
-    
+
     return {
       path,
       display: finalDisplay,
@@ -151,7 +155,9 @@ export class ConfigParser {
     return stopsData
       .filter((stop) => {
         const stationId = stop.station_id || "";
-        return stationId && stop.station_name && stationId.indexOf("XXX") === -1;
+        return (
+          stationId && stop.station_name && stationId.indexOf("XXX") === -1
+        );
       })
       .map((stop) => {
         const directionMappings: Record<string, string[]> = {};
@@ -186,12 +192,16 @@ export class ConfigParser {
           headerBackgroundBrightness: stop.header_background_brightness,
           randomColorSalt: stop.random_color_salt,
         };
-        
-        console.log(`[config-parser] Creating stop config for ${stopConfigData.stationName} (${stopConfigData.stationId}): random_header_colors from TOML=${stop.random_header_colors}, randomHeaderColors in data=${stopConfigData.randomHeaderColors}`);
-        
+
+        console.log(
+          `[config-parser] Creating stop config for ${stopConfigData.stationName} (${stopConfigData.stationId}): random_header_colors from TOML=${stop.random_header_colors}, randomHeaderColors in data=${stopConfigData.randomHeaderColors}`,
+        );
+
         const created = createStopConfiguration(stopConfigData);
-        console.log(`[config-parser] Created stop config: randomHeaderColors=${created.randomHeaderColors} (type: ${typeof created.randomHeaderColors})`);
-        
+        console.log(
+          `[config-parser] Created stop config: randomHeaderColors=${created.randomHeaderColors} (type: ${typeof created.randomHeaderColors})`,
+        );
+
         return created;
       });
   }
