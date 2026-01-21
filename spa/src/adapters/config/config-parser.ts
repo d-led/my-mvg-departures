@@ -94,6 +94,7 @@ export class ConfigParser {
       }
       // Merge with defaultDisplay: route-specific values override defaults, missing values inherit
       // Only include defined values from parsedDisplay (undefined values should inherit from defaultDisplay)
+      // Note: false is a valid value and should override defaults, only undefined should be filtered
       const definedRouteDisplay: DisplayConfiguration = {};
       for (const [key, value] of Object.entries(parsedDisplay)) {
         if (value !== undefined) {
@@ -101,6 +102,13 @@ export class ConfigParser {
         }
       }
       routeDisplay = { ...defaultDisplay, ...definedRouteDisplay };
+      console.log(`[config-parser] Parsed route ${path} display:`, {
+        parsedDisplay,
+        defaultDisplay,
+        mergedRouteDisplay: routeDisplay,
+        randomHeaderColors: routeDisplay.randomHeaderColors,
+        headerBackgroundBrightness: routeDisplay.headerBackgroundBrightness,
+      });
     } else {
       // No route display config - use default display config
       routeDisplay = { ...defaultDisplay };
@@ -112,9 +120,21 @@ export class ConfigParser {
       return null;
     }
 
+    // Always include display config if route has any display settings (even if merged with defaults)
+    // This ensures route.display is available for header color inheritance
+    const hasRouteDisplay = routeData.display !== undefined && routeData.display !== null;
+    const finalDisplay = hasRouteDisplay || Object.keys(routeDisplay).length > 0 ? routeDisplay : undefined;
+    
+    console.log(`[config-parser] Route ${path} final display:`, {
+      hasRouteDisplay,
+      routeDisplayKeys: Object.keys(routeDisplay),
+      finalDisplay,
+      randomHeaderColors: finalDisplay?.randomHeaderColors,
+    });
+    
     return {
       path,
-      display: Object.keys(routeDisplay).length > 0 ? routeDisplay : undefined,
+      display: finalDisplay,
       stops,
       refreshIntervalSeconds:
         routeData.refresh_interval_seconds ??
@@ -143,7 +163,7 @@ export class ConfigParser {
           }
         }
 
-        return createStopConfiguration({
+        const stopConfigData = {
           stationId: stop.station_id,
           stationName: stop.station_name,
           maxDeparturesPerStop: stop.max_departures_per_stop,
@@ -165,7 +185,14 @@ export class ConfigParser {
           randomHeaderColors: stop.random_header_colors,
           headerBackgroundBrightness: stop.header_background_brightness,
           randomColorSalt: stop.random_color_salt,
-        });
+        };
+        
+        console.log(`[config-parser] Creating stop config for ${stopConfigData.stationName} (${stopConfigData.stationId}): random_header_colors from TOML=${stop.random_header_colors}, randomHeaderColors in data=${stopConfigData.randomHeaderColors}`);
+        
+        const created = createStopConfiguration(stopConfigData);
+        console.log(`[config-parser] Created stop config: randomHeaderColors=${created.randomHeaderColors} (type: ${typeof created.randomHeaderColors})`);
+        
+        return created;
       });
   }
 

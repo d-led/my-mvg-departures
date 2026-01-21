@@ -249,6 +249,12 @@
     // Start polling for all stops in route
     if (route.stops.length > 0) {
       console.log(`Starting poller for ${route.stops.length} stop(s):`, route.stops.map(s => `${s.stationName} (${s.stationId}, api=${s.apiProvider ?? "mvg"})`));
+      console.log(`Route display config:`, {
+        randomHeaderColors: route.display?.randomHeaderColors,
+        headerBackgroundBrightness: route.display?.headerBackgroundBrightness,
+        fillVerticalSpace: route.display?.fillVerticalSpace,
+        title: route.display?.title,
+      });
       
       // Create composite repository that routes to correct API per stop
       // This matches the Python version's CompositeDepartureRepository behavior

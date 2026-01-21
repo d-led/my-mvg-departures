@@ -271,6 +271,74 @@ async function build() {
 if (isWatch) {
   let buildContext;
   let tempDir;
+  let server;
+  
+  // Create plugins that reference tempDir from outer scope (so it's always current)
+  function createPlugins() {
+    return [
+      {
+        name: "svelte-resolver",
+        setup(build) {
+          // First, intercept .svelte imports and convert them to compiled .svelte.js files
+          build.onResolve({ filter: /\.svelte$/ }, (args) => {
+            // Don't intercept svelte package imports
+            if (args.path.startsWith("svelte") || args.path.includes("node_modules")) {
+              return undefined;
+            }
+            
+            // Resolve the .svelte import to the compiled .svelte.js file
+            let resolvedPath = args.path;
+            if (args.path.startsWith(".") && args.importer) {
+              const importerDir = dirname(args.importer);
+              resolvedPath = join(importerDir, args.path);
+            }
+            
+            // Convert to compiled path in temp directory
+            // Use tempDir from outer scope (always current value)
+            const relativePath = resolvedPath.replace(/^.*[\\/]src[\\/]/, "").replace(".svelte", ".svelte.js");
+            const compiledPath = join(process.cwd(), tempDir, relativePath);
+            
+            if (existsSync(compiledPath)) {
+              return { 
+                path: compiledPath,
+                namespace: "file",
+              };
+            }
+            
+            return undefined;
+          });
+          
+          // Handle relative imports from compiled Svelte files back to source
+          build.onResolve({ filter: /.*/ }, (args) => {
+            // If importing from a compiled Svelte file in temp directory
+            if (args.importer && args.importer.includes(".svelte-temp")) {
+              // Relative imports should point back to source
+              if (args.path.startsWith(".")) {
+                // Get the directory of the compiled file relative to temp
+                const importerPath = args.importer.replace(/^.*\.svelte-temp[\\/]/, "");
+                const importerDir = dirname(importerPath);
+                // Resolve the relative import
+                const resolvedRelative = join(importerDir, args.path).replace(/\\/g, "/");
+                // Map to source directory (remove .js extension, add .ts if needed)
+                let sourceRelative = resolvedRelative.replace(/\.js$/, "");
+                // Try .ts first, then .js
+                const sourcePathTs = join(process.cwd(), "src", sourceRelative + ".ts");
+                const sourcePathJs = join(process.cwd(), "src", sourceRelative + ".js");
+                if (existsSync(sourcePathTs)) {
+                  return { path: sourcePathTs };
+                }
+                if (existsSync(sourcePathJs)) {
+                  return { path: sourcePathJs };
+                }
+              }
+            }
+            
+            return undefined; // Let esbuild handle normally
+          });
+        },
+      },
+    ];
+  }
   
   async function rebuild() {
     try {
@@ -279,75 +347,18 @@ if (isWatch) {
       }
       tempDir = await precompileSvelte();
       
-      if (buildContext) {
-        await buildContext.dispose();
+      // Update plugins (they reference tempDir from outer scope, so they'll use current value)
+      jsOptions.plugins = createPlugins();
+      
+      // Only create buildContext if it doesn't exist (first build)
+      if (!buildContext) {
+        buildContext = await esbuild.context(jsOptions);
+      } else {
+        // For subsequent rebuilds, just rebuild the existing context
+        // The plugin closure references tempDir from outer scope, so it will use the updated value
+        await buildContext.rebuild();
       }
       
-      jsOptions.plugins = [
-        {
-          name: "svelte-resolver",
-          setup(build) {
-            // First, intercept .svelte imports and convert them to compiled .svelte.js files
-            build.onResolve({ filter: /\.svelte$/ }, (args) => {
-              // Don't intercept svelte package imports
-              if (args.path.startsWith("svelte") || args.path.includes("node_modules")) {
-                return undefined;
-              }
-              
-              // Resolve the .svelte import to the compiled .svelte.js file
-              let resolvedPath = args.path;
-              if (args.path.startsWith(".") && args.importer) {
-                const importerDir = dirname(args.importer);
-                resolvedPath = join(importerDir, args.path);
-              }
-              
-              // Convert to compiled path in temp directory
-              const relativePath = resolvedPath.replace(/^.*[\\/]src[\\/]/, "").replace(".svelte", ".svelte.js");
-              const compiledPath = join(process.cwd(), tempDir, relativePath);
-              
-              if (existsSync(compiledPath)) {
-                return { 
-                  path: compiledPath,
-                  namespace: "file",
-                };
-              }
-              
-              return undefined;
-            });
-            
-            // Handle relative imports from compiled Svelte files back to source
-            build.onResolve({ filter: /.*/ }, (args) => {
-              // If importing from a compiled Svelte file in temp directory
-              if (args.importer && args.importer.includes(".svelte-temp")) {
-                // Relative imports should point back to source
-                if (args.path.startsWith(".")) {
-                  // Get the directory of the compiled file relative to temp
-                  const importerPath = args.importer.replace(/^.*\.svelte-temp[\\/]/, "");
-                  const importerDir = dirname(importerPath);
-                  // Resolve the relative import
-                  const resolvedRelative = join(importerDir, args.path).replace(/\\/g, "/");
-                  // Map to source directory (remove .js extension, add .ts if needed)
-                  let sourceRelative = resolvedRelative.replace(/\.js$/, "");
-                  // Try .ts first, then .js
-                  const sourcePathTs = join(process.cwd(), "src", sourceRelative + ".ts");
-                  const sourcePathJs = join(process.cwd(), "src", sourceRelative + ".js");
-                  if (existsSync(sourcePathTs)) {
-                    return { path: sourcePathTs };
-                  }
-                  if (existsSync(sourcePathJs)) {
-                    return { path: sourcePathJs };
-                  }
-                }
-              }
-              
-              return undefined; // Let esbuild handle normally
-            });
-          },
-        },
-      ];
-      
-      buildContext = await esbuild.context(jsOptions);
-      await buildContext.rebuild();
       copyHtml();
       copyStaticFiles();
       console.log("✓ Rebuild complete");
@@ -359,6 +370,17 @@ if (isWatch) {
   // Initial build
   await rebuild();
   
+  // Start server once (it persists across rebuilds)
+  const serveOptions = { 
+    servedir: "dist", 
+    port: 8000,
+    host: "0.0.0.0" // Allow access from remote hosts (e.g., cmr-r)
+  };
+  server = await buildContext.serve(serveOptions);
+  const port = server.port;
+  // esbuild serve() may not return host, so use localhost for display (0.0.0.0 is for binding, not display)
+  console.log(`\n🚀 Server running at http://localhost:${port}\n`);
+  
   // Watch for changes
   watch("src", { recursive: true }, () => {
     rebuild();
@@ -367,17 +389,6 @@ if (isWatch) {
     copyHtml();
     console.log("✓ HTML updated");
   });
-
-  // Serve - bind to all interfaces (0.0.0.0) to allow remote access
-  const serveOptions = { 
-    servedir: "dist", 
-    port: 8000,
-    host: "0.0.0.0" // Allow access from remote hosts (e.g., cmr-r)
-  };
-  const serveResult = await buildContext.serve(serveOptions);
-  const port = serveResult.port;
-  // esbuild serve() may not return host, so use localhost for display (0.0.0.0 is for binding, not display)
-  console.log(`\n🚀 Server running at http://localhost:${port}\n`);
 
   process.on("SIGINT", async () => {
     if (buildContext) {

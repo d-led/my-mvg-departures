@@ -38,7 +38,12 @@ export function createStopConfiguration(
     platformFilter: data.platformFilter,
     platformFilterRoutes: data.platformFilterRoutes ?? [],
     apiProvider: data.apiProvider ?? "mvg",
-    randomHeaderColors: data.randomHeaderColors ?? false,
-    randomColorSalt: data.randomColorSalt ?? 0,
+    // Don't default randomHeaderColors to false - undefined means inherit from route display config
+    // This matches Python: random_header_colors: bool | None = None
+    randomHeaderColors: data.randomHeaderColors,
+    headerBackgroundBrightness: data.headerBackgroundBrightness,
+    // Don't default randomColorSalt to 0 - undefined means inherit from route display config
+    // This matches Python: random_color_salt: int | None = None
+    randomColorSalt: data.randomColorSalt,
   };
 }
