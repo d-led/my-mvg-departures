@@ -1,0 +1,224 @@
+<head>
+<title>{{ title }}</title>
+<meta charset="UTF-8" />
+<!-- Viewport meta tag to prevent zooming on iOS devices -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<!-- Minimal DaisyUI for theme support only -->
+<link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css" />
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<style>
+    /* CSS custom properties set from template variables */
+    :root {
+        --font-size-route-number: {{ font_size_route_number }};
+        --font-size-destination: {{ font_size_destination }};
+        --font-size-platform: {{ font_size_platform }};
+        --font-size-time: {{ font_size_time }};
+        --font-size-no-departures: {{ font_size_no_departures }};
+        --font-size-direction-header: {{ font_size_direction_header }};
+        --font-size-stop-header: {{ font_size_stop_header }};
+        --font-size-pagination-indicator: {{ font_size_pagination_indicator }};
+        --font-size-countdown-text: {{ font_size_countdown_text }};
+        --font-size-status-header: {{ font_size_status_header }};
+        --font-size-delay-amount: {{ font_size_delay_amount }};
+        --banner-color: {{ banner_color }};
+    }
+</style>
+<!-- Custom CSS - loaded after variables are set -->
+<link rel="stylesheet" type="text/css" href="/static/css/departures.css?v={{ static_version }}" />
+<script>
+    // Apply theme based on configuration
+    const themeConfig = ('{{ theme }}' && '{{ theme }}' !== 'undefined' && '{{ theme }}' !== '') ? '{{ theme }}' : 'auto';
+    if (themeConfig === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+        localStorage.theme = 'light';
+    } else if (themeConfig === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        localStorage.theme = 'dark';
+    } else {
+        // Auto: follow system preference (ignore localStorage when theme is auto)
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+            document.documentElement.setAttribute('data-theme', 'dark');
+        } else {
+            document.documentElement.setAttribute('data-theme', 'light');
+        }
+        // Don't set localStorage.theme when using auto - let it follow system preference dynamically
+    }
+</script>
+<script>
+    // Configuration object for JavaScript (set from template variables)
+    window.DEPARTURES_CONFIG = {
+        paginationEnabled: '{{ pagination_enabled }}' === 'true',
+        departuresPerPage: parseInt('{{ departures_per_page }}') || 5,
+        pageRotationSeconds: parseInt('{{ page_rotation_seconds }}') || 10,
+        refreshIntervalSeconds: parseInt('{{ refresh_interval_seconds }}') || 20,
+        timeFormatToggleSeconds: parseInt('{{ time_format_toggle_seconds }}') || 0,
+        apiStatus: ('{{ api_status }}' && '{{ api_status }}' !== 'undefined' && '{{ api_status }}' !== '') ? '{{ api_status }}' : 'unknown',
+        lastUpdateTimestamp: parseInt('{{ last_update_timestamp }}') || 0,
+        fillVerticalSpace: '{{ fill_vertical_space }}' === 'true',
+        fontScalingFactorWhenFilling: parseFloat('{{ font_scaling_factor_when_filling }}') || 1.0,
+        // Server-initiated reload coordination (numeric, defaults to 0)
+        reloadRequestId: parseInt('{{ reload_request_id }}') || 0,
+        theme: ('{{ theme }}' && '{{ theme }}' !== 'undefined' && '{{ theme }}' !== '') ? '{{ theme }}' : 'auto'
+    };
+    
+    // Update page title from template data (overrides rootTemplate title)
+    document.title = '{{ title }}';
+    const titleEl = document.querySelector('title');
+    if (titleEl) {
+        titleEl.removeAttribute('data-suffix');
+    }
+</script>
+<!-- Custom JavaScript -->
+<script src="/static/js/app.js?v={{ static_version }}"></script>
+</head>
+<body class="min-h-screen bg-base-100{% if fill_vertical_space == 'true' %} fill-vertical-space{% endif %}" style="width: 100vw; max-width: 100vw; margin: 0; padding: 0;">
+<!-- Skip to main content link for keyboard navigation -->
+<a href="#departures" class="skip-link">Skip to main content</a>
+
+<!-- ARIA live region for status announcements -->
+<div id="aria-live-status" aria-live="polite" aria-atomic="true" class="sr-only"></div>
+<!-- ARIA live region for departure updates -->
+<div id="aria-live-departures" aria-live="polite" aria-atomic="false" class="sr-only"></div>
+
+<div class="container" data-phx-main role="main" aria-label="MVG Departures Dashboard">
+    <div class="header-section">
+        <h1>MVG Departures</h1>
+        <div class="last-update" aria-live="polite" aria-atomic="true">
+            Last updated: {{ update_time }}
+        </div>
+    </div>
+
+    <div id="departures" role="region" aria-label="Departure information" aria-live="polite" aria-atomic="false">
+        {% if not has_departures %}
+        <div role="status" aria-live="polite" style="text-align: center; padding: 4rem 2rem; opacity: 0.7; font-size: {{ font_size_no_departures }}; font-weight: 500;">No departures available</div>
+        {% else %}
+        {% for group in groups_with_departures %}
+        <div class="direction-group">
+            <h2 class="direction-header" role="heading" aria-level="2"{% if group.header_color %} style="background-color: {{ group.header_color }};"{% endif %}{% if group.is_first_header and fill_vertical_space == 'true' %} data-fill-vertical-space="true"{% endif %}>
+                {% if group.is_first_header %}
+                <span class="direction-header-text">{{ group.header }}</span>
+                <div class="direction-header-time status-header-item" id="datetime-display" aria-label="Current date and time" phx-update="ignore"></div>
+                {% else %}
+                {{ group.header }}
+                {% endif %}
+            </h2>
+            <ul role="list" aria-label="Departures for {{ group.header }}">
+                {% for departure in group.departures %}
+                <li class="departure-row{% if departure.cancelled %} cancelled{% endif %}" role="listitem" aria-label="{{ departure.aria_label }}">
+                    <div class="route-container" aria-hidden="true">
+                        <span class="route-number">
+                            {% if route_icon_display == 'icon_with_text' %}
+                            <img class="route-icon" src="/static/assets/ico-{% if departure.transport_type == 'U-Bahn' %}subway{% elif departure.transport_type == 'S-Bahn' %}metropolitan-railway{% elif departure.transport_type == 'Tram' %}tram{% else %}bus{% endif %}.svg" alt="{{ departure.transport_type }}" aria-hidden="true">
+                            <span class="route-line-text">{{ departure.line }}</span>
+                            {% elif route_icon_display == 'badge' %}
+                            <span class="route-badge route-badge-{{ departure.transport_type_css }}">{{ departure.line }}</span>
+                            {% else %}
+                            {{ departure.line }}
+                            {% endif %}
+                        </span>
+                        <span class="destination"><span class="destination-text">{{ departure.destination }}</span></span>
+                    </div>
+                    {% if split_show_delay == 'true' %}
+                    <div class="time-container" aria-hidden="true" data-time-relative="{{ departure.planned_time_str_relative }}" data-time-absolute="{{ departure.planned_time_str_absolute }}">
+                        <span class="platform">{% if departure.platform %}{{ departure.platform }}{% endif %}</span>
+                        <span class="time{% if departure.has_delay %} delay{% endif %}{% if departure.is_realtime %} realtime{% endif %}">{{ departure.planned_time_str_relative }}{% if departure.delay_minutes %}<span class="delay-amount" aria-hidden="true">+{{ departure.delay_minutes }}m</span>{% endif %}</span>
+                    </div>
+                    {% else %}
+                    <div class="time-container" aria-hidden="true" data-time-relative="{{ departure.expected_time_str_relative }}" data-time-absolute="{{ departure.expected_time_str_absolute }}">
+                        <span class="platform">{% if departure.platform %}{{ departure.platform }}{% endif %}</span>
+                        <span class="time{% if departure.has_delay %} delay{% endif %}{% if departure.is_realtime %} realtime{% endif %}">{{ departure.expected_time_str_relative }}</span>
+                    </div>
+                    {% endif %}
+                    <span class="sr-only">{{ departure.aria_label }}</span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endfor %}
+        {% for stop_name in stops_without_departures %}
+        <div class="direction-group">
+            <h2 class="direction-header" role="heading" aria-level="2">{{ stop_name }}</h2>
+            <div class="departure-row" role="status" aria-live="polite">
+                <div class="no-departures">No departures</div>
+            </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+    </div>
+
+    <!-- Floating status box at bottom center -->
+    <div class="status-floating-box" role="status" aria-label="System status indicators: connection status, API status, refresh countdown, and user presence">
+        <div class="status-floating-box-item" id="connection-status" data-connection-state="connecting" role="img" aria-label="Connection status: connecting" title="WebSocket connection status" phx-update="ignore">
+            <!-- Connected: bolt icon -->
+            <img class="status-icon connected" id="connected-icon" src="/static/img/bolt.svg" style="display: none;" alt="Connected" aria-hidden="true">
+            <!-- Disconnected: bolt-slash icon -->
+            <img class="status-icon disconnected" id="disconnected-icon" src="/static/img/bolt-slash.svg" style="display: none;" alt="Disconnected" aria-hidden="true">
+            <!-- Connecting: signal icon -->
+            <img class="status-icon connecting" id="connecting-icon" src="/static/img/signal.svg" style="display: none;" alt="Connecting" aria-hidden="true">
+            <!-- Unstable/Degraded: question-mark-circle icon -->
+            <img class="status-icon unstable" id="unstable-icon" src="/static/img/question-mark-circle.svg" style="display: none;" alt="Unstable" aria-hidden="true">
+        </div>
+        <div class="status-floating-box-item" id="api-status-container" role="img" aria-label="API status: unknown" title="MVG API connection status" phx-update="ignore">
+            <!-- Hidden element with API status that PyView updates -->
+            <span id="api-status-value" style="display: none;">{{ api_status }}</span>
+            <!-- Success: check-circle icon -->
+            <svg class="api-status-icon api-success" id="api-success-icon" style="display: none;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <!-- Error: x-circle icon -->
+            <svg class="api-status-icon api-error" id="api-error-icon" style="display: none;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <!-- Unknown: question-mark-circle icon -->
+            <svg class="api-status-icon api-unknown" id="api-unknown-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+            </svg>
+            <!-- Degraded: exclamation-triangle icon (yellow/warning) -->
+            <svg class="api-status-icon api-degraded" id="api-degraded-icon" style="display: none;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+            </svg>
+        </div>
+        <div class="status-floating-box-item refresh-countdown" role="img" aria-label="Refresh countdown timer" title="Time until next data refresh" data-last-update='{{ last_update_timestamp }}'>
+            <svg viewBox="0 0 12 12" width="100%" height="100%" aria-hidden="true">
+                <circle cx="6" cy="6" r="5" class="background"></circle>
+                <circle cx="6" cy="6" r="5" class="progress" transform="rotate(-90 6 6)"></circle>
+            </svg>
+            <span class="sr-only" id="refresh-countdown-sr">Refresh countdown timer</span>
+        </div>
+        <!-- Optional server-initiated reload indicator (hidden by default, shown by JS when reload is requested) -->
+        <div class="status-floating-box-item status-floating-box-reload"
+             id="server-reload-indicator"
+             data-reload-request-id="{{ reload_request_id }}"
+             role="img"
+             aria-label="Server requested page reload"
+             title="Server requested a full page reload"
+             style="display: none;">
+            <!-- Simple circular arrow icon using SVG -->
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M4 4v6h6M20 20v-6h-6M5 13a7 7 0 0112-5.292M19 11a7 7 0 01-12 5.292"/>
+            </svg>
+        </div>
+        <!-- GitHub icon on the right side of status bar -->
+        <a href="https://github.com/d-led/my-mvg-departures" target="_blank" rel="noopener noreferrer" class="status-floating-box-github status-floating-box-item" aria-label="View repository on GitHub (opens in new tab)" title="View repository on GitHub">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.46-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/>
+            </svg>
+            <span class="sr-only">View repository on GitHub</span>
+        </a>
+        <!-- Presence count display (rightmost) -->
+        <div class="status-floating-box-item status-floating-box-presence" id="presence-count" role="status" aria-label="Users online: {{ presence_local }} on this dashboard, {{ presence_total }} total across all dashboards" title="{{ presence_local }} users on this dashboard, {{ presence_total }} users total across all dashboards">
+            <svg class="presence-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+            </svg>
+            <span class="presence-count-text" aria-hidden="true">{{ presence_local }}/{{ presence_total }}</span>
+            <span class="sr-only">{{ presence_local }} users on this dashboard, {{ presence_total }} users total across all dashboards</span>
+        </div>
+    </div>
+</div>
+
+<!-- PyView client loader -->
+<script src="/static/js/pyview-loader.js?v={{ static_version }}"></script>
+</body>
+</html>
+    
