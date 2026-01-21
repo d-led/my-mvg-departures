@@ -96,6 +96,14 @@
     </div>
     <div class="modal-body">
       <p>Paste your TOML configuration below:</p>
+      <div class="info-links">
+        <p>
+          <a href="https://github.com/d-led/my-mvg-departures/blob/main/docs/FINDING_STOP_IDS.md" target="_blank" rel="noopener noreferrer">Find station IDs using the project tooling</a>.
+        </p>
+        <p>
+          This is the <a href="https://d-led.github.io/my-mvg-departures/" target="_blank" rel="noopener noreferrer">SPA version</a> of the MVG Departures app.
+        </p>
+      </div>
       {#if errorMessage}
         <div class="error-message" role="alert">
           {errorMessage}
@@ -209,6 +217,40 @@
   .modal-body p {
     margin: 0 0 0.75rem 0;
     flex-shrink: 0; /* Don't shrink the label */
+  }
+
+  .info-links {
+    margin-bottom: 0.75rem;
+    padding: 0.75rem;
+    background-color: #f3f4f6;
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    flex-shrink: 0;
+  }
+
+  [data-theme="dark"] .info-links {
+    background-color: #374151;
+  }
+
+  .info-links p {
+    margin: 0.25rem 0;
+  }
+
+  .info-links a {
+    color: #087BC4;
+    text-decoration: underline;
+  }
+
+  .info-links a:hover {
+    color: #0669a3;
+  }
+
+  [data-theme="dark"] .info-links a {
+    color: #60a5fa;
+  }
+
+  [data-theme="dark"] .info-links a:hover {
+    color: #93c5fd;
   }
 
   .error-message {
