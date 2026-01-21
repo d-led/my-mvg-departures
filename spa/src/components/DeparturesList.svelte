@@ -13,20 +13,27 @@
   function formatTimeRelative(departure: any): string {
     const now = new Date();
     const diffMs = departure.time.getTime() - now.getTime();
-    const diffMinutes = Math.floor(diffMs / 60000);
+    const diffSeconds = Math.floor(diffMs / 1000);
 
-    if (diffMinutes < 0) {
+    // Match Python: format_compact_duration logic
+    if (diffSeconds < 0) {
       return "now";
-    } else if (diffMinutes < 60) {
-      return `${diffMinutes}m`;
-    } else {
-      const hours = Math.floor(diffMinutes / 60);
-      const mins = diffMinutes % 60;
-      if (mins === 0) {
-        return `${hours}h`;
-      }
-      return `${hours}h${mins}m`;
     }
+    if (diffSeconds < 60) {
+      return "<1m"; // Match Python: if total_seconds < 60, return "<1m"
+    }
+
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    if (diffMinutes < 60) {
+      return `${diffMinutes}m`;
+    }
+
+    const hours = Math.floor(diffMinutes / 60);
+    const mins = diffMinutes % 60;
+    if (mins === 0) {
+      return `${hours}h`;
+    }
+    return `${hours}h${mins}m`;
   }
 
   function formatTimeAbsolute(departure: any): string {
@@ -42,20 +49,27 @@
     }
     const now = new Date();
     const diffMs = departure.plannedTime.getTime() - now.getTime();
-    const diffMinutes = Math.floor(diffMs / 60000);
+    const diffSeconds = Math.floor(diffMs / 1000);
 
-    if (diffMinutes < 0) {
+    // Match Python: format_compact_duration logic
+    if (diffSeconds < 0) {
       return "now";
-    } else if (diffMinutes < 60) {
-      return `${diffMinutes}m`;
-    } else {
-      const hours = Math.floor(diffMinutes / 60);
-      const mins = diffMinutes % 60;
-      if (mins === 0) {
-        return `${hours}h`;
-      }
-      return `${hours}h${mins}m`;
     }
+    if (diffSeconds < 60) {
+      return "<1m"; // Match Python: if total_seconds < 60, return "<1m"
+    }
+
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    if (diffMinutes < 60) {
+      return `${diffMinutes}m`;
+    }
+
+    const hours = Math.floor(diffMinutes / 60);
+    const mins = diffMinutes % 60;
+    if (mins === 0) {
+      return `${hours}h`;
+    }
+    return `${hours}h${mins}m`;
   }
 
   function formatPlannedTimeAbsolute(departure: any): string {

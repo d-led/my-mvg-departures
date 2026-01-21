@@ -288,7 +288,12 @@ export class DepartureGroupingService {
     departures: Departure[],
     stopConfig: StopConfiguration,
   ): Departure[] {
-    const maxPerRoute = stopConfig.maxDeparturesPerRoute ?? 2;
+    // 0 or undefined means unlimited (no limit)
+    const maxPerRoute = stopConfig.maxDeparturesPerRoute;
+    if (maxPerRoute === undefined || maxPerRoute === 0) {
+      return departures; // Unlimited
+    }
+
     const routeCounts: Record<string, number> = {};
     const limited: Departure[] = [];
 
@@ -308,7 +313,11 @@ export class DepartureGroupingService {
     departures: Departure[],
     stopConfig: StopConfiguration,
   ): Departure[] {
-    const maxPerStop = stopConfig.maxDeparturesPerStop ?? 20;
+    // 0 or undefined means unlimited (no limit)
+    const maxPerStop = stopConfig.maxDeparturesPerStop;
+    if (maxPerStop === undefined || maxPerStop === 0) {
+      return departures; // Unlimited
+    }
     return departures.slice(0, maxPerStop);
   }
 }
