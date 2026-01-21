@@ -286,6 +286,8 @@ if (isWatch) {
   let buildContext;
   let tempDir;
   let server;
+  let rebuildTimeout = null;
+  let isRebuilding = false;
   
   // Create plugins that reference tempDir from outer scope (so it's always current)
   function createPlugins() {
@@ -309,6 +311,12 @@ if (isWatch) {
             
             // Convert to compiled path in temp directory
             // Use tempDir from outer scope (always current value)
+            // Guard against tempDir being undefined (shouldn't happen, but safety check)
+            if (!tempDir) {
+              console.error("[svelte-resolver] tempDir is undefined! This should not happen.");
+              return undefined;
+            }
+            
             const relativePath = resolvedPath.replace(/^.*[\\/]src[\\/]/, "").replace(".svelte", ".svelte.js");
             const compiledPath = join(process.cwd(), tempDir, relativePath);
             
@@ -355,11 +363,23 @@ if (isWatch) {
   }
   
   async function rebuild() {
+    // Prevent multiple simultaneous rebuilds
+    if (isRebuilding) {
+      console.log("Rebuild already in progress, skipping...");
+      return;
+    }
+    
+    isRebuilding = true;
     try {
       if (tempDir && existsSync(tempDir)) {
         rmSync(tempDir, { recursive: true, force: true });
       }
       tempDir = await precompileSvelte();
+      
+      // Ensure tempDir is set before creating plugins
+      if (!tempDir) {
+        throw new Error("Failed to create temp directory for Svelte compilation");
+      }
       
       // Update plugins (they reference tempDir from outer scope, so they'll use current value)
       jsOptions.plugins = createPlugins();
@@ -368,9 +388,23 @@ if (isWatch) {
       if (!buildContext) {
         buildContext = await esbuild.context(jsOptions);
       } else {
-        // For subsequent rebuilds, just rebuild the existing context
-        // The plugin closure references tempDir from outer scope, so it will use the updated value
-        await buildContext.rebuild();
+        // For subsequent rebuilds, we need to recreate the context because plugins changed
+        // esbuild doesn't support updating plugins on existing context, so we must recreate
+        // Note: The server will be restarted after rebuild completes
+        await buildContext.dispose();
+        buildContext = await esbuild.context(jsOptions);
+      }
+      
+      await buildContext.rebuild();
+      
+      // Restart server if it was already running (after context recreation)
+      if (server && buildContext) {
+        // Stop old server (if any) and start new one
+        server = await buildContext.serve({
+          servedir: "dist",
+          port: 8000,
+          host: "0.0.0.0"
+        });
       }
       
       copyHtml();
@@ -379,7 +413,19 @@ if (isWatch) {
       console.log("✓ Rebuild complete");
     } catch (error) {
       console.error("✗ Rebuild failed:", error);
+    } finally {
+      isRebuilding = false;
     }
+  }
+
+  // Debounced rebuild function to prevent multiple rapid rebuilds
+  function scheduleRebuild() {
+    if (rebuildTimeout) {
+      clearTimeout(rebuildTimeout);
+    }
+    rebuildTimeout = setTimeout(() => {
+      rebuild();
+    }, 100); // 100ms debounce
   }
 
   // Initial build
@@ -396,9 +442,9 @@ if (isWatch) {
   // esbuild serve() may not return host, so use localhost for display (0.0.0.0 is for binding, not display)
   console.log(`\n🚀 Server running at http://localhost:${port}\n`);
   
-  // Watch for changes
+  // Watch for changes (debounced to prevent rapid rebuilds)
   watch("src", { recursive: true }, () => {
-    rebuild();
+    scheduleRebuild();
   });
   watch("departures.html", () => {
     copyHtml();
