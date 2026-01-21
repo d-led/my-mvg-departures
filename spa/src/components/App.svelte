@@ -159,21 +159,27 @@
   }
 
   async function loadConfig() {
-    // Try to load parsed config first (faster)
-    let stored = await configStorage.getConfig();
+    // Always prefer TOML as source of truth (ensures undefined values are preserved correctly)
+    // JSON serialization can lose undefined values or preserve incorrect false values
+    const tomlString = await configStorage.getConfigToml();
+    let stored: AppConfig | null = null;
     
-    // If no parsed config but we have TOML, parse it
+    if (tomlString) {
+      try {
+        stored = configParser.parseToml(tomlString);
+        // Save the parsed version for faster access next time (though we'll always parse from TOML)
+        await configStorage.saveConfig(stored);
+        console.log("Parsed TOML config (source of truth)");
+      } catch (error) {
+        console.error("Failed to parse stored TOML config:", error);
+      }
+    }
+    
+    // Fallback to parsed JSON only if TOML is not available
     if (!stored) {
-      const tomlString = await configStorage.getConfigToml();
-      if (tomlString) {
-        try {
-          stored = configParser.parseToml(tomlString);
-          // Save the parsed version for faster access next time
-          await configStorage.saveConfig(stored);
-          console.log("Parsed TOML config and cached parsed version");
-        } catch (error) {
-          console.error("Failed to parse stored TOML config:", error);
-        }
+      stored = await configStorage.getConfig();
+      if (stored) {
+        console.log("Loaded config from cached JSON (TOML not available)");
       }
     }
     
