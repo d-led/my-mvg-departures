@@ -289,6 +289,11 @@
       unsupportedProviders = departureRepository.getUnsupportedProviders();
       groupingService = new DepartureGroupingService(departureRepository);
       
+      // Set API status to degraded if unsupported providers are detected
+      if (unsupportedProviders.length > 0) {
+        apiStatus = "degraded";
+      }
+      
       const refreshInterval = route.refreshIntervalSeconds ?? route.display?.refreshIntervalSeconds ?? 20;
       refreshIntervalSeconds = refreshInterval;
 
@@ -302,7 +307,8 @@
           onUpdate: (groups) => {
             console.log(`Received ${groups.length} direction group(s) with ${groups.reduce((sum, g) => sum + g.departures.length, 0)} total departures`);
             groupedDepartures = groups;
-            apiStatus = "success";
+            // Set status to degraded if unsupported providers, otherwise success
+            apiStatus = unsupportedProviders.length > 0 ? "degraded" : "success";
             lastUpdateTime = new Date();
             // Call initializeAll after data update (matches Python's phx:update handler)
             // Use requestAnimationFrame to ensure DOM is ready
