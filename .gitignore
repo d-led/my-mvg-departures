@@ -309,3 +309,7 @@ package-lock.json
 
 # Raspberry Pi power optimization backups
 .pi-power-backup/
+
+# SPA build temp directory
+spa/.svelte-temp/
+.svelte-temp/

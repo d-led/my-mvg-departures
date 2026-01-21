@@ -256,3 +256,5 @@ fabric.properties
 !.idea/runConfigurations
 
 # End of https://www.toptal.com/developers/gitignore/api/svelte,node,visualstudiocode,webstorm+all
+
+.svelte-temp/
