@@ -174,7 +174,7 @@
         class="direction-header" 
         role="heading" 
         aria-level="2"
-        style={group.headerColor ? `background-color: ${group.headerColor};` : undefined}
+        style={groupIndex === 0 ? undefined : (group.headerColor ? `background-color: ${group.headerColor};` : undefined)}
         data-fill-vertical-space={display?.fillVerticalSpace && groupIndex === 0 ? "true" : undefined}
       >
         {#if groupIndex === 0}

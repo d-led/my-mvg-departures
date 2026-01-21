@@ -78,19 +78,31 @@ export class ConfigParser {
     
     // Handle display data (can be dict or array for [[routes.display]] syntax)
     // Matches Python: _parse_display_data which handles both dict and list
+    // Routes inherit from defaultDisplay for missing fields (matches user requirement)
     let routeDisplay: DisplayConfiguration;
     if (routeData.display) {
+      let parsedDisplay: DisplayConfiguration;
       if (Array.isArray(routeData.display) && routeData.display.length > 0) {
         // [[routes.display]] creates an array - use first element (matches Python: lines 294-297)
-        routeDisplay = this.parseDisplayConfig(routeData.display[0]);
+        parsedDisplay = this.parseDisplayConfig(routeData.display[0]);
       } else if (!Array.isArray(routeData.display)) {
         // Single display object
-        routeDisplay = this.parseDisplayConfig(routeData.display);
+        parsedDisplay = this.parseDisplayConfig(routeData.display);
       } else {
         // Empty array - use defaults
-        routeDisplay = { ...defaultDisplay };
+        parsedDisplay = {};
       }
+      // Merge with defaultDisplay: route-specific values override defaults, missing values inherit
+      // Only include defined values from parsedDisplay (undefined values should inherit from defaultDisplay)
+      const definedRouteDisplay: DisplayConfiguration = {};
+      for (const [key, value] of Object.entries(parsedDisplay)) {
+        if (value !== undefined) {
+          (definedRouteDisplay as any)[key] = value;
+        }
+      }
+      routeDisplay = { ...defaultDisplay, ...definedRouteDisplay };
     } else {
+      // No route display config - use default display config
       routeDisplay = { ...defaultDisplay };
     }
     

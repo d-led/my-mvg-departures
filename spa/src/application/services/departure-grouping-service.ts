@@ -73,6 +73,7 @@ export class DepartureGroupingService {
         result.push({ 
           directionName, 
           stopName: stopConfig.stationName,
+          stationId: stopConfig.stationId, // Store stationId to match stop config correctly
           departures: groupDepartures 
         });
       }
@@ -84,6 +85,7 @@ export class DepartureGroupingService {
       result.push({
         directionName: ungroupedTitle,
         stopName: stopConfig.stationName,
+        stationId: stopConfig.stationId, // Store stationId to match stop config correctly
         departures: processedUngrouped,
       });
     }
