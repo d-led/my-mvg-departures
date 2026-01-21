@@ -22,6 +22,7 @@
   let lastUpdateTime = $state<Date | null>(null);
   let refreshIntervalSeconds = $state<number>(20);
   let poller: MultiStopPoller | null = null;
+  let unsupportedProviders = $state<string[]>([]);
 
   function formatDate(date: Date): string {
     // Format date as YYYY-MM-DD (e.g., "2026-01-21")
@@ -258,8 +259,9 @@
     // Cleanup time format toggle
     cleanupTimeFormatToggle();
 
-    // Clear existing departures when switching routes
+    // Clear existing departures and unsupported providers when switching routes
     groupedDepartures = [];
+    unsupportedProviders = [];
     currentRoute = route;
     await configStorage.setCurrentRoutePath(route.path);
     
@@ -284,6 +286,7 @@
       // Create composite repository that routes to correct API per stop
       // This matches the Python version's CompositeDepartureRepository behavior
       departureRepository = new CompositeDepartureRepository(route.stops);
+      unsupportedProviders = departureRepository.getUnsupportedProviders();
       groupingService = new DepartureGroupingService(departureRepository);
       
       const refreshInterval = route.refreshIntervalSeconds ?? route.display?.refreshIntervalSeconds ?? 20;
@@ -374,7 +377,7 @@
   </div>
 
   <div id="departures" role="region" aria-label="Departure information" aria-live="polite" aria-atomic="false">
-    <DeparturesList {groupedDepartures} display={currentRoute?.display} />
+    <DeparturesList {groupedDepartures} {unsupportedProviders} display={currentRoute?.display} />
   </div>
 
   <StatusBar

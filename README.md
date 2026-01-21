@@ -535,6 +535,20 @@ See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for detailed contribution guide
 - [DaisyUI](https://daisyui.com/) - Component library
 - [Heroicons](https://heroicons.com/) - MIT-licensed SVG icons used for connection status indicators
 
+## SPA Version
+
+A client-side Single Page Application (SPA) version is available that runs entirely in the browser without requiring a server. The SPA version:
+
+- **No server required**: Runs entirely client-side using SvelteJS
+- **Same UI/UX**: Maintains the exact same look and feel as the server version
+- **Configuration via browser**: Paste TOML config directly in the browser (stored in localStorage)
+- **Route switching**: Switch between different route configurations via URL hash paths
+- **Static hosting**: Can be deployed to GitHub Pages, Netlify, Vercel, or any static hosting service
+
+**Try it online**: [SPA Version on GitHub Pages](https://d-led.github.io/my-mvg-departures/)
+
+For development and deployment details, see [`spa/README.md`](spa/README.md).
+
 ## Alternative
 
 ### VVO Departure Monitor

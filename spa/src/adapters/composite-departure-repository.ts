@@ -1,6 +1,7 @@
 import type { DepartureRepository } from "../domain/ports/departure-repository.js";
 import type { StopConfiguration } from "../domain/models/stop-configuration.js";
 import { MvgDepartureRepository } from "./mvg/mvg-departure-repository.js";
+import { UnsupportedDepartureRepository } from "./unsupported-departure-repository.js";
 // TODO: Add DB and VBB repositories when implemented
 // import { DbDepartureRepository } from "./db/db-departure-repository.js";
 // import { VbbDepartureRepository } from "./vbb/vbb-departure-repository.js";
@@ -12,6 +13,7 @@ import { MvgDepartureRepository } from "./mvg/mvg-departure-repository.js";
 export class CompositeDepartureRepository implements DepartureRepository {
   private readonly repositories: Map<string, DepartureRepository> = new Map();
   private readonly stopConfigs: Map<string, StopConfiguration>;
+  private readonly unsupportedProviders: Set<string> = new Set();
 
   constructor(stopConfigs: StopConfiguration[]) {
     // Build station_id to config mapping
@@ -50,16 +52,22 @@ export class CompositeDepartureRepository implements DepartureRepository {
 
     if (provider === "db") {
       // TODO: Implement DbDepartureRepository
-      throw new Error("DB API provider not yet implemented in SPA");
+      this.unsupportedProviders.add("DB");
+      return new UnsupportedDepartureRepository("DB");
     }
 
     if (provider === "vbb") {
       // TODO: Implement VbbDepartureRepository
-      throw new Error("VBB API provider not yet implemented in SPA");
+      this.unsupportedProviders.add("VBB");
+      return new UnsupportedDepartureRepository("VBB");
     }
 
     // Default to MVG (also handles "mvg" explicitly)
     return new MvgDepartureRepository();
+  }
+
+  getUnsupportedProviders(): string[] {
+    return Array.from(this.unsupportedProviders);
   }
 
   private initializeRepositories(): void {

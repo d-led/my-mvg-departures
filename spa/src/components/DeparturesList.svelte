@@ -4,9 +4,11 @@
 
   let {
     groupedDepartures = [],
+    unsupportedProviders = [],
     display = undefined,
   }: {
     groupedDepartures?: GroupedDepartures[];
+    unsupportedProviders?: string[];
     display?: DisplayConfiguration;
   } = $props();
 
@@ -153,7 +155,11 @@
 
 {#if groupedDepartures.length === 0}
   <div role="status" aria-live="polite" class="no-departures">
-    No departures available
+    {#if unsupportedProviders.length > 0}
+      {unsupportedProviders.join(" and ")} API provider{unsupportedProviders.length > 1 ? "s are" : " is"} not yet implemented in this version.
+    {:else}
+      No departures available
+    {/if}
   </div>
 {:else}
   {#each groupedDepartures as group, groupIndex (groupIndex)}
