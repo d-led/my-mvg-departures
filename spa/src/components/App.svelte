@@ -183,6 +183,25 @@
       }
     }
     
+    // If no config found, load example config from static resources
+    if (!stored) {
+      try {
+        const response = await fetch("/config.example.toml");
+        if (response.ok) {
+          const exampleToml = await response.text();
+          stored = configParser.parseToml(exampleToml);
+          // Store the example config in localStorage so it persists
+          await configStorage.saveConfig(stored);
+          await configStorage.saveConfigToml(exampleToml);
+          console.log("Loaded example config from /config.example.toml and stored in localStorage");
+        } else {
+          console.warn("Failed to fetch example config:", response.status, response.statusText);
+        }
+      } catch (error) {
+        console.error("Failed to load example config:", error);
+      }
+    }
+    
     if (stored) {
       config = stored;
       console.log(`Loaded config with ${stored.routes.length} route(s)`);
@@ -190,7 +209,7 @@
         console.log(`  Route ${idx + 1}: path="${route.path}", ${route.stops.length} stop(s), fillVerticalSpace=${route.display?.fillVerticalSpace ?? false}`);
       });
     } else {
-      console.log("No config found in localStorage");
+      console.log("No config found in localStorage and failed to load example config");
     }
   }
 

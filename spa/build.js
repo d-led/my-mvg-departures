@@ -92,6 +92,19 @@ function copyStaticFiles() {
   }
 }
 
+function copyExampleConfig() {
+  // Copy config.example.toml from project root to dist for runtime reference
+  const exampleConfigSrc = join("..", "config.example.toml");
+  const exampleConfigDest = join("dist", "config.example.toml");
+  
+  if (existsSync(exampleConfigSrc)) {
+    if (!existsSync("dist")) {
+      mkdirSync("dist", { recursive: true });
+    }
+    copyFileSync(exampleConfigSrc, exampleConfigDest);
+  }
+}
+
 function copyHtml() {
   const src = "departures.html";
   const dest = "dist/index.html";
@@ -259,6 +272,7 @@ async function build() {
   
   copyHtml();
   copyStaticFiles();
+  copyExampleConfig();
   
   // Clean up temp directory
   if (!isWatch && existsSync(tempDir)) {
@@ -361,6 +375,7 @@ if (isWatch) {
       
       copyHtml();
       copyStaticFiles();
+      copyExampleConfig();
       console.log("✓ Rebuild complete");
     } catch (error) {
       console.error("✗ Rebuild failed:", error);
