@@ -36,23 +36,29 @@ export class ConfigParser {
       }
     }
 
-    // Parse routes
+    // Parse top-level stops first to create default route (matches Python: get_routes_config)
+    // Python logic: if stops exist, create default route at "/" with those stops
+    const defaultStops = this.parseStops(data.stops || []);
+    if (defaultStops.length > 0) {
+      // Create default route with top-level display settings (matches Python: _create_default_route)
+      const defaultRoute: RouteConfiguration = {
+        path: "/",
+        stops: defaultStops,
+      };
+      // Only include display if there are display settings (matches Python: if display_settings: default_route["display"] = display_settings)
+      if (Object.keys(defaultDisplay).length > 0) {
+        defaultRoute.display = defaultDisplay;
+      }
+      routes.push(defaultRoute);
+    }
+
+    // Parse explicit routes (these are in addition to the default route)
     if (data.routes && Array.isArray(data.routes)) {
       for (const routeData of data.routes) {
         const route = this.parseRoute(routeData, defaultDisplay);
         if (route) {
           routes.push(route);
         }
-      }
-    } else {
-      // If no routes, create a default route from top-level stops
-      const stops = this.parseStops(data.stops || []);
-      if (stops.length > 0) {
-        routes.push({
-          path: "/",
-          display: defaultDisplay,
-          stops,
-        });
       }
     }
 
@@ -93,8 +99,12 @@ export class ConfigParser {
       return [];
     }
 
+    // Filter out stops with placeholder IDs (matches Python: s.get("station_id", "").find("XXX") == -1)
     return stopsData
-      .filter((stop) => stop.station_id && stop.station_name)
+      .filter((stop) => {
+        const stationId = stop.station_id || "";
+        return stationId && stop.station_name && stationId.indexOf("XXX") === -1;
+      })
       .map((stop) => {
         const directionMappings: Record<string, string[]> = {};
         if (stop.direction_mappings) {
@@ -152,6 +162,7 @@ export class ConfigParser {
       headerBackgroundBrightness: displayData.header_background_brightness,
       refreshIntervalSeconds: displayData.refresh_interval_seconds,
       bannerColor: displayData.banner_color,
+      splitShowDelay: displayData.split_show_delay,
       fontSizeRouteNumber: displayData.font_size_route_number,
       fontSizeDestination: displayData.font_size_destination,
       fontSizePlatform: displayData.font_size_platform,

@@ -9,7 +9,7 @@
     display?: DisplayConfiguration;
   } = $props();
 
-  function formatTime(departure: any): string {
+  function formatTimeRelative(departure: any): string {
     const now = new Date();
     const diffMs = departure.time.getTime() - now.getTime();
     const diffMinutes = Math.floor(diffMs / 60000);
@@ -21,16 +21,65 @@
     } else {
       const hours = Math.floor(diffMinutes / 60);
       const mins = diffMinutes % 60;
-      return `${hours}h ${mins}m`;
+      if (mins === 0) {
+        return `${hours}h`;
+      }
+      return `${hours}h${mins}m`;
     }
   }
 
+  function formatTimeAbsolute(departure: any): string {
+    const date = new Date(departure.time);
+    const hours = date.getHours().toString().padStart(2, "0");
+    const minutes = date.getMinutes().toString().padStart(2, "0");
+    return `${hours}:${minutes}`;
+  }
+
+  function formatPlannedTimeRelative(departure: any): string {
+    if (!departure.plannedTime) {
+      return formatTimeRelative(departure);
+    }
+    const now = new Date();
+    const diffMs = departure.plannedTime.getTime() - now.getTime();
+    const diffMinutes = Math.floor(diffMs / 60000);
+
+    if (diffMinutes < 0) {
+      return "now";
+    } else if (diffMinutes < 60) {
+      return `${diffMinutes}m`;
+    } else {
+      const hours = Math.floor(diffMinutes / 60);
+      const mins = diffMinutes % 60;
+      if (mins === 0) {
+        return `${hours}h`;
+      }
+      return `${hours}h${mins}m`;
+    }
+  }
+
+  function formatPlannedTimeAbsolute(departure: any): string {
+    if (!departure.plannedTime) {
+      return formatTimeAbsolute(departure);
+    }
+    const date = new Date(departure.plannedTime);
+    const hours = date.getHours().toString().padStart(2, "0");
+    const minutes = date.getMinutes().toString().padStart(2, "0");
+    return `${hours}:${minutes}`;
+  }
 
   function getDelayMinutes(departure: any): number | null {
-    if (departure.delaySeconds > 0) {
+    // Match Python version: has_delay = departure.delay_seconds is not None and departure.delay_seconds > 60
+    // Only delays > 60 seconds (1 minute) are considered delays
+    if (departure.delaySeconds != null && departure.delaySeconds > 60) {
+      // Match Python: delay_minutes = departure.delay_seconds // 60 (integer division)
       return Math.floor(departure.delaySeconds / 60);
     }
     return null;
+  }
+  
+  function hasDelay(departure: any): boolean {
+    // Match Python: has_delay = departure.delay_seconds is not None and departure.delay_seconds > 60
+    return departure.delaySeconds != null && departure.delaySeconds > 60;
   }
 
   function getTransportTypeCss(transportType: string): string {
@@ -51,14 +100,19 @@
 {:else}
   {#each groupedDepartures as group, groupIndex (groupIndex)}
     <div class="direction-group">
-      <h2 class="direction-header" role="heading" aria-level="2">
+      <h2 
+        class="direction-header" 
+        role="heading" 
+        aria-level="2"
+        data-fill-vertical-space={display?.fillVerticalSpace && groupIndex === 0 ? "true" : undefined}
+      >
         {#if groupIndex === 0}
-          <span class="direction-header-text">{group.directionName}</span>
+          <span class="direction-header-text">{group.stopName} → {group.directionName}</span>
           <div class="direction-header-time status-header-item" id="datetime-display" aria-label="Current date and time">
             {new Date().toLocaleString("de-DE")}
           </div>
         {:else}
-          {group.directionName}
+          {group.stopName} → {group.directionName}
         {/if}
       </h2>
       <ul role="list" aria-label="Departures for {group.directionName}">
@@ -66,7 +120,7 @@
           <li
             class="departure-row {departure.isCancelled ? 'cancelled' : ''}"
             role="listitem"
-            aria-label="{departure.transportType} {departure.line} to {departure.destination}, {formatTime(departure)}"
+            aria-label="{departure.transportType} {departure.line} to {departure.destination}, {formatTimeRelative(departure)}"
           >
             <div class="route-container" aria-hidden="true">
               <span class="route-number">
@@ -78,17 +132,28 @@
                 <span class="destination-text">{departure.destination}</span>
               </span>
             </div>
-            <div class="time-container" aria-hidden="true">
+            <div 
+              class="time-container" 
+              aria-hidden="true"
+              data-time-relative={display?.splitShowDelay ? formatPlannedTimeRelative(departure) : formatTimeRelative(departure)}
+              data-time-absolute={display?.splitShowDelay ? formatPlannedTimeAbsolute(departure) : formatTimeAbsolute(departure)}
+            >
               <span class="platform">{departure.platform || ""}</span>
-              <span class="time {departure.delaySeconds > 0 ? 'delay' : ''} {departure.isRealtime ? 'realtime' : ''}">
-                {formatTime(departure)}
-                {#if getDelayMinutes(departure)}
-                  <span class="delay-amount" aria-hidden="true">+{getDelayMinutes(departure)}m</span>
+              <span class="time {hasDelay(departure) ? 'delay' : ''} {departure.isRealtime ? 'realtime' : ''}">
+                {#if display?.splitShowDelay}
+                  <!-- splitShowDelay=true: show planned time + separate delay indicator -->
+                  {formatPlannedTimeRelative(departure)}
+                  {#if getDelayMinutes(departure)}
+                    <span class="delay-amount" aria-hidden="true">+{getDelayMinutes(departure)}m</span>
+                  {/if}
+                {:else}
+                  <!-- splitShowDelay=false (default): show expected time (includes delay) - NO delay indicator -->
+                  {formatTimeRelative(departure)}
                 {/if}
               </span>
             </div>
             <span class="sr-only">
-              {departure.transportType} {departure.line} to {departure.destination}, {formatTime(departure)}
+              {departure.transportType} {departure.line} to {departure.destination}, {formatTimeRelative(departure)}
             </span>
           </li>
         {/each}

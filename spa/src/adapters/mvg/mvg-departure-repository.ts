@@ -19,6 +19,7 @@ export class MvgDepartureRepository implements DepartureRepository {
     const transportTypes = "UBAHN,TRAM,SBAHN,BUS,REGIONAL_BUS,BAHN";
     const url = `${this.baseUrl}?globalId=${encodeURIComponent(stationId)}&limit=${limit}&transportTypes=${transportTypes}`;
 
+    console.log(`[MVG API] Fetching: ${url}`);
     try {
       const response = await fetch(url, {
         headers: {
@@ -35,9 +36,11 @@ export class MvgDepartureRepository implements DepartureRepository {
 
       const results = await response.json();
       if (!Array.isArray(results)) {
+        console.log(`[MVG API] Response is not an array for ${stationId}`);
         return [];
       }
 
+      console.log(`[MVG API] Received ${results.length} departures for ${stationId}`);
       return results.map((result) => this.parseDeparture(result));
     } catch (error) {
       console.error(`Failed to fetch departures for ${stationId}:`, error);
@@ -46,12 +49,15 @@ export class MvgDepartureRepository implements DepartureRepository {
   }
 
   private parseDeparture(result: MvgApiDeparture): Departure {
-    const time = new Date(
-      result.realtimeDepartureTime ?? result.plannedDepartureTime,
-    );
+    // Match Python version exactly:
+    // time = datetime.fromtimestamp(result["realtimeDepartureTime"] / 1000, tz=UTC)
+    // Python always uses realtimeDepartureTime (no fallback)
+    const time = new Date(result.realtimeDepartureTime);
+    // planned_time = datetime.fromtimestamp(result["plannedDepartureTime"] / 1000, tz=UTC)
     const plannedTime = new Date(result.plannedDepartureTime);
-    const delayMinutes = result.delayInMinutes ?? 0;
-    const delaySeconds = delayMinutes * 60;
+    // delay_seconds = result.get("delayInMinutes", 0) * 60 if result.get("delayInMinutes") else 0
+    // Match Python: if delayInMinutes exists, convert to seconds, otherwise None (not 0)
+    const delaySeconds = result.delayInMinutes != null ? result.delayInMinutes * 60 : null;
 
     const transportTypeEnum = result.transportType ?? "";
     const transportTypeMap: Record<string, string> = {
@@ -75,11 +81,15 @@ export class MvgDepartureRepository implements DepartureRepository {
     };
     const icon = iconMap[transportTypeEnum] ?? "";
 
+    // Match Python: platform = result.get("platform")
+    // Python model is int | None, but we store as string for display (Python converts to str when rendering)
+    const platform = result.platform != null ? String(result.platform) : null;
+
     return createDeparture({
       time,
       plannedTime,
       delaySeconds,
-      platform: result.platform ?? null,
+      platform,
       isRealtime: result.realtime ?? false,
       line: result.label ?? "",
       destination: result.destination ?? "",

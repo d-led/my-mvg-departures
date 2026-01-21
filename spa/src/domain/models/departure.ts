@@ -1,7 +1,7 @@
 export interface Departure {
   time: Date;
   plannedTime: Date;
-  delaySeconds: number;
+  delaySeconds: number | null; // Match Python: delay_seconds: int | None
   platform: string | null;
   isRealtime: boolean;
   line: string;
@@ -16,7 +16,7 @@ export interface Departure {
 export function createDeparture(data: {
   time: Date | number;
   plannedTime: Date | number;
-  delaySeconds?: number;
+  delaySeconds?: number | null;
   platform?: string | null;
   isRealtime?: boolean;
   line: string;
@@ -33,7 +33,7 @@ export function createDeparture(data: {
       data.plannedTime instanceof Date
         ? data.plannedTime
         : new Date(data.plannedTime),
-    delaySeconds: data.delaySeconds ?? 0,
+    delaySeconds: data.delaySeconds ?? null, // Match Python: defaults to None, not 0
     platform: data.platform ?? null,
     isRealtime: data.isRealtime ?? false,
     line: data.line,

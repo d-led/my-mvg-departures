@@ -13,6 +13,7 @@ export interface DisplayConfiguration {
   headerBackgroundBrightness?: number;
   refreshIntervalSeconds?: number;
   bannerColor?: string;
+  splitShowDelay?: boolean;
   fontSizeRouteNumber?: string;
   fontSizeDestination?: string;
   fontSizePlatform?: string;

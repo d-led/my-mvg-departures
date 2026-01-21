@@ -12,6 +12,7 @@ export interface TomlDisplayData {
   header_background_brightness?: number;
   refresh_interval_seconds?: number;
   banner_color?: string;
+  split_show_delay?: boolean;
   font_size_route_number?: string;
   font_size_destination?: string;
   font_size_platform?: string;

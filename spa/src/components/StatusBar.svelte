@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount, onDestroy } from "svelte";
   import type { RouteConfiguration } from "../domain/models/index.js";
 
   let {
@@ -8,6 +9,7 @@
     routes = [],
     currentRoutePath = null,
     onRouteChange = () => {},
+    refreshIntervalSeconds = 20,
   }: {
     apiStatus: "success" | "error" | "degraded" | "unknown";
     showConfigModal: boolean;
@@ -15,9 +17,15 @@
     routes?: RouteConfiguration[];
     currentRoutePath?: string | null;
     onRouteChange?: (path: string) => void;
+    refreshIntervalSeconds?: number;
   } = $props();
   
   let showRouteSelector = $state(false);
+  let countdownElapsed = $state(0);
+  let countdownInterval: number | null = null;
+  let countdownCircle: SVGElement | null = null;
+  const radius = 5;
+  const circumference = 2 * Math.PI * radius;
 
   function toggleRouteSelector() {
     showRouteSelector = !showRouteSelector;
@@ -28,6 +36,80 @@
     showRouteSelector = false;
   }
 
+  function startCountdown() {
+    // Clear any existing interval
+    if (countdownInterval !== null) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+    }
+
+    // Find the countdown circle
+    const circleEl = document.querySelector(".refresh-countdown circle.progress") as SVGElement;
+    if (!circleEl) {
+      // Retry after a short delay if element not found
+      setTimeout(startCountdown, 100);
+      return;
+    }
+    countdownCircle = circleEl;
+
+    // Set up the circle
+    circleEl.setAttribute("stroke-dasharray", circumference.toString());
+    countdownElapsed = 0;
+    circleEl.setAttribute("stroke-dashoffset", "0");
+
+    const updateInterval = 100; // Update every 100ms for smooth animation
+
+    function updateCountdown() {
+      if (!countdownCircle) return;
+
+      countdownElapsed += updateInterval;
+      const progress = countdownElapsed / (refreshIntervalSeconds * 1000);
+      const offset = circumference * (1 - progress);
+      countdownCircle.setAttribute("stroke-dashoffset", offset.toString());
+
+      // Update screen reader text with remaining time
+      const remainingSeconds = Math.ceil((refreshIntervalSeconds * 1000 - countdownElapsed) / 1000);
+      const srText = document.getElementById("refresh-countdown-sr");
+      if (srText && remainingSeconds > 0) {
+        srText.textContent = `Refresh countdown: ${remainingSeconds} seconds remaining`;
+      }
+
+      // When countdown reaches the end, reset
+      if (countdownElapsed >= refreshIntervalSeconds * 1000) {
+        countdownElapsed = 0;
+        if (srText) {
+          srText.textContent = "Refresh countdown: updating";
+        }
+      }
+    }
+
+    countdownInterval = window.setInterval(updateCountdown, updateInterval);
+  }
+
+  onMount(() => {
+    // Start countdown when component mounts
+    startCountdown();
+  });
+
+  onDestroy(() => {
+    // Clean up interval on component destroy
+    if (countdownInterval !== null) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+    }
+  });
+
+  // Restart countdown when refresh interval changes or when API status changes (new update)
+  $effect(() => {
+    // Access reactive values to trigger effect
+    const _ = refreshIntervalSeconds;
+    const __ = apiStatus;
+    
+    // Restart countdown when interval changes or on successful update
+    if (apiStatus === "success") {
+      startCountdown();
+    }
+  });
 </script>
 
 <svelte:window onclick={(e) => {
@@ -94,8 +176,9 @@
   </a>
   
   <!-- Route selector (replaces presence counter) -->
+  <!-- Debug: routes.length = {routes.length}, currentRoutePath = {currentRoutePath} -->
   {#if routes.length > 1}
-    <div class="status-floating-box-item route-selector-container">
+    <div class="route-selector-container">
       <button
         class="route-selector-button"
         onclick={(e) => {
@@ -263,22 +346,27 @@
 
   .route-selector-container {
     position: relative;
+    width: 1.2em !important;
+    height: 1.2em !important;
+    min-width: 1.2em !important;
+    min-height: 1.2em !important;
   }
 
   .route-selector-button {
     background: none;
     border: none;
     cursor: pointer;
-    padding: 0;
+    padding: 0.1em;
     display: flex;
     align-items: center;
     justify-content: center;
     color: inherit;
     transition: opacity 0.2s;
-    width: 1em;
-    height: 1em;
-    min-width: 1em;
-    min-height: 1em;
+    width: 1.2em;
+    height: 1.2em;
+    min-width: 1.2em;
+    min-height: 1.2em;
+    opacity: 0.9;
   }
 
   .route-selector-button:hover {

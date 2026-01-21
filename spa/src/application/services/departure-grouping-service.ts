@@ -70,7 +70,11 @@ export class DepartureGroupingService {
     )) {
       const groupDepartures = processedGroups[directionName];
       if (groupDepartures && groupDepartures.length > 0) {
-        result.push({ directionName, departures: groupDepartures });
+        result.push({ 
+          directionName, 
+          stopName: stopConfig.stationName,
+          departures: groupDepartures 
+        });
       }
     }
 
@@ -79,6 +83,7 @@ export class DepartureGroupingService {
       const ungroupedTitle = stopConfig.ungroupedTitle ?? "Other";
       result.push({
         directionName: ungroupedTitle,
+        stopName: stopConfig.stationName,
         departures: processedUngrouped,
       });
     }

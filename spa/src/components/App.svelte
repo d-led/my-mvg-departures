@@ -1,12 +1,15 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { ConfigParser } from "../adapters/config/config-parser.js";
-  import { MvgDepartureRepository } from "../adapters/mvg/mvg-departure-repository.js";
+  import { CompositeDepartureRepository } from "../adapters/composite-departure-repository.js";
   import { LocalStorageCache } from "../adapters/storage/local-storage-cache.js";
   import { LocalStorageConfigStorage } from "../adapters/storage/local-storage-config-storage.js";
   import { DepartureGroupingService } from "../application/services/departure-grouping-service.js";
-  import { ApiPoller } from "../application/services/api-poller.js";
+  import { MultiStopPoller } from "../application/services/multi-stop-poller.js";
   import type { AppConfig, RouteConfiguration, GroupedDepartures } from "../domain/models/index.js";
+  import { calculateFillVerticalSpace } from "../utils/font-scaling.js";
+  import { initDestinationScrolling } from "../utils/destination-scrolling.js";
+  import { initTimeFormatToggle, cleanupTimeFormatToggle } from "../utils/time-format-toggle.js";
   import ConfigModal from "./ConfigModal.svelte";
   import DeparturesList from "./DeparturesList.svelte";
   import StatusBar from "./StatusBar.svelte";
@@ -17,23 +20,134 @@
   let showConfigModal = $state(false);
   let apiStatus = $state<"success" | "error" | "degraded" | "unknown">("unknown");
   let lastUpdateTime = $state<Date | null>(null);
-  let poller: ApiPoller | null = null;
+  let refreshIntervalSeconds = $state<number>(20);
+  let poller: MultiStopPoller | null = null;
 
   const configStorage = new LocalStorageConfigStorage();
   const configParser = new ConfigParser();
-  const departureRepository = new MvgDepartureRepository();
   const cache = new LocalStorageCache();
-  const groupingService = new DepartureGroupingService(departureRepository);
+  // departureRepository will be created per route based on stop configs
+  let departureRepository: CompositeDepartureRepository | null = null;
+  let groupingService: DepartureGroupingService | null = null;
 
   onMount(async () => {
     await loadConfig();
+    
+    // Initialize CSS variables for font sizes (even if fillVerticalSpace is disabled)
+    // Set default values from CSS
+    const root = document.documentElement;
+    if (!root.style.getPropertyValue("--font-size-route-number")) {
+      // Initialize with default rem values (will be overridden by fillVerticalSpace if enabled)
+      root.style.setProperty("--font-size-route-number", "4rem");
+      root.style.setProperty("--font-size-destination", "4rem");
+      root.style.setProperty("--font-size-platform", "2.5rem");
+      root.style.setProperty("--font-size-time", "4rem");
+      root.style.setProperty("--font-size-direction-header", "4rem");
+      root.style.setProperty("--font-size-stop-header", "3rem");
+      root.style.setProperty("--font-size-no-departures", "2.5rem");
+      root.style.setProperty("--font-size-pagination-indicator", "2rem");
+      root.style.setProperty("--font-size-countdown-text", "1.8rem");
+      root.style.setProperty("--font-size-delay-amount", "2rem");
+      root.style.setProperty("--font-size-status-header", "4rem");
+    }
+    
     await initializeRoute();
+    
+    // Listen for hash changes (hash-based routing)
+    window.addEventListener("hashchange", handleHashChange);
+    
+    // Listen for window resize to recalculate font sizes
+    let resizeTimeout: number | null = null;
+    window.addEventListener("resize", () => {
+      if (resizeTimeout) clearTimeout(resizeTimeout);
+      resizeTimeout = window.setTimeout(() => {
+        if (currentRoute?.display?.fillVerticalSpace && groupedDepartures.length > 0) {
+          requestAnimationFrame(() => {
+            calculateFillVerticalSpace({
+              fillVerticalSpace: true,
+              fontScalingFactorWhenFilling: currentRoute?.display?.fontScalingFactorWhenFilling ?? 1.0,
+            });
+            initDestinationScrolling();
+          });
+        }
+      }, 150);
+    });
+    
+    // Initial font scaling calculation after first render (if enabled)
+    if (currentRoute?.display?.fillVerticalSpace) {
+      // Wait for initial departures to load
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          if (groupedDepartures.length > 0) {
+            calculateFillVerticalSpace({
+              fillVerticalSpace: true,
+              fontScalingFactorWhenFilling: currentRoute?.display?.fontScalingFactorWhenFilling ?? 1.0,
+            });
+            initDestinationScrolling();
+          }
+        }, 100);
+      });
+    }
   });
+
+  // Recalculate font sizes after departures update
+  // Use $effect to react to changes, but ensure DOM is ready with proper timing
+  $effect(async () => {
+    // Access reactive values to trigger effect
+    const _ = groupedDepartures;
+    const __ = currentRoute;
+    
+    if (currentRoute?.display?.fillVerticalSpace && groupedDepartures.length > 0) {
+      // Wait for Svelte to finish rendering
+      await tick();
+      
+      // Use requestAnimationFrame to ensure DOM is fully laid out
+      // Then add a small delay like the original (50ms) to ensure all DOM updates are complete
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          console.log("Recalculating font sizes (fillVerticalSpace enabled)");
+          calculateFillVerticalSpace({
+            fillVerticalSpace: true,
+            fontScalingFactorWhenFilling: currentRoute?.display?.fontScalingFactorWhenFilling ?? 1.0,
+          });
+          // Also initialize destination scrolling (for clipped text)
+          initDestinationScrolling();
+          // Initialize time format toggle (will reinitialize if already running)
+          initTimeFormatToggle(currentRoute?.display?.timeFormatToggleSeconds ?? 0);
+        }, 50);
+      });
+    } else if (!currentRoute?.display?.fillVerticalSpace) {
+      console.log("fillVerticalSpace is disabled, using default font sizes");
+      // Still initialize time format toggle even if fillVerticalSpace is disabled
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          initTimeFormatToggle(currentRoute?.display?.timeFormatToggleSeconds ?? 0);
+        }, 50);
+      });
+    }
+  });
+
+  function handleHashChange() {
+    const hash = window.location.hash.slice(1); // Remove leading #
+    if (!config || config.routes.length === 0) {
+      return;
+    }
+    const route = config.routes.find((r) => r.path === hash || (hash === "" && r.path === "/"));
+    if (route) {
+      switchRoute(route, false); // false = don't update hash (hash already changed)
+    }
+  }
 
   async function loadConfig() {
     const stored = await configStorage.getConfig();
     if (stored) {
       config = stored;
+      console.log(`Loaded config with ${stored.routes.length} route(s)`);
+      stored.routes.forEach((route, idx) => {
+        console.log(`  Route ${idx + 1}: path="${route.path}", ${route.stops.length} stop(s), fillVerticalSpace=${route.display?.fillVerticalSpace ?? false}`);
+      });
+    } else {
+      console.log("No config found in localStorage");
     }
   }
 
@@ -42,45 +156,84 @@
       return;
     }
 
-    // Get current route from URL or storage
-    const path = window.location.pathname || "/";
-    const storedPath = await configStorage.getCurrentRoutePath();
-    const routePath = storedPath || path;
-
-    const route = config.routes.find((r) => r.path === routePath) || config.routes[0];
+    // Get current route from hash (hash-based routing for SPA)
+    const hash = window.location.hash.slice(1); // Remove leading #
+    
+    // If hash is empty or just "/", use the first route (default) but don't change the URL
+    let route: RouteConfiguration | undefined;
+    if (hash === "" || hash === "/") {
+      route = config.routes[0];
+      // Use the route but don't set the hash - keep URL at root
+      if (route) {
+        await switchRoute(route, false); // false = don't update hash
+      }
+      return;
+    } else {
+      route = config.routes.find((r) => r.path === hash);
+    }
+    
+    // Fallback to first route if not found
+    if (!route) {
+      route = config.routes[0];
+    }
+    
     if (route) {
-      await switchRoute(route);
+      await switchRoute(route, true); // true = update hash (user navigated)
     }
   }
 
-  async function switchRoute(route: RouteConfiguration) {
-    // Stop existing poller
+  async function switchRoute(route: RouteConfiguration, updateHash: boolean = true) {
+    console.log(`Switching to route: ${route.path} (${route.stops.length} stop(s))`);
+    
+    // Stop existing poller and wait for it to fully stop
     if (poller) {
       poller.stop();
       poller = null;
+      // Small delay to ensure interval is cleared
+      await new Promise(resolve => setTimeout(resolve, 10));
     }
+    
+    // Cleanup time format toggle
+    cleanupTimeFormatToggle();
 
+    // Clear existing departures when switching routes
+    groupedDepartures = [];
     currentRoute = route;
     await configStorage.setCurrentRoutePath(route.path);
-    window.history.pushState({}, "", route.path);
+    
+    // Only update hash if explicitly requested (user navigation, not initial load)
+    if (updateHash) {
+      // Use hash-based routing for SPA (don't use pushState with pathname)
+      // Use hash to avoid server-side routing issues
+      const hash = route.path === "/" ? "" : route.path;
+      window.location.hash = hash;
+    }
 
     // Start polling for all stops in route
     if (route.stops.length > 0) {
-      // For now, poll the first stop (we can extend to multiple stops later)
-      const stopConfig = route.stops[0];
+      console.log(`Starting poller for ${route.stops.length} stop(s):`, route.stops.map(s => `${s.stationName} (${s.stationId}, api=${s.apiProvider ?? "mvg"})`));
+      
+      // Create composite repository that routes to correct API per stop
+      // This matches the Python version's CompositeDepartureRepository behavior
+      departureRepository = new CompositeDepartureRepository(route.stops);
+      groupingService = new DepartureGroupingService(departureRepository);
+      
       const refreshInterval = route.refreshIntervalSeconds ?? route.display?.refreshIntervalSeconds ?? 20;
+      refreshIntervalSeconds = refreshInterval;
 
-      poller = new ApiPoller(
+      poller = new MultiStopPoller(
         departureRepository,
         cache,
         groupingService,
-        stopConfig,
+        route.stops,
         refreshInterval,
         {
           onUpdate: (groups) => {
+            console.log(`Received ${groups.length} direction group(s) with ${groups.reduce((sum, g) => sum + g.departures.length, 0)} total departures`);
             groupedDepartures = groups;
             apiStatus = "success";
             lastUpdateTime = new Date();
+            // Font scaling will be triggered by afterUpdate when DOM is ready
           },
           onError: (error) => {
             console.error("API poll error:", error);
@@ -121,12 +274,12 @@
     }
     const route = config.routes.find((r) => r.path === path);
     if (route) {
-      switchRoute(route);
+      switchRoute(route, true); // true = update hash (user explicitly changed route)
     }
   }
 </script>
 
-<div class="container">
+<div class="container" class:fill-vertical-space={currentRoute?.display?.fillVerticalSpace ?? false} role="main" aria-label="MVG Departures Dashboard">
   <div class="header-section">
     <h1>{currentRoute?.display?.title ?? "MVG Departures"}</h1>
     <div class="last-update" aria-live="polite" aria-atomic="true">
@@ -147,6 +300,7 @@
     routes={config?.routes ?? []}
     currentRoutePath={currentRoute?.path ?? null}
     onRouteChange={handleRouteChange}
+    refreshIntervalSeconds={refreshIntervalSeconds}
   />
 
   {#if showConfigModal}
@@ -158,40 +312,4 @@
   {/if}
 </div>
 
-<style>
-  .container {
-    width: 100vw;
-    max-width: 100vw;
-    height: 100vh;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    box-sizing: border-box;
-  }
-
-  .header-section {
-    display: none;
-  }
-
-  h1 {
-    display: none;
-  }
-
-  .last-update {
-    display: none;
-  }
-
-  #departures {
-    flex: 1 1 100%;
-    overflow-y: auto;
-    overflow-x: hidden;
-    position: relative;
-    width: 100%;
-    height: 100%;
-    box-sizing: border-box;
-    padding: 0;
-    margin: 0;
-  }
-</style>
+<!-- Styles are in external CSS file: /static/css/departures.css -->

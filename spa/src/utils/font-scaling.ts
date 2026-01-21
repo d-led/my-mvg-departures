@@ -1,0 +1,330 @@
+/**
+ * Dynamic font scaling utility - ported from static/js/app.js
+ * Calculates font sizes to fill vertical space when fillVerticalSpace is enabled
+ */
+
+export interface FontScalingConfig {
+  fillVerticalSpace?: boolean;
+  fontScalingFactorWhenFilling?: number;
+}
+
+export function calculateFillVerticalSpace(config: FontScalingConfig): void {
+  if (!config.fillVerticalSpace) {
+    console.log("[font-scaling] fillVerticalSpace is false, skipping calculation");
+    return;
+  }
+
+  console.log("[font-scaling] Starting calculateFillVerticalSpace");
+  const departuresEl = document.getElementById("departures");
+  if (!departuresEl) {
+    console.warn("[font-scaling] departures element not found");
+    return;
+  }
+
+  // Get all direction groups
+  const directionGroups = departuresEl.querySelectorAll(".direction-group");
+  if (directionGroups.length === 0) return;
+
+  // Count total rows: each direction group has 1 header + its departure rows
+  let totalRows = 0;
+  directionGroups.forEach((group) => {
+    const header = group.querySelector(".direction-header");
+    const departureRows = group.querySelectorAll(".departure-row");
+    if (header) totalRows += 1; // Header counts as 1 row
+    totalRows += departureRows.length;
+  });
+
+  if (totalRows === 0) return;
+
+  // Calculate available viewport height more accurately
+  // Measure the actual status bar height from the DOM
+  const statusBar = document.querySelector(".status-floating-box");
+  let statusBarHeight = 60; // Default fallback
+  if (statusBar) {
+    const rect = statusBar.getBoundingClientRect();
+    // Get computed margin-bottom (status bar is at bottom: 1rem = ~16px)
+    const computedStyle = window.getComputedStyle(statusBar);
+    const marginBottom = parseFloat(computedStyle.marginBottom) || 16;
+    statusBarHeight = rect.height + marginBottom;
+  }
+
+  const viewportHeight = window.innerHeight;
+  // Use the full viewport height minus the actual status bar
+  // Note: header-section is hidden via CSS (display: none) so it doesn't take up space
+  const availableHeight = viewportHeight - statusBarHeight;
+
+  console.log(`[font-scaling] viewportHeight=${viewportHeight}, statusBarHeight=${statusBarHeight}, availableHeight=${availableHeight}, totalRows=${totalRows}`);
+
+  // Calculate height per row (distribute evenly across all available space)
+  const heightPerRow = availableHeight / totalRows;
+  console.log(`[font-scaling] heightPerRow=${heightPerRow}px`);
+
+  // Calculate base font size from height per row
+  const reservedPadding = 0; // No reserved padding - use full row height
+  const fontUsableHeight = heightPerRow - reservedPadding;
+  // Use a slightly higher line height (1.25 instead of 1.2) to better distribute vertical space
+  const lineHeight = 1.25;
+  const baseFontSize = fontUsableHeight / lineHeight;
+
+  // Calculate proportional font sizes for different elements
+  // These ratios are based on the default font sizes in the config:
+  // route_number: 4rem, destination: 4rem (same as time), time: 4rem, platform: 2.5rem
+  // direction_header: same as destination (4rem), stop_header: 3rem
+  // So relative to a base of ~3.5rem (but destination and time are 4rem):
+  // Get font scaling factor from config (defaults to 1.0)
+  const fontScalingFactor = config.fontScalingFactorWhenFilling || 1.0;
+
+  const fontSizes = {
+    routeNumber: baseFontSize * (4.0 / 3.5) * fontScalingFactor, // 4rem relative to 3.5rem base
+    destination: baseFontSize * (4.0 / 3.5) * fontScalingFactor, // Same as time - 4rem relative to 3.5rem base
+    time: baseFontSize * (4.0 / 3.5) * fontScalingFactor, // 4rem relative to 3.5rem base
+    platform: baseFontSize * (2.5 / 3.5) * fontScalingFactor, // 2.5rem relative to 3.5rem base
+    directionHeader: baseFontSize * (4.0 / 3.5) * fontScalingFactor, // Same size as destination and time
+    stopHeader: baseFontSize * (3.0 / 3.5) * fontScalingFactor, // 3rem relative to 3.5rem base
+    noDepartures: baseFontSize * (2.5 / 3.5) * fontScalingFactor, // 2.5rem relative to 3.5rem base
+    paginationIndicator: baseFontSize * (2.0 / 3.5) * fontScalingFactor,
+    countdownText: baseFontSize * (1.8 / 3.5) * fontScalingFactor,
+    delayAmount: baseFontSize * (2.0 / 3.5) * fontScalingFactor,
+    statusHeader: baseFontSize * (4.0 / 3.5) * fontScalingFactor, // Same as direction header (heading font)
+  };
+
+  // Apply minimum font size to ensure legibility (at least 12px)
+  const minFontSize = 12;
+  Object.keys(fontSizes).forEach((key) => {
+    const k = key as keyof typeof fontSizes;
+    if (fontSizes[k] < minFontSize) {
+      fontSizes[k] = minFontSize;
+    }
+  });
+
+  // Update CSS custom properties (use px units for precise control)
+  const root = document.documentElement;
+  root.style.setProperty("--font-size-route-number", fontSizes.routeNumber + "px");
+  root.style.setProperty("--font-size-destination", fontSizes.destination + "px");
+  root.style.setProperty("--font-size-platform", fontSizes.platform + "px");
+  root.style.setProperty("--font-size-time", fontSizes.time + "px");
+  root.style.setProperty("--font-size-direction-header", fontSizes.directionHeader + "px");
+  root.style.setProperty("--font-size-stop-header", fontSizes.stopHeader + "px");
+  root.style.setProperty("--font-size-no-departures", fontSizes.noDepartures + "px");
+  root.style.setProperty("--font-size-pagination-indicator", fontSizes.paginationIndicator + "px");
+  root.style.setProperty("--font-size-countdown-text", fontSizes.countdownText + "px");
+  root.style.setProperty("--font-size-delay-amount", fontSizes.delayAmount + "px");
+  root.style.setProperty("--font-size-status-header", fontSizes.statusHeader + "px");
+
+  // Calculate time container gap (0.2em equivalent, scales with time font size)
+  const timeContainerGap = fontSizes.time * 0.2;
+  root.style.setProperty("--time-container-gap", timeContainerGap + "px");
+
+  // Dynamically calculate column widths based on actual content
+  // First, temporarily set auto widths to allow content measurement
+  root.style.setProperty("--route-column-width", "auto");
+  root.style.setProperty("--time-container-width", "auto");
+  root.style.setProperty("--platform-column-width", "auto");
+  root.style.setProperty("--time-column-width", "auto");
+
+  // Force reflow to apply font sizes before measuring
+  void departuresEl.offsetHeight;
+
+  // Measure the maximum width of route numbers (including badges/icons)
+  let maxRouteWidth = 0;
+  const routeNumbers = departuresEl.querySelectorAll(".route-number");
+  routeNumbers.forEach((el) => {
+    // Use scrollWidth to get full content width even if constrained
+    const width = el.scrollWidth;
+    if (width > maxRouteWidth) maxRouteWidth = width;
+  });
+  // Add padding (0.3em gap from grid) and ensure minimum width
+  const routeColumnWidth = Math.max(maxRouteWidth + fontSizes.routeNumber * 0.3, fontSizes.routeNumber * 2.5);
+  root.style.setProperty("--route-column-width", routeColumnWidth + "px");
+
+  // Measure the maximum width of platforms
+  let maxPlatformWidth = 0;
+  const platforms = departuresEl.querySelectorAll(".time-container .platform");
+  platforms.forEach((el) => {
+    const width = el.scrollWidth;
+    if (width > maxPlatformWidth) maxPlatformWidth = width;
+  });
+  // Add small padding for visual breathing room (only if there are platforms)
+  const platformColumnWidth = maxPlatformWidth > 0 ? maxPlatformWidth + fontSizes.platform * 0.3 : 0;
+  root.style.setProperty("--platform-column-width", platformColumnWidth > 0 ? platformColumnWidth + "px" : "0px");
+
+  // Measure the maximum width of time elements (including delay amounts)
+  let maxTimeWidth = 0;
+  const times = departuresEl.querySelectorAll(".time-container .time");
+  times.forEach((el) => {
+    const width = el.scrollWidth;
+    if (width > maxTimeWidth) maxTimeWidth = width;
+  });
+  // Add small padding for visual breathing room
+  const timeColumnWidth = maxTimeWidth + fontSizes.time * 0.3;
+  root.style.setProperty("--time-column-width", timeColumnWidth + "px");
+
+  // Calculate total time container width: platform + gap (only if platform exists) + time + container padding
+  const containerPadding = 12; // 0.75rem padding on each side (approximately 12px)
+  const effectiveGap = platformColumnWidth > 0 ? timeContainerGap : 0;
+  const timeContainerWidth = platformColumnWidth + effectiveGap + timeColumnWidth + containerPadding * 2;
+  root.style.setProperty("--time-container-width", timeContainerWidth + "px");
+
+  // Set line-height to match our calculation for better vertical space distribution
+  root.style.setProperty("--line-height", lineHeight.toString());
+
+  // Remove spurious margins from direction headers and set exact heights
+  directionGroups.forEach((group) => {
+    const header = group.querySelector(".direction-header") as HTMLElement;
+    if (header) {
+      // Remove top margin (0.5rem) that creates spurious space before headers
+      header.style.marginTop = "0";
+      header.style.marginBottom = "0";
+      // Keep minimal symmetric padding for readability and vertical centering
+      header.style.padding = "0 0.75rem";
+      // Set exact height to match calculated row height
+      header.style.height = heightPerRow + "px";
+      header.style.minHeight = heightPerRow + "px";
+      header.style.maxHeight = heightPerRow + "px";
+      // Ensure flex alignment centers content vertically
+      header.style.display = "flex";
+      header.style.alignItems = "center";
+      // Apply line-height to match our calculation
+      header.style.lineHeight = lineHeight.toString();
+    }
+  });
+
+  // Set exact heights on departure rows to eliminate extra spacing
+  const departureRows = departuresEl.querySelectorAll(".departure-row");
+  departureRows.forEach((row) => {
+    const r = row as HTMLElement;
+    // Set exact height (not just min-height) to ensure tight fit
+    r.style.height = heightPerRow + "px";
+    r.style.minHeight = heightPerRow + "px";
+    r.style.maxHeight = heightPerRow + "px";
+    // Keep minimal padding for readability (reduced from default)
+    r.style.padding = "0.25rem 0 0.25rem 0.75rem";
+    // Apply line-height to match our calculation for better vertical distribution
+    r.style.lineHeight = lineHeight.toString();
+  });
+
+  // Remove any top margins from direction groups to eliminate spurious space
+  directionGroups.forEach((group) => {
+    const g = group as HTMLElement;
+    g.style.marginTop = "0";
+    g.style.marginBottom = "0";
+  });
+
+  // Ensure the departures container uses the full available height
+  // This prevents any bottom whitespace from container padding/margins
+  departuresEl.style.height = availableHeight + "px";
+  departuresEl.style.maxHeight = availableHeight + "px";
+  departuresEl.style.overflow = "hidden"; // Prevent scrolling since we're filling exactly
+
+  console.log(`[font-scaling] Set departures container: height=${availableHeight}px, overflow=hidden`);
+
+  // Scale all header text if it doesn't fit (only in fill_vertical_space mode)
+  scaleHeadersIfNeeded();
+  
+  console.log("[font-scaling] calculateFillVerticalSpace completed");
+}
+
+function scaleHeadersIfNeeded(): void {
+  const departuresEl = document.getElementById("departures");
+  if (!departuresEl) return;
+
+  // Find all headers
+  const headers = departuresEl.querySelectorAll(".direction-header");
+  if (headers.length === 0) return;
+
+  // Process each header
+  headers.forEach((header) => {
+    // Find the text element - could be .direction-header-text (first header) or the header itself
+    let headerTextEl = header.querySelector(".direction-header-text") as HTMLElement;
+    if (!headerTextEl) {
+      // For headers without .direction-header-text, use the header element itself
+      headerTextEl = header as HTMLElement;
+    }
+
+    // Skip if no text element found
+    if (!headerTextEl) return;
+
+    // Find the clock element if it exists in this header
+    const clockEl = header.querySelector(".direction-header-time") as HTMLElement;
+
+    // Reset any previous scaling to start fresh
+    headerTextEl.style.fontSize = "";
+    headerTextEl.style.whiteSpace = "";
+    headerTextEl.style.overflow = "";
+    headerTextEl.style.textOverflow = "";
+    // Reset clock font size if it exists
+    if (clockEl) {
+      clockEl.style.fontSize = "";
+    }
+
+    // Force a reflow to get accurate measurements with default font size
+    void headerTextEl.offsetHeight;
+
+    // Get the computed font size
+    const computedStyle = window.getComputedStyle(headerTextEl);
+    const currentFontSize = parseFloat(computedStyle.fontSize);
+
+    // Check if text is wrapping by temporarily setting white-space: nowrap
+    const originalWhiteSpace = headerTextEl.style.whiteSpace;
+    headerTextEl.style.whiteSpace = "nowrap";
+    void headerTextEl.offsetHeight; // Force reflow
+
+    const textNaturalWidth = headerTextEl.scrollWidth;
+    const availableWidth = headerTextEl.clientWidth;
+
+    // Restore original white-space
+    headerTextEl.style.whiteSpace = originalWhiteSpace;
+    void headerTextEl.offsetHeight; // Force reflow
+
+    const isWrapping = textNaturalWidth > availableWidth;
+
+    if (!isWrapping) {
+      // Text fits on one line, no scaling needed
+      return;
+    }
+
+    // Text is wrapping - scale it down until it fits
+    // Use binary search for efficiency, with a minimum font size limit
+    const minFontSize = 12; // Minimum readable font size
+    let minSize = minFontSize;
+    let maxSize = currentFontSize;
+    let bestSize = minFontSize; // Start with minimum as fallback
+
+    // Binary search to find the largest font size that fits on one line
+    while (maxSize - minSize > 0.5) {
+      const testSize = (minSize + maxSize) / 2;
+      headerTextEl.style.fontSize = testSize + "px";
+      headerTextEl.style.whiteSpace = "nowrap";
+      // Apply same size to clock if it exists
+      if (clockEl) {
+        clockEl.style.fontSize = testSize + "px";
+      }
+
+      // Force a reflow to get accurate measurements
+      void headerTextEl.offsetHeight;
+
+      const textWidth = headerTextEl.scrollWidth;
+      const containerWidth = headerTextEl.clientWidth;
+      const fits = textWidth <= containerWidth;
+
+      // Restore white-space after measurement
+      headerTextEl.style.whiteSpace = originalWhiteSpace;
+      void headerTextEl.offsetHeight;
+
+      if (!fits) {
+        maxSize = testSize;
+      } else {
+        minSize = testSize;
+        bestSize = testSize;
+      }
+    }
+
+    // Apply the best fitting size and ensure no wrapping
+    headerTextEl.style.fontSize = bestSize + "px";
+    headerTextEl.style.whiteSpace = "nowrap";
+    // Apply same size to clock if it exists
+    if (clockEl) {
+      clockEl.style.fontSize = bestSize + "px";
+    }
+  });
+}
