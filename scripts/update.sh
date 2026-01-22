@@ -80,13 +80,13 @@ if [ "$UPDATE_SUCCESS" = false ]; then
     fi
     
     if [ "$UV_AVAILABLE" = true ]; then
-        echo "Updating dependencies with uv..." >&2
+        echo "Updating dependencies with uv (using unsafe-best-match to allow PyPI fallback)..." >&2
         if [ -f "$UV" ]; then
-            if "$UV" pip install -e ".[dev]" --upgrade 2>&1; then
+            if "$UV" pip install --index-strategy unsafe-best-match -e ".[dev]" --upgrade 2>&1; then
                 UPDATE_SUCCESS=true
                 echo "✓ Dependencies updated with uv." >&2
             fi
-        elif "$UV" pip install -e ".[dev]" --upgrade 2>&1; then
+        elif "$UV" pip install --index-strategy unsafe-best-match -e ".[dev]" --upgrade 2>&1; then
             UPDATE_SUCCESS=true
             echo "✓ Dependencies updated with uv." >&2
         fi

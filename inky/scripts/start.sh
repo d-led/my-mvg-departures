@@ -50,9 +50,9 @@ if ! "$PYTHON" -c "import mvg_departures" 2>/dev/null; then
     # Try uv first, then pip
     if command -v "$UV" >/dev/null 2>&1 && "$UV" --version >/dev/null 2>&1; then
         echo "Installing parent with uv (preferring binary wheels to avoid Rust builds)..." >&2
-        "$UV" pip install --only-binary=:all: -e . 2>&1 || {
+        "$UV" pip install --index-strategy unsafe-best-match --only-binary=:all: -e . 2>&1 || {
             echo "Warning: Binary-only install with uv failed, trying regular install..." >&2
-            "$UV" pip install -e . 2>&1 || {
+            "$UV" pip install --index-strategy unsafe-best-match -e . 2>&1 || {
                 echo "uv failed, trying pip..." >&2
                 "$PIP" install --only-binary=:all: --prefer-binary -e . 2>&1 || {
                     echo "Warning: Binary-only install with pip failed, trying prefer-binary..." >&2
@@ -86,9 +86,9 @@ if ! "$PYTHON" -c "import mvg_departures_inky" 2>/dev/null || ! "$PYTHON" -c "im
     # Try uv first, then pip
     if command -v "$UV" >/dev/null 2>&1 && "$UV" --version >/dev/null 2>&1; then
         echo "Installing with uv (including hardware support, preferring binary wheels to avoid Rust builds)..." >&2
-        "$UV" pip install --only-binary=:all: -e '.[hardware]' 2>&1 || {
+        "$UV" pip install --index-strategy unsafe-best-match --only-binary=:all: -e '.[hardware]' 2>&1 || {
             echo "Warning: Binary-only install with uv failed, trying regular install..." >&2
-            "$UV" pip install -e '.[hardware]' 2>&1 || {
+            "$UV" pip install --index-strategy unsafe-best-match -e '.[hardware]' 2>&1 || {
                 echo "uv failed, trying pip..." >&2
                 "$PIP" install --only-binary=:all: --prefer-binary -e '.[hardware]' 2>&1 || {
                     echo "Warning: Binary-only install with pip failed, trying prefer-binary..." >&2
