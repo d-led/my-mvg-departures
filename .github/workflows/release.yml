@@ -17,7 +17,7 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
           wait-interval: 10
           running-workflow-name: "Wait for CI and Docker Build"
-          check-name: "Test Python 3.12 on ubuntu-latest"
+          check-name: "Test Python 3.13 on ubuntu-latest"
 
       - name: Wait for Docker build
         uses: lewagon/wait-on-check-action@v1.3.4
