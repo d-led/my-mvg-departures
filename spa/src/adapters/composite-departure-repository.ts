@@ -1,10 +1,10 @@
 import type { DepartureRepository } from "../domain/ports/departure-repository.js";
 import type { StopConfiguration } from "../domain/models/stop-configuration.js";
 import { MvgDepartureRepository } from "./mvg/mvg-departure-repository.js";
+import { VbbDepartureRepository } from "./vbb/vbb-departure-repository.js";
 import { UnsupportedDepartureRepository } from "./unsupported-departure-repository.js";
-// TODO: Add DB and VBB repositories when implemented
+// TODO: Add DB repository when implemented
 // import { DbDepartureRepository } from "./db/db-departure-repository.js";
-// import { VbbDepartureRepository } from "./vbb/vbb-departure-repository.js";
 
 /**
  * Composite repository that routes to the correct API based on stop configuration.
@@ -57,9 +57,7 @@ export class CompositeDepartureRepository implements DepartureRepository {
     }
 
     if (provider === "vbb") {
-      // TODO: Implement VbbDepartureRepository
-      this.unsupportedProviders.add("VBB");
-      return new UnsupportedDepartureRepository("VBB");
+      return new VbbDepartureRepository();
     }
 
     // Default to MVG (also handles "mvg" explicitly)

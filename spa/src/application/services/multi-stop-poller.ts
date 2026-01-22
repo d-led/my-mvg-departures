@@ -4,6 +4,7 @@ import type { StopConfiguration } from "../../domain/models/stop-configuration.j
 import type { GroupedDepartures } from "../../domain/models/grouped-departures.js";
 import type { DisplayConfiguration } from "../../domain/models/route-configuration.js";
 import { DepartureGroupingService } from "./departure-grouping-service.js";
+import md5 from "md5";
 
 export interface MultiStopPollerCallbacks {
   onUpdate: (groups: GroupedDepartures[]) => void;
@@ -68,6 +69,7 @@ export class MultiStopPoller {
 
   private async poll(): Promise<void> {
     const allGroups: GroupedDepartures[] = [];
+    const stopsWithDepartures = new Set<string>(); // Track which stops have departures
     let successCount = 0;
     let errorCount = 0;
 
@@ -98,6 +100,9 @@ export class MultiStopPoller {
             groups.forEach((group) => {
               allGroups.push({ ...group });
             });
+            if (groups.length > 0) {
+              stopsWithDepartures.add(stopConfig.stationName);
+            }
             successCount++;
             continue;
           }
@@ -133,6 +138,9 @@ export class MultiStopPoller {
           groups.forEach((group) => {
             allGroups.push({ ...group });
           });
+          if (groups.length > 0) {
+            stopsWithDepartures.add(stopConfig.stationName);
+          }
           successCount++;
         }
       } catch (error) {
@@ -142,13 +150,39 @@ export class MultiStopPoller {
       }
     }
 
+    // Find stops without departures (matches Python: _find_stops_without_departures)
+    const stopsWithoutDepartures = this.stopConfigs
+      .filter((stop) => !stopsWithDepartures.has(stop.stationName))
+      .map((stop) => stop.stationName)
+      .sort(); // Sort alphabetically (matches Python: sorted(configured_stops - stops_with_departures))
+
+    // Create empty groups for stops without departures (matches Python template lines 138-145)
+    // Python template: header is just {{ stop_name }}, not "StopName → DirectionName"
+    for (const stopName of stopsWithoutDepartures) {
+      const stopConfig = this.stopConfigs.find(
+        (s) => s.stationName === stopName,
+      );
+      if (stopConfig) {
+        allGroups.push({
+          directionName: stopName, // For empty groups, directionName = stopName (header will be just stopName)
+          stopName: stopConfig.stationName,
+          stationId: stopConfig.stationId,
+          departures: [], // Empty departures array (matches Python template line 142)
+          // Store color settings from stop config
+          randomHeaderColors: stopConfig.randomHeaderColors,
+          headerBackgroundBrightness: stopConfig.headerBackgroundBrightness,
+          randomColorSalt: stopConfig.randomColorSalt,
+        });
+      }
+    }
+
     // Generate header colors for non-first headers (matches Python's _generate_header_colors)
     this.generateHeaderColors(allGroups);
 
     // Update state with combined groups
     this.allGroups = allGroups;
     console.log(
-      `Combined ${allGroups.length} direction groups from ${successCount} successful stop(s), ${errorCount} error(s)`,
+      `Combined ${allGroups.length} direction groups from ${successCount} successful stop(s), ${errorCount} error(s), ${stopsWithoutDepartures.length} stop(s) without departures`,
     );
     this.callbacks.onUpdate([...allGroups]);
   }
@@ -213,25 +247,25 @@ export class MultiStopPoller {
     salt: number = 0,
   ): string {
     // Generate a stable pastel color from text using hash-based mapping (matches Python's generate_pastel_color_from_text)
-    // Use a simple hash function (MD5 would be ideal but requires a library)
-    // This implementation uses a djb2-like hash for consistency
-    let hash = 5381;
+    // Use MD5 hashing to match Python version exactly (Python uses hashlib.md5)
+    // Python: hash_int = int(hashlib.md5(f"{text}:{salt}".encode()).hexdigest(), 16)
     const str = `${text}:${salt}`;
-    for (let i = 0; i < str.length; i++) {
-      hash = (hash << 5) + hash + str.charCodeAt(i);
-    }
-
-    // Use hash as a 32-bit unsigned integer
-    const hashInt = Math.abs(hash >>> 0);
+    const md5Hex = md5(str); // MD5 produces 32 hex characters (128 bits)
+    // Convert hex string to BigInt to match Python's int(hexdigest(), 16)
+    const hashBigInt = BigInt("0x" + md5Hex);
 
     // Extract parts for HSL calculation (matches Python's _calculate_hsl_from_hash)
-    const hashPart1 = (hashInt >> 16) & 0xffff; // Upper 16 bits
-    const hashPart2 = hashInt & 0xffff; // Lower 16 bits
+    // Python: hash_part1 = (hash_int >> 16) & 0xFFFF, hash_part2 = hash_int & 0xFFFF
+    // Python uses full 128-bit MD5 hash, extracts 16-bit parts
+    const hashPart1 = Number((hashBigInt >> 16n) & 0xffffn); // Upper 16 bits
+    const hashPart2 = Number(hashBigInt & 0xffffn); // Lower 16 bits
 
     const hueBase = hashPart1 % 360;
     const hueVariation = (hashPart2 % 60) - 30; // -30 to +30 degrees
     const hue = (hueBase + hueVariation) % 360;
 
+    // Use full hash for saturation and lightness calculations (matches Python)
+    const hashInt = Number(hashBigInt & 0xffffffffffffffffn); // Use lower 64 bits for calculations
     const saturation = 55 + (hashInt % 26); // 55-80%
 
     const brightnessAdjusted = Math.pow(brightness, 1.5);

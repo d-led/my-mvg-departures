@@ -101,6 +101,10 @@
 
 
   function getHeaderText(group: any): string {
+    // For stops without departures, header is just the stop name (matches Python template line 140: {{ stop_name }})
+    if (group.departures.length === 0) {
+      return group.stopName;
+    }
     // Format: "StopName → DirectionName" (matches Python - no time suffix)
     // Strip "->" prefix from direction name (matches Python: direction_clean = group.direction_name.lstrip("->"))
     const directionClean = group.directionName.replace(/^->/, "");
@@ -180,6 +184,12 @@
           {getHeaderText(group)}
         {/if}
       </h2>
+      {#if group.departures.length === 0}
+        <!-- Stop without departures (matches Python template lines 141-143) -->
+        <div class="departure-row" role="status" aria-live="polite">
+          <div class="no-departures">No departures</div>
+        </div>
+      {:else}
       <ul role="list" aria-label="Departures for {group.directionName}">
         {#each group.departures as departure (departure.line + departure.destination + departure.time.getTime())}
           <li
@@ -238,6 +248,7 @@
           </li>
         {/each}
       </ul>
+      {/if}
     </div>
   {/each}
 {/if}

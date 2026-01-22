@@ -15,9 +15,12 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },
-  "dependencies": {},
+  "dependencies": {
+    "md5": "^2.3.0"
+  },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
+    "@types/md5": "^2.3.6",
     "@types/node": "^22.19.7",
     "@typescript-eslint/eslint-plugin": "^8.53.1",
     "@typescript-eslint/parser": "^8.53.1",

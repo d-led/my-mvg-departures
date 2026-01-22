@@ -50,6 +50,7 @@ export default [
         KeyboardEvent: "readonly",
         Event: "readonly",
         getComputedStyle: "readonly",
+        URL: "readonly",
       },
     },
     plugins: {
