@@ -50,7 +50,7 @@ if ! "$PYTHON" -c "import mvg_departures" 2>/dev/null; then
     # Try uv first, then pip
     if command -v "$UV" >/dev/null 2>&1 && "$UV" --version >/dev/null 2>&1; then
         echo "Installing parent with uv..." >&2
-        "$UV" pip install --prefer-binary -e . || {
+        "$UV" pip install -e . || {
             echo "uv failed, trying pip..." >&2
             "$PIP" install --prefer-binary -e . || {
                 echo "Error: Failed to install parent package" >&2
@@ -77,7 +77,7 @@ if ! "$PYTHON" -c "import mvg_departures_inky" 2>/dev/null; then
     # Try uv first, then pip
     if command -v "$UV" >/dev/null 2>&1 && "$UV" --version >/dev/null 2>&1; then
         echo "Installing with uv..." >&2
-        "$UV" pip install --prefer-binary -e . || {
+        "$UV" pip install -e . || {
             echo "uv failed, trying pip..." >&2
             "$PIP" install --prefer-binary -e . || {
                 echo "Error: Failed to install inky package" >&2

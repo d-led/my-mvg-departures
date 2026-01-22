@@ -174,13 +174,13 @@ if (-not $INSTALL_SUCCESS) {
     if ($UV_AVAILABLE) {
         Write-Host "Installing dependencies with uv..." -ForegroundColor Yellow
         if (Test-Path $UV) {
-            & $UV pip install --prefer-binary -e ".[dev]" 2>&1 | Out-Host
+            & $UV pip install -e ".[dev]" 2>&1 | Out-Host
             if ($LASTEXITCODE -eq 0) {
                 $INSTALL_SUCCESS = $true
                 Write-Host "✓ Dependencies installed with uv." -ForegroundColor Green
             }
         } else {
-            & $UV pip install --prefer-binary -e ".[dev]" 2>&1 | Out-Host
+            & $UV pip install -e ".[dev]" 2>&1 | Out-Host
             if ($LASTEXITCODE -eq 0) {
                 $INSTALL_SUCCESS = $true
                 Write-Host "✓ Dependencies installed with uv." -ForegroundColor Green

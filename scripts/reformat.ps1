@@ -36,7 +36,7 @@ try {
     if (Test-Path ".venv") {
         & $PIP install --prefer-binary -e ".[dev]"
     } elseif (Get-Command uv -ErrorAction SilentlyContinue) {
-        uv pip install --prefer-binary -e ".[dev]"
+        uv pip install -e ".[dev]"
     } else {
         Write-Host "Warning: No .venv found and uv not available. Please run .\scripts\setup.ps1 first or install dependencies manually." -ForegroundColor Yellow
         exit 1

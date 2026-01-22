@@ -78,7 +78,7 @@ if (-not $packageInstalled) {
     if (Get-Command $UV -ErrorAction SilentlyContinue) {
         try {
             Write-Host "Installing with uv..." -ForegroundColor Yellow
-            & $UV pip install --prefer-binary -e .
+            & $UV pip install -e .
             if ($LASTEXITCODE -eq 0) {
                 $installed = $true
             }

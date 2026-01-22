@@ -115,7 +115,7 @@ install_with_available_manager() {
     
     if [ -n "$uv_cmd" ]; then
         echo "Installing dependencies with uv..." >&2
-        if "$uv_cmd" pip install --prefer-binary -e "$extras" 2>&1; then
+        if "$uv_cmd" pip install -e "$extras" 2>&1; then
             echo "✓ Dependencies installed with uv." >&2
             return 0
         fi
