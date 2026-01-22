@@ -52,8 +52,9 @@ def test_when_no_departures_available_then_shows_no_departures() -> None:
     assert result["has_departures"] is False
     assert len(result["groups_with_departures"]) == 0
     assert len(result["stops_without_departures"]) == 2
-    assert "Universität" in result["stops_without_departures"]
-    assert "Marienplatz" in result["stops_without_departures"]
+    stop_names = [stop["stop_name"] for stop in result["stops_without_departures"]]
+    assert "Universität" in stop_names
+    assert "Marienplatz" in stop_names
 
 
 def test_when_single_departure_exists_then_displays_it() -> None:
@@ -90,7 +91,8 @@ def test_when_single_departure_exists_then_displays_it() -> None:
     assert result["has_departures"] is True
     assert len(result["groups_with_departures"]) == 1
     assert len(result["groups_with_departures"][0]["departures"]) == 1
-    assert "Marienplatz" in result["stops_without_departures"]
+    stop_names = [stop["stop_name"] for stop in result["stops_without_departures"]]
+    assert "Marienplatz" in stop_names
 
 
 def test_when_departure_exists_then_displays_line_and_destination() -> None:
@@ -418,8 +420,9 @@ def test_when_stop_has_no_departures_then_lists_it_as_empty() -> None:
     result = calculator.calculate_display_data(direction_groups)
 
     assert result["has_departures"] is False
-    assert "Universität" in result["stops_without_departures"]
-    assert "Marienplatz" in result["stops_without_departures"]
+    stop_names = [stop["stop_name"] for stop in result["stops_without_departures"]]
+    assert "Universität" in stop_names
+    assert "Marienplatz" in stop_names
 
 
 def test_when_departures_exist_then_first_group_is_marked_as_first() -> None:
@@ -967,8 +970,9 @@ def test_when_some_stops_have_departures_and_others_dont_then_lists_both() -> No
 
     assert result["has_departures"] is True
     assert len(result["groups_with_departures"]) == 1
-    assert "Marienplatz" in result["stops_without_departures"]
-    assert "Universität" not in result["stops_without_departures"]
+    stop_names = [stop["stop_name"] for stop in result["stops_without_departures"]]
+    assert "Marienplatz" in stop_names
+    assert "Universität" not in stop_names
 
 
 def test_when_departure_has_large_delay_then_shows_delay_correctly() -> None:

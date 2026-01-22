@@ -89,7 +89,7 @@
     </div>
 
     <div id="departures" role="region" aria-label="Departure information" aria-live="polite" aria-atomic="false">
-        {% if not has_departures %}
+        {% if not has_departures and not stops_without_departures %}
         <div role="status" aria-live="polite" style="text-align: center; padding: 4rem 2rem; opacity: 0.7; font-size: {{ font_size_no_departures }}; font-weight: 500;">No departures available</div>
         {% else %}
         {% for group in groups_with_departures %}
@@ -135,9 +135,16 @@
             </ul>
         </div>
         {% endfor %}
-        {% for stop_name in stops_without_departures %}
+        {% for stop in stops_without_departures %}
         <div class="direction-group">
-            <h2 class="direction-header" role="heading" aria-level="2">{{ stop_name }}</h2>
+            <h2 class="direction-header" role="heading" aria-level="2"{% if stop.header_color %} style="background-color: {{ stop.header_color }};"{% endif %}{% if stop.is_first_header and fill_vertical_space == 'true' %} data-fill-vertical-space="true"{% endif %}>
+                {% if stop.is_first_header %}
+                <span class="direction-header-text">{{ stop.stop_name }}</span>
+                <div class="direction-header-time status-header-item" id="datetime-display" aria-label="Current date and time" phx-update="ignore"></div>
+                {% else %}
+                {{ stop.stop_name }}
+                {% endif %}
+            </h2>
             <div class="departure-row" role="status" aria-live="polite">
                 <div class="no-departures">No departures</div>
             </div>

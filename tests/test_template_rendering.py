@@ -378,7 +378,8 @@ def test_prepare_template_data_stop_without_departures() -> None:
     template_data = view.departure_grouping_calculator.calculate_display_data(direction_groups)
 
     assert template_data["has_departures"] is False
-    assert "Universität" in template_data["stops_without_departures"]
+    stop_names = [stop["stop_name"] for stop in template_data["stops_without_departures"]]
+    assert "Universität" in stop_names
 
 
 def test_prepare_template_data_first_header_flag() -> None:
@@ -689,7 +690,7 @@ async def test_render_platform_when_present() -> None:
 
 
 async def test_render_empty_list() -> None:
-    """Given empty direction groups, when rendering, then no departures message is in HTML."""
+    """Given empty direction groups, when rendering, then shows route headers with no departures message."""
     now = datetime.now(UTC)
     view = _create_test_view()
     from mvg_departures.adapters.web.state import DeparturesState
@@ -702,7 +703,9 @@ async def test_render_empty_list() -> None:
     result = await view.render(state, {})
     html = result.text() if hasattr(result, "text") else str(result)
 
-    assert "No departures available" in html
+    # With configured stops, should show route headers even when empty (matches SPA behavior)
+    assert "Universität" in html
+    assert "No departures" in html
 
 
 async def test_render_stop_without_departures() -> None:

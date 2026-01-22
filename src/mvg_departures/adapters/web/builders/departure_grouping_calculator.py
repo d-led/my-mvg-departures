@@ -387,9 +387,35 @@ class DepartureGroupingCalculator(DepartureGroupingCalculatorProtocol):
 
         stops_without_departures = self._find_stops_without_departures(stops_with_departures)
 
+        # Generate header colors for stops without departures (matches SPA behavior)
+        # Create list of dicts with stop_name and header_color (matches groups_with_departures structure)
+        stops_without_departures_list = []
+        for stop_name in stops_without_departures:
+            # Find the stop config to get color settings
+            stop_config = next(
+                (sc for sc in self.stop_configs if sc.station_name == stop_name), None
+            )
+            if stop_config:
+                stop_dict = {
+                    "stop_name": stop_name,
+                    "header": stop_name,  # Header is just the stop name for empty groups
+                    "random_header_colors": stop_config.random_header_colors,
+                    "header_background_brightness": stop_config.header_background_brightness,
+                    "random_color_salt": stop_config.random_color_salt,
+                    "is_first_header": False,  # Will be set below
+                }
+                stops_without_departures_list.append(stop_dict)
+
+        # Generate colors for stops without departures
+        # If there are no groups with departures, the first stop without departures will be the first header
+        if not groups_with_departures and stops_without_departures_list:
+            stops_without_departures_list[0]["is_first_header"] = True
+        # Generate colors for all stops without departures (first headers are skipped by _generate_header_colors)
+        self._generate_header_colors(stops_without_departures_list)
+
         return {
             "groups_with_departures": groups_with_departures,
-            "stops_without_departures": stops_without_departures,
+            "stops_without_departures": stops_without_departures_list,  # Now a list of dicts, not just names
             "has_departures": len(groups_with_departures) > 0,
             "font_size_no_departures": self.config.font_size_no_departures_available,
         }
