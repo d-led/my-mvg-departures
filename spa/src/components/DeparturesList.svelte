@@ -203,7 +203,7 @@
                   <!-- icon_with_text mode: icon + route number text (default, matches Python) -->
                   <img 
                     class="route-icon" 
-                    src={`/assets/${getIconPath(departure.transportType)}`}
+                    src={`./assets/${getIconPath(departure.transportType)}`}
                     alt={departure.transportType}
                     aria-hidden="true"
                   />
