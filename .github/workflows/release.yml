@@ -43,4 +43,3 @@ jobs:
         with:
           body: "See [CHANGELOG.md](CHANGELOG.md)"
           generate_release_notes: false
-

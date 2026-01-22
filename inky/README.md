@@ -17,18 +17,21 @@ This is the Inky e-ink display version of the MVG departures application, design
 ### Quick Setup with Scripts
 
 **For Raspberry Pi (with hardware support):**
+
 ```bash
 cd inky
 ./scripts/setup.sh
 ```
 
 **For macOS/Windows (development mode, mock only):**
+
 ```bash
 cd inky
 ./scripts/setup_dev.sh
 ```
 
 **Note for macOS:** The setup script will automatically install the Cairo library via Homebrew (if Homebrew is installed). If you don't have Homebrew, install it from https://brew.sh, or manually install Cairo:
+
 ```bash
 brew install cairo librsvg pkg-config
 ```
@@ -36,6 +39,7 @@ brew install cairo librsvg pkg-config
 ### Manual Installation
 
 1. First, install the parent project:
+
 ```bash
 cd ..
 pip install -e .
@@ -44,12 +48,14 @@ pip install -e .
 2. Then install the Inky version:
 
 **For development/testing (mock mode, works on macOS/Windows):**
+
 ```bash
 cd inky
 pip install -e .
 ```
 
 **For Raspberry Pi with hardware (Linux only):**
+
 ```bash
 cd inky
 pip install -e ".[hardware]"
@@ -79,12 +85,14 @@ export CONFIG_FILE=my.config.toml
 ### Quick Start with Scripts
 
 1. **Setup** (first time only):
+
    ```bash
    cd inky
    ./scripts/setup.sh
    ```
 
 2. **Run with real hardware**:
+
    ```bash
    ./scripts/start.sh
    ```
@@ -104,6 +112,7 @@ sudo ./scripts/deploy-rpi.sh
 ```
 
 This script will:
+
 1. Set up the project and install all dependencies (including numpy via apt to avoid build issues)
 2. Install and start the systemd service
 3. Configure the service to start automatically on boot
@@ -111,10 +120,12 @@ This script will:
 **Manual deployment steps** (if you prefer to do it step by step):
 
 1. **Setup the project:**
+
    ```bash
    cd inky
    ./scripts/setup.sh
    ```
+
    This installs all dependencies including hardware support.
 
 2. **Install as systemd service:**
@@ -123,6 +134,7 @@ This script will:
    ```
 
 The service will:
+
 - Start automatically on boot
 - Restart automatically if it crashes
 - Log to systemd journal (view with `journalctl -u mvg-departures-inky -f`)
@@ -170,12 +182,14 @@ INKY_MOCK_MODE=true INKY_MOCK_OUTPUT_DIR=./output mvg-departures-inky
 ```
 
 In mock mode, the adapter will:
+
 - Use a software mock of the Inky display
 - Save rendered images as PNG files instead of displaying on hardware
 - Allow you to visually inspect the layout, fonts, and content
 - Work on any system (not just Raspberry Pi)
 
 This is useful for:
+
 - Development and testing without hardware
 - CI/CD pipelines
 - Layout validation
@@ -199,12 +213,14 @@ If you encounter `OSError: [Errno 28] No space left on device` when installing o
 **Root cause:** Building numpy from source needs ~500MB+ of temporary space. On Raspberry Pi, `/tmp` is often a tmpfs (RAM-based filesystem) with limited size (typically 214MB), which is insufficient for building numpy and its build dependencies (cmake, patchelf, etc.).
 
 **Solution:** The setup script automatically:
+
 1. Installs numpy via apt first (pre-built binaries, no compilation needed)
 2. If apt fails, uses `~/.tmp` instead of `/tmp` for build files (which has more space on the main filesystem)
 
 If installing manually:
 
 1. **Preferred:** Install numpy via apt first:
+
    ```bash
    sudo apt-get update
    sudo apt-get install -y python3-numpy
@@ -224,6 +240,7 @@ This avoids the `/tmp` space limitation.
 If you get an `Illegal instruction` error when trying to run the application, this means the virtual environment or packages were created on a different architecture or CPU variant and are being run on a different one.
 
 **Common causes:**
+
 - Moving from macOS/Windows (x86_64) to Raspberry Pi (ARM)
 - Moving between different Raspberry Pi models (e.g., Pi 2 to Pi Zero - different ARM variants)
 - Binary packages compiled for a different CPU architecture
@@ -236,6 +253,7 @@ cd inky
 ```
 
 This script will:
+
 1. Remove the existing virtual environment
 2. Create a new one for the current architecture/CPU
 3. Reinstall all dependencies (including numpy via apt)

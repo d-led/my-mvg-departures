@@ -1,5 +1,6 @@
 # HTML template files with Jinja2 syntax (Prettier can't parse template syntax)
 src/**/*.html
+spa/departures.html
 # Python files
 *.py
 # Lock files

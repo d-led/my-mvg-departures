@@ -1137,21 +1137,21 @@ function calculateFillVerticalSpace() {
   root.style.setProperty("--font-size-countdown-text", fontSizes.countdownText + "px");
   root.style.setProperty("--font-size-delay-amount", fontSizes.delayAmount + "px");
   root.style.setProperty("--font-size-status-header", fontSizes.statusHeader + "px");
-  
+
   // Calculate time container gap (0.2em equivalent, scales with time font size)
   const timeContainerGap = fontSizes.time * 0.2;
   root.style.setProperty("--time-container-gap", timeContainerGap + "px");
-  
+
   // Dynamically calculate column widths based on actual content
   // First, temporarily set auto widths to allow content measurement
   root.style.setProperty("--route-column-width", "auto");
   root.style.setProperty("--time-container-width", "auto");
   root.style.setProperty("--platform-column-width", "auto");
   root.style.setProperty("--time-column-width", "auto");
-  
+
   // Force reflow to apply font sizes before measuring
   void departuresEl.offsetHeight;
-  
+
   // Measure the maximum width of route numbers (including badges/icons)
   let maxRouteWidth = 0;
   const routeNumbers = departuresEl.querySelectorAll(".route-number");
@@ -1163,7 +1163,7 @@ function calculateFillVerticalSpace() {
   // Add padding (0.3em gap from grid) and ensure minimum width
   const routeColumnWidth = Math.max(maxRouteWidth + fontSizes.routeNumber * 0.3, fontSizes.routeNumber * 2.5);
   root.style.setProperty("--route-column-width", routeColumnWidth + "px");
-  
+
   // Measure the maximum width of platforms
   let maxPlatformWidth = 0;
   const platforms = departuresEl.querySelectorAll(".time-container .platform");
@@ -1174,7 +1174,7 @@ function calculateFillVerticalSpace() {
   // Add small padding for visual breathing room (only if there are platforms)
   const platformColumnWidth = maxPlatformWidth > 0 ? maxPlatformWidth + fontSizes.platform * 0.3 : 0;
   root.style.setProperty("--platform-column-width", platformColumnWidth > 0 ? platformColumnWidth + "px" : "0px");
-  
+
   // Measure the maximum width of time elements (including delay amounts)
   let maxTimeWidth = 0;
   const times = departuresEl.querySelectorAll(".time-container .time");
@@ -1185,7 +1185,7 @@ function calculateFillVerticalSpace() {
   // Add small padding for visual breathing room
   const timeColumnWidth = maxTimeWidth + fontSizes.time * 0.3;
   root.style.setProperty("--time-column-width", timeColumnWidth + "px");
-  
+
   // Calculate total time container width: platform + gap (only if platform exists) + time + container padding
   const containerPadding = 12; // 0.75rem padding on each side (approximately 12px)
   const effectiveGap = platformColumnWidth > 0 ? timeContainerGap : 0;

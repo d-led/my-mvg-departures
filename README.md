@@ -195,11 +195,11 @@ Use the `list_routes.sh` script to list routes for a station:
 
 The app supports multiple transit APIs via the `api_provider` setting:
 
-| Provider | Coverage | CLI Tool | API Documentation |
-|----------|----------|----------|-------------------|
-| `mvg` (default) | Munich (MVG) | `mvg-config` | [MVG API](https://www.mvg.de/) |
-| `vbb` | Berlin/Brandenburg | `vbb-config` | [v6.bvg.transport.rest](https://v6.bvg.transport.rest/) |
-| `db` | Germany (Deutsche Bahn) | `db-config` | [v6.db.transport.rest](https://v6.db.transport.rest/api.html) |
+| Provider        | Coverage                | CLI Tool     | API Documentation                                             |
+| --------------- | ----------------------- | ------------ | ------------------------------------------------------------- |
+| `mvg` (default) | Munich (MVG)            | `mvg-config` | [MVG API](https://www.mvg.de/)                                |
+| `vbb`           | Berlin/Brandenburg      | `vbb-config` | [v6.bvg.transport.rest](https://v6.bvg.transport.rest/)       |
+| `db`            | Germany (Deutsche Bahn) | `db-config`  | [v6.db.transport.rest](https://v6.db.transport.rest/api.html) |
 
 ```toml
 [[stops]]
@@ -484,7 +484,6 @@ For even more automation, you can use the Shortcuts app to automatically open th
 3. Add action: "Open URLs" → Enter your dashboard URL
 4. Disable "Ask Before Running"
 5. The dashboard will automatically open when the iPad wakes
-
 
 ## UI Features
 

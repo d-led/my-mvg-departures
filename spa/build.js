@@ -1,5 +1,14 @@
 import * as esbuild from "esbuild";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync, cpSync, rmSync, watch } from "fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  cpSync,
+  rmSync,
+  watch,
+} from "fs";
 import { readdir, stat } from "fs/promises";
 import { join, dirname, extname } from "path";
 import { fileURLToPath } from "url";
@@ -49,7 +58,7 @@ async function findSvelteFiles(dir, fileList = []) {
 // Pre-compile Svelte components to a temp directory
 async function precompileSvelte() {
   const svelteFiles = await findSvelteFiles("src");
-  
+
   if (existsSync(TEMP_DIR)) {
     // Clean temp dir
     rmSync(TEMP_DIR, { recursive: true, force: true });
@@ -58,7 +67,9 @@ async function precompileSvelte() {
 
   for (const file of svelteFiles) {
     const compiled = await compileSvelte(file);
-    const relativePath = file.replace("src/", "").replace(".svelte", ".svelte.js");
+    const relativePath = file
+      .replace("src/", "")
+      .replace(".svelte", ".svelte.js");
     const outputPath = join(TEMP_DIR, relativePath);
     const outputDir = dirname(outputPath);
     mkdirSync(outputDir, { recursive: true });
@@ -77,7 +88,7 @@ function copyStaticFiles() {
     mkdirSync(cssDest, { recursive: true });
     copyFileSync(
       join(STATIC_DIR, "css", "departures.css"),
-      join(cssDest, "departures.css")
+      join(cssDest, "departures.css"),
     );
   }
 
@@ -108,7 +119,7 @@ function copyExampleConfig() {
     join(process.cwd(), "config.example.toml"), // If already in project root
     join(buildScriptDir, "..", "config.example.toml"), // Relative to build.js location
   ];
-  
+
   let exampleConfigSrc = null;
   for (const path of possiblePaths) {
     if (existsSync(path)) {
@@ -116,22 +127,26 @@ function copyExampleConfig() {
       break;
     }
   }
-  
+
   const exampleConfigDest = join(DIST_DIR, "config.example.toml");
-  
+
   if (exampleConfigSrc) {
     ensureDistDir();
     copyFileSync(exampleConfigSrc, exampleConfigDest);
-    console.log(`✓ Copied config.example.toml from ${exampleConfigSrc} to ${exampleConfigDest}`);
+    console.log(
+      `✓ Copied config.example.toml from ${exampleConfigSrc} to ${exampleConfigDest}`,
+    );
   } else {
-    console.error(`✗ config.example.toml not found. Tried paths: ${possiblePaths.join(", ")}`);
+    console.error(
+      `✗ config.example.toml not found. Tried paths: ${possiblePaths.join(", ")}`,
+    );
     process.exit(1); // Fail the build if config file is missing
   }
 }
 
 function copyHtml() {
   const dest = join(DIST_DIR, "index.html");
-  
+
   // Create minimal HTML template for Svelte
   // Svelte will handle all the rendering, so we just need the basic structure
   const cleanHtml = `<!DOCTYPE html>
@@ -185,12 +200,12 @@ function copyHtml() {
 <div class="container" data-phx-main role="main" aria-label="MVG Departures Dashboard"></div>
 </body>
 </html>`;
-  
+
   ensureDistDir();
   writeFileSync(dest, cleanHtml);
 }
 
-  const jsOptions = {
+const jsOptions = {
   entryPoints: ["src/main.ts"],
   bundle: true,
   outfile: join(DIST_DIR, "bundle.js"),
@@ -204,7 +219,9 @@ function copyHtml() {
     ".js": "js",
   },
   define: {
-    "process.env.NODE_ENV": JSON.stringify(isWatch ? "development" : "production"),
+    "process.env.NODE_ENV": JSON.stringify(
+      isWatch ? "development" : "production",
+    ),
   },
   external: [],
   packages: "bundle",
@@ -213,7 +230,7 @@ function copyHtml() {
 async function build() {
   console.log("Pre-compiling Svelte components...");
   await precompileSvelte();
-  
+
   // Update entry point to use temp directory
   jsOptions.entryPoints = ["src/main.ts"];
   jsOptions.plugins = [
@@ -223,48 +240,67 @@ async function build() {
         // First, intercept .svelte imports and convert them to compiled .svelte.js files
         build.onResolve({ filter: /\.svelte$/ }, (args) => {
           // Don't intercept svelte package imports
-          if (args.path.startsWith("svelte") || args.path.includes("node_modules")) {
+          if (
+            args.path.startsWith("svelte") ||
+            args.path.includes("node_modules")
+          ) {
             return undefined;
           }
-          
+
           // Resolve the .svelte import to the compiled .svelte.js file
           let resolvedPath = args.path;
           if (args.path.startsWith(".") && args.importer) {
             const importerDir = dirname(args.importer);
             resolvedPath = join(importerDir, args.path);
           }
-          
+
           // Convert to compiled path in temp directory
-          const relativePath = resolvedPath.replace(/^.*[\\/]src[\\/]/, "").replace(".svelte", ".svelte.js");
+          const relativePath = resolvedPath
+            .replace(/^.*[\\/]src[\\/]/, "")
+            .replace(".svelte", ".svelte.js");
           const compiledPath = join(process.cwd(), TEMP_DIR, relativePath);
-          
+
           if (existsSync(compiledPath)) {
-            return { 
+            return {
               path: compiledPath,
               namespace: "file",
             };
           }
-          
+
           // If compiled file doesn't exist, return undefined to let esbuild show the error
           return undefined;
         });
-        
-          // Handle relative imports from compiled Svelte files back to source
-          build.onResolve({ filter: /.*/ }, (args) => {
-            // If importing from a compiled Svelte file in temp directory
-            if (args.importer && args.importer.includes(TEMP_DIR)) {
-              // Relative imports should point back to source
-              if (args.path.startsWith(".")) {
-                // Get the directory of the compiled file relative to temp
-                const importerPath = args.importer.replace(new RegExp(`^.*${TEMP_DIR.replace(/\./g, "\\.")}[\\\\/]`), "");
+
+        // Handle relative imports from compiled Svelte files back to source
+        build.onResolve({ filter: /.*/ }, (args) => {
+          // If importing from a compiled Svelte file in temp directory
+          if (args.importer && args.importer.includes(TEMP_DIR)) {
+            // Relative imports should point back to source
+            if (args.path.startsWith(".")) {
+              // Get the directory of the compiled file relative to temp
+              const importerPath = args.importer.replace(
+                new RegExp(`^.*${TEMP_DIR.replace(/\./g, "\\.")}[\\\\/]`),
+                "",
+              );
               const importerDir = dirname(importerPath);
               // Resolve the relative import
-              const resolvedRelative = join(importerDir, args.path).replace(/\\/g, "/");
+              const resolvedRelative = join(importerDir, args.path).replace(
+                /\\/g,
+                "/",
+              );
               // Map to source directory (remove .js extension, add .ts if needed)
               let sourceRelative = resolvedRelative.replace(/\.js$/, "");
               // Try .ts first, then .js
-              const sourcePathTs = join(process.cwd(), "src", sourceRelative + ".ts");
-              const sourcePathJs = join(process.cwd(), "src", sourceRelative + ".js");
+              const sourcePathTs = join(
+                process.cwd(),
+                "src",
+                sourceRelative + ".ts",
+              );
+              const sourcePathJs = join(
+                process.cwd(),
+                "src",
+                sourceRelative + ".js",
+              );
               if (existsSync(sourcePathTs)) {
                 return { path: sourcePathTs };
               }
@@ -273,7 +309,7 @@ async function build() {
               }
             }
           }
-          
+
           return undefined; // Let esbuild handle normally
         });
       },
@@ -287,16 +323,16 @@ async function build() {
     console.error("Build error:", error);
     throw error;
   }
-  
+
   copyHtml();
   copyStaticFiles();
   copyExampleConfig();
-  
+
   // Clean up temp directory
   if (!isWatch && existsSync(TEMP_DIR)) {
     rmSync(TEMP_DIR, { recursive: true, force: true });
   }
-  
+
   console.log("✓ Build complete!");
 }
 
@@ -306,7 +342,7 @@ if (isWatch) {
   let server;
   let rebuildTimeout = null;
   let isRebuilding = false;
-  
+
   // Create plugins that reference tempDir from outer scope (so it's always current)
   function createPlugins() {
     return [
@@ -316,38 +352,45 @@ if (isWatch) {
           // First, intercept .svelte imports and convert them to compiled .svelte.js files
           build.onResolve({ filter: /\.svelte$/ }, (args) => {
             // Don't intercept svelte package imports
-            if (args.path.startsWith("svelte") || args.path.includes("node_modules")) {
+            if (
+              args.path.startsWith("svelte") ||
+              args.path.includes("node_modules")
+            ) {
               return undefined;
             }
-            
+
             // Resolve the .svelte import to the compiled .svelte.js file
             let resolvedPath = args.path;
             if (args.path.startsWith(".") && args.importer) {
               const importerDir = dirname(args.importer);
               resolvedPath = join(importerDir, args.path);
             }
-            
+
             // Convert to compiled path in temp directory
             // Use tempDir from outer scope (always current value)
             // Guard against tempDir being undefined (shouldn't happen, but safety check)
             if (!tempDir) {
-              console.error("[svelte-resolver] tempDir is undefined! This should not happen.");
+              console.error(
+                "[svelte-resolver] tempDir is undefined! This should not happen.",
+              );
               return undefined;
             }
-            
-            const relativePath = resolvedPath.replace(/^.*[\\/]src[\\/]/, "").replace(".svelte", ".svelte.js");
+
+            const relativePath = resolvedPath
+              .replace(/^.*[\\/]src[\\/]/, "")
+              .replace(".svelte", ".svelte.js");
             const compiledPath = join(process.cwd(), TEMP_DIR, relativePath);
-            
+
             if (existsSync(compiledPath)) {
-              return { 
+              return {
                 path: compiledPath,
                 namespace: "file",
               };
             }
-            
+
             return undefined;
           });
-          
+
           // Handle relative imports from compiled Svelte files back to source
           build.onResolve({ filter: /.*/ }, (args) => {
             // If importing from a compiled Svelte file in temp directory
@@ -355,15 +398,29 @@ if (isWatch) {
               // Relative imports should point back to source
               if (args.path.startsWith(".")) {
                 // Get the directory of the compiled file relative to temp
-                const importerPath = args.importer.replace(/^.*\.svelte-temp[\\/]/, "");
+                const importerPath = args.importer.replace(
+                  /^.*\.svelte-temp[\\/]/,
+                  "",
+                );
                 const importerDir = dirname(importerPath);
                 // Resolve the relative import
-                const resolvedRelative = join(importerDir, args.path).replace(/\\/g, "/");
+                const resolvedRelative = join(importerDir, args.path).replace(
+                  /\\/g,
+                  "/",
+                );
                 // Map to source directory (remove .js extension, add .ts if needed)
                 let sourceRelative = resolvedRelative.replace(/\.js$/, "");
                 // Try .ts first, then .js
-                const sourcePathTs = join(process.cwd(), "src", sourceRelative + ".ts");
-                const sourcePathJs = join(process.cwd(), "src", sourceRelative + ".js");
+                const sourcePathTs = join(
+                  process.cwd(),
+                  "src",
+                  sourceRelative + ".ts",
+                );
+                const sourcePathJs = join(
+                  process.cwd(),
+                  "src",
+                  sourceRelative + ".js",
+                );
                 if (existsSync(sourcePathTs)) {
                   return { path: sourcePathTs };
                 }
@@ -372,36 +429,38 @@ if (isWatch) {
                 }
               }
             }
-            
+
             return undefined; // Let esbuild handle normally
           });
         },
       },
     ];
   }
-  
+
   async function rebuild() {
     // Prevent multiple simultaneous rebuilds
     if (isRebuilding) {
       console.log("Rebuild already in progress, skipping...");
       return;
     }
-    
+
     isRebuilding = true;
     try {
       if (tempDir && existsSync(tempDir)) {
         rmSync(tempDir, { recursive: true, force: true });
       }
       tempDir = await precompileSvelte();
-      
+
       // Ensure tempDir is set before creating plugins
       if (!tempDir) {
-        throw new Error("Failed to create temp directory for Svelte compilation");
+        throw new Error(
+          "Failed to create temp directory for Svelte compilation",
+        );
       }
-      
+
       // Update plugins (they reference tempDir from outer scope, so they'll use current value)
       jsOptions.plugins = createPlugins();
-      
+
       // Only create buildContext if it doesn't exist (first build)
       if (!buildContext) {
         buildContext = await esbuild.context(jsOptions);
@@ -412,19 +471,19 @@ if (isWatch) {
         await buildContext.dispose();
         buildContext = await esbuild.context(jsOptions);
       }
-      
+
       await buildContext.rebuild();
-      
+
       // Restart server if it was already running (after context recreation)
       if (server && buildContext) {
         // Stop old server (if any) and start new one
         server = await buildContext.serve({
           servedir: DIST_DIR,
           port: 8000,
-          host: "0.0.0.0"
+          host: "0.0.0.0",
         });
       }
-      
+
       copyHtml();
       copyStaticFiles();
       copyExampleConfig();
@@ -448,18 +507,18 @@ if (isWatch) {
 
   // Initial build
   await rebuild();
-  
+
   // Start server once (it persists across rebuilds)
-  const serveOptions = { 
-    servedir: DIST_DIR, 
+  const serveOptions = {
+    servedir: DIST_DIR,
     port: 8000,
-    host: "0.0.0.0" // Allow access from remote hosts (e.g., cmr-r)
+    host: "0.0.0.0", // Allow access from remote hosts (e.g., cmr-r)
   };
   server = await buildContext.serve(serveOptions);
   const port = server.port;
   // esbuild serve() may not return host, so use localhost for display (0.0.0.0 is for binding, not display)
   console.log(`\n🚀 Server running at http://localhost:${port}\n`);
-  
+
   // Watch for changes (debounced to prevent rapid rebuilds)
   watch("src", { recursive: true }, () => {
     scheduleRebuild();

@@ -7,6 +7,7 @@ This directory contains font files for the Inky display renderer.
 ### HK Grotesk (Default)
 
 HK Grotesk is the default font family used for rendering:
+
 - **Bold** variant for headers
 - **Regular** variant for body text
 
