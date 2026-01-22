@@ -61,7 +61,7 @@ fi
 echo "Setting up virtual environment..."
 cd "$APP_DIR"
 if [ ! -d ".venv" ]; then
-    python3.12 -m venv .venv || python3 -m venv .venv || {
+    python3.13 -m venv .venv || {
         echo "Error: Could not create virtual environment"
         exit 1
     }

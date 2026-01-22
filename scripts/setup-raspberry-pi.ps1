@@ -103,12 +103,14 @@ if (-not ($IsWindows -or $env:OS -eq "Windows_NT")) {
 Write-Host "Setting up Python virtual environment..."
 Set-Location $APP_DIR
 
-# Check Python version
-$PYTHON_CMD = "python3"
-if (Get-Command python3.12 -ErrorAction SilentlyContinue) {
-    $PYTHON_CMD = "python3.12"
-} elseif (Get-Command python3.11 -ErrorAction SilentlyContinue) {
-    $PYTHON_CMD = "python3.11"
+# Check Python version (require 3.13)
+$PYTHON_CMD = $null
+if (Get-Command python3.13 -ErrorAction SilentlyContinue) {
+    $PYTHON_CMD = "python3.13"
+} else {
+    Write-Host "Error: Python 3.13 is required but not found." -ForegroundColor Red
+    Write-Host "Please install Python 3.13." -ForegroundColor Yellow
+    exit 1
 }
 
 Write-Host "Using Python: $(& $PYTHON_CMD --version)"

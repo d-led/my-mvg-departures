@@ -20,11 +20,11 @@ if (Get-Command python -ErrorAction SilentlyContinue) {
 } elseif (Get-Command python3 -ErrorAction SilentlyContinue) {
     $PYTHON_CMD = "python3"
 } else {
-    Write-Host "Error: Python not found. Please install Python 3.12 or later from:" -ForegroundColor Red
+    Write-Host "Error: Python not found. Please install Python 3.13 from:" -ForegroundColor Red
     Write-Host "  https://www.python.org/downloads/" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "Alternatively, you can install Python using a package manager:" -ForegroundColor Yellow
-        Write-Host "  - winget: winget install Python.Python.3.12" -ForegroundColor Cyan
+        Write-Host "  - winget: winget install Python.Python.3.13" -ForegroundColor Cyan
     Write-Host "  - scoop: scoop install python" -ForegroundColor Cyan
     Write-Host "  - chocolatey: choco install python" -ForegroundColor Cyan
     exit 1
@@ -37,7 +37,7 @@ if (-not $PYTHON_VERSION) {
     exit 1
 }
 
-$REQUIRED_VERSION = "3.12"
+$REQUIRED_VERSION = "3.13"
 
 # Compare versions
 $versionParts = $PYTHON_VERSION.Split(".")
@@ -46,7 +46,7 @@ $versionNum = [int]$versionParts[0] * 100 + [int]$versionParts[1]
 $requiredNum = [int]$requiredParts[0] * 100 + [int]$requiredParts[1]
 
 if ($versionNum -lt $requiredNum) {
-    Write-Host "Warning: Python $PYTHON_VERSION detected. Python 3.12 or later is recommended." -ForegroundColor Yellow
+    Write-Host "Warning: Python $PYTHON_VERSION detected. Python 3.13 is required." -ForegroundColor Yellow
     Write-Host ""
 }
 

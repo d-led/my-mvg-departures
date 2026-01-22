@@ -66,7 +66,7 @@ This design philosophy recognizes that **you don't need to see every departure**
 
 ## Requirements
 
-- Python 3.12+
+- Python 3.13
 - Virtual environment tool: `uv`, `poetry`, `pipenv`, or `pyenv`
 
 ## Installation
@@ -114,7 +114,7 @@ poetry shell
 #### Using pip
 
 ```bash
-python3.12 -m venv .venv
+python3.13 -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -e .
 ```

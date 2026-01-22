@@ -11,7 +11,7 @@ This project provides multiple Dockerfile options for different security and dep
 - ✅ Separates build and runtime environments
 - ✅ Removes build tools from final image
 - ✅ Non-root user
-- ✅ Minimal base image (python:3.12-slim)
+- ✅ Minimal base image (python:3.13-slim)
 - **Size**: ~150-200MB
 - **Best for**: General production use, good balance of security and compatibility
 
@@ -44,7 +44,7 @@ This project provides multiple Dockerfile options for different security and dep
 - ✅ No shell, package managers, or unnecessary tools
 - ✅ Minimal attack surface
 - ✅ Only application and runtime dependencies
-- ⚠️ Note: Currently uses Python 3.11 (distroless doesn't have 3.12 yet)
+- ✅ Uses Python 3.13 (via distroless python3-debian12)
 - **Size**: ~80-100MB
 - **Best for**: Maximum security, minimal attack surface
 
@@ -80,8 +80,8 @@ docker build -f docker/Dockerfile.distroless -t mvg-departures:distroless .
 1. **Regular Updates**: Keep base images updated
 
    ```bash
-   docker pull python:3.12-slim
-   docker pull registry.access.redhat.com/ubi9/python-312:latest
+   docker pull python:3.13-slim
+   docker pull registry.access.redhat.com/ubi9:latest
    ```
 
 2. **Scan Images**: Use security scanners
@@ -122,9 +122,9 @@ docker build -f docker/Dockerfile.distroless -t mvg-departures:distroless .
 
 | Dockerfile                   | Base Image         | Approx Size | Security Level |
 | ---------------------------- | ------------------ | ----------- | -------------- |
-| docker/Dockerfile            | python:3.12-slim   | ~180MB      | High           |
-| docker/Dockerfile.optimized  | python:3.12-slim   | ~140MB      | High           |
-| docker/Dockerfile.ubi        | ubi9/python-312    | ~220MB      | Very High      |
+| docker/Dockerfile            | python:3.13-slim   | ~180MB      | High           |
+| docker/Dockerfile.optimized  | python:3.13-slim   | ~140MB      | High           |
+| docker/Dockerfile.ubi        | ubi9               | ~250MB      | Very High      |
 | docker/Dockerfile.distroless | distroless/python3 | ~90MB       | Maximum        |
 
 ## Choosing the Right Image
@@ -132,7 +132,7 @@ docker build -f docker/Dockerfile.distroless -t mvg-departures:distroless .
 - **General Production**: Use `docker/Dockerfile` (default)
 - **Size-Critical**: Use `docker/Dockerfile.optimized`
 - **Enterprise/Compliance**: Use `docker/Dockerfile.ubi`
-- **Maximum Security**: Use `docker/Dockerfile.distroless` (when Python 3.12 support is available)
+- **Maximum Security**: Use `docker/Dockerfile.distroless`
 
 ## Troubleshooting
 

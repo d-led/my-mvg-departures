@@ -84,12 +84,14 @@ fi
 echo "Setting up Python virtual environment..."
 cd "$APP_DIR"
 
-# Check Python version
+# Check Python version (require 3.13)
 PYTHON_CMD="python3"
-if command -v python3.12 &>/dev/null; then
-    PYTHON_CMD="python3.12"
-elif command -v python3.11 &>/dev/null; then
-    PYTHON_CMD="python3.11"
+if command -v python3.13 &>/dev/null; then
+    PYTHON_CMD="python3.13"
+else
+    echo "Error: Python 3.13 is required but not found." >&2
+    echo "Please install Python 3.13: sudo apt install python3.13 python3.13-venv python3.13-dev" >&2
+    exit 1
 fi
 
 echo "Using Python: $(${PYTHON_CMD} --version)"

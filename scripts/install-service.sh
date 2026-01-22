@@ -35,7 +35,10 @@ fi
 echo "Setting up virtual environment..."
 cd "$APP_DIR"
 if [ ! -d ".venv" ]; then
-    python3.12 -m venv .venv
+    python3.13 -m venv .venv || {
+        echo "Error: Python 3.13 is required but not found." >&2
+        exit 1
+    }
 fi
 
 .venv/bin/pip install --upgrade pip

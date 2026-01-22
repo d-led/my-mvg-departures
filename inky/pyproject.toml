@@ -3,7 +3,7 @@ name = "mvg-departures-inky"
 version = "0.0.1"
 description = "MVG departures display for Pimoroni Inky e-ink displays"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13,<3.14"
 license = {text = "MPL-2.0"}
 authors = [
     {name = "Dmitry Ledentsov"}
@@ -13,7 +13,7 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: Mozilla Public License 2.0 (MPL 2.0)",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
 ]
 
 dependencies = [
@@ -67,11 +67,11 @@ packages = ["src/mvg_departures_inky"]
 
 [tool.black]
 line-length = 100
-target-version = ['py312']
+target-version = ['py313']
 
 [tool.ruff]
 line-length = 100
-target-version = "py312"
+target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "DTZ", "T10", "SIM", "ARG", "PIE", "PT", "RET", "TCH", "TID", "Q", "RUF"]
@@ -85,7 +85,7 @@ ignore = ["E501"]  # Line length handled by Black
 url = "https://www.piwheels.org/simple"
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

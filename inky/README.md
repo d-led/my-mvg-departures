@@ -199,7 +199,7 @@ This is useful for:
 ## Requirements
 
 - Raspberry Pi with Inky Impression display connected (for hardware mode)
-- Python 3.12+
+- Python 3.13
 - Inky library installed (via pip or system package, Linux only)
 - **macOS development:** Cairo library (installed automatically by setup script if Homebrew is available)
   - If Homebrew is not available, install manually: `brew install cairo librsvg pkg-config`

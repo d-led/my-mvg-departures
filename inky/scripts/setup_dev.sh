@@ -17,15 +17,15 @@ echo "" >&2
 
 # Check Python version
 if ! command -v python3 >/dev/null 2>&1; then
-    echo "Error: python3 not found. Please install Python 3.12 or later." >&2
+    echo "Error: python3 not found. Please install Python 3.13." >&2
     exit 1
 fi
 
 PYTHON_VERSION=$(python3 "$PARENT_ROOT/scripts/get_python_version.py")
-REQUIRED_VERSION="3.12"
+REQUIRED_VERSION="3.13"
 
 if [ "$(printf '%s\n' "$REQUIRED_VERSION" "$PYTHON_VERSION" | sort -V | head -n1)" != "$REQUIRED_VERSION" ]; then
-    echo "Warning: Python $PYTHON_VERSION detected. Python 3.12 or later is recommended." >&2
+    echo "Warning: Python $PYTHON_VERSION detected. Python 3.13 is required." >&2
     echo "" >&2
 fi
 
