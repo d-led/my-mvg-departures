@@ -306,16 +306,20 @@
         route.stops,
         refreshInterval,
         {
-          onUpdate: (groups) => {
+          onUpdate: async (groups) => {
             console.log(`Received ${groups.length} direction group(s) with ${groups.reduce((sum, g) => sum + g.departures.length, 0)} total departures`);
             groupedDepartures = groups;
             // Set status to degraded if unsupported providers, otherwise success
             apiStatus = unsupportedProviders.length > 0 ? "degraded" : "success";
             lastUpdateTime = new Date();
-            // Call initializeAll after data update (matches Python's phx:update handler)
-            // Use requestAnimationFrame to ensure DOM is ready
+            // Wait for Svelte to update the DOM before calculating layout
+            await tick();
+            // Use multiple requestAnimationFrame calls to ensure DOM is fully laid out
+            // This is critical for column width calculations to prevent overlap
             requestAnimationFrame(() => {
-              initializeAll();
+              requestAnimationFrame(() => {
+                initializeAll();
+              });
             });
           },
           onError: (error) => {
