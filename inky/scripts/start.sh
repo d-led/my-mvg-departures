@@ -49,19 +49,28 @@ if ! "$PYTHON" -c "import mvg_departures" 2>/dev/null; then
     cd "$PARENT_ROOT"
     # Try uv first, then pip
     if command -v "$UV" >/dev/null 2>&1 && "$UV" --version >/dev/null 2>&1; then
-        echo "Installing parent with uv..." >&2
-        "$UV" pip install -e . || {
-            echo "uv failed, trying pip..." >&2
+        echo "Installing parent with uv (preferring binary wheels to avoid Rust builds)..." >&2
+        "$UV" pip install --only-binary=:all: -e . 2>&1 || {
+            echo "Warning: Binary-only install with uv failed, trying regular install..." >&2
+            "$UV" pip install -e . 2>&1 || {
+                echo "uv failed, trying pip..." >&2
+                "$PIP" install --only-binary=:all: --prefer-binary -e . 2>&1 || {
+                    echo "Warning: Binary-only install with pip failed, trying prefer-binary..." >&2
+                    "$PIP" install --prefer-binary -e . || {
+                        echo "Error: Failed to install parent package" >&2
+                        exit 1
+                    }
+                }
+            }
+        }
+    else
+        echo "Installing parent with pip (preferring binary wheels to avoid Rust builds)..." >&2
+        "$PIP" install --only-binary=:all: --prefer-binary -e . 2>&1 || {
+            echo "Warning: Binary-only install failed, trying prefer-binary only..." >&2
             "$PIP" install --prefer-binary -e . || {
                 echo "Error: Failed to install parent package" >&2
                 exit 1
             }
-        }
-    else
-        echo "Installing parent with pip..." >&2
-        "$PIP" install --prefer-binary -e . || {
-            echo "Error: Failed to install parent package" >&2
-            exit 1
         }
     fi
     cd "$INKY_ROOT"
@@ -76,19 +85,28 @@ if ! "$PYTHON" -c "import mvg_departures_inky" 2>/dev/null || ! "$PYTHON" -c "im
     
     # Try uv first, then pip
     if command -v "$UV" >/dev/null 2>&1 && "$UV" --version >/dev/null 2>&1; then
-        echo "Installing with uv (including hardware support)..." >&2
-        "$UV" pip install -e '.[hardware]' || {
-            echo "uv failed, trying pip..." >&2
+        echo "Installing with uv (including hardware support, preferring binary wheels to avoid Rust builds)..." >&2
+        "$UV" pip install --only-binary=:all: -e '.[hardware]' 2>&1 || {
+            echo "Warning: Binary-only install with uv failed, trying regular install..." >&2
+            "$UV" pip install -e '.[hardware]' 2>&1 || {
+                echo "uv failed, trying pip..." >&2
+                "$PIP" install --only-binary=:all: --prefer-binary -e '.[hardware]' 2>&1 || {
+                    echo "Warning: Binary-only install with pip failed, trying prefer-binary..." >&2
+                    "$PIP" install --prefer-binary -e '.[hardware]' || {
+                        echo "Error: Failed to install inky package with hardware support" >&2
+                        exit 1
+                    }
+                }
+            }
+        }
+    else
+        echo "Installing with pip (including hardware support, preferring binary wheels to avoid Rust builds)..." >&2
+        "$PIP" install --only-binary=:all: --prefer-binary -e '.[hardware]' 2>&1 || {
+            echo "Warning: Binary-only install failed, trying prefer-binary only..." >&2
             "$PIP" install --prefer-binary -e '.[hardware]' || {
                 echo "Error: Failed to install inky package with hardware support" >&2
                 exit 1
             }
-        }
-    else
-        echo "Installing with pip (including hardware support)..." >&2
-        "$PIP" install --prefer-binary -e '.[hardware]' || {
-            echo "Error: Failed to install inky package with hardware support" >&2
-            exit 1
         }
     fi
     echo "Inky package installed successfully!" >&2

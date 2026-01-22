@@ -80,9 +80,9 @@ ignore = ["E501"]  # Line length handled by Black
 [tool.uv]
 # Configure piwheels.org as an extra index URL to avoid OOM issues on Raspberry Pi Zero
 # piwheels provides pre-built wheels for ARM architectures, avoiding compilation
+# Without explicit=true, uv will use piwheels as a fallback when PyPI doesn't have ARM wheels
 [[tool.uv.index]]
 url = "https://www.piwheels.org/simple"
-explicit = true
 
 [tool.mypy]
 python_version = "3.12"

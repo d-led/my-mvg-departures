@@ -114,18 +114,30 @@ install_with_available_manager() {
     fi
     
     if [ -n "$uv_cmd" ]; then
-        echo "Installing dependencies with uv..." >&2
+        echo "Installing dependencies with uv (preferring binary wheels from piwheels to avoid Rust builds)..." >&2
+        # uv automatically uses piwheels index configured in pyproject.toml [tool.uv.index]
+        # Note: --only-binary=:all: doesn't work with editable installs in uv, so we rely on piwheels config
+        # The piwheels index in pyproject.toml should provide pre-built wheels for ARM architectures
         if "$uv_cmd" pip install -e "$extras" 2>&1; then
-            echo "✓ Dependencies installed with uv." >&2
+            echo "✓ Dependencies installed with uv (using piwheels for binary wheels)." >&2
             return 0
         fi
     fi
     
     # Fall back to pip
-    echo "Using pip to install dependencies..." >&2
-    if "$PIP" install --prefer-binary -e "$extras" 2>&1; then
-        echo "✓ Dependencies installed with pip." >&2
+    echo "Using pip to install dependencies (preferring binary wheels to avoid Rust builds)..." >&2
+    # Use --only-binary=:all: to force binary wheels and prevent Rust compilation
+    # This applies to dependencies, not the editable package itself
+    if "$PIP" install --only-binary=:all: --prefer-binary -e "$extras" 2>&1; then
+        echo "✓ Dependencies installed with pip (binary wheels only, no Rust builds)." >&2
         return 0
+    else
+        echo "Warning: Binary-only install failed, trying with prefer-binary only..." >&2
+        # Fall back to prefer-binary (still tries to use wheels but allows source builds if absolutely needed)
+        if "$PIP" install --prefer-binary -e "$extras" 2>&1; then
+            echo "✓ Dependencies installed with pip (wheels preferred)." >&2
+            return 0
+        fi
     fi
     
     return 1

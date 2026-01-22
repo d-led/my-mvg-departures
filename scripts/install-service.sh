@@ -39,7 +39,11 @@ if [ ! -d ".venv" ]; then
 fi
 
 .venv/bin/pip install --upgrade pip
-.venv/bin/pip install --prefer-binary -e .
+# Prefer binary wheels to avoid Rust builds on Raspberry Pi
+.venv/bin/pip install --only-binary=:all: --prefer-binary -e . 2>&1 || {
+    echo "Warning: Binary-only install failed, trying prefer-binary..." >&2
+    .venv/bin/pip install --prefer-binary -e .
+}
 
 # Install service script
 echo "Installing service script..."

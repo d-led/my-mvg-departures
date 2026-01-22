@@ -95,13 +95,20 @@ fi
 
 # Fall back to pip
 if [ "$UPDATE_SUCCESS" = false ]; then
-    echo "Using pip to update dependencies..." >&2
-    if "$PIP" install --prefer-binary -e ".[dev]" --upgrade 2>&1; then
+    echo "Using pip to update dependencies (preferring binary wheels to avoid Rust builds)..." >&2
+    # Try binary-only first to prevent Rust builds
+    if "$PIP" install --only-binary=:all: --prefer-binary -e ".[dev]" --upgrade 2>&1; then
         UPDATE_SUCCESS=true
-        echo "✓ Dependencies updated with pip." >&2
+        echo "✓ Dependencies updated with pip (binary wheels only, no Rust builds)." >&2
     else
-        echo "Error: Failed to update dependencies" >&2
-        exit 1
+        echo "Warning: Binary-only install failed, trying with prefer-binary only..." >&2
+        if "$PIP" install --prefer-binary -e ".[dev]" --upgrade 2>&1; then
+            UPDATE_SUCCESS=true
+            echo "✓ Dependencies updated with pip (wheels preferred)." >&2
+        else
+            echo "Error: Failed to update dependencies" >&2
+            exit 1
+        fi
     fi
 fi
 
