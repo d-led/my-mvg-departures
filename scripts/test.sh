@@ -35,6 +35,15 @@ echo "Formatting..."
 echo "=========================================="
 echo ""
 
+# Run Prettier to format frontend files first
+echo "Reformatting with Prettier..."
+npm run prettier
+if [ -d "spa" ] && [ -f "spa/package.json" ]; then
+    (cd spa && npm run prettier)
+fi
+echo "✓ Prettier formatting complete"
+echo ""
+
 "$SCRIPT_DIR/reformat.sh"
 
 # Re-source common_env.sh after reformat.sh (which runs in a subshell)

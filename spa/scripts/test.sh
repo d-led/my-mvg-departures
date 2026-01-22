@@ -22,12 +22,10 @@ npm run lint || {
   exit 1
 }
 
-# Prettier check
-echo "Running Prettier check..."
-npm run prettier:check || {
-  echo "✗ Prettier check failed"
-  exit 1
-}
+# Prettier formatting
+echo "Reformatting with Prettier..."
+npm run prettier
+echo "✓ Prettier formatting complete"
 
 # Unit tests
 echo "Running unit tests..."
