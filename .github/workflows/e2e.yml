@@ -8,6 +8,10 @@ on:
       - completed
   pull_request:
     branches: [main]
+    paths-ignore:
+      - "spa/**"
+    paths-ignore:
+      - "spa/**"
   workflow_dispatch:
     inputs:
       deploy_pages:
