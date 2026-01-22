@@ -99,8 +99,15 @@ export function setFontSizesFromConfig(display?: {
   root.style.setProperty("--platform-column-width", "auto");
   root.style.setProperty("--time-column-width", "auto");
 
-  // Force reflow
+  // Force reflow to ensure CSS variables are applied to elements
   void departuresEl.offsetHeight;
+
+  // Force another reflow to ensure fonts are rendered with the new sizes
+  // This is critical on first load when fonts might not be applied yet
+  const firstRouteNumber = departuresEl.querySelector(".route-number");
+  if (firstRouteNumber) {
+    void (firstRouteNumber as HTMLElement).offsetHeight;
+  }
 
   // Measure route numbers
   let maxRouteWidth = 0;
@@ -309,6 +316,13 @@ export function calculateFillVerticalSpace(config: FontScalingConfig): void {
 
   // Force reflow to apply font sizes before measuring
   void departuresEl.offsetHeight;
+
+  // Force another reflow to ensure fonts are rendered with the new sizes
+  // This is critical on first load when fonts might not be applied yet
+  const firstRouteNumber = departuresEl.querySelector(".route-number");
+  if (firstRouteNumber) {
+    void (firstRouteNumber as HTMLElement).offsetHeight;
+  }
 
   // Measure the maximum width of route numbers (including badges/icons)
   let maxRouteWidth = 0;
