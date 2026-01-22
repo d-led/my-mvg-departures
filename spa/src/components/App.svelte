@@ -52,20 +52,19 @@
     // Calculate dynamic font sizes if fill_vertical_space is enabled
     // This matches Python: if (window.DEPARTURES_CONFIG && window.DEPARTURES_CONFIG.fillVerticalSpace) { requestAnimationFrame(() => { calculateFillVerticalSpace(); }); }
     if (currentRoute?.display?.fillVerticalSpace && groupedDepartures.length > 0) {
-      // Use requestAnimationFrame to ensure DOM is fully rendered (matches Python exactly)
-      requestAnimationFrame(() => {
-        calculateFillVerticalSpace({
-          fillVerticalSpace: true,
-          fontScalingFactorWhenFilling: currentRoute?.display?.fontScalingFactorWhenFilling ?? 1.0,
-        });
-        initDestinationScrolling();
+      // Note: This is called from within requestAnimationFrame already, so we can call directly
+      // The outer requestAnimationFrame ensures DOM is ready
+      calculateFillVerticalSpace({
+        fillVerticalSpace: true,
+        fontScalingFactorWhenFilling: currentRoute?.display?.fontScalingFactorWhenFilling ?? 1.0,
       });
+      initDestinationScrolling();
     } else if (!currentRoute?.display?.fillVerticalSpace && groupedDepartures.length > 0) {
       // When fillVerticalSpace is disabled, still set font sizes from config to prevent overlap
-      requestAnimationFrame(() => {
-        setFontSizesFromConfig(currentRoute?.display);
-        initDestinationScrolling();
-      });
+      // Note: This is called from within requestAnimationFrame already, so we can call directly
+      // The outer requestAnimationFrame ensures DOM is ready
+      setFontSizesFromConfig(currentRoute?.display);
+      initDestinationScrolling();
     }
   }
 
@@ -314,11 +313,14 @@
             lastUpdateTime = new Date();
             // Wait for Svelte to update the DOM before calculating layout
             await tick();
-            // Use multiple requestAnimationFrame calls to ensure DOM is fully laid out
-            // This is critical for column width calculations to prevent overlap
+            // Use multiple requestAnimationFrame calls + small delay to ensure DOM is fully laid out
+            // This is critical for column width calculations to prevent overlap on first load
+            // The delay ensures fonts are applied and layout is calculated before measuring
             requestAnimationFrame(() => {
               requestAnimationFrame(() => {
-                initializeAll();
+                setTimeout(() => {
+                  initializeAll();
+                }, 50);
               });
             });
           },
