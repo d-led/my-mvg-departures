@@ -36,11 +36,13 @@
     errorMessage = null;
     
     try {
-      const response = await fetch("/config.example.toml");
+      // Use relative path to work with both root and subdirectory deployments
+      const configPath = "./config.example.toml";
+      const response = await fetch(configPath);
       if (response.ok) {
         const exampleToml = await response.text();
         configText = exampleToml;
-        console.log("Loaded example config from /config.example.toml");
+        console.log(`Loaded example config from ${configPath}`);
       } else {
         errorMessage = `Failed to load example config: ${response.status} ${response.statusText}`;
         console.error("Failed to fetch example config:", response.status, response.statusText);

@@ -187,14 +187,16 @@
     // If no config found, load example config from static resources
     if (!stored) {
       try {
-        const response = await fetch("/config.example.toml");
+        // Use relative path to work with both root and subdirectory deployments
+        const configPath = "./config.example.toml";
+        const response = await fetch(configPath);
         if (response.ok) {
           const exampleToml = await response.text();
           stored = configParser.parseToml(exampleToml);
           // Store the example config in localStorage so it persists
           await configStorage.saveConfig(stored);
           await configStorage.saveConfigToml(exampleToml);
-          console.log("Loaded example config from /config.example.toml and stored in localStorage");
+          console.log(`Loaded example config from ${configPath} and stored in localStorage`);
         } else {
           console.warn("Failed to fetch example config:", response.status, response.statusText);
         }

@@ -57,6 +57,17 @@ jobs:
         run: |
           npm run build
 
+      - name: Verify config.example.toml is present
+        working-directory: spa
+        run: |
+          if [ ! -f "dist/config.example.toml" ]; then
+            echo "ERROR: config.example.toml not found in dist/"
+            ls -la dist/
+            exit 1
+          fi
+          echo "✓ config.example.toml found in dist/"
+          ls -lh dist/config.example.toml
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
 
