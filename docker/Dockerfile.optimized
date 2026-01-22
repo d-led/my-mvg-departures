@@ -1,7 +1,7 @@
 # Optimized multi-stage build with pre-compiled wheels
 # This version pre-builds all wheels in the builder stage
 # Stage 1: Build stage - compile everything
-FROM python:3.12-slim AS builder
+FROM python:3.13-slim AS builder
 
 WORKDIR /build
 
@@ -25,7 +25,7 @@ COPY src/ ./src/
 RUN uv pip install --system --no-cache .
 
 # Stage 2: Runtime stage - minimal Python slim
-FROM python:3.12-slim AS runtime
+FROM python:3.13-slim AS runtime
 
 # Install only essential runtime libraries
 # Most Python packages use wheels, but some C extensions need libc
@@ -40,7 +40,7 @@ WORKDIR /app
 
 # Copy only the installed packages (not build tools)
 # The package is already installed in site-packages from the builder stage
-COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy only config file (package code is already in site-packages)

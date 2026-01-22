@@ -1,6 +1,6 @@
 # Multi-stage build for secure, minimal Python Docker image
 # Stage 1: Build stage - contains build tools and compilers
-FROM python:3.12-slim AS builder
+FROM python:3.13-slim AS builder
 
 WORKDIR /build
 
@@ -25,7 +25,7 @@ COPY src/ ./src/
 RUN uv pip install --system --no-cache -e .
 
 # Stage 2: Runtime stage - minimal image with only runtime dependencies
-FROM python:3.12-slim AS runtime
+FROM python:3.13-slim AS runtime
 
 # Install only runtime system dependencies (if any are needed)
 # Most Python packages should be pre-compiled wheels, but some may need libc
@@ -38,7 +38,7 @@ WORKDIR /app
 
 # Copy Python environment from builder
 # Copy the entire Python site-packages and installed packages
-COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code

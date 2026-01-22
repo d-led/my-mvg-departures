@@ -1,15 +1,22 @@
 # Multi-stage build using Red Hat Universal Base Image (UBI)
 # UBI provides enterprise-grade security and is freely redistributable
 # Stage 1: Build stage with UBI
-FROM registry.access.redhat.com/ubi9/python-312:latest AS builder
+FROM registry.access.redhat.com/ubi9:latest AS builder
 
 WORKDIR /build
 
-# Install build dependencies
+# Install EPEL and Python 3.13
 RUN microdnf install -y --nodocs \
+    epel-release \
+    && microdnf install -y --nodocs \
+    python3.13 \
+    python3.13-pip \
+    python3.13-devel \
     gcc \
     gcc-c++ \
-    && microdnf clean all
+    && microdnf clean all && \
+    alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 1 && \
+    alternatives --install /usr/bin/pip3 pip3 /usr/bin/pip3.13 1
 
 # Install uv for faster dependency management
 RUN pip install --no-cache-dir uv
@@ -24,13 +31,24 @@ COPY src/ ./src/
 RUN uv pip install --system --no-cache -e .
 
 # Stage 2: Runtime stage - UBI Minimal (smallest UBI image)
-FROM registry.access.redhat.com/ubi9/python-312:latest AS runtime
+FROM registry.access.redhat.com/ubi9:latest AS runtime
 
 WORKDIR /app
 
+# Install Python 3.13 from EPEL
+RUN microdnf install -y --nodocs \
+    epel-release \
+    && microdnf install -y --nodocs \
+    python3.13 \
+    python3.13-pip \
+    && microdnf clean all && \
+    alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 1 && \
+    alternatives --install /usr/bin/pip3 pip3 /usr/bin/pip3.13 1
+
 # Copy Python environment from builder
-COPY --from=builder /opt/app-root/lib/python3.12/site-packages /opt/app-root/lib/python3.12/site-packages
-COPY --from=builder /opt/app-root/bin /opt/app-root/bin
+COPY --from=builder /usr/lib/python3.13/site-packages /usr/lib/python3.13/site-packages
+COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
 COPY src/ ./src/
