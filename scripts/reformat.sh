@@ -26,9 +26,9 @@ fi
 if ! $BLACK --version &> /dev/null; then
     echo "black not found. Installing dependencies..."
     if [ -d ".venv" ]; then
-        $PIP install -e ".[dev]"
+        $PIP install --prefer-binary -e ".[dev]"
     elif command -v uv &> /dev/null; then
-        uv pip install -e ".[dev]"
+        uv pip install --prefer-binary -e ".[dev]"
     else
         echo "Warning: No .venv found and uv not available. Please run ./scripts/setup.sh first or install dependencies manually."
         exit 1

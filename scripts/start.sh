@@ -48,16 +48,16 @@ if ! "$PYTHON" "$SCRIPT_DIR/check_package_installed.py" 2>/dev/null; then
     # Try uv first, then pip
     if command -v "$UV" >/dev/null 2>&1 && "$UV" --version >/dev/null 2>&1; then
         echo "Installing with uv..." >&2
-        "$UV" pip install -e . || {
+        "$UV" pip install --prefer-binary -e . || {
             echo "uv failed, trying pip..." >&2
-            "$PIP" install -e . || {
+            "$PIP" install --prefer-binary -e . || {
                 echo "Error: Failed to install package" >&2
                 exit 1
             }
         }
     else
         echo "Installing with pip..." >&2
-        "$PIP" install -e . || {
+        "$PIP" install --prefer-binary -e . || {
             echo "Error: Failed to install package" >&2
             exit 1
         }

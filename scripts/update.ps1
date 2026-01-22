@@ -85,13 +85,13 @@ if (-not $UPDATE_SUCCESS) {
     if ($UV_AVAILABLE) {
         Write-Host "Updating dependencies with uv..." -ForegroundColor Yellow
         if (Test-Path $UV) {
-            & $UV pip install -e ".[dev]" --upgrade 2>&1 | Out-Host
+            & $UV pip install --prefer-binary -e ".[dev]" --upgrade 2>&1 | Out-Host
             if ($LASTEXITCODE -eq 0) {
                 $UPDATE_SUCCESS = $true
                 Write-Host "✓ Dependencies updated with uv." -ForegroundColor Green
             }
         } else {
-            & $UV pip install -e ".[dev]" --upgrade 2>&1 | Out-Host
+            & $UV pip install --prefer-binary -e ".[dev]" --upgrade 2>&1 | Out-Host
             if ($LASTEXITCODE -eq 0) {
                 $UPDATE_SUCCESS = $true
                 Write-Host "✓ Dependencies updated with uv." -ForegroundColor Green
@@ -103,7 +103,7 @@ if (-not $UPDATE_SUCCESS) {
 # Fall back to pip
 if (-not $UPDATE_SUCCESS) {
     Write-Host "Using pip to update dependencies..." -ForegroundColor Yellow
-    & $PIP install -e ".[dev]" --upgrade 2>&1 | Out-Host
+    & $PIP install --prefer-binary -e ".[dev]" --upgrade 2>&1 | Out-Host
     if ($LASTEXITCODE -eq 0) {
         $UPDATE_SUCCESS = $true
         Write-Host "✓ Dependencies updated with pip." -ForegroundColor Green

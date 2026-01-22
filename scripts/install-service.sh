@@ -39,7 +39,7 @@ if [ ! -d ".venv" ]; then
 fi
 
 .venv/bin/pip install --upgrade pip
-.venv/bin/pip install -e .
+.venv/bin/pip install --prefer-binary -e .
 
 # Install service script
 echo "Installing service script..."

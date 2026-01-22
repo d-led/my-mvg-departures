@@ -24,7 +24,7 @@ if (Get-Command python -ErrorAction SilentlyContinue) {
     Write-Host "  https://www.python.org/downloads/" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "Alternatively, you can install Python using a package manager:" -ForegroundColor Yellow
-    Write-Host "  - winget: winget install Python.Python.3.12" -ForegroundColor Cyan
+        Write-Host "  - winget: winget install Python.Python.3.12" -ForegroundColor Cyan
     Write-Host "  - scoop: scoop install python" -ForegroundColor Cyan
     Write-Host "  - chocolatey: choco install python" -ForegroundColor Cyan
     exit 1
@@ -174,13 +174,13 @@ if (-not $INSTALL_SUCCESS) {
     if ($UV_AVAILABLE) {
         Write-Host "Installing dependencies with uv..." -ForegroundColor Yellow
         if (Test-Path $UV) {
-            & $UV pip install -e ".[dev]" 2>&1 | Out-Host
+            & $UV pip install --prefer-binary -e ".[dev]" 2>&1 | Out-Host
             if ($LASTEXITCODE -eq 0) {
                 $INSTALL_SUCCESS = $true
                 Write-Host "✓ Dependencies installed with uv." -ForegroundColor Green
             }
         } else {
-            & $UV pip install -e ".[dev]" 2>&1 | Out-Host
+            & $UV pip install --prefer-binary -e ".[dev]" 2>&1 | Out-Host
             if ($LASTEXITCODE -eq 0) {
                 $INSTALL_SUCCESS = $true
                 Write-Host "✓ Dependencies installed with uv." -ForegroundColor Green
@@ -192,13 +192,13 @@ if (-not $INSTALL_SUCCESS) {
 # Fall back to pip
 if (-not $INSTALL_SUCCESS) {
     Write-Host "Using pip to install dependencies..." -ForegroundColor Yellow
-    & $PIP install -e ".[dev]" 2>&1 | Out-Host
+    & $PIP install --prefer-binary -e ".[dev]" 2>&1 | Out-Host
     if ($LASTEXITCODE -eq 0) {
         $INSTALL_SUCCESS = $true
         Write-Host "✓ Dependencies installed with pip." -ForegroundColor Green
     } else {
         Write-Host "Warning: Failed to install with dev dependencies, trying core dependencies..." -ForegroundColor Yellow
-        & $PIP install -e . 2>&1 | Out-Host
+        & $PIP install --prefer-binary -e . 2>&1 | Out-Host
         if ($LASTEXITCODE -eq 0) {
             Write-Host "✓ Core dependencies installed. Dev dependencies may be missing." -ForegroundColor Green
             Write-Host "  You can install them later with: $PIP install -e `".[dev]`"" -ForegroundColor Yellow

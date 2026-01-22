@@ -50,16 +50,16 @@ if ! "$PYTHON" -c "import mvg_departures" 2>/dev/null; then
     # Try uv first, then pip
     if command -v "$UV" >/dev/null 2>&1 && "$UV" --version >/dev/null 2>&1; then
         echo "Installing parent with uv..." >&2
-        "$UV" pip install -e . || {
+        "$UV" pip install --prefer-binary -e . || {
             echo "uv failed, trying pip..." >&2
-            "$PIP" install -e . || {
+            "$PIP" install --prefer-binary -e . || {
                 echo "Error: Failed to install parent package" >&2
                 exit 1
             }
         }
     else
         echo "Installing parent with pip..." >&2
-        "$PIP" install -e . || {
+        "$PIP" install --prefer-binary -e . || {
             echo "Error: Failed to install parent package" >&2
             exit 1
         }
@@ -77,16 +77,16 @@ if ! "$PYTHON" -c "import mvg_departures_inky" 2>/dev/null || ! "$PYTHON" -c "im
     # Try uv first, then pip
     if command -v "$UV" >/dev/null 2>&1 && "$UV" --version >/dev/null 2>&1; then
         echo "Installing with uv (including hardware support)..." >&2
-        "$UV" pip install -e '.[hardware]' || {
+        "$UV" pip install --prefer-binary -e '.[hardware]' || {
             echo "uv failed, trying pip..." >&2
-            "$PIP" install -e '.[hardware]' || {
+            "$PIP" install --prefer-binary -e '.[hardware]' || {
                 echo "Error: Failed to install inky package with hardware support" >&2
                 exit 1
             }
         }
     else
         echo "Installing with pip (including hardware support)..." >&2
-        "$PIP" install -e '.[hardware]' || {
+        "$PIP" install --prefer-binary -e '.[hardware]' || {
             echo "Error: Failed to install inky package with hardware support" >&2
             exit 1
         }

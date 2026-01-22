@@ -82,11 +82,11 @@ if [ "$UPDATE_SUCCESS" = false ]; then
     if [ "$UV_AVAILABLE" = true ]; then
         echo "Updating dependencies with uv..." >&2
         if [ -f "$UV" ]; then
-            if "$UV" pip install -e ".[dev]" --upgrade 2>&1; then
+            if "$UV" pip install --prefer-binary -e ".[dev]" --upgrade 2>&1; then
                 UPDATE_SUCCESS=true
                 echo "✓ Dependencies updated with uv." >&2
             fi
-        elif "$UV" pip install -e ".[dev]" --upgrade 2>&1; then
+        elif "$UV" pip install --prefer-binary -e ".[dev]" --upgrade 2>&1; then
             UPDATE_SUCCESS=true
             echo "✓ Dependencies updated with uv." >&2
         fi
@@ -96,7 +96,7 @@ fi
 # Fall back to pip
 if [ "$UPDATE_SUCCESS" = false ]; then
     echo "Using pip to update dependencies..." >&2
-    if "$PIP" install -e ".[dev]" --upgrade 2>&1; then
+    if "$PIP" install --prefer-binary -e ".[dev]" --upgrade 2>&1; then
         UPDATE_SUCCESS=true
         echo "✓ Dependencies updated with pip." >&2
     else

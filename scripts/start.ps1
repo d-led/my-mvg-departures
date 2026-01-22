@@ -78,7 +78,7 @@ if (-not $packageInstalled) {
     if (Get-Command $UV -ErrorAction SilentlyContinue) {
         try {
             Write-Host "Installing with uv..." -ForegroundColor Yellow
-            & $UV pip install -e .
+            & $UV pip install --prefer-binary -e .
             if ($LASTEXITCODE -eq 0) {
                 $installed = $true
             }
@@ -90,7 +90,7 @@ if (-not $packageInstalled) {
     if (-not $installed) {
         try {
             Write-Host "Installing with pip..." -ForegroundColor Yellow
-            & $PIP install -e .
+            & $PIP install --prefer-binary -e .
             if ($LASTEXITCODE -eq 0) {
                 $installed = $true
             } else {
