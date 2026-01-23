@@ -5,10 +5,11 @@ FROM python:3.13-slim AS builder
 
 WORKDIR /app
 
-# Install build dependencies
+# Install build dependencies (bash needed for setup.sh)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
+    bash \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy everything needed for setup
