@@ -49,7 +49,8 @@ TIME_MODE_ABSOLUTE = "absolute"  # Always show absolute time (e.g., "14:30")
 
 # Font scaling when filling vertical space
 FONT_SCALING_FACTOR_WHEN_FILLING = (
-    0.8  # Scale body fonts by this factor (fill_vertical_space is always enabled for Inky)
+    0.85  # Scale body fonts by this factor (fill_vertical_space is always enabled for Inky)
+    # Increased from 0.8 to 0.85 to make fonts larger while maintaining whitespace
 )
 
 # Default refresh interval for Inky displays (in seconds)

@@ -1372,17 +1372,20 @@ class InkyRenderer:
         # Calculate icon size based on font size (like web version: height: 1em)
         # Icon should scale with font size to save horizontal space when font is smaller
         # But also ensure it fits within the row with proper spacing
-        # Use font_size as base (1em equivalent), but constrain to row height - 3 for spacing
+        # Use font_size * 1.2 as base (larger than 1em for better visibility)
+        # Constrain to row height - 2 for spacing (leaves 1px top + 1px bottom = "one dot whitespace")
         # This adapts icon size to font size, saving horizontal space when needed
-        icon_size_from_font = font_size  # 1em equivalent (web version uses height: 1em)
-        icon_size_from_row = line_height - 3  # Maximum size to fit in row with spacing
+        icon_size_from_font = int(font_size * 1.2)  # 1.2em equivalent for larger icons
+        icon_size_from_row = (
+            line_height - 2
+        )  # Maximum size to fit in row with 2px spacing (1px top + 1px bottom)
 
         # Use the smaller of the two to ensure it fits and scales with font
         calculated_icon_size = min(icon_size_from_font, icon_size_from_row)
 
-        # Apply a very small minimum (8px) only for visibility, not to force larger icons
-        # This allows icons to scale down with small fonts, saving horizontal space
-        calculated_icon_size = max(calculated_icon_size, 8)
+        # Apply minimum (12px) for better visibility on e-ink displays
+        # This allows icons to scale down with small fonts, but keeps them visible
+        calculated_icon_size = max(calculated_icon_size, 12)
 
         # But also ensure it doesn't exceed the maximum configured size
         calculated_icon_size = min(calculated_icon_size, self.config.route_icon_max_size)
