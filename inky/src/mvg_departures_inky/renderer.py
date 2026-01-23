@@ -1378,11 +1378,15 @@ class InkyRenderer:
         # This matches how transport icons are sized: line_height - 2
         if hasattr(self, "_refresh_icon_size"):
             # Recalculate based on actual header height instead of font size
-            refresh_icon_size_from_height = header_height - 2  # Same as transport icons: row_height - 2
+            refresh_icon_size_from_height = (
+                header_height - 2
+            )  # Same as transport icons: row_height - 2
             # Keep minimum size for visibility
             refresh_icon_size_from_height = max(refresh_icon_size_from_height, 12)
             # Don't exceed maximum configured size
-            refresh_icon_size_from_height = min(refresh_icon_size_from_height, self.config.route_icon_max_size)
+            refresh_icon_size_from_height = min(
+                refresh_icon_size_from_height, self.config.route_icon_max_size
+            )
             self._refresh_icon_size = int(refresh_icon_size_from_height)
             logger.debug(
                 f"Recalculated refresh icon size based on header height: {self._refresh_icon_size} "
@@ -1517,8 +1521,12 @@ class InkyRenderer:
                     # Header starts at y, ends at y + actual_header_height
                     icon_y_centered = int(header_center - cached_refresh_icon_size / 2)
                     icon_y_min = int(y + 1)  # At least 1px from top
-                    icon_y_max = int(y + actual_header_height - cached_refresh_icon_size - 1)  # At least 1px from bottom
-                    icon_y = max(icon_y_min, min(icon_y_centered, icon_y_max))  # Clamp between min and max
+                    icon_y_max = int(
+                        y + actual_header_height - cached_refresh_icon_size - 1
+                    )  # At least 1px from bottom
+                    icon_y = max(
+                        icon_y_min, min(icon_y_centered, icon_y_max)
+                    )  # Clamp between min and max
 
                     # Draw time text
                     draw.text(

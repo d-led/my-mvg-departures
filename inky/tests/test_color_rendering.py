@@ -55,7 +55,7 @@ class TestColorRendering:
             0, 0, 0,  # 0: Black
             255, 255, 255,  # 1: White
             4, 120, 87,  # 2: Green
-            8, 123, 196,  # 3: Blue
+            0, 80, 140,  # 3: Blue (#00508c)
             255, 0, 0,  # 4: Red
             255, 255, 0,  # 5: Yellow
             255, 165, 0,  # 6: Orange
@@ -65,7 +65,7 @@ class TestColorRendering:
     @pytest.fixture
     def config(self) -> InkyDisplayConfig:
         """Create a test config."""
-        return InkyDisplayConfig()
+        return InkyDisplayConfig(dithering_enabled=False)
 
     @pytest.fixture
     def renderer(self, config: InkyDisplayConfig, mock_display: MagicMock) -> InkyRenderer:
@@ -135,8 +135,8 @@ class TestColorRendering:
         # Render the departures
         img = renderer.render([direction_group])
 
-        # Verify image is in palette mode (dithered)
-        assert img.mode == "P", f"Image should be in palette mode after dithering, got {img.mode}"
+        # Verify image is in palette mode (quantized or dithered)
+        assert img.mode == "P", f"Image should be in palette mode, got {img.mode}"
 
         # Get the palette
         palette = img.getpalette()
@@ -163,13 +163,14 @@ class TestColorRendering:
 
         blue_percentage = (blue_pixels / total_header_pixels) * 100 if total_header_pixels > 0 else 0
 
-        # Header should have significant blue pixels (at least 10% due to dithering)
+        # Header should have blue pixels (without dithering, should be mostly blue)
         assert (
             blue_pixels > 0
         ), f"Header should have blue pixels, found {blue_pixels} out of {total_header_pixels}"
+        # Without dithering, header should be mostly blue (at least 50%)
         assert (
-            blue_percentage > 10.0
-        ), f"Header should have at least 10% blue pixels (dithered), got {blue_percentage:.2f}%"
+            blue_percentage > 50.0
+        ), f"Header should have at least 50% blue pixels (without dithering), got {blue_percentage:.2f}%"
 
     def test_when_realtime_departure_rendered_then_time_is_green(
         self, renderer: InkyRenderer
@@ -207,8 +208,8 @@ class TestColorRendering:
         # Render the departures
         img = renderer.render([direction_group])
 
-        # Verify image is in palette mode (dithered)
-        assert img.mode == "P", f"Image should be in palette mode after dithering, got {img.mode}"
+        # Verify image is in palette mode (quantized or dithered)
+        assert img.mode == "P", f"Image should be in palette mode, got {img.mode}"
 
         # Get the palette
         palette = img.getpalette()
@@ -264,7 +265,7 @@ class TestColorRendering:
 
         draw = ImageDraw.Draw(rgb_img)
         # Draw blue rectangle (header color)
-        draw.rectangle([0, 0, 50, 50], fill=(8, 123, 196))  # Blue
+        draw.rectangle([0, 0, 50, 50], fill=(0, 80, 140))  # Blue (#00508c)
         # Draw green rectangle (realtime color)
         draw.rectangle([50, 0, 100, 50], fill=(4, 120, 87))  # Green
         # Draw black text
