@@ -1,6 +1,7 @@
 #!/bin/bash
 # Run script for MVG Departures Inky Display (mock mode - saves PNGs)
-# Works from any directory, automatically handles venv and dependencies
+# Assumes dependencies are already installed via ./scripts/setup.sh or ./scripts/setup_dev.sh
+# Works from any directory
 
 set -e
 
@@ -26,73 +27,33 @@ done
 if [ -n "$VENV_PATH" ]; then
     if [ -f "${VENV_PATH}/bin/python" ]; then
         PYTHON="${VENV_PATH}/bin/python"
-        PIP="${VENV_PATH}/bin/pip"
-        UV="${VENV_PATH}/bin/uv"
     else
         PYTHON="${VENV_PATH}/Scripts/python.exe"
-        PIP="${VENV_PATH}/Scripts/pip.exe"
-        UV="${VENV_PATH}/Scripts/uv.exe"
     fi
     echo "Using virtual environment: ${VENV_PATH}" >&2
 else
-    PYTHON="python3"
-    PIP="pip3"
-    UV="uv"
-    echo "No virtual environment found, using system Python" >&2
+    echo "Error: No virtual environment found." >&2
+    echo "Please run setup first:" >&2
+    echo "  ./scripts/setup_dev.sh    (for development/macOS)" >&2
+    echo "  ./scripts/setup.sh        (for Raspberry Pi)" >&2
+    exit 1
 fi
 
-# Check if parent package is installed
+# Verify packages are installed
 if ! "$PYTHON" -c "import mvg_departures" 2>/dev/null; then
-    echo "Parent package not installed. Installing..." >&2
-    echo "" >&2
-    
-    cd "$PARENT_ROOT"
-    # Try uv first, then pip
-    if command -v "$UV" >/dev/null 2>&1 && "$UV" --version >/dev/null 2>&1; then
-        echo "Installing parent with uv..." >&2
-        "$UV" pip install -e . || {
-            echo "uv failed, trying pip..." >&2
-            "$PIP" install --prefer-binary -e . || {
-                echo "Error: Failed to install parent package" >&2
-                exit 1
-            }
-        }
-    else
-        echo "Installing parent with pip..." >&2
-        "$PIP" install --prefer-binary -e . || {
-            echo "Error: Failed to install parent package" >&2
-            exit 1
-        }
-    fi
-    cd "$INKY_ROOT"
-    echo "Parent package installed successfully!" >&2
-    echo "" >&2
+    echo "Error: Parent package 'mvg_departures' not installed." >&2
+    echo "Please run setup first:" >&2
+    echo "  ./scripts/setup_dev.sh    (for development/macOS)" >&2
+    echo "  ./scripts/setup.sh        (for Raspberry Pi)" >&2
+    exit 1
 fi
 
-# Check if inky package is installed
 if ! "$PYTHON" -c "import mvg_departures_inky" 2>/dev/null; then
-    echo "Inky package not installed. Installing..." >&2
-    echo "" >&2
-    
-    # Try uv first, then pip
-    if command -v "$UV" >/dev/null 2>&1 && "$UV" --version >/dev/null 2>&1; then
-        echo "Installing with uv..." >&2
-        "$UV" pip install -e . || {
-            echo "uv failed, trying pip..." >&2
-            "$PIP" install --prefer-binary -e . || {
-                echo "Error: Failed to install inky package" >&2
-                exit 1
-            }
-        }
-    else
-        echo "Installing with pip..." >&2
-        "$PIP" install --prefer-binary -e . || {
-            echo "Error: Failed to install inky package" >&2
-            exit 1
-        }
-    fi
-    echo "Inky package installed successfully!" >&2
-    echo "" >&2
+    echo "Error: Package 'mvg_departures_inky' not installed." >&2
+    echo "Please run setup first:" >&2
+    echo "  ./scripts/setup_dev.sh    (for development/macOS)" >&2
+    echo "  ./scripts/setup.sh        (for Raspberry Pi)" >&2
+    exit 1
 fi
 
 # Create output directory for mock images

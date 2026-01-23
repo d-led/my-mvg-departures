@@ -1,6 +1,7 @@
 #!/bin/bash
 # Start script for MVG Departures Inky Display (real hardware)
-# Works from any directory, automatically handles venv and dependencies
+# Assumes dependencies are already installed via ./scripts/setup.sh
+# Works from any directory
 
 set -e
 
@@ -26,103 +27,37 @@ done
 if [ -n "$VENV_PATH" ]; then
     if [ -f "${VENV_PATH}/bin/python" ]; then
         PYTHON="${VENV_PATH}/bin/python"
-        PIP="${VENV_PATH}/bin/pip"
-        UV="${VENV_PATH}/bin/uv"
     else
         PYTHON="${VENV_PATH}/Scripts/python.exe"
-        PIP="${VENV_PATH}/Scripts/pip.exe"
-        UV="${VENV_PATH}/Scripts/uv.exe"
     fi
     echo "Using virtual environment: ${VENV_PATH}" >&2
 else
-    PYTHON="python3"
-    PIP="pip3"
-    UV="uv"
-    echo "No virtual environment found, using system Python" >&2
+    echo "Error: No virtual environment found." >&2
+    echo "Please run setup first:" >&2
+    echo "  ./scripts/setup.sh        (for Raspberry Pi with hardware support)" >&2
+    exit 1
 fi
 
-# Check if parent package is installed
+# Verify packages are installed
 if ! "$PYTHON" -c "import mvg_departures" 2>/dev/null; then
-    echo "Parent package not installed. Installing..." >&2
-    echo "" >&2
-    
-    cd "$PARENT_ROOT"
-    # Try uv first, then pip
-    if command -v "$UV" >/dev/null 2>&1 && "$UV" --version >/dev/null 2>&1; then
-        echo "Installing parent with uv (preferring binary wheels to avoid Rust builds)..." >&2
-        "$UV" pip install --index-strategy unsafe-best-match --only-binary=:all: -e . 2>&1 || {
-            echo "Warning: Binary-only install with uv failed, trying regular install..." >&2
-            "$UV" pip install --index-strategy unsafe-best-match -e . 2>&1 || {
-                echo "uv failed, trying pip..." >&2
-                "$PIP" install --only-binary=:all: --prefer-binary -e . 2>&1 || {
-                    echo "Warning: Binary-only install with pip failed, trying prefer-binary..." >&2
-                    "$PIP" install --prefer-binary -e . || {
-                        echo "Error: Failed to install parent package" >&2
-                        exit 1
-                    }
-                }
-            }
-        }
-    else
-        echo "Installing parent with pip (preferring binary wheels to avoid Rust builds)..." >&2
-        "$PIP" install --only-binary=:all: --prefer-binary -e . 2>&1 || {
-            echo "Warning: Binary-only install failed, trying prefer-binary only..." >&2
-            "$PIP" install --prefer-binary -e . || {
-                echo "Error: Failed to install parent package" >&2
-                exit 1
-            }
-        }
-    fi
-    cd "$INKY_ROOT"
-    echo "Parent package installed successfully!" >&2
-    echo "" >&2
+    echo "Error: Parent package 'mvg_departures' not installed." >&2
+    echo "Please run setup first:" >&2
+    echo "  ./scripts/setup.sh        (for Raspberry Pi with hardware support)" >&2
+    exit 1
 fi
 
-# Check if inky package is installed (with hardware dependencies)
-if ! "$PYTHON" -c "import mvg_departures_inky" 2>/dev/null || ! "$PYTHON" -c "import inky" 2>/dev/null; then
-    echo "Inky package not installed. Installing..." >&2
-    echo "" >&2
-    
-    # Try uv first, then pip
-    if command -v "$UV" >/dev/null 2>&1 && "$UV" --version >/dev/null 2>&1; then
-        echo "Installing with uv (including hardware support, preferring binary wheels to avoid Rust builds)..." >&2
-        "$UV" pip install --index-strategy unsafe-best-match --only-binary=:all: -e '.[hardware]' 2>&1 || {
-            echo "Warning: Binary-only install with uv failed, trying regular install..." >&2
-            "$UV" pip install --index-strategy unsafe-best-match -e '.[hardware]' 2>&1 || {
-                echo "uv failed, trying pip..." >&2
-                "$PIP" install --only-binary=:all: --prefer-binary -e '.[hardware]' 2>&1 || {
-                    echo "Warning: Binary-only install with pip failed, trying prefer-binary..." >&2
-                    "$PIP" install --prefer-binary -e '.[hardware]' || {
-                        echo "Error: Failed to install inky package with hardware support" >&2
-                        exit 1
-                    }
-                }
-            }
-        }
-    else
-        echo "Installing with pip (including hardware support, preferring binary wheels to avoid Rust builds)..." >&2
-        "$PIP" install --only-binary=:all: --prefer-binary -e '.[hardware]' 2>&1 || {
-            echo "Warning: Binary-only install failed, trying prefer-binary only..." >&2
-            "$PIP" install --prefer-binary -e '.[hardware]' || {
-                echo "Error: Failed to install inky package with hardware support" >&2
-                exit 1
-            }
-        }
-    fi
-    echo "Inky package installed successfully!" >&2
-    echo "" >&2
+if ! "$PYTHON" -c "import mvg_departures_inky" 2>/dev/null; then
+    echo "Error: Package 'mvg_departures_inky' not installed." >&2
+    echo "Please run setup first:" >&2
+    echo "  ./scripts/setup.sh        (for Raspberry Pi with hardware support)" >&2
+    exit 1
 fi
 
-# Install system dependencies (numpy system libraries) on Linux
-if [ "$(uname)" = "Linux" ] && command -v apt-get >/dev/null 2>&1; then
-    # Source setup-common.sh to get install_numpy_for_pi function
-    if [ -f "${PARENT_ROOT}/scripts/setup-common.sh" ]; then
-        # shellcheck source=../../scripts/setup-common.sh
-        . "${PARENT_ROOT}/scripts/setup-common.sh"
-        # Set PYTHON for the function
-        export PYTHON
-        install_numpy_for_pi
-    fi
+if ! "$PYTHON" -c "import inky" 2>/dev/null; then
+    echo "Error: Hardware package 'inky' not installed." >&2
+    echo "Please run setup first:" >&2
+    echo "  ./scripts/setup.sh        (for Raspberry Pi with hardware support)" >&2
+    exit 1
 fi
 
 # Run the application (real hardware mode)
