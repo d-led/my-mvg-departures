@@ -1436,7 +1436,7 @@ class InkyRenderer:
             header = group.get("header", "")
             departures = group.get("departures", [])
 
-            header_bg_color_rgb = (8, 123, 196)
+            header_bg_color_rgb = (0, 80, 140)
 
             # White text on colored background
             header_text_color_rgb = (255, 255, 255)
