@@ -1138,7 +1138,7 @@ class InkyRenderer:
                 self.config.min_font_size - 1,
                 -self.config.font_size_step,
             ):
-                trial_icon_size = max(int(trial_font_size * 0.8), 12)
+                trial_icon_size = max(int(trial_font_size * 0.6), 12)
                 calculated_font_size = self._calculate_header_font_size(
                     first_header, available_header_width, refresh_icon_size=trial_icon_size
                 )
@@ -1159,8 +1159,9 @@ class InkyRenderer:
         # Use the smaller font size to ensure both fit
         header_font_size = min(first_header_font_size_with_icon, longest_header_font_size)
 
-        # Calculate icon size based on final font size (0.8x, minimum 12px)
-        refresh_icon_size = max(int(header_font_size * 0.8), 12)
+        # Calculate icon size based on final font size (0.6x for proper sizing, minimum 12px)
+        # Reduced from 0.8x to 0.6x to make refresh icon smaller and fit better in header
+        refresh_icon_size = max(int(header_font_size * 0.6), 12)
 
         # Store icon size for rendering
         self._refresh_icon_size = refresh_icon_size
@@ -1372,6 +1373,22 @@ class InkyRenderer:
         self._line_height = line_height
         self._header_height = header_height
 
+        # Recalculate refresh icon size based on header height (same logic as transport icons)
+        # Use header_height - 2 to ensure at least 1px padding on top and bottom (one dot whitespace)
+        # This matches how transport icons are sized: line_height - 2
+        if hasattr(self, "_refresh_icon_size"):
+            # Recalculate based on actual header height instead of font size
+            refresh_icon_size_from_height = header_height - 2  # Same as transport icons: row_height - 2
+            # Keep minimum size for visibility
+            refresh_icon_size_from_height = max(refresh_icon_size_from_height, 12)
+            # Don't exceed maximum configured size
+            refresh_icon_size_from_height = min(refresh_icon_size_from_height, self.config.route_icon_max_size)
+            self._refresh_icon_size = int(refresh_icon_size_from_height)
+            logger.debug(
+                f"Recalculated refresh icon size based on header height: {self._refresh_icon_size} "
+                f"(header_height={header_height}, transport icon logic: height - 2)"
+            )
+
         # Calculate icon size based on font size (like web version: height: 1em)
         # Icon should scale with font size to save horizontal space when font is smaller
         # But also ensure it fits within the row with proper spacing
@@ -1466,20 +1483,45 @@ class InkyRenderer:
                     time_bbox = header_font.getbbox(update_time)
                     time_width = time_bbox[2] - time_bbox[0]
 
-                    # Position elements from right edge
+                    # Position elements from right edge with proper padding
+                    # Ensure at least 1 pixel padding from right edge (one dot whitespace)
+                    # right_x is where content should end (width - padding)
                     right_x = self.config.width - self.config.padding
 
-                    # Time text position (right-aligned)
+                    # Time text position (right-aligned, ends at right_x)
                     time_x = right_x - time_width
 
-                    # Gap between icon and time
+                    # Gap between icon and time (at least 4px for readability)
                     icon_time_gap = 4
 
                     # Icon position (to the left of time text)
-                    icon_x = time_x - icon_time_gap - cached_refresh_icon_size
+                    # Ensure icon has at least 1px padding from right edge
+                    # Icon's right edge should be at: time_x - icon_time_gap
+                    # But we want at least 1px from the right edge, so verify:
+                    # icon_right_edge = icon_x + cached_refresh_icon_size
+                    # We want: icon_right_edge <= right_x - 1 (at least 1px padding)
+                    # So: icon_x + cached_refresh_icon_size <= right_x - 1
+                    # Therefore: icon_x <= right_x - 1 - cached_refresh_icon_size
+                    icon_x_max = right_x - 1 - cached_refresh_icon_size
+                    icon_x_from_time = time_x - icon_time_gap - cached_refresh_icon_size
+                    # Use the more restrictive (leftmost) position to ensure padding
+                    icon_x = min(icon_x_from_time, icon_x_max)
 
-                    # Center icon vertically in header
-                    icon_y = int(header_center - cached_refresh_icon_size / 2)
+                    # Verify icon doesn't go beyond left padding (safety check)
+                    if icon_x < self.config.padding:
+                        logger.warning(
+                            f"Icon would overlap left padding: icon_x={icon_x}, padding={self.config.padding}. "
+                            f"Adjusting icon size or position may be needed."
+                        )
+                        # Adjust: move icon to the right if needed
+                        icon_x = max(icon_x, self.config.padding)
+
+                    # Center icon vertically in header, but ensure at least 1px padding from top and bottom
+                    # Header starts at y, ends at y + actual_header_height
+                    icon_y_centered = int(header_center - cached_refresh_icon_size / 2)
+                    icon_y_min = int(y + 1)  # At least 1px from top
+                    icon_y_max = int(y + actual_header_height - cached_refresh_icon_size - 1)  # At least 1px from bottom
+                    icon_y = max(icon_y_min, min(icon_y_centered, icon_y_max))  # Clamp between min and max
 
                     # Draw time text
                     draw.text(
