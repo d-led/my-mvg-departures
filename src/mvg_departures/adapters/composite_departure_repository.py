@@ -56,8 +56,11 @@ class CompositeDepartureRepository(DepartureRepository):
         """Create a repository instance for the given API provider."""
         from mvg_departures.adapters.db_api import DbDepartureRepository
         from mvg_departures.adapters.mvg_api import MvgDepartureRepository
+        from mvg_departures.adapters.test_api import TestDepartureRepository
         from mvg_departures.adapters.vbb_api import VbbDepartureRepository
 
+        if api_provider == "test":
+            return TestDepartureRepository(session=self._session)
         if api_provider == "db":
             return DbDepartureRepository(session=self._session)
         if api_provider == "vbb":

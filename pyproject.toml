@@ -98,11 +98,14 @@ select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "DTZ", "T10", "SIM", "ARG", 
 ignore = ["E501"]
 
 [tool.uv]
-# Configure piwheels.org as an extra index URL to avoid OOM issues on Raspberry Pi Zero
+# Configure piwheels.org as a fallback index for ARM Linux (Raspberry Pi)
 # piwheels provides pre-built wheels for ARM architectures, avoiding compilation
-# Without explicit=true, uv will use piwheels as a fallback when PyPI doesn't have ARM wheels
+# Without explicit=true, uv will automatically use piwheels as a fallback when PyPI doesn't have ARM wheels
+# This works out of the box - no special cases needed!
 [[tool.uv.index]]
+name = "piwheels"
 url = "https://www.piwheels.org/simple"
+# Not setting explicit=true allows piwheels to be used as fallback on ARM Linux automatically
 
 [tool.mypy]
 python_version = "3.13"

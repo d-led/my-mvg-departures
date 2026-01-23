@@ -114,13 +114,11 @@ install_with_available_manager() {
     fi
     
     if [ -n "$uv_cmd" ]; then
-        echo "Installing dependencies with uv (preferring binary wheels from piwheels to avoid Rust builds)..." >&2
-        # uv automatically uses piwheels index configured in pyproject.toml [tool.uv.index]
-        # Use --index-strategy unsafe-best-match to allow uv to check all indexes when piwheels
-        # doesn't have the right version/ABI tag (e.g., aiohttp 3.13.3 for Python 3.12 on armv6l)
-        # This allows fallback to PyPI when piwheels doesn't have compatible wheels
-        if "$uv_cmd" pip install --index-strategy unsafe-best-match -e "$extras" 2>&1; then
-            echo "✓ Dependencies installed with uv (using piwheels and PyPI for binary wheels)." >&2
+        echo "Installing dependencies with uv..." >&2
+        # piwheels is configured as a fallback index - uv will automatically use it on ARM Linux
+        # when PyPI doesn't have wheels, avoiding compilation. Works out of the box!
+        if "$uv_cmd" pip install -e "$extras" 2>&1; then
+            echo "✓ Dependencies installed with uv (using PyPI)." >&2
             return 0
         fi
     fi
