@@ -1437,9 +1437,21 @@ class InkyRenderer:
             departures = group.get("departures", [])
 
             # Determine header background color
-            # Use blue RGB color for headers (will be dithered to blue palette index)
-            # Blue from web version: #087BC4 = RGB(8, 123, 196)
-            header_bg_color_rgb = (8, 123, 196)
+            # Use DESATURATED_PALETTE from Inky display (as per Pimoroni example)
+            # This gives us the exact RGB values that won't dither
+            # DESATURATED_PALETTE order: [black, white, green, blue, red, yellow, orange]
+            # Blue is at index 3
+            if hasattr(self.display, "DESATURATED_PALETTE") and len(self.display.DESATURATED_PALETTE) > 3:
+                # DESATURATED_PALETTE contains RGB tuples (0-255 range)
+                header_bg_color_rgb = tuple(self.display.DESATURATED_PALETTE[3])
+            else:
+                # Fallback: get from palette RGB or use default
+                palette_rgb = self._get_display_palette_rgb()
+                if len(palette_rgb) > 3:
+                    header_bg_color_rgb = palette_rgb[3]
+                else:
+                    # Final fallback: default Inky blue RGB(8, 123, 196) = #087BC4
+                    header_bg_color_rgb = (8, 123, 196)
 
             # White text on colored background
             header_text_color_rgb = (255, 255, 255)
