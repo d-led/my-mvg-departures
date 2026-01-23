@@ -255,8 +255,12 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    color: inherit;
+    color: rgba(0, 0, 0, 0.8);
     transition: opacity 0.2s;
+  }
+
+  [data-theme="dark"] .config-button {
+    color: rgba(255, 255, 255, 0.8);
   }
 
   .config-button:hover {
