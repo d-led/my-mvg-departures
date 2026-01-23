@@ -402,6 +402,10 @@ h2.direction-header {
   opacity: 0.5;
   text-decoration: line-through;
 }
+.stale {
+  opacity: 0.5;
+  /* No strikethrough - just greyed out to signal staleness */
+}
 .delay {
   color: #d97706;
 }

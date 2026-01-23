@@ -57,6 +57,11 @@ script.onload = function () {
             connectionState = "unstable";
             updateConnectionStatus();
 
+            // Mark data as stale immediately when WebSocket closes
+            if (window.StalenessManager) {
+              window.StalenessManager.markStale();
+            }
+
             // Fallback: if phx:disconnect doesn't fire within 3 seconds, set to broken
             // This handles cases where PyView doesn't fire phx:disconnect immediately
             const closeTimeout = setTimeout(() => {
@@ -68,10 +73,18 @@ script.onload = function () {
                   // Not OPEN
                   connectionState = "broken";
                   updateConnectionStatus();
+                  // Ensure stale state is set
+                  if (window.StalenessManager) {
+                    window.StalenessManager.markStale();
+                  }
                 } else if (wsState === null) {
                   // No connection object - definitely broken
                   connectionState = "broken";
                   updateConnectionStatus();
+                  // Ensure stale state is set
+                  if (window.StalenessManager) {
+                    window.StalenessManager.markStale();
+                  }
                 }
               }
             }, 3000); // Wait 3 seconds for phx:disconnect, then force broken

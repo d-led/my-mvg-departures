@@ -314,6 +314,52 @@ let failedUpdateCount = 0; // Track consecutive failed updates
 let lastSuccessfulUpdate = Date.now(); // Track last successful update
 // No reconnectTimeout - PyView handles reconnection, we just listen to events
 
+// Staleness management - marks data as stale when WebSocket disconnects
+// Encapsulated in a module-like object
+// Expose globally so pyview-loader.js can access it
+const StalenessManager = (window.StalenessManager = {
+  isStale: false,
+
+  /**
+   * Mark data as stale (WebSocket disconnected, data may be outdated)
+   */
+  markStale() {
+    if (!this.isStale) {
+      this.isStale = true;
+      this.updateStaleClass();
+      console.log("Data marked as stale (WebSocket disconnected)");
+    }
+  },
+
+  /**
+   * Clear stale state (fresh data received)
+   */
+  clearStale() {
+    if (this.isStale) {
+      this.isStale = false;
+      this.updateStaleClass();
+      console.log("Stale state cleared (fresh data received)");
+    }
+  },
+
+  /**
+   * Update the stale class on all departure rows
+   */
+  updateStaleClass() {
+    // Use requestAnimationFrame to ensure DOM is ready after PyView updates
+    requestAnimationFrame(() => {
+      const departureRows = document.querySelectorAll(".departure-row");
+      departureRows.forEach((row) => {
+        if (this.isStale) {
+          row.classList.add("stale");
+        } else {
+          row.classList.remove("stale");
+        }
+      });
+    });
+  },
+});
+
 function updateConnectionStatus() {
   const connectionEl = document.getElementById("connection-status");
   if (!connectionEl) {
@@ -334,6 +380,11 @@ function updateConnectionStatus() {
 
   // Update data attribute to preserve state across DOM updates
   connectionEl.setAttribute("data-connection-state", connectionState);
+
+  // Mark as stale when connection is broken or unstable
+  if ((connectionState === "broken" || connectionState === "unstable") && StalenessManager) {
+    StalenessManager.markStale();
+  }
 
   // Hide all icons first
   connectedIcon.style.display = "none";
@@ -523,8 +574,17 @@ window.addEventListener("phx:update", (event) => {
     lastUpdateTime = now;
     lastSuccessfulUpdate = now;
 
+    // Clear stale state when fresh data arrives
+    StalenessManager.clearStale();
+
     // Update connection status immediately to ensure UI reflects connected state
     updateConnectionStatus();
+
+    // Re-apply stale class after DOM update (in case PyView replaced elements)
+    // This ensures stale state persists across DOM updates if still stale
+    if (StalenessManager.isStale) {
+      StalenessManager.updateStaleClass();
+    }
 
     // PyView handles reconnection - no custom timeout to clear
 
@@ -751,6 +811,9 @@ window.addEventListener("phx:disconnect", () => {
     // Update UI immediately - don't wait for requestAnimationFrame
     updateConnectionStatus();
 
+    // Mark data as stale when WebSocket disconnects
+    StalenessManager.markStale();
+
     // Clear update timeout since we're disconnected
     if (updateTimeout) {
       clearTimeout(updateTimeout);
@@ -785,6 +848,10 @@ window.addEventListener("phx:close", () => {
     // console.log('phx:close received - connection permanently closed, no reconnection');
     // This is a permanent close - PyView will NOT attempt to reconnect
     connectionState = "broken";
+
+    // Mark data as stale when connection permanently closes
+    StalenessManager.markStale();
+
     // Clear update timeout since connection is closed
     if (updateTimeout) {
       clearTimeout(updateTimeout);
