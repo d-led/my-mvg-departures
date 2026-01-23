@@ -113,6 +113,18 @@ if ! "$PYTHON" -c "import mvg_departures_inky" 2>/dev/null || ! "$PYTHON" -c "im
     echo "" >&2
 fi
 
+# Install system dependencies (numpy system libraries) on Linux
+if [ "$(uname)" = "Linux" ] && command -v apt-get >/dev/null 2>&1; then
+    # Source setup-common.sh to get install_numpy_for_pi function
+    if [ -f "${PARENT_ROOT}/scripts/setup-common.sh" ]; then
+        # shellcheck source=../../scripts/setup-common.sh
+        . "${PARENT_ROOT}/scripts/setup-common.sh"
+        # Set PYTHON for the function
+        export PYTHON
+        install_numpy_for_pi
+    fi
+fi
+
 # Run the application (real hardware mode)
 echo "Starting MVG Departures Inky Display (real hardware)..." >&2
 if [ -n "${CONFIG_FILE:-}" ]; then

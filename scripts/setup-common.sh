@@ -47,40 +47,44 @@ setup_venv() {
     echo "" >&2
 }
 
-# Install numpy via apt on Linux (to avoid building from source on Pi Zero)
-# Only runs on Linux when numpy is not already available
+# Install numpy system dependencies on Linux (required even when numpy is installed from wheels)
+# NumPy wheels require system libraries like libopenblas.so.0
 # Returns 0 if successful or skipped, 1 if failed
 install_numpy_for_pi() {
     if [ "$(uname)" != "Linux" ]; then
         return 0  # Skip on non-Linux
     fi
     
-    if "$PYTHON" -c "import numpy" >/dev/null 2>&1; then
-        echo "✓ numpy already available." >&2
-        return 0
-    fi
-    
-    echo "Installing numpy via apt to avoid building from source..." >&2
-    echo "  (Building from source requires ~500MB+ in /tmp, which may be limited on Pi Zero)" >&2
-    
     if ! command -v apt-get >/dev/null 2>&1; then
-        echo "Warning: apt-get not found. Will use pip with larger temp directory..." >&2
-        TMPDIR="${HOME}/.tmp"
-        export TMPDIR
-        mkdir -p "$TMPDIR"
-        echo "  Using ${TMPDIR} for build temporary files (has more space than /tmp)" >&2
+        echo "Warning: apt-get not found. NumPy may require system libraries." >&2
         return 0
     fi
     
-    if sudo apt-get update -qq >/dev/null 2>&1 && sudo apt-get install -y python3-numpy >/dev/null 2>&1; then
-        echo "✓ numpy installed via apt." >&2
+    # Check if numpy is already installed
+    numpy_installed=false
+    if "$PYTHON" -c "import numpy" >/dev/null 2>&1; then
+        numpy_installed=true
+        echo "✓ numpy already installed (from wheel/pip)." >&2
+    fi
+    
+    # Always install system libraries needed by numpy wheels (libopenblas, etc.)
+    echo "Installing NumPy system dependencies (libopenblas, etc.)..." >&2
+    if sudo apt-get update -qq >/dev/null 2>&1 && sudo apt-get install -y libopenblas0 python3-numpy >/dev/null 2>&1; then
+        if [ "$numpy_installed" = "false" ]; then
+            echo "✓ numpy installed via apt." >&2
+        else
+            echo "✓ NumPy system libraries installed." >&2
+        fi
         return 0
     else
-        echo "Warning: Could not install numpy via apt. Will use pip with larger temp directory..." >&2
-        TMPDIR="${HOME}/.tmp"
-        export TMPDIR
-        mkdir -p "$TMPDIR"
-        echo "  Using ${TMPDIR} for build temporary files (has more space than /tmp)" >&2
+        echo "Warning: Could not install NumPy system libraries via apt." >&2
+        if [ "$numpy_installed" = "false" ]; then
+            echo "  Will try pip with larger temp directory..." >&2
+            TMPDIR="${HOME}/.tmp"
+            export TMPDIR
+            mkdir -p "$TMPDIR"
+            echo "  Using ${TMPDIR} for build temporary files (has more space than /tmp)" >&2
+        fi
         return 0
     fi
 }
