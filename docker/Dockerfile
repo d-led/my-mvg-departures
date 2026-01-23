@@ -23,7 +23,7 @@ ENV UV_CACHE_DIR=/root/.cache/uv
 # Run setup script with cache mounts for faster rebuilds
 RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=cache,target=/root/.cache/uv \
-    ./scripts/setup.sh
+    sh scripts/setup.sh
 
 # Stage 2: Runtime stage - minimal image
 FROM python:3.13-slim AS runtime
