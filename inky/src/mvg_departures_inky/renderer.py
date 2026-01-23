@@ -1187,20 +1187,23 @@ class InkyRenderer:
         )
         # Verify this font size fits vertically with the calculated header font size
         # Start from max_body_font_size and work down to find the largest that fits
-        font_size = self._calculate_font_size_with_header(
+        calculated_font_size = self._calculate_font_size_with_header(
             total_departures, header_count, header_font_size, max_body_font_size
         )
 
         # Apply font scaling factor (only affects body fonts, not headers)
         # This allows fine-tuning the body font size independently of header font size
         # fill_vertical_space is always enabled for Inky displays
+        # The scaling factor is applied to make fonts larger (if > 1.0) or smaller (if < 1.0)
+        # Since we're filling vertical space, we want to use the calculated size and scale it
         font_size = max(
             self.config.min_font_size,
-            int(font_size * self.config.font_scaling_factor_when_filling),
+            int(calculated_font_size * self.config.font_scaling_factor_when_filling),
         )
         logger.debug(
-            f"Applied font_scaling_factor_when_filling={self.config.font_scaling_factor_when_filling}: "
-            f"body font size adjusted to {font_size}"
+            f"Font size calculation: calculated={calculated_font_size}, "
+            f"scaling_factor={self.config.font_scaling_factor_when_filling}, "
+            f"final={font_size}"
         )
         font = self._get_font(font_size, bold=False)
         platform_font_size = max(int(font_size * 0.7), 10)
