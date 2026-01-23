@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.4
 # Optimized multi-stage build using setup.sh
 # Uses the same setup script as local development for consistency
 # Stage 1: Build stage - create venv with all dependencies
@@ -16,9 +17,11 @@ COPY pyproject.toml README.md ./
 COPY src/ ./src/
 COPY scripts/ ./scripts/
 
-# Run setup script to create venv and install dependencies
-# The script creates .venv/ with all dependencies
-RUN ./scripts/setup.sh
+# Run setup script with pip cache mount for faster rebuilds
+# BuildKit cache mounts persist between builds for dependency caching
+RUN --mount=type=cache,target=/root/.cache/pip \
+    --mount=type=cache,target=/root/.cache/uv \
+    ./scripts/setup.sh
 
 # Stage 2: Runtime stage - minimal Python slim
 FROM python:3.13-slim AS runtime
