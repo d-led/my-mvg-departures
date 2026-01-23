@@ -84,10 +84,10 @@ font_scaling_factor_when_filling = 0.8
 time_mode = "absolute"
 
 # Dithering settings
-# Enable dithering for better color representation on e-ink displays (default: true)
+# Enable dithering for better color representation on e-ink displays (default: false)
 # Dithering converts RGB colors to the 7-color palette with better quality
 # Disable for faster rendering (but colors may look less accurate)
-dithering_enabled = true
+dithering_enabled = false
 
 # Refresh interval (in seconds) - separate from web version's refresh_interval_seconds
 # E-ink displays update slower than web displays, so a longer interval is often preferred

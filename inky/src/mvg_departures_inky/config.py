@@ -90,7 +90,7 @@ class InkyDisplayConfig:
     )
     # Dithering settings
     dithering_enabled: bool = (
-        True  # Enable dithering for better color representation (disable for faster rendering)
+        False  # Enable dithering for better color representation (disable for faster rendering)
     )
     # Refresh interval (in seconds) - separate from web version
     # E-ink displays update slower, so a longer interval is often preferred
@@ -275,7 +275,7 @@ class InkyDisplayConfig:
             font_scaling_factor_when_filling=inky_settings.get(
                 "font_scaling_factor_when_filling", FONT_SCALING_FACTOR_WHEN_FILLING
             ),
-            dithering_enabled=inky_settings.get("dithering_enabled", True),
+            dithering_enabled=inky_settings.get("dithering_enabled", False),
             refresh_interval_seconds=int(
                 inky_settings.get("refresh_interval_seconds", DEFAULT_REFRESH_INTERVAL_SECONDS)
             ),
