@@ -97,15 +97,9 @@ target-version = "py313"
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "DTZ", "T10", "SIM", "ARG", "PIE", "PT", "RET", "TCH", "TID", "Q", "RUF"]
 ignore = ["E501"]
 
-[tool.uv]
-# Configure piwheels.org as a fallback index for ARM Linux (Raspberry Pi)
-# piwheels provides pre-built wheels for ARM architectures, avoiding compilation
-# Without explicit=true, uv will automatically use piwheels as a fallback when PyPI doesn't have ARM wheels
-# This works out of the box - no special cases needed!
-[[tool.uv.index]]
-name = "piwheels"
-url = "https://www.piwheels.org/simple"
-# Not setting explicit=true allows piwheels to be used as fallback on ARM Linux automatically
+# Note: piwheels is NOT configured here - it causes issues with Docker builds on x86_64
+# For Raspberry Pi installs, add piwheels via command line:
+#   pip install --extra-index-url https://www.piwheels.org/simple ...
 
 [tool.mypy]
 python_version = "3.13"

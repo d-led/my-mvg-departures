@@ -1,8 +1,8 @@
-# Multi-stage build for secure, minimal Python Docker image
-# Stage 1: Build stage - contains build tools and compilers
+# Multi-stage build using setup.sh for consistency with local development
+# Stage 1: Build stage - create venv with all dependencies
 FROM python:3.13-slim AS builder
 
-WORKDIR /build
+WORKDIR /app
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -10,49 +10,39 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv for faster dependency management
-RUN pip install --no-cache-dir uv
-
-# Copy dependency files
+# Copy everything needed for setup
 COPY pyproject.toml README.md ./
-
-# Copy application code (needed for editable install)
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 
-# Install dependencies and build wheels
-# Use --system to install to system Python, not venv
-# Use --no-cache to avoid caching pip downloads
-RUN uv pip install --system --no-cache -e .
+# Run setup script to create venv and install dependencies
+RUN ./scripts/setup.sh
 
-# Stage 2: Runtime stage - minimal image with only runtime dependencies
+# Stage 2: Runtime stage - minimal image
 FROM python:3.13-slim AS runtime
 
-# Install only runtime system dependencies (if any are needed)
-# Most Python packages should be pre-compiled wheels, but some may need libc
+WORKDIR /app
+
+# Install only runtime system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-WORKDIR /app
+# Copy the entire venv from builder
+COPY --from=builder /app/.venv /app/.venv
 
-# Copy Python environment from builder
-# Copy the entire Python site-packages and installed packages
-COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+# Set PATH to use virtual environment
+ENV PATH="/app/.venv/bin:$PATH"
+ENV VIRTUAL_ENV="/app/.venv"
 
-# Copy application code
-COPY src/ ./src/
-COPY README.md ./
+# Copy config and static assets
 COPY config.example.toml ./config.example.toml
-
-# Copy static assets
 COPY static/ ./static/
 
-# Create non-root user with specific UID/GID for better security
-# Use numeric IDs to avoid dependency on /etc/passwd
+# Create non-root user
 RUN groupadd -r -g 1000 appuser && \
-    useradd -r -u 1000 -g appuser -d /app -s /bin/false appuser && \
+    useradd -r -u 1000 -g appuser -d /app -s /usr/sbin/nologin appuser && \
     chown -R appuser:appuser /app
 
 # Switch to non-root user

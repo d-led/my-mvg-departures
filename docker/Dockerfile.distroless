@@ -1,10 +1,9 @@
 # Multi-stage build using Google Distroless for maximum security
-# Distroless images contain only your application and its runtime dependencies
-# No shell, package managers, or other programs that could be exploited
+# Uses setup.sh for consistency with local development
 # Stage 1: Build stage
 FROM python:3.13-slim AS builder
 
-WORKDIR /build
+WORKDIR /app
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -12,51 +11,40 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-RUN pip install --no-cache-dir uv
-
-# Copy dependency files
+# Copy everything needed for setup
 COPY pyproject.toml README.md ./
-
-# Copy application code (will be copied to runtime with correct ownership)
 COPY src/ ./src/
-COPY config.example.toml ./
+COPY scripts/ ./scripts/
 
-# Install dependencies
-RUN uv pip install --system --no-cache -e .
+# Run setup script to create venv and install dependencies
+RUN ./scripts/setup.sh
 
 # Stage 2: Runtime stage - Distroless Python image
 FROM gcr.io/distroless/python3-debian12:latest AS runtime
 
 WORKDIR /app
 
-# Copy Python environment from builder
-# Distroless uses /usr/local for Python
-COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+# Copy the entire venv from builder
+COPY --from=builder /app/.venv /app/.venv
 
-# Copy application code with non-root ownership
-# Distroless default non-root user is uid 65532, gid 65532
-# We must set ownership using --chown since distroless has no shell/tools for chown
-COPY --chown=65532:65532 src/ ./src/
-COPY --chown=65532:65532 README.md ./
+# Set environment for venv
+ENV PATH="/app/.venv/bin:$PATH"
+ENV VIRTUAL_ENV="/app/.venv"
+
+# Copy config and static assets with non-root ownership
+# Distroless default non-root user is uid 65532
 COPY --chown=65532:65532 config.example.toml ./config.example.toml
-
-# Copy static assets
 COPY --chown=65532:65532 static/ ./static/
 
-# Explicitly set non-root user (distroless default: uid 65532)
-# This is REQUIRED - distroless does NOT run as non-root by default
+# Set non-root user
 USER 65532:65532
 
 # Expose port
 EXPOSE 8000
 
-# Health check (distroless has minimal tools, so we use Python)
+# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD ["/usr/local/bin/python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+    CMD ["/app/.venv/bin/python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
 
 # Run the application
-# Distroless requires full path to executable
-CMD ["/usr/local/bin/python3", "-m", "mvg_departures.main"]
-
+CMD ["/app/.venv/bin/python", "-m", "mvg_departures.main"]

@@ -1,9 +1,9 @@
-# Optimized multi-stage build with pre-compiled wheels
-# This version pre-builds all wheels in the builder stage
-# Stage 1: Build stage - compile everything
+# Optimized multi-stage build using setup.sh
+# Uses the same setup script as local development for consistency
+# Stage 1: Build stage - create venv with all dependencies
 FROM python:3.13-slim AS builder
 
-WORKDIR /build
+WORKDIR /app
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -11,52 +11,41 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-RUN pip install --no-cache-dir uv
-
-# Copy dependency files
+# Copy everything needed for setup
 COPY pyproject.toml README.md ./
-
-# Copy application code
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 
-# Install the package and all dependencies (non-editable for production)
-# This installs the package properly so it can be found in runtime
-RUN uv pip install --system --no-cache .
+# Run setup script to create venv and install dependencies
+# The script creates .venv/ with all dependencies
+RUN ./scripts/setup.sh
 
 # Stage 2: Runtime stage - minimal Python slim
 FROM python:3.13-slim AS runtime
 
-# Install only essential runtime libraries
-# Most Python packages use wheels, but some C extensions need libc
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    libc6 \
-    && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean \
-    && rm -rf /tmp/* /var/tmp/*
-
 WORKDIR /app
 
-# Copy only the installed packages (not build tools)
-# The package is already installed in site-packages from the builder stage
-COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+# Install only essential runtime libraries
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
-# Copy only config file (package code is already in site-packages)
+# Copy the entire venv from builder
+COPY --from=builder /app/.venv /app/.venv
+
+# Set PATH to use virtual environment
+ENV PATH="/app/.venv/bin:$PATH"
+ENV VIRTUAL_ENV="/app/.venv"
+
+# Copy config and static assets
 COPY config.example.toml ./config.example.toml
-
-# Copy static assets
 COPY static/ ./static/
 
-# Create non-root user with minimal permissions
+# Create non-root user
 RUN groupadd -r -g 1000 appuser && \
     useradd -r -u 1000 -g appuser -d /app -s /usr/sbin/nologin appuser && \
-    chown -R appuser:appuser /app && \
-    # Remove any unnecessary files
-    find /app -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true && \
-    find /app -name "*.pyc" -delete && \
-    find /app -name "*.pyo" -delete
+    chown -R appuser:appuser /app
 
 # Switch to non-root user
 USER appuser:appuser
@@ -70,4 +59,3 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # Run the application
 CMD ["python", "-m", "mvg_departures.main"]
-
