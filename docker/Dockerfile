@@ -39,6 +39,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy the entire venv from builder
 COPY --from=builder /app/.venv /app/.venv
 
+# Copy source code (needed for editable install)
+COPY --from=builder /app/src /app/src
+
 # Set PATH to use virtual environment
 ENV PATH="/app/.venv/bin:$PATH"
 ENV VIRTUAL_ENV="/app/.venv"

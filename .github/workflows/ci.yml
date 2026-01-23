@@ -101,6 +101,10 @@ jobs:
           uv pip install build
 
       - name: Build package
+        env:
+          # Override piwheels index with PyPI-only for x86_64 CI
+          # piwheels config in pyproject.toml is for ARM (Raspberry Pi) only
+          UV_INDEX_URL: https://pypi.org/simple
         run: |
           uv run python -m build
 

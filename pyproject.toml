@@ -102,6 +102,7 @@ ignore = ["E501"]
 # piwheels provides pre-built wheels for ARM architectures, avoiding compilation
 # Without explicit=true, uv will automatically use piwheels as a fallback when PyPI doesn't have ARM wheels
 # This works out of the box - no special cases needed!
+# !!!DO NOT REMOVE THIS!!!
 [[tool.uv.index]]
 name = "piwheels"
 url = "https://www.piwheels.org/simple"

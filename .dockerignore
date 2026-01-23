@@ -43,9 +43,12 @@ docker/
 Dockerfile*
 docker-compose*.yml
 .dockerignore
-# Development files
-scripts
-*.sh
-!scripts/start.sh
+# Development files - allow setup scripts needed by Docker
 scripts/test*
+scripts/analyze*
+scripts/start.sh
+scripts/stop.sh
+scripts/restart.sh
+scripts/*.ps1
+scripts/deploy*
 .github/

@@ -34,6 +34,9 @@ WORKDIR /app
 # Copy the entire venv from builder
 COPY --from=builder /app/.venv /app/.venv
 
+# Copy source code (needed for editable install)
+COPY --from=builder /app/src /app/src
+
 # Set environment for venv
 ENV PATH="/app/.venv/bin:$PATH"
 ENV VIRTUAL_ENV="/app/.venv"

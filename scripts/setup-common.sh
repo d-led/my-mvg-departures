@@ -124,10 +124,9 @@ install_with_available_manager() {
     
     if [ -n "$uv_cmd" ]; then
         echo "Installing dependencies with uv..." >&2
-        # piwheels is configured as a fallback index - uv will automatically use it on ARM Linux
-        # when PyPI doesn't have wheels, avoiding compilation. Works out of the box!
+        # piwheels is configured in pyproject.toml - uv will automatically use it on ARM
         if "$uv_cmd" pip install -e "$extras" 2>&1; then
-            echo "✓ Dependencies installed with uv (using PyPI)." >&2
+            echo "✓ Dependencies installed with uv." >&2
             return 0
         fi
     fi
