@@ -6,10 +6,12 @@
     groupedDepartures = [],
     unsupportedProviders = [],
     display = undefined,
+    isPageSuspended = false,
   }: {
     groupedDepartures?: GroupedDepartures[];
     unsupportedProviders?: string[];
     display?: DisplayConfiguration;
+    isPageSuspended?: boolean;
   } = $props();
 
   function formatTimeRelative(departure: any): string {
@@ -193,7 +195,7 @@
       <ul role="list" aria-label="Departures for {group.directionName}">
         {#each group.departures as departure (departure.line + departure.destination + departure.time.getTime())}
           <li
-            class="departure-row {departure.isCancelled ? 'cancelled' : ''}"
+            class="departure-row {departure.isCancelled ? 'cancelled' : ''} {isPageSuspended ? 'stale' : ''}"
             role="listitem"
             aria-label="{departure.transportType} {departure.line} to {departure.destination}, {formatTimeRelative(departure)}"
           >
@@ -310,6 +312,11 @@
   .departure-row.cancelled {
     opacity: 0.5;
     text-decoration: line-through;
+  }
+
+  .departure-row.stale {
+    opacity: 0.5;
+    /* No strikethrough - just greyed out to signal staleness */
   }
 
   .route-container {

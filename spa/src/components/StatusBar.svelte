@@ -256,6 +256,11 @@
     justify-content: center;
     color: rgba(0, 0, 0, 0.8);
     transition: opacity 0.2s;
+    /* Override parent 1em constraint to allow larger icon */
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    min-height: 18px;
   }
 
   [data-theme="dark"] .config-button {
@@ -267,14 +272,10 @@
   }
 
   .config-icon {
-    width: 100%;
-    height: 100%;
+    width: 18px;
+    height: 18px;
     display: block;
-    /* Scale to match countdown circle visual size */
-    /* Countdown: viewBox 12x12, circles r=5 (diameter ~10) */
-    /* Config: viewBox 24x24, gear fills most of space */
-    /* Scale factor: ~10/24 ≈ 0.42, but account for visual balance, use ~0.7 */
-    transform: scale(0.7);
+    /* Slightly larger (18px vs 16px) to account for whitespace in viewBox */
   }
 
   .api-status-icon {

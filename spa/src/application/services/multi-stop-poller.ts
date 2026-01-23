@@ -67,6 +67,26 @@ export class MultiStopPoller {
     this.isInitialPoll = true; // Reset for next start
   }
 
+  /**
+   * Force an immediate refresh (fetch fresh data now, bypassing cache)
+   * Useful when page becomes visible after being hidden
+   */
+  async refreshNow(): Promise<void> {
+    if (!this.isRunning) {
+      console.warn("Poller not running, cannot refresh");
+      return;
+    }
+    console.log("Forcing immediate refresh (page became visible)");
+    // Temporarily set isInitialPoll to bypass cache
+    const wasInitialPoll = this.isInitialPoll;
+    this.isInitialPoll = true;
+    try {
+      await this.poll();
+    } finally {
+      this.isInitialPoll = wasInitialPoll;
+    }
+  }
+
   private async poll(): Promise<void> {
     const allGroups: GroupedDepartures[] = [];
     const stopsWithDepartures = new Set<string>(); // Track which stops have departures

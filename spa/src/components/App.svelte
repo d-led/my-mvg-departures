@@ -23,6 +23,7 @@
   let refreshIntervalSeconds = $state<number>(20);
   let poller: MultiStopPoller | null = null;
   let unsupportedProviders = $state<string[]>([]);
+  let isPageSuspended = $state<boolean>(false);
 
   function formatDate(date: Date): string {
     // Format date as YYYY-MM-DD (e.g., "2026-01-21")
@@ -109,6 +110,43 @@
         }, 150);
       }
     });
+
+    // Detect when page/tab is suspended/hidden (Page Visibility API only)
+    // When suspended, grey out all rows to signal staleness
+    // Main use case: browser suspends tab timers when tab is hidden, data becomes stale
+    async function handleVisibilityChange() {
+      const wasSuspended = isPageSuspended;
+      
+      // Only set stale when page is actually hidden (tab suspended)
+      // Don't set stale on focus loss - only when browser suspends timers
+      if (document.hidden) {
+        isPageSuspended = true;
+        if (!wasSuspended) {
+          console.log('Page SUSPENDED (tab hidden/device sleeping) - marking data as stale');
+        }
+      } else if (!document.hidden && wasSuspended && poller) {
+        // Page became visible again - force immediate refresh to get fresh data
+        console.log('Page VISIBLE again (tab shown/device woke up) - forcing immediate refresh');
+        try {
+          await poller.refreshNow();
+        } catch (error) {
+          console.error('Error during forced refresh:', error);
+        }
+      }
+    }
+    
+    // Check initial state
+    if (document.hidden) {
+      isPageSuspended = true;
+    }
+    
+    // Listen for visibility changes (Page Visibility API)
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    
+    // Cleanup on unmount
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   });
 
   // Recalculate font sizes after departures update
@@ -311,6 +349,13 @@
             // Set status to degraded if unsupported providers, otherwise success
             apiStatus = unsupportedProviders.length > 0 ? "degraded" : "success";
             lastUpdateTime = new Date();
+            
+            // Clear stale state when new data arrives
+            // Fresh data means staleness is resolved
+            if (isPageSuspended) {
+              console.log('New data received - clearing stale state');
+              isPageSuspended = false;
+            }
             // Wait for Svelte to update the DOM before calculating layout
             await tick();
             // Use multiple requestAnimationFrame calls + small delay to ensure DOM is fully laid out
@@ -391,7 +436,7 @@
   </div>
 
   <div id="departures" role="region" aria-label="Departure information" aria-live="polite" aria-atomic="false">
-    <DeparturesList {groupedDepartures} {unsupportedProviders} display={currentRoute?.display} />
+    <DeparturesList {groupedDepartures} {unsupportedProviders} display={currentRoute?.display} {isPageSuspended} />
   </div>
 
   <StatusBar
