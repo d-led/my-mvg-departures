@@ -85,29 +85,17 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install uv (with caching)
-        uses: astral-sh/setup-uv@v5
-        with:
-          version: "latest"
-          enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
-
-      - name: Create virtual environment
+      - name: Setup project
         run: |
-          uv venv
-
-      - name: Install build dependencies
-        run: |
-          uv pip install build
+          ./scripts/setup.sh
 
       - name: Build package
-        env:
-          # Override piwheels index with PyPI-only for x86_64 CI
-          # piwheels config in pyproject.toml is for ARM (Raspberry Pi) only
-          UV_INDEX_URL: https://pypi.org/simple
         run: |
-          uv run python -m build
+          source .venv/bin/activate
+          pip install build
+          python -m build
 
       - name: Check built package
         run: |
-          uv pip install dist/*.whl
+          source .venv/bin/activate
+          pip install dist/*.whl
