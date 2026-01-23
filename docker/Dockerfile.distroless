@@ -6,17 +6,20 @@ FROM python:3.13-slim AS builder
 
 WORKDIR /app
 
-# Install build dependencies (bash needed for setup.sh)
+# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
-    bash \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy everything needed for setup
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
 COPY scripts/ ./scripts/
+
+# Set cache directories explicitly for pip and uv
+ENV PIP_CACHE_DIR=/root/.cache/pip
+ENV UV_CACHE_DIR=/root/.cache/uv
 
 # Run setup script with cache mounts for faster rebuilds
 RUN --mount=type=cache,target=/root/.cache/pip \

@@ -1,12 +1,13 @@
-#!/bin/bash
+#!/bin/sh
 # Common setup functions for installation scripts
 # Source this file to get shared setup utilities
+# POSIX-compatible - works with /bin/sh (dash, ash, etc.)
 
 # Setup virtual environment and determine paths
 # Sets: VENV_PATH, PYTHON, PIP, POETRY, UV
 setup_venv() {
-    local project_root="$1"
-    local venv_path="${project_root}/.venv"
+    project_root="$1"
+    venv_path="${project_root}/.venv"
     
     # Create virtual environment if it doesn't exist
     if [ ! -d "$venv_path" ]; then
@@ -21,17 +22,19 @@ setup_venv() {
     
     # Determine Python and pip paths (cross-platform)
     if [ -f "${venv_path}/bin/python" ]; then
-        export VENV_PATH="$venv_path"
-        export PYTHON="${venv_path}/bin/python"
-        export PIP="${venv_path}/bin/pip"
-        export POETRY="${venv_path}/bin/poetry"
-        export UV="${venv_path}/bin/uv"
+        VENV_PATH="$venv_path"
+        PYTHON="${venv_path}/bin/python"
+        PIP="${venv_path}/bin/pip"
+        POETRY="${venv_path}/bin/poetry"
+        UV="${venv_path}/bin/uv"
+        export VENV_PATH PYTHON PIP POETRY UV
     elif [ -f "${venv_path}/Scripts/python.exe" ]; then
-        export VENV_PATH="$venv_path"
-        export PYTHON="${venv_path}/Scripts/python.exe"
-        export PIP="${venv_path}/Scripts/pip.exe"
-        export POETRY="${venv_path}/Scripts/poetry.exe"
-        export UV="${venv_path}/Scripts/uv.exe"
+        VENV_PATH="$venv_path"
+        PYTHON="${venv_path}/Scripts/python.exe"
+        PIP="${venv_path}/Scripts/pip.exe"
+        POETRY="${venv_path}/Scripts/poetry.exe"
+        UV="${venv_path}/Scripts/uv.exe"
+        export VENV_PATH PYTHON PIP POETRY UV
     else
         echo "Error: Could not find Python in virtual environment" >&2
         exit 1
@@ -62,7 +65,8 @@ install_numpy_for_pi() {
     
     if ! command -v apt-get >/dev/null 2>&1; then
         echo "Warning: apt-get not found. Will use pip with larger temp directory..." >&2
-        export TMPDIR="${HOME}/.tmp"
+        TMPDIR="${HOME}/.tmp"
+        export TMPDIR
         mkdir -p "$TMPDIR"
         echo "  Using ${TMPDIR} for build temporary files (has more space than /tmp)" >&2
         return 0
@@ -73,7 +77,8 @@ install_numpy_for_pi() {
         return 0
     else
         echo "Warning: Could not install numpy via apt. Will use pip with larger temp directory..." >&2
-        export TMPDIR="${HOME}/.tmp"
+        TMPDIR="${HOME}/.tmp"
+        export TMPDIR
         mkdir -p "$TMPDIR"
         echo "  Using ${TMPDIR} for build temporary files (has more space than /tmp)" >&2
         return 0
@@ -84,8 +89,8 @@ install_numpy_for_pi() {
 # Args: project_root, extras (e.g., ".[dev,hardware]" or ".[dev]")
 # Returns 0 on success, 1 on failure
 install_with_available_manager() {
-    local project_root="$1"
-    local extras="$2"
+    project_root="$1"
+    extras="$2"
     
     cd "$project_root"
     
@@ -100,7 +105,7 @@ install_with_available_manager() {
     fi
     
     # Try uv
-    local uv_cmd=""
+    uv_cmd=""
     if [ -f "$UV" ]; then
         uv_cmd="$UV"
     elif command -v uv >/dev/null 2>&1 && uv --version >/dev/null 2>&1; then

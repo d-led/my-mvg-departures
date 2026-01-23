@@ -1,12 +1,13 @@
-#!/bin/bash
+#!/bin/sh
 # Setup script for MVG Departures
 # Creates virtual environment and installs all dependencies
 # Supports: Poetry, uv, and pip (in that order of preference)
+# POSIX-compatible - works with /bin/sh (dash, ash, etc.)
 
-set -euo pipefail
+set -eu
 
 # Find project root (where this script is located)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 cd "$PROJECT_ROOT"
@@ -29,7 +30,7 @@ if [ "$(printf '%s\n' "$REQUIRED_VERSION" "$PYTHON_VERSION" | sort -V | head -n1
 fi
 
 # Source common setup functions
-source "${SCRIPT_DIR}/setup-common.sh"
+. "${SCRIPT_DIR}/setup-common.sh"
 
 # Setup virtual environment
 setup_venv "$PROJECT_ROOT"

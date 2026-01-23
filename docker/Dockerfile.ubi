@@ -7,7 +7,7 @@ FROM registry.access.redhat.com/ubi9:latest AS builder
 
 WORKDIR /app
 
-# Install EPEL, Python 3.13, and bash for setup script
+# Install EPEL, Python 3.13, and build tools
 RUN microdnf install -y --nodocs \
     epel-release \
     && microdnf install -y --nodocs \
@@ -16,7 +16,6 @@ RUN microdnf install -y --nodocs \
     python3.13-devel \
     gcc \
     gcc-c++ \
-    bash \
     && microdnf clean all && \
     alternatives --install /usr/bin/python3 python3 /usr/bin/python3.13 1 && \
     alternatives --install /usr/bin/pip3 pip3 /usr/bin/pip3.13 1 && \
@@ -29,6 +28,10 @@ RUN pip install --no-cache-dir uv
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
 COPY scripts/ ./scripts/
+
+# Set cache directories explicitly for pip and uv
+ENV PIP_CACHE_DIR=/root/.cache/pip
+ENV UV_CACHE_DIR=/root/.cache/uv
 
 # Run setup script with cache mounts for faster rebuilds
 RUN --mount=type=cache,target=/root/.cache/pip \
