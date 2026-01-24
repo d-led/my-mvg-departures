@@ -21,7 +21,7 @@
   let apiStatus = $state<"success" | "error" | "degraded" | "unknown">("unknown");
   let lastUpdateTime = $state<Date | null>(null);
   let refreshIntervalSeconds = $state<number>(20);
-  let poller: MultiStopPoller | null = null;
+  let activePollers = new Set<MultiStopPoller>(); // Track all active pollers
   let unsupportedProviders = $state<string[]>([]);
   let isPageSuspended = $state<boolean>(false);
 
@@ -124,11 +124,14 @@
         if (!wasSuspended) {
           console.log('Page SUSPENDED (tab hidden/device sleeping) - marking data as stale');
         }
-      } else if (!document.hidden && wasSuspended && poller) {
+      } else if (!document.hidden && wasSuspended && activePollers.size > 0) {
         // Page became visible again - force immediate refresh to get fresh data
         console.log('Page VISIBLE again (tab shown/device woke up) - forcing immediate refresh');
         try {
-          await poller.refreshNow();
+          // Refresh all active pollers
+          for (const poller of activePollers) {
+            await poller.refreshNow();
+          }
         } catch (error) {
           console.error('Error during forced refresh:', error);
         }
@@ -287,16 +290,20 @@
   async function switchRoute(route: RouteConfiguration, updateHash: boolean = true) {
     console.log(`Switching to route: ${route.path} (${route.stops.length} stop(s))`);
     
-    // Stop existing poller and wait for it to fully stop
-    if (poller) {
+    // Stop ALL existing pollers and clear the set
+    console.log(`Stopping ${activePollers.size} active poller(s)`);
+    for (const poller of activePollers) {
       poller.stop();
-      poller = null;
-      // Small delay to ensure interval is cleared
-      await new Promise(resolve => setTimeout(resolve, 10));
     }
+    activePollers.clear();
     
     // Cleanup time format toggle
     cleanupTimeFormatToggle();
+
+    // Clear cache to prevent cross-route contamination
+    // This is critical when routes share station IDs but have different configurations
+    await cache.clear();
+    console.log("Cache cleared when switching routes");
 
     // Clear existing departures and unsupported providers when switching routes
     groupedDepartures = [];
@@ -336,15 +343,21 @@
       const refreshInterval = route.refreshIntervalSeconds ?? route.display?.refreshIntervalSeconds ?? 20;
       refreshIntervalSeconds = refreshInterval;
 
-      poller = new MultiStopPoller(
+      const newPoller = new MultiStopPoller(
         departureRepository,
         cache,
         groupingService,
         route.stops,
         refreshInterval,
         {
-          onUpdate: async (groups) => {
-            console.log(`Received ${groups.length} direction group(s) with ${groups.reduce((sum, g) => sum + g.departures.length, 0)} total departures`);
+          onUpdate: async (groups, pollerId) => {
+            // Only accept updates from pollers that are still in the active set
+            if (!activePollers.has(newPoller)) {
+              console.log(`[${pollerId}] Ignoring update from stopped poller (race condition prevented)`);
+              return;
+            }
+            
+            console.log(`[${pollerId}] Received ${groups.length} direction group(s) with ${groups.reduce((sum, g) => sum + g.departures.length, 0)} total departures`);
             groupedDepartures = groups;
             // Set status to degraded if unsupported providers, otherwise success
             apiStatus = unsupportedProviders.length > 0 ? "degraded" : "success";
@@ -369,15 +382,22 @@
               });
             });
           },
-          onError: (error) => {
-            console.error("API poll error:", error);
+          onError: (error, pollerId) => {
+            // Only accept errors from pollers that are still in the active set
+            if (!activePollers.has(newPoller)) {
+              console.log(`[${pollerId}] Ignoring error from stopped poller`);
+              return;
+            }
+            console.error(`[${pollerId}] API poll error:`, error);
             apiStatus = "error";
           },
         },
         route.display // Pass route display config for header color inheritance
       );
 
-      await poller.start();
+      // Add to active pollers set BEFORE starting
+      activePollers.add(newPoller);
+      await newPoller.start();
       
       // Call initializeAll after initial poll completes (matches Python's initializeAll on page load)
       // Use multiple requestAnimationFrame calls + small delay to ensure DOM is fully ready

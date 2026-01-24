@@ -7,8 +7,8 @@ import { DepartureGroupingService } from "./departure-grouping-service.js";
 import md5 from "md5";
 
 export interface MultiStopPollerCallbacks {
-  onUpdate: (groups: GroupedDepartures[]) => void;
-  onError: (error: Error) => void;
+  onUpdate: (groups: GroupedDepartures[], pollerId: string) => void;
+  onError: (error: Error, pollerId: string) => void;
 }
 
 export class MultiStopPoller {
@@ -16,6 +16,7 @@ export class MultiStopPoller {
   private isRunning = false;
   private allGroups: GroupedDepartures[] = [];
   private isInitialPoll = true;
+  private readonly pollerId: string;
 
   constructor(
     private readonly departureRepository: DepartureRepository,
@@ -25,25 +26,27 @@ export class MultiStopPoller {
     private readonly refreshIntervalSeconds: number,
     private readonly callbacks: MultiStopPollerCallbacks,
     private readonly routeDisplay?: DisplayConfiguration, // Route display config for header color fallback
-  ) {}
+  ) {
+    // Generate unique ID for this poller instance
+    this.pollerId = `poller-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    console.log(`[${this.pollerId}] Created new MultiStopPoller for ${stopConfigs.length} stop(s)`);
+  }
 
   async start(): Promise<void> {
     if (this.isRunning) {
-      console.warn("Poller already running, ignoring start() call");
+      console.warn(`[${this.pollerId}] Poller already running, ignoring start() call`);
       return;
     }
 
     console.log(
-      "MultiStopPoller.start() called - setting isInitialPoll = true",
+      `[${this.pollerId}] MultiStopPoller.start() called - setting isInitialPoll = true`,
     );
     this.isRunning = true;
     this.isInitialPoll = true;
 
     // Do initial poll immediately (always fetch fresh, don't use cache)
     console.log(
-      "Starting initial poll (isInitialPoll =",
-      this.isInitialPoll,
-      ")",
+      `[${this.pollerId}] Starting initial poll (isInitialPoll = ${this.isInitialPoll})`,
     );
     await this.poll();
 
@@ -53,12 +56,13 @@ export class MultiStopPoller {
     // Then poll periodically (will use cache if available)
     this.intervalId = window.setInterval(() => {
       this.poll().catch((error) => {
-        this.callbacks.onError(error);
+        this.callbacks.onError(error, this.pollerId);
       });
     }, this.refreshIntervalSeconds * 1000);
   }
 
   stop(): void {
+    console.log(`[${this.pollerId}] Stopping poller`);
     if (this.intervalId !== null) {
       clearInterval(this.intervalId);
       this.intervalId = null;
@@ -199,12 +203,22 @@ export class MultiStopPoller {
     // Generate header colors for non-first headers (matches Python's _generate_header_colors)
     this.generateHeaderColors(allGroups);
 
+    // Check if poller is still running before updating
+    // This prevents race conditions where a stopped poller's ongoing poll() completes
+    // after a new poller has been started (e.g., during route switching)
+    if (!this.isRunning) {
+      console.log(
+        `[${this.pollerId}] Poller was stopped during poll() - discarding results to prevent race condition`,
+      );
+      return;
+    }
+
     // Update state with combined groups
     this.allGroups = allGroups;
     console.log(
-      `Combined ${allGroups.length} direction groups from ${successCount} successful stop(s), ${errorCount} error(s), ${stopsWithoutDepartures.length} stop(s) without departures`,
+      `[${this.pollerId}] Combined ${allGroups.length} direction groups from ${successCount} successful stop(s), ${errorCount} error(s), ${stopsWithoutDepartures.length} stop(s) without departures`,
     );
-    this.callbacks.onUpdate([...allGroups]);
+    this.callbacks.onUpdate([...allGroups], this.pollerId);
   }
 
   private generateHeaderColors(groups: GroupedDepartures[]): void {
