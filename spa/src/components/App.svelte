@@ -312,6 +312,11 @@
     currentRoute = route;
     await configStorage.setCurrentRoutePath(route.path);
     
+    // Update browser tab title (happens on initial load and when switching routes)
+    const pageTitle = route.display?.title ?? "MVG Departures";
+    document.title = pageTitle;
+    console.log(`Set page title to: ${pageTitle}`);
+    
     // Only update hash if explicitly requested (user navigation, not initial load)
     if (updateHash) {
       // Use hash-based routing for SPA (don't use pushState with pathname)
