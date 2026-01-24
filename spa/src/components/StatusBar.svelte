@@ -188,8 +188,16 @@
         aria-expanded={showRouteSelector}
         aria-haspopup="true"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+        <svg
+          class="route-selector-icon"
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          aria-hidden="true"
+          width="18"
+          height="18"
+        >
+          <path d="M3 6h18v2H3zM3 11h18v2H3zM3 16h18v2H3z" />
         </svg>
       </button>
       
@@ -359,10 +367,14 @@
 
   .route-selector-container {
     position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 18px !important;
     height: 18px !important;
     min-width: 18px !important;
     min-height: 18px !important;
+    flex-shrink: 0;
   }
 
   .route-selector-button {
