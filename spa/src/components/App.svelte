@@ -21,6 +21,7 @@
   let apiStatus = $state<"success" | "error" | "degraded" | "unknown">("unknown");
   let lastUpdateTime = $state<Date | null>(null);
   let refreshIntervalSeconds = $state<number>(20);
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity -- Set is reactive in Svelte 5 with proper usage
   let activePollers = new Set<MultiStopPoller>(); // Track all active pollers
   let unsupportedProviders = $state<string[]>([]);
   let isPageSuspended = $state<boolean>(false);

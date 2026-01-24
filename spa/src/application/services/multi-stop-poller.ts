@@ -29,12 +29,16 @@ export class MultiStopPoller {
   ) {
     // Generate unique ID for this poller instance
     this.pollerId = `poller-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-    console.log(`[${this.pollerId}] Created new MultiStopPoller for ${stopConfigs.length} stop(s)`);
+    console.log(
+      `[${this.pollerId}] Created new MultiStopPoller for ${stopConfigs.length} stop(s)`,
+    );
   }
 
   async start(): Promise<void> {
     if (this.isRunning) {
-      console.warn(`[${this.pollerId}] Poller already running, ignoring start() call`);
+      console.warn(
+        `[${this.pollerId}] Poller already running, ignoring start() call`,
+      );
       return;
     }
 
