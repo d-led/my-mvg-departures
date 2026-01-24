@@ -384,19 +384,69 @@ export class OnTheRunPoller {
     if (this.configuredStops.length === 0) {
       return null;
     }
+    const stopPointVariants = this.buildStopPointVariants(stopPointId);
     const match = this.configuredStops.find(
       (stop) =>
-        stop.stationId === stopPointId && this.hasTitle(stop.ungroupedTitle),
+        this.hasConfiguredTitle(stop) &&
+        this.stopPointIdsMatch(stop.stationId, stopPointVariants),
     );
-    if (!match?.ungroupedTitle) {
+    if (!match) {
       return null;
     }
-    const cleaned = this.stripParentheticalContent(match.ungroupedTitle);
+    const title = this.getConfiguredTitle(match);
+    if (!title) {
+      return null;
+    }
+    const cleaned = this.stripParentheticalContent(title);
     return cleaned.length > 0 ? cleaned : null;
   }
 
-  private hasTitle(title?: string): boolean {
-    return Boolean(title && title.trim().length > 0);
+  private hasConfiguredTitle(stop: StopConfiguration): boolean {
+    return Boolean(this.getConfiguredTitle(stop));
+  }
+
+  private getConfiguredTitle(stop: StopConfiguration): string | null {
+    if (stop.ungroupedTitle && stop.ungroupedTitle.trim().length > 0) {
+      return stop.ungroupedTitle;
+    }
+    const directionKeys = Object.keys(stop.directionMappings ?? {});
+    if (directionKeys.length > 0) {
+      return directionKeys[0] ?? null;
+    }
+    return null;
+  }
+
+  private stopPointIdsMatch(
+    configuredId: string,
+    stopPointVariants: Set<string>,
+  ): boolean {
+    const configuredVariants = this.buildStopPointVariants(configuredId);
+    for (const variant of stopPointVariants) {
+      if (configuredVariants.has(variant)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private buildStopPointVariants(stationId: string): Set<string> {
+    const variants = new Set<string>([stationId]);
+    const parts = stationId.split(":");
+    if (
+      parts.length >= 5 &&
+      parts[parts.length - 1] === parts[parts.length - 2]
+    ) {
+      const stopNumber = parts[parts.length - 1];
+      const baseId = parts.slice(0, -2).join(":");
+      variants.add(`${baseId}:${stopNumber}`);
+      return variants;
+    }
+    if (parts.length === 4) {
+      const stopNumber = parts[parts.length - 1];
+      const baseId = parts.slice(0, -1).join(":");
+      variants.add(`${baseId}:${stopNumber}:${stopNumber}`);
+    }
+    return variants;
   }
 
   private stripParentheticalContent(title: string): string {
