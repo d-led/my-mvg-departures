@@ -67,9 +67,10 @@ export class ConfigParser {
 
     // Add on-the-run route if configured and not already present
     if (onTheRun && !routes.some((route) => route.path === "on-the-run")) {
+      const radiusLabel = onTheRun.radiusMeters ?? 50;
       const onTheRunDisplay: DisplayConfiguration = {
         ...defaultDisplay,
-        title: "Next to me",
+        title: `Departures within ${radiusLabel}m`,
         randomHeaderColors:
           onTheRun.randomHeaderColors ?? defaultDisplay.randomHeaderColors,
       };

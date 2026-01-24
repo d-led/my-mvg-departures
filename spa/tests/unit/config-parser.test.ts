@@ -87,7 +87,7 @@ random_header_colors = true
     const onTheRunRoute = config.routes.find(
       (route) => route.path === "on-the-run",
     );
-    expect(onTheRunRoute?.display?.title).toBe("Next to me");
+    expect(onTheRunRoute?.display?.title).toBe("Departures within 50m");
     expect(onTheRunRoute?.display?.randomHeaderColors).toBe(true);
     expect(onTheRunRoute?.isOnTheRun).toBe(true);
   });
