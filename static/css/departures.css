@@ -62,7 +62,7 @@ body {
   /* Route column: uses CSS variable set by JS for dynamic font scaling, fallback to 6.5em */
   grid-template-columns: var(--route-column-width, 6.5em) 1fr;
   align-items: center;
-  gap: 0.3em;
+  gap: var(--route-container-gap, 0.5em);
   min-width: 0;
   overflow: hidden;
   padding: 0 0.75rem 0 0;
@@ -267,6 +267,11 @@ h2.direction-header {
   margin: 0.5rem 0 0.25rem 0;
   padding: 0.5rem 0.75rem;
 }
+/* Remove top margin only from the very first header to eliminate white stripe */
+#departures > .direction-group:first-child > .direction-header,
+.direction-group:first-child:first-child .direction-header {
+  margin-top: 0;
+}
 .direction-header-text {
   flex: 1;
   min-width: 0;
@@ -391,6 +396,11 @@ h2.direction-header {
   margin: 0.5rem 0.5rem 0.25rem 0.5rem;
   padding: 0;
   opacity: 0.95;
+}
+/* Remove top margin only from the very first stop header */
+#departures > .stop-section:first-child > .stop-header,
+.stop-section:first-child:first-child .stop-header {
+  margin-top: 0;
 }
 [data-theme="light"] .stop-header {
   color: #111827;

@@ -264,8 +264,10 @@ function toggleTimeFormat() {
 
   currentTimeFormat = currentTimeFormat === "relative" ? "absolute" : "relative";
 
-  // Recalculate destination clipping after layout settles (time format change may affect container widths)
+  // Recalculate destination clipping and route column width after layout settles (time format change may affect container widths)
   setTimeout(() => {
+    calculateRouteContainerGap();
+    calculateRouteColumnWidth();
     initDestinationScrolling();
   }, 200);
 }
@@ -652,8 +654,10 @@ window.addEventListener("phx:update", (event) => {
       initTimeFormatToggle();
     });
 
-    // Re-check destination scrolling after DOM update
+    // Re-check destination scrolling and recalculate route column width after DOM update
     requestAnimationFrame(() => {
+      calculateRouteContainerGap();
+      calculateRouteColumnWidth();
       initDestinationScrolling();
     });
 
@@ -661,6 +665,12 @@ window.addEventListener("phx:update", (event) => {
     if (window.DEPARTURES_CONFIG && window.DEPARTURES_CONFIG.fillVerticalSpace) {
       requestAnimationFrame(() => {
         calculateFillVerticalSpace();
+      });
+    } else {
+      // Even when fillVerticalSpace is disabled, scale headers to prevent wrapping
+      // This prevents header text from wrapping and causing overlap issues
+      requestAnimationFrame(() => {
+        scaleHeadersIfNeeded();
       });
     }
 
@@ -1074,20 +1084,117 @@ function initPagination() {
   // Users can scroll vertically to see all direction groups
 }
 
+// Calculate route container gap from computed font size
+function calculateRouteContainerGap() {
+  const root = document.documentElement;
+  const departuresEl = document.getElementById("departures");
+  if (!departuresEl) return;
+  
+  // Get the first route number element to measure its font size
+  const firstRouteNumber = departuresEl.querySelector(".route-number");
+  if (firstRouteNumber) {
+    const computedStyle = window.getComputedStyle(firstRouteNumber);
+    const fontSize = parseFloat(computedStyle.fontSize);
+    // Use 0.5em equivalent for adequate spacing
+    const gap = fontSize * 0.5;
+    root.style.setProperty("--route-container-gap", gap + "px");
+  } else {
+    // Fallback: use CSS variable if available, or default
+    const fontSizeVar = getComputedStyle(root).getPropertyValue("--font-size-route-number");
+    if (fontSizeVar) {
+      const fontSize = parseFloat(fontSizeVar);
+      const gap = fontSize * 0.5;
+      root.style.setProperty("--route-container-gap", gap + "px");
+    }
+  }
+}
+
+// Calculate route column width from all route numbers (for left alignment)
+function calculateRouteColumnWidth() {
+  const root = document.documentElement;
+  const departuresEl = document.getElementById("departures");
+  if (!departuresEl) return;
+  
+  // Get font size for calculations
+  const firstRouteNumber = departuresEl.querySelector(".route-number");
+  if (!firstRouteNumber) return;
+  
+  const computedStyle = window.getComputedStyle(firstRouteNumber);
+  const fontSize = parseFloat(computedStyle.fontSize);
+  
+  // Temporarily set auto width to allow accurate measurement
+  root.style.setProperty("--route-column-width", "auto");
+  void departuresEl.offsetHeight; // Force reflow
+  
+  // Measure all route numbers to find the maximum width
+  let maxRouteWidth = 0;
+  const routeNumbers = departuresEl.querySelectorAll(".route-number");
+  routeNumbers.forEach((el) => {
+    // Use scrollWidth to get full content width even if constrained
+    const width = el.scrollWidth;
+    if (width > maxRouteWidth) maxRouteWidth = width;
+  });
+  
+  // Add internal padding (0.2em) for spacing within the route column, plus ensure minimum width
+  const routeColumnWidth = Math.max(maxRouteWidth + fontSize * 0.2, fontSize * 2.5);
+  root.style.setProperty("--route-column-width", routeColumnWidth + "px");
+}
+
 // Check and enable scrolling animation for clipped destination text
 function initDestinationScrolling() {
   document.querySelectorAll(".destination-text").forEach((textEl) => {
     const container = textEl.closest(".destination");
     if (!container) return;
-    // Check if text is clipped (text width > container width)
-    const textWidth = textEl.scrollWidth;
-    const containerWidth = container.clientWidth;
+    
+    const routeContainer = container.closest(".route-container");
+    if (!routeContainer) return;
+    
+    const departureRow = container.closest(".departure-row");
+    if (!departureRow) return;
+
+    // Force layout recalculation
+    departureRow.getBoundingClientRect();
+    routeContainer.getBoundingClientRect();
+    container.getBoundingClientRect();
+    textEl.getBoundingClientRect();
+
+    // Get the actual rendered widths
+    const textScrollWidth = textEl.scrollWidth;
+    const routeContainerClientWidth = routeContainer.clientWidth;
+    
+    // Calculate available space for destination in the grid
+    // The route-container is a grid with: route-number column + destination column (1fr)
+    const routeNumber = routeContainer.querySelector(".route-number");
+    const routeNumberWidth = routeNumber ? routeNumber.offsetWidth : 0;
+    // Get gap from CSS variable, or calculate from route number font size as fallback
+    const root = document.documentElement;
+    const computedGap = root.style.getPropertyValue("--route-container-gap");
+    let gap = 0;
+    if (computedGap) {
+      gap = parseFloat(computedGap);
+    } else {
+      // Fallback: calculate from route number font size
+      const routeNumberEl = routeContainer.querySelector(".route-number");
+      if (routeNumberEl) {
+        const computedStyle = window.getComputedStyle(routeNumberEl);
+        const fontSize = parseFloat(computedStyle.fontSize);
+        gap = fontSize * 0.5; // 0.5em equivalent
+      } else {
+        gap = 16 * 0.5; // Final fallback: 0.5em assuming 16px base
+      }
+    }
+    const availableDestinationWidth = routeContainerClientWidth - routeNumberWidth - gap;
+    
     const wasClipped = textEl.classList.contains("clipped");
-    const isClipped = textWidth > containerWidth;
+    
+    // Text is clipped if it's wider than the available space in the grid column
+    // Even if the container expands, we check against the actual available space
+    const isClipped = textScrollWidth > availableDestinationWidth;
 
     if (isClipped) {
       // Text is clipped - add clipped class and calculate exact scroll distance
-      const scrollDistance = containerWidth - textWidth;
+      // Negative because we need to scroll left (text is wider than available space)
+      const scrollDistance = availableDestinationWidth - textScrollWidth;
       const currentScrollDistance = textEl.style.getPropertyValue("--scroll-distance");
 
       // Only update if clipping state changed or scroll distance changed significantly
@@ -1209,6 +1316,11 @@ function calculateFillVerticalSpace() {
   const timeContainerGap = fontSizes.time * 0.2;
   root.style.setProperty("--time-container-gap", timeContainerGap + "px");
 
+  // Calculate route container gap dynamically based on route number font size
+  // Use a larger multiplier (0.5) to ensure adequate spacing between route number and destination
+  const routeContainerGap = fontSizes.routeNumber * 0.5;
+  root.style.setProperty("--route-container-gap", routeContainerGap + "px");
+
   // Dynamically calculate column widths based on actual content
   // First, temporarily set auto widths to allow content measurement
   root.style.setProperty("--route-column-width", "auto");
@@ -1227,8 +1339,9 @@ function calculateFillVerticalSpace() {
     const width = el.scrollWidth;
     if (width > maxRouteWidth) maxRouteWidth = width;
   });
-  // Add padding (0.3em gap from grid) and ensure minimum width
-  const routeColumnWidth = Math.max(maxRouteWidth + fontSizes.routeNumber * 0.3, fontSizes.routeNumber * 2.5);
+  // Add internal padding (0.2em) for spacing within the route column, plus ensure minimum width
+  // The CSS grid gap is separate and already set via --route-container-gap
+  const routeColumnWidth = Math.max(maxRouteWidth + fontSizes.routeNumber * 0.2, fontSizes.routeNumber * 2.5);
   root.style.setProperty("--route-column-width", routeColumnWidth + "px");
 
   // Measure the maximum width of platforms
@@ -1312,12 +1425,9 @@ function calculateFillVerticalSpace() {
   scaleHeadersIfNeeded();
 }
 
-// Scale all header text if it wraps, only in fill_vertical_space mode
-// This ensures the text fits on one line without truncation
+// Scale all header text if it wraps to ensure it fits on one line
+// This prevents wrapping which can cause overlap issues (e.g., U2 overlap)
 function scaleHeadersIfNeeded() {
-  if (!window.DEPARTURES_CONFIG || !window.DEPARTURES_CONFIG.fillVerticalSpace) {
-    return;
-  }
 
   const departuresEl = document.getElementById("departures");
   if (!departuresEl) return;
@@ -1438,6 +1548,9 @@ function initializeAll() {
   initRefreshCountdown();
   // Initialize time format toggle
   initTimeFormatToggle();
+  // Calculate route container gap and column width first (needed for destination scrolling and alignment)
+  calculateRouteContainerGap();
+  calculateRouteColumnWidth();
   // Initialize destination scrolling for clipped text
   initDestinationScrolling();
   // Calculate dynamic font sizes if fill_vertical_space is enabled
@@ -1445,6 +1558,13 @@ function initializeAll() {
     // Use requestAnimationFrame to ensure DOM is fully rendered
     requestAnimationFrame(() => {
       calculateFillVerticalSpace();
+    });
+  } else {
+    // Even when fillVerticalSpace is disabled, calculate gap and route column width from CSS font size
+    requestAnimationFrame(() => {
+      calculateRouteContainerGap();
+      calculateRouteColumnWidth();
+      scaleHeadersIfNeeded();
     });
   }
 
