@@ -64,7 +64,9 @@ export interface TomlOnTheRunData {
   radius_meters?: number;
   max_departures_per_stop?: number;
   max_departures_per_route?: number;
+  refresh_interval_seconds?: number;
   update_location_interval_seconds?: number;
+  update_location_on_every_poll?: boolean;
   use_adapters?: string[];
   use_precise_location?: boolean;
   smart_sub_stops?: boolean;

@@ -241,7 +241,10 @@ export class ConfigParser {
       maxDeparturesPerStop: entry.max_departures_per_stop ?? 8,
       maxDeparturesPerRoute: entry.max_departures_per_route ?? 2,
       updateLocationIntervalSeconds:
-        entry.update_location_interval_seconds ?? 20,
+        entry.refresh_interval_seconds ??
+        entry.update_location_interval_seconds ??
+        20,
+      updateLocationOnEveryPoll: entry.update_location_on_every_poll ?? true,
       useAdapters: entry.use_adapters ?? ["mvg"],
       usePreciseLocation: entry.use_precise_location ?? true,
       smartSubStops: entry.smart_sub_stops ?? true,

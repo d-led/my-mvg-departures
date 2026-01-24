@@ -70,7 +70,8 @@ station_name = "Balanstr."
 radius_meters = 50
 max_departures_per_stop = 8
 max_departures_per_route = 2
-update_location_interval_seconds = 20
+refresh_interval_seconds = 20
+update_location_on_every_poll = false
 use_adapters = ["mvg"]
 use_precise_location = true
 smart_sub_stops = true
@@ -80,6 +81,7 @@ random_header_colors = true
     const config = parser.parseToml(toml);
 
     expect(config.onTheRun?.radiusMeters).toBe(50);
+    expect(config.onTheRun?.updateLocationOnEveryPoll).toBe(false);
     expect(config.onTheRun?.useAdapters).toEqual(["mvg"]);
     expect(config.onTheRun?.randomHeaderColors).toBe(true);
     const onTheRunRoute = config.routes.find(

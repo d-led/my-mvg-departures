@@ -45,6 +45,7 @@ export class OnTheRunPoller {
   private readonly pollerId: string;
   private hasWarnedIgnoredAdapters = false;
   private statusMessages: string[] = [];
+  private lastLocation: { latitude: number; longitude: number } | null = null;
 
   constructor(
     private readonly stationRepository: MvgStationRepository,
@@ -117,9 +118,22 @@ export class OnTheRunPoller {
       return;
     }
 
-    this.setStatus(["Fetching location..."]);
-    const location = await this.getCurrentLocation();
-    const locationLabel = `Fetched location: ${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`;
+    const shouldUpdateLocation =
+      this.isInitialPoll ||
+      (this.config.updateLocationOnEveryPoll ?? true) ||
+      !this.lastLocation;
+    this.setStatus([
+      shouldUpdateLocation ? "Fetching location..." : "Using last location...",
+    ]);
+    const location = shouldUpdateLocation
+      ? await this.getCurrentLocation()
+      : this.lastLocation!;
+    if (shouldUpdateLocation) {
+      this.lastLocation = location;
+    }
+    const locationLabel = shouldUpdateLocation
+      ? `Fetched location: ${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`
+      : `Using last location: ${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`;
     this.setStatus([locationLabel, "Finding nearby stops..."]);
     const nearbyStations = await this.stationRepository.getNearbyStations(
       location.latitude,

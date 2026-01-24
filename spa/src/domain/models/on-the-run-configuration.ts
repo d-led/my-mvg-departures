@@ -3,6 +3,7 @@ export interface OnTheRunConfiguration {
   maxDeparturesPerStop?: number;
   maxDeparturesPerRoute?: number;
   updateLocationIntervalSeconds?: number;
+  updateLocationOnEveryPoll?: boolean;
   useAdapters?: string[];
   usePreciseLocation?: boolean;
   smartSubStops?: boolean;
