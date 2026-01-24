@@ -82,106 +82,138 @@
     }
   }
 
-  onMount(async () => {
-    await loadConfig();
-    
-    // Initialize CSS variables for font sizes (even if fillVerticalSpace is disabled)
-    // Set default values from CSS
-    const root = document.documentElement;
-    if (!root.style.getPropertyValue("--font-size-route-number")) {
-      // Initialize with default rem values (will be overridden by fillVerticalSpace if enabled)
-      root.style.setProperty("--font-size-route-number", "4rem");
-      root.style.setProperty("--font-size-destination", "4rem");
-      root.style.setProperty("--font-size-platform", "2.5rem");
-      root.style.setProperty("--font-size-time", "4rem");
-      root.style.setProperty("--font-size-direction-header", "4rem");
-      root.style.setProperty("--font-size-stop-header", "3rem");
-      root.style.setProperty("--font-size-no-departures", "2.5rem");
-      root.style.setProperty("--font-size-pagination-indicator", "2rem");
-      root.style.setProperty("--font-size-countdown-text", "1.8rem");
-      root.style.setProperty("--font-size-delay-amount", "2rem");
-      root.style.setProperty("--font-size-status-header", "4rem");
-    }
-    
-    await initializeRoute();
-    
-    // Listen for hash changes (hash-based routing)
-    window.addEventListener("hashchange", handleHashChange);
-    
-    // Listen for window resize to recalculate font sizes (matches Python exactly)
-    // Handle window resize for fill_vertical_space (matches Python: lines 1426-1436)
-    let resizeTimeout: number | null = null;
-    window.addEventListener("resize", () => {
-      if (currentRoute?.display?.fillVerticalSpace) {
-        // Debounce resize events (matches Python: 150ms)
-        if (resizeTimeout) clearTimeout(resizeTimeout);
-        resizeTimeout = window.setTimeout(() => {
-          calculateFillVerticalSpace({
-            fillVerticalSpace: true,
-            fontScalingFactorWhenFilling: currentRoute?.display?.fontScalingFactorWhenFilling ?? 1.0,
-          });
-        }, 150);
-      }
-    });
+  onMount(() => {
+    let cleanupVisibility: (() => void) | undefined;
+    let cleanupResize: (() => void) | undefined;
+    let cleanupHash: (() => void) | undefined;
 
-    // Detect when page/tab is suspended/hidden (Page Visibility API only)
-    // When suspended, grey out all rows to signal staleness
-    // Main use case: browser suspends tab timers when tab is hidden, data becomes stale
-    async function handleVisibilityChange() {
-      const wasSuspended = isPageSuspended;
-      
-      // Only set stale when page is actually hidden (tab suspended)
-      // Don't set stale on focus loss - only when browser suspends timers
+    const setup = async () => {
+      await loadConfig();
+
+      // Initialize CSS variables for font sizes (even if fillVerticalSpace is disabled)
+      // Set default values from CSS
+      const root = document.documentElement;
+      if (!root.style.getPropertyValue("--font-size-route-number")) {
+        // Initialize with default rem values (will be overridden by fillVerticalSpace if enabled)
+        root.style.setProperty("--font-size-route-number", "4rem");
+        root.style.setProperty("--font-size-destination", "4rem");
+        root.style.setProperty("--font-size-platform", "2.5rem");
+        root.style.setProperty("--font-size-time", "4rem");
+        root.style.setProperty("--font-size-direction-header", "4rem");
+        root.style.setProperty("--font-size-stop-header", "3rem");
+        root.style.setProperty("--font-size-no-departures", "2.5rem");
+        root.style.setProperty("--font-size-pagination-indicator", "2rem");
+        root.style.setProperty("--font-size-countdown-text", "1.8rem");
+        root.style.setProperty("--font-size-delay-amount", "2rem");
+        root.style.setProperty("--font-size-status-header", "4rem");
+      }
+
+      await initializeRoute();
+
+      // Listen for hash changes (hash-based routing)
+      window.addEventListener("hashchange", handleHashChange);
+      cleanupHash = () => {
+        window.removeEventListener("hashchange", handleHashChange);
+      };
+
+      // Listen for window resize to recalculate font sizes (matches Python exactly)
+      // Handle window resize for fill_vertical_space (matches Python: lines 1426-1436)
+      let resizeTimeout: number | null = null;
+      const handleResize = () => {
+        if (currentRoute?.display?.fillVerticalSpace) {
+          // Debounce resize events (matches Python: 150ms)
+          if (resizeTimeout) clearTimeout(resizeTimeout);
+          resizeTimeout = window.setTimeout(() => {
+            calculateFillVerticalSpace({
+              fillVerticalSpace: true,
+              fontScalingFactorWhenFilling:
+                currentRoute?.display?.fontScalingFactorWhenFilling ?? 1.0,
+            });
+          }, 150);
+        }
+      };
+      window.addEventListener("resize", handleResize);
+      cleanupResize = () => {
+        if (resizeTimeout) {
+          clearTimeout(resizeTimeout);
+        }
+        window.removeEventListener("resize", handleResize);
+      };
+
+      // Detect when page/tab is suspended/hidden (Page Visibility API only)
+      // When suspended, grey out all rows to signal staleness
+      // Main use case: browser suspends tab timers when tab is hidden, data becomes stale
+      async function handleVisibilityChange() {
+        const wasSuspended = isPageSuspended;
+
+        // Only set stale when page is actually hidden (tab suspended)
+        // Don't set stale on focus loss - only when browser suspends timers
+        if (document.hidden) {
+          isPageSuspended = true;
+          if (!wasSuspended) {
+            console.log(
+              "Page SUSPENDED (tab hidden/device sleeping) - marking data as stale",
+            );
+          }
+        } else if (!document.hidden && wasSuspended && activePollers.size > 0) {
+          // Page became visible again - force immediate refresh to get fresh data
+          console.log(
+            "Page VISIBLE again (tab shown/device woke up) - forcing immediate refresh",
+          );
+          try {
+            // Refresh all active pollers
+            for (const poller of activePollers) {
+              await poller.refreshNow();
+            }
+          } catch (error) {
+            console.error("Error during forced refresh:", error);
+          }
+        }
+      }
+
+      // Check initial state
       if (document.hidden) {
         isPageSuspended = true;
-        if (!wasSuspended) {
-          console.log('Page SUSPENDED (tab hidden/device sleeping) - marking data as stale');
-        }
-      } else if (!document.hidden && wasSuspended && activePollers.size > 0) {
-        // Page became visible again - force immediate refresh to get fresh data
-        console.log('Page VISIBLE again (tab shown/device woke up) - forcing immediate refresh');
-        try {
-          // Refresh all active pollers
-          for (const poller of activePollers) {
-            await poller.refreshNow();
-          }
-        } catch (error) {
-          console.error('Error during forced refresh:', error);
-        }
       }
-    }
-    
-    // Check initial state
-    if (document.hidden) {
-      isPageSuspended = true;
-    }
-    
-    // Listen for visibility changes (Page Visibility API)
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    
-    // Cleanup on unmount
+
+      // Listen for visibility changes (Page Visibility API)
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+      cleanupVisibility = () => {
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      };
+    };
+
+    void setup();
+
     return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      cleanupVisibility?.();
+      cleanupResize?.();
+      cleanupHash?.();
     };
   });
 
   // Recalculate font sizes after departures update
   // This matches Python's phx:update handler: requestAnimationFrame(() => { calculateFillVerticalSpace(); })
-  $effect(async () => {
+  $effect(() => {
     // Access reactive values to trigger effect (intentionally unused to trigger reactivity)
     void groupedDepartures;
     void currentRoute;
-    
+
+    void handleDeparturesUpdate();
+  });
+
+  async function handleDeparturesUpdate(): Promise<void> {
     if (currentRoute?.display?.fillVerticalSpace && groupedDepartures.length > 0) {
       // Wait for Svelte to finish rendering
       await tick();
-      
+
       // Use requestAnimationFrame to ensure DOM is fully laid out (matches Python exactly)
       requestAnimationFrame(() => {
         console.log("Recalculating font sizes (fillVerticalSpace enabled)");
         calculateFillVerticalSpace({
           fillVerticalSpace: true,
-          fontScalingFactorWhenFilling: currentRoute?.display?.fontScalingFactorWhenFilling ?? 1.0,
+          fontScalingFactorWhenFilling:
+            currentRoute?.display?.fontScalingFactorWhenFilling ?? 1.0,
         });
         // Initialize time format toggle (will reinitialize if already running)
         initTimeFormatToggle(currentRoute?.display?.timeFormatToggleSeconds ?? 0);
@@ -208,7 +240,7 @@
         });
       });
     }
-  });
+  }
 
   function handleHashChange() {
     const hash = window.location.hash.slice(1); // Remove leading #
@@ -488,7 +520,6 @@
 
   <StatusBar
     {apiStatus}
-    {showConfigModal}
     onConfigClick={openConfig}
     routes={config?.routes ?? []}
     currentRoutePath={currentRoute?.path ?? null}

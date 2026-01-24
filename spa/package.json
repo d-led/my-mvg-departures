@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node build.js",
     "dev": "node build.js --watch",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",

@@ -19,11 +19,15 @@
   const configStorage = new LocalStorageConfigStorage();
   const configParser = new ConfigParser();
 
-  // Load raw TOML from storage when modal opens
-  $effect(async () => {
+  async function loadStoredConfig(): Promise<void> {
     const storedToml = await configStorage.getConfigToml();
     configText = storedToml || "";
     errorMessage = null; // Clear error when loading
+  }
+
+  // Load raw TOML from storage when modal opens
+  $effect(() => {
+    void loadStoredConfig();
   });
 
   // Clear error when text changes
@@ -88,6 +92,16 @@
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === "Escape") {
       onCancel();
+      return;
+    }
+
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onCancel();
     }
   }
 
@@ -119,8 +133,19 @@
   }
 </script>
 
-<div class="modal-overlay" onclick={onCancel} onkeydown={handleKeydown}>
-  <div class="modal-content" onclick={(e) => e.stopPropagation()}>
+<div
+  class="modal-overlay"
+  onclick={(event) => {
+    if (event.target === event.currentTarget) {
+      onCancel();
+    }
+  }}
+  onkeydown={handleKeydown}
+  role="button"
+  tabindex="0"
+  aria-label="Close configuration dialog"
+>
+  <div class="modal-content">
     <div class="modal-header">
       <h2>Configuration</h2>
       <button class="close-button" onclick={onCancel} aria-label="Close">×</button>
@@ -224,7 +249,7 @@
     overflow: hidden; /* Prevent content from overflowing */
   }
 
-  [data-theme="dark"] .modal-content {
+  :global([data-theme="dark"]) .modal-content {
     background: #1d232a;
     color: #f9fafb;
   }
@@ -260,11 +285,11 @@
     color: #111827;
   }
 
-  [data-theme="dark"] .close-button {
+  :global([data-theme="dark"]) .close-button {
     color: #9ca3af;
   }
 
-  [data-theme="dark"] .close-button:hover {
+  :global([data-theme="dark"]) .close-button:hover {
     color: #f9fafb;
   }
 
@@ -291,7 +316,7 @@
     flex-shrink: 0;
   }
 
-  [data-theme="dark"] .info-links {
+  :global([data-theme="dark"]) .info-links {
     background-color: #374151;
   }
 
@@ -308,11 +333,11 @@
     color: #0669a3;
   }
 
-  [data-theme="dark"] .info-links a {
+  :global([data-theme="dark"]) .info-links a {
     color: #60a5fa;
   }
 
-  [data-theme="dark"] .info-links a:hover {
+  :global([data-theme="dark"]) .info-links a:hover {
     color: #93c5fd;
   }
 
@@ -327,7 +352,7 @@
     flex-shrink: 0;
   }
 
-  [data-theme="dark"] .error-message {
+  :global([data-theme="dark"]) .error-message {
     background-color: #7f1d1d;
     border-color: #dc2626;
     color: #fca5a5;
@@ -370,12 +395,12 @@
     cursor: not-allowed;
   }
 
-  [data-theme="dark"] .icon-button {
+  :global([data-theme="dark"]) .icon-button {
     background-color: #374151;
     border-color: #4b5563;
   }
 
-  [data-theme="dark"] .icon-button:hover:not(:disabled) {
+  :global([data-theme="dark"]) .icon-button:hover:not(:disabled) {
     background-color: #4b5563;
     border-color: #6b7280;
   }
@@ -386,7 +411,7 @@
     fill: #111827;
   }
 
-  [data-theme="dark"] .icon {
+  :global([data-theme="dark"]) .icon {
     fill: #f9fafb;
   }
 
@@ -396,7 +421,7 @@
     font-size: 1rem;
   }
 
-  [data-theme="dark"] .success-indicator {
+  :global([data-theme="dark"]) .success-indicator {
     color: #4ade80;
   }
 
@@ -404,7 +429,7 @@
     border-color: #dc2626;
   }
 
-  [data-theme="dark"] .config-textarea.error {
+  :global([data-theme="dark"]) .config-textarea.error {
     border-color: #f87171;
   }
 
@@ -422,7 +447,7 @@
     overflow-y: auto; /* Scroll inside textarea if content is too long */
   }
 
-  [data-theme="dark"] .config-textarea {
+  :global([data-theme="dark"]) .config-textarea {
     background: #111827;
     color: #f9fafb;
     border-color: #374151;
@@ -447,13 +472,13 @@
     border-color: #9ca3af;
   }
 
-  [data-theme="dark"] .button-example {
+  :global([data-theme="dark"]) .button-example {
     background-color: #374151;
     color: #f9fafb;
     border-color: #4b5563;
   }
 
-  [data-theme="dark"] .button-example:hover:not(:disabled) {
+  :global([data-theme="dark"]) .button-example:hover:not(:disabled) {
     background-color: #4b5563;
     border-color: #6b7280;
   }
@@ -490,12 +515,12 @@
     background-color: #d1d5db;
   }
 
-  [data-theme="dark"] .button-secondary {
+  :global([data-theme="dark"]) .button-secondary {
     background-color: #374151;
     color: #f9fafb;
   }
 
-  [data-theme="dark"] .button-secondary:hover {
+  :global([data-theme="dark"]) .button-secondary:hover {
     background-color: #4b5563;
   }
 </style>

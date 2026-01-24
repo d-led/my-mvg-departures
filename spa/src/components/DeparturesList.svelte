@@ -165,8 +165,6 @@
     <div class="direction-group">
       <h2 
         class="direction-header" 
-        role="heading" 
-        aria-level="2"
         style={groupIndex === 0 ? undefined : (group.headerColor ? `background-color: ${group.headerColor};` : undefined)}
         data-fill-vertical-space={display?.fillVerticalSpace && groupIndex === 0 ? "true" : undefined}
       >
@@ -411,15 +409,15 @@
     }
   }
 
-  .destination-text.clipped {
+  .destination-text:global(.clipped) {
     animation: scroll-destination 20s ease-in-out infinite;
     will-change: transform;
   }
 
   /* Pause animation on interaction for better UX */
-  .destination:hover .destination-text.clipped,
-  .destination:active .destination-text.clipped,
-  .departure-row:hover .destination-text.clipped {
+  .destination:hover .destination-text:global(.clipped),
+  .destination:active .destination-text:global(.clipped),
+  .departure-row:hover .destination-text:global(.clipped) {
     animation-play-state: paused;
   }
 

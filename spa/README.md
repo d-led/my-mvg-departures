@@ -43,6 +43,7 @@ Builds the production bundle to `dist/` directory.
 
 Runs:
 
+- Svelte check (a11y + diagnostics)
 - TypeScript type checking
 - ESLint
 - Prettier formatting check

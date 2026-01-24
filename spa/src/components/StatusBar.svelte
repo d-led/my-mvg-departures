@@ -202,7 +202,7 @@
       </button>
       
       {#if showRouteSelector}
-        <div class="route-selector-dropdown" role="menu" aria-label="Available routes" onclick={(e) => e.stopPropagation()}>
+        <div class="route-selector-dropdown" role="menu" aria-label="Available routes" tabindex="-1">
           {#each routes as route (route.path)}
             <button
               class="route-selector-item {currentRoutePath === route.path ? 'active' : ''}"
@@ -235,11 +235,11 @@
     z-index: 1000;
   }
 
-  [data-theme="light"] .status-floating-box {
+  :global([data-theme="light"]) .status-floating-box {
     background-color: rgba(128, 128, 128, 0.2);
   }
 
-  [data-theme="dark"] .status-floating-box {
+  :global([data-theme="dark"]) .status-floating-box {
     background-color: rgba(128, 128, 128, 0.4);
   }
 
@@ -271,7 +271,7 @@
     min-height: 18px;
   }
 
-  [data-theme="dark"] .config-button {
+  :global([data-theme="dark"]) .config-button {
     color: rgba(255, 255, 255, 0.8);
   }
 
@@ -320,19 +320,19 @@
     transition: stroke-dashoffset 0.1s linear;
   }
 
-  [data-theme="light"] .refresh-countdown circle {
+  :global([data-theme="light"]) .refresh-countdown circle {
     stroke: rgba(0, 0, 0, 0.3);
   }
 
-  [data-theme="light"] .refresh-countdown circle.progress {
+  :global([data-theme="light"]) .refresh-countdown circle.progress {
     stroke: rgba(0, 0, 0, 0.8);
   }
 
-  [data-theme="dark"] .refresh-countdown circle {
+  :global([data-theme="dark"]) .refresh-countdown circle {
     stroke: rgba(255, 255, 255, 0.3);
   }
 
-  [data-theme="dark"] .refresh-countdown circle.progress {
+  :global([data-theme="dark"]) .refresh-countdown circle.progress {
     stroke: rgba(255, 255, 255, 0.8);
   }
 
@@ -394,7 +394,7 @@
     opacity: 0.9;
   }
 
-  [data-theme="dark"] .route-selector-button {
+  :global([data-theme="dark"]) .route-selector-button {
     color: rgba(255, 255, 255, 0.85);
   }
 
@@ -420,7 +420,7 @@
     overflow: hidden;
   }
 
-  [data-theme="dark"] .route-selector-dropdown {
+  :global([data-theme="dark"]) .route-selector-dropdown {
     background: #1d232a;
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
   }
@@ -438,7 +438,7 @@
     transition: background-color 0.2s;
   }
 
-  [data-theme="dark"] .route-selector-item {
+  :global([data-theme="dark"]) .route-selector-item {
     color: #f9fafb;
   }
 
@@ -446,7 +446,7 @@
     background-color: rgba(0, 0, 0, 0.05);
   }
 
-  [data-theme="dark"] .route-selector-item:hover {
+  :global([data-theme="dark"]) .route-selector-item:hover {
     background-color: rgba(255, 255, 255, 0.1);
   }
 
@@ -455,7 +455,7 @@
     font-weight: 600;
   }
 
-  [data-theme="dark"] .route-selector-item.active {
+  :global([data-theme="dark"]) .route-selector-item.active {
     background-color: rgba(8, 123, 196, 0.2);
   }
 </style>

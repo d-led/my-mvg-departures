@@ -15,6 +15,13 @@ npm run typecheck || {
   exit 1
 }
 
+# Svelte check (includes a11y diagnostics)
+echo "Running Svelte check..."
+npm run check || {
+  echo "✗ Svelte check failed"
+  exit 1
+}
+
 # Linting
 echo "Running ESLint..."
 npm run lint || {
