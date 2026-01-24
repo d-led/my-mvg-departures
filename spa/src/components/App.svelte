@@ -16,7 +16,6 @@
     StopConfiguration,
   } from "../domain/models/index.js";
   import { calculateFillVerticalSpace, setFontSizesFromConfig } from "../utils/font-scaling.js";
-  import { initDestinationScrolling } from "../utils/destination-scrolling.js";
   import { initTimeFormatToggle, cleanupTimeFormatToggle } from "../utils/time-format-toggle.js";
   import ConfigModal from "./ConfigModal.svelte";
   import DeparturesList from "./DeparturesList.svelte";
@@ -82,28 +81,11 @@
         fillVerticalSpace: true,
         fontScalingFactorWhenFilling: currentRoute?.display?.fontScalingFactorWhenFilling ?? 1.0,
       });
-      // Wait for layout to complete after font scaling (matches Python view pattern)
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          initDestinationScrolling();
-        });
-      });
     } else if (!currentRoute?.display?.fillVerticalSpace && groupedDepartures.length > 0) {
       // When fillVerticalSpace is disabled, still set font sizes from config to prevent overlap
       // Note: This is called from within requestAnimationFrame already, so we can call directly
       // The outer requestAnimationFrame ensures DOM is ready
       setFontSizesFromConfig(currentRoute?.display);
-      // Wait for layout to complete after font size changes (matches Python view pattern)
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          initDestinationScrolling();
-        });
-      });
-    } else {
-      // No font scaling, but still need to check for clipped destinations
-      requestAnimationFrame(() => {
-        initDestinationScrolling();
-      });
     }
   }
 
@@ -242,12 +224,6 @@
         });
         // Initialize time format toggle (will reinitialize if already running)
         initTimeFormatToggle(currentRoute?.display?.timeFormatToggleSeconds ?? 0);
-        // Wait for layout to complete after font scaling (matches Python view pattern)
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            initDestinationScrolling();
-          });
-        });
       });
     } else if (!currentRoute?.display?.fillVerticalSpace) {
       console.log("fillVerticalSpace is disabled, setting font sizes from config");
@@ -257,12 +233,6 @@
       requestAnimationFrame(() => {
         setFontSizesFromConfig(currentRoute?.display);
         initTimeFormatToggle(currentRoute?.display?.timeFormatToggleSeconds ?? 0);
-        // Wait for layout to complete after font size changes (matches Python view pattern)
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            initDestinationScrolling();
-          });
-        });
       });
     }
   }

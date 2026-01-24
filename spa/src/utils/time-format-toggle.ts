@@ -85,14 +85,6 @@ function toggleTimeFormat(): void {
 
   currentTimeFormat =
     currentTimeFormat === "relative" ? "absolute" : "relative";
-
-  // Recalculate destination clipping after layout settles (time format change may affect container widths)
-  setTimeout(() => {
-    // Import dynamically to avoid circular dependency
-    import("./destination-scrolling.js").then((module) => {
-      module.initDestinationScrolling();
-    });
-  }, 200);
 }
 
 export function cleanupTimeFormatToggle(): void {
