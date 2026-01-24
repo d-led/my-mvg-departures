@@ -391,6 +391,38 @@
     justify-self: start;
   }
 
+  .destination-text {
+    display: inline-block;
+    white-space: nowrap;
+  }
+
+  /* Auto-scroll animation for clipped destination text */
+  @keyframes scroll-destination {
+    0%,
+    30% {
+      transform: translateX(0);
+    }
+    50%,
+    70% {
+      transform: translateX(var(--scroll-distance, -18%));
+    }
+    100% {
+      transform: translateX(0);
+    }
+  }
+
+  .destination-text.clipped {
+    animation: scroll-destination 20s ease-in-out infinite;
+    will-change: transform;
+  }
+
+  /* Pause animation on interaction for better UX */
+  .destination:hover .destination-text.clipped,
+  .destination:active .destination-text.clipped,
+  .departure-row:hover .destination-text.clipped {
+    animation-play-state: paused;
+  }
+
   .time-container {
     flex: 0 0 auto;
     display: grid;
