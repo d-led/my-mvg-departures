@@ -132,11 +132,19 @@ export class OnTheRunPoller {
     );
     const radius = this.config.radiusMeters ?? 50;
     const stopLabel = stationsInRange.length === 1 ? "stop" : "stops";
-    this.setStatus([
-      locationLabel,
-      `Found ${stationsInRange.length} ${stopLabel} in vicinity of ${radius}m`,
-      "Preparing route config",
-    ]);
+    if (stationsInRange.length === 0) {
+      this.setStatus([
+        locationLabel,
+        `Found 0 stops in vicinity of ${radius}m`,
+        "Check location settings or increase the radius configuration",
+      ]);
+    } else {
+      this.setStatus([
+        locationLabel,
+        `Found ${stationsInRange.length} ${stopLabel} in vicinity of ${radius}m`,
+        "Preparing route config",
+      ]);
+    }
 
     if (stationsInRange.length === 0) {
       console.warn(`[${this.pollerId}] No nearby stations found within radius`);

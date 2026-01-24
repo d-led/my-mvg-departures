@@ -16,6 +16,7 @@
   let isLoadingExample = $state(false);
   let copySuccess = $state(false);
   let pasteSuccess = $state(false);
+  let pasteError = $state(false);
   const configStorage = new LocalStorageConfigStorage();
   const configParser = new ConfigParser();
 
@@ -121,14 +122,33 @@
   async function handlePaste() {
     try {
       const text = await navigator.clipboard.readText();
+      const trimmed = text.trim();
+      if (!trimmed) {
+        errorMessage = "Clipboard is empty. Please copy a valid TOML config.";
+        pasteError = true;
+        setTimeout(() => {
+          pasteError = false;
+        }, 2000);
+        return;
+      }
+      configParser.parseToml(text);
       configText = text;
+      pasteError = false;
       pasteSuccess = true;
       setTimeout(() => {
         pasteSuccess = false;
       }, 2000);
     } catch (error) {
       console.error("Failed to paste from clipboard:", error);
-      errorMessage = "Failed to paste from clipboard. Please try using Ctrl+V or Cmd+V.";
+      const message =
+        error instanceof Error ? error.message : String(error);
+      errorMessage = message.includes("Invalid TOML")
+        ? message
+        : "Clipboard does not contain valid TOML configuration.";
+      pasteError = true;
+      setTimeout(() => {
+        pasteError = false;
+      }, 2000);
     }
   }
 </script>
@@ -193,6 +213,8 @@
             </svg>
             {#if pasteSuccess}
               <span class="success-indicator">✓</span>
+            {:else if pasteError}
+              <span class="error-indicator">✗</span>
             {/if}
           </button>
         </div>
@@ -421,8 +443,18 @@
     font-size: 1rem;
   }
 
+  .error-indicator {
+    color: #dc2626;
+    font-weight: bold;
+    font-size: 1rem;
+  }
+
   :global([data-theme="dark"]) .success-indicator {
     color: #4ade80;
+  }
+
+  :global([data-theme="dark"]) .error-indicator {
+    color: #f87171;
   }
 
   .config-textarea.error {
