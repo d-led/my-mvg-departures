@@ -108,6 +108,13 @@ function copyStaticFiles() {
     mkdirSync(imgDest, { recursive: true });
     cpSync(imgDir, imgDest, { recursive: true });
   }
+
+  // Copy favicon.svg from static root to dist root
+  const faviconSrc = join(STATIC_DIR, "favicon.svg");
+  if (existsSync(faviconSrc)) {
+    const faviconDest = join(DIST_DIR, "favicon.svg");
+    copyFileSync(faviconSrc, faviconDest);
+  }
 }
 
 function copyExampleConfig() {
@@ -154,6 +161,8 @@ function copyHtml() {
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<!-- Favicon -->
+<link rel="icon" type="image/svg+xml" href="favicon.svg" />
 <!-- Minimal DaisyUI for theme support only -->
 <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css" />
 <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
