@@ -68,6 +68,7 @@ export interface TomlOnTheRunData {
   use_adapters?: string[];
   use_precise_location?: boolean;
   smart_sub_stops?: boolean;
+  random_header_colors?: boolean;
 }
 
 export interface TomlData {

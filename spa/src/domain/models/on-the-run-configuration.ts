@@ -6,4 +6,5 @@ export interface OnTheRunConfiguration {
   useAdapters?: string[];
   usePreciseLocation?: boolean;
   smartSubStops?: boolean;
+  randomHeaderColors?: boolean;
 }

@@ -67,9 +67,11 @@ export class ConfigParser {
 
     // Add on-the-run route if configured and not already present
     if (onTheRun && !routes.some((route) => route.path === "on-the-run")) {
-      const onTheRunDisplay = {
+      const onTheRunDisplay: DisplayConfiguration = {
         ...defaultDisplay,
         title: "Next to me",
+        randomHeaderColors:
+          onTheRun.randomHeaderColors ?? defaultDisplay.randomHeaderColors,
       };
       routes.push({
         path: "on-the-run",
@@ -243,6 +245,7 @@ export class ConfigParser {
       useAdapters: entry.use_adapters ?? ["mvg"],
       usePreciseLocation: entry.use_precise_location ?? true,
       smartSubStops: entry.smart_sub_stops ?? true,
+      randomHeaderColors: entry.random_header_colors,
     };
   }
 

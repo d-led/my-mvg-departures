@@ -74,16 +74,19 @@ update_location_interval_seconds = 20
 use_adapters = ["mvg"]
 use_precise_location = true
 smart_sub_stops = true
+random_header_colors = true
 `;
 
     const config = parser.parseToml(toml);
 
     expect(config.onTheRun?.radiusMeters).toBe(50);
     expect(config.onTheRun?.useAdapters).toEqual(["mvg"]);
+    expect(config.onTheRun?.randomHeaderColors).toBe(true);
     const onTheRunRoute = config.routes.find(
       (route) => route.path === "on-the-run",
     );
     expect(onTheRunRoute?.display?.title).toBe("Next to me");
+    expect(onTheRunRoute?.display?.randomHeaderColors).toBe(true);
     expect(onTheRunRoute?.isOnTheRun).toBe(true);
   });
 });
