@@ -4,7 +4,7 @@ import type { StopConfiguration } from "../../domain/models/stop-configuration.j
 import type { GroupedDepartures } from "../../domain/models/grouped-departures.js";
 import type { DisplayConfiguration } from "../../domain/models/route-configuration.js";
 import { DepartureGroupingService } from "./departure-grouping-service.js";
-import md5 from "md5";
+import { generateHeaderColors } from "./header-color-service.js";
 
 export interface MultiStopPollerCallbacks {
   onUpdate: (groups: GroupedDepartures[], pollerId: string) => void;
@@ -205,7 +205,7 @@ export class MultiStopPoller {
     }
 
     // Generate header colors for non-first headers (matches Python's _generate_header_colors)
-    this.generateHeaderColors(allGroups);
+    generateHeaderColors(allGroups, this.routeDisplay);
 
     // Check if poller is still running before updating
     // This prevents race conditions where a stopped poller's ongoing poll() completes
@@ -223,137 +223,5 @@ export class MultiStopPoller {
       `[${this.pollerId}] Combined ${allGroups.length} direction groups from ${successCount} successful stop(s), ${errorCount} error(s), ${stopsWithoutDepartures.length} stop(s) without departures`,
     );
     this.callbacks.onUpdate([...allGroups], this.pollerId);
-  }
-
-  private generateHeaderColors(groups: GroupedDepartures[]): void {
-    // Generate header colors for non-first headers (matches Python: _generate_header_colors)
-    // Python logic: use group-level config if set, otherwise fall back to route display config
-    // First header (index 0) ALWAYS uses default banner_color - never generate a color for it
-    console.log(
-      `[header-colors] Generating colors for ${groups.length} groups, routeDisplay.randomHeaderColors=${this.routeDisplay?.randomHeaderColors}, routeDisplay.headerBackgroundBrightness=${this.routeDisplay?.headerBackgroundBrightness}`,
-    );
-
-    for (let i = 1; i < groups.length; i++) {
-      const group = groups[i];
-
-      // Use group-level config if set (stored when group was created), otherwise fall back to route display config
-      // This matches Python lines 339-349: group_random_colors if group_random_colors is not None else self.random_header_colors
-      const useRandomColors =
-        group.randomHeaderColors !== undefined &&
-        group.randomHeaderColors !== null
-          ? group.randomHeaderColors
-          : (this.routeDisplay?.randomHeaderColors ?? false);
-      const brightness =
-        group.headerBackgroundBrightness !== undefined &&
-        group.headerBackgroundBrightness !== null
-          ? group.headerBackgroundBrightness
-          : (this.routeDisplay?.headerBackgroundBrightness ?? 0.7);
-      const salt =
-        group.randomColorSalt !== undefined && group.randomColorSalt !== null
-          ? group.randomColorSalt
-          : 0; // Salt is only per-stop, no route-level fallback
-
-      console.log(
-        `[header-colors] Group ${i} (${group.stopName} [${group.stationId}] → ${group.directionName}): group.randomHeaderColors=${group.randomHeaderColors}, useRandomColors=${useRandomColors}, brightness=${brightness}, salt=${salt}`,
-      );
-
-      if (useRandomColors) {
-        // Strip "->" prefix from direction name (matches Python: direction_clean = group.direction_name.lstrip("->"))
-        const directionClean = group.directionName.replace(/^->/, "");
-        const headerText = `${group.stopName} → ${directionClean}`;
-        group.headerColor = this.generatePastelColor(
-          headerText,
-          brightness,
-          salt,
-        );
-        console.log(
-          `[header-colors] Generated color for group ${i}: ${group.headerColor}`,
-        );
-      } else {
-        // Explicitly don't set headerColor - will use default banner_color from CSS
-        group.headerColor = undefined;
-        console.log(
-          `[header-colors] Not generating color for group ${i} (random_header_colors disabled)`,
-        );
-      }
-    }
-  }
-
-  private generatePastelColor(
-    text: string,
-    brightness: number = 0.7,
-    salt: number = 0,
-  ): string {
-    // Generate a stable pastel color from text using hash-based mapping (matches Python's generate_pastel_color_from_text)
-    // Use MD5 hashing to match Python version exactly (Python uses hashlib.md5)
-    // Python: hash_int = int(hashlib.md5(f"{text}:{salt}".encode()).hexdigest(), 16)
-    const str = `${text}:${salt}`;
-    const md5Hex = md5(str); // MD5 produces 32 hex characters (128 bits)
-    // Convert hex string to BigInt to match Python's int(hexdigest(), 16)
-    const hashBigInt = BigInt("0x" + md5Hex);
-
-    // Extract parts for HSL calculation (matches Python's _calculate_hsl_from_hash)
-    // Python: hash_part1 = (hash_int >> 16) & 0xFFFF, hash_part2 = hash_int & 0xFFFF
-    // Python uses full 128-bit MD5 hash, extracts 16-bit parts
-    const hashPart1 = Number((hashBigInt >> 16n) & 0xffffn); // Upper 16 bits
-    const hashPart2 = Number(hashBigInt & 0xffffn); // Lower 16 bits
-
-    const hueBase = hashPart1 % 360;
-    const hueVariation = (hashPart2 % 60) - 30; // -30 to +30 degrees
-    const hue = (hueBase + hueVariation) % 360;
-
-    // Use full hash for saturation and lightness calculations (matches Python)
-    const hashInt = Number(hashBigInt & 0xffffffffffffffffn); // Use lower 64 bits for calculations
-    const saturation = 55 + (hashInt % 26); // 55-80%
-
-    const brightnessAdjusted = Math.pow(brightness, 1.5);
-    const baseLightnessMin = 30 + brightnessAdjusted * 45; // 30-75
-    const baseLightnessMax = 40 + brightnessAdjusted * 45; // 40-85
-    const lightnessRange = Math.max(1, baseLightnessMax - baseLightnessMin);
-    const lightness = baseLightnessMin + (hashInt % lightnessRange);
-
-    // Convert HSL to RGB (matches Python's _hsl_to_rgb)
-    const h = hue / 360;
-    const s = saturation / 100;
-    const l = lightness / 100;
-
-    const c = (1 - Math.abs(2 * l - 1)) * s;
-    const x = c * (1 - Math.abs(((h * 6) % 2) - 1));
-    const m = l - c / 2;
-
-    let r = 0,
-      g = 0,
-      b = 0;
-    if (h < 1 / 6) {
-      r = c;
-      g = x;
-      b = 0;
-    } else if (h < 2 / 6) {
-      r = x;
-      g = c;
-      b = 0;
-    } else if (h < 3 / 6) {
-      r = 0;
-      g = c;
-      b = x;
-    } else if (h < 4 / 6) {
-      r = 0;
-      g = x;
-      b = c;
-    } else if (h < 5 / 6) {
-      r = x;
-      g = 0;
-      b = c;
-    } else {
-      r = c;
-      g = 0;
-      b = x;
-    }
-
-    r = Math.round((r + m) * 255);
-    g = Math.round((g + m) * 255);
-    b = Math.round((b + m) * 255);
-
-    return `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
   }
 }

@@ -429,3 +429,14 @@ departure_leeway_minutes = 6
 # # Note: DB uses "U 2" (with space), VBB uses "U2" (no space)
 # "->Bismarckstr. (via db)" = ["U 2 Ruhleben"]
 
+
+[[on_the_run]]
+
+radius_meters = 50
+random_header_colors = true
+max_departures_per_stop = 8
+max_departures_per_route = 2
+update_location_interval_seconds = 20
+use_adapters = ["mvg"]
+use_precise_location = true
+smart_sub_stops = true

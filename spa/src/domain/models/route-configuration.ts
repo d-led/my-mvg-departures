@@ -33,4 +33,5 @@ export interface RouteConfiguration {
   display?: DisplayConfiguration;
   stops: StopConfiguration[];
   refreshIntervalSeconds?: number;
+  isOnTheRun?: boolean;
 }

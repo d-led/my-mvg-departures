@@ -63,4 +63,27 @@ station_name = "Balanstr."
 
     expect(config.routes[0].stops).toHaveLength(2);
   });
+
+  it("should parse on_the_run config and add route", () => {
+    const toml = `
+[[on_the_run]]
+radius_meters = 50
+max_departures_per_stop = 8
+max_departures_per_route = 2
+update_location_interval_seconds = 20
+use_adapters = ["mvg"]
+use_precise_location = true
+smart_sub_stops = true
+`;
+
+    const config = parser.parseToml(toml);
+
+    expect(config.onTheRun?.radiusMeters).toBe(50);
+    expect(config.onTheRun?.useAdapters).toEqual(["mvg"]);
+    const onTheRunRoute = config.routes.find(
+      (route) => route.path === "on-the-run",
+    );
+    expect(onTheRunRoute?.display?.title).toBe("Next to me");
+    expect(onTheRunRoute?.isOnTheRun).toBe(true);
+  });
 });

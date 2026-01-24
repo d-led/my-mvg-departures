@@ -4,6 +4,7 @@ import type {
   RouteConfiguration,
   DisplayConfiguration,
   StopConfiguration,
+  OnTheRunConfiguration,
 } from "../../domain/models/index.js";
 import { createStopConfiguration } from "../../domain/models/stop-configuration.js";
 import type {
@@ -11,6 +12,7 @@ import type {
   TomlRouteData,
   TomlStopData,
   TomlDisplayData,
+  TomlOnTheRunData,
 } from "./toml-types.js";
 
 export class ConfigParser {
@@ -20,6 +22,7 @@ export class ConfigParser {
     const routes: RouteConfiguration[] = [];
     const defaultDisplay: DisplayConfiguration = {};
     const api: { sleepMsBetweenCalls?: number; apiProvider?: string } = {};
+    const onTheRun = this.parseOnTheRun(data.on_the_run);
 
     // Parse default display settings
     if (data.display) {
@@ -62,8 +65,25 @@ export class ConfigParser {
       }
     }
 
+    // Add on-the-run route if configured and not already present
+    if (onTheRun && !routes.some((route) => route.path === "on-the-run")) {
+      const onTheRunDisplay = {
+        ...defaultDisplay,
+        title: "Next to me",
+      };
+      routes.push({
+        path: "on-the-run",
+        display:
+          Object.keys(onTheRunDisplay).length > 0 ? onTheRunDisplay : undefined,
+        stops: [],
+        refreshIntervalSeconds: onTheRun.updateLocationIntervalSeconds,
+        isOnTheRun: true,
+      });
+    }
+
     return {
       routes,
+      onTheRun,
       defaultDisplay:
         Object.keys(defaultDisplay).length > 0 ? defaultDisplay : undefined,
       api: Object.keys(api).length > 0 ? api : undefined,
@@ -204,6 +224,26 @@ export class ConfigParser {
 
         return created;
       });
+  }
+
+  private parseOnTheRun(
+    onTheRunData?: TomlOnTheRunData[] | TomlOnTheRunData,
+  ): OnTheRunConfiguration | undefined {
+    const entry = Array.isArray(onTheRunData) ? onTheRunData[0] : onTheRunData;
+    if (!entry) {
+      return undefined;
+    }
+
+    return {
+      radiusMeters: entry.radius_meters ?? 50,
+      maxDeparturesPerStop: entry.max_departures_per_stop ?? 8,
+      maxDeparturesPerRoute: entry.max_departures_per_route ?? 2,
+      updateLocationIntervalSeconds:
+        entry.update_location_interval_seconds ?? 20,
+      useAdapters: entry.use_adapters ?? ["mvg"],
+      usePreciseLocation: entry.use_precise_location ?? true,
+      smartSubStops: entry.smart_sub_stops ?? true,
+    };
   }
 
   private parseDisplayConfig(

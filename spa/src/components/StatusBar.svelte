@@ -9,6 +9,9 @@
     currentRoutePath = null,
     onRouteChange = () => {},
     refreshIntervalSeconds = 20,
+    showLocationUpdate = false,
+    onLocationUpdateClick = () => {},
+    locationUpdateDisabled = false,
   }: {
     apiStatus: "success" | "error" | "degraded" | "unknown";
     onConfigClick: () => void;
@@ -16,6 +19,9 @@
     currentRoutePath?: string | null;
     onRouteChange?: (path: string) => void;
     refreshIntervalSeconds?: number;
+    showLocationUpdate?: boolean;
+    onLocationUpdateClick?: () => void;
+    locationUpdateDisabled?: boolean;
   } = $props();
   
   let showRouteSelector = $state(false);
@@ -146,6 +152,21 @@
     <span class="sr-only" id="refresh-countdown-sr">Refresh countdown timer</span>
   </div>
 
+  {#if showLocationUpdate}
+    <button
+      class="status-floating-box-item location-button"
+      onclick={onLocationUpdateClick}
+      aria-label="Update location"
+      title={locationUpdateDisabled ? "Switch to Next to me to update location" : "Update location"}
+      type="button"
+      disabled={locationUpdateDisabled}
+    >
+      <svg class="location-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M12 2a.75.75 0 0 1 .75.75v1.81a7.45 7.45 0 0 1 6.69 6.69h1.81a.75.75 0 0 1 0 1.5h-1.81a7.45 7.45 0 0 1-6.69 6.69v1.81a.75.75 0 0 1-1.5 0v-1.81a7.45 7.45 0 0 1-6.69-6.69H2.75a.75.75 0 0 1 0-1.5h1.81a7.45 7.45 0 0 1 6.69-6.69V2.75A.75.75 0 0 1 12 2Zm0 4a6 6 0 1 0 0 12 6 6 0 0 0 0-12Zm0 3a3 3 0 1 1 0 6 3 3 0 0 1 0-6Z"/>
+      </svg>
+    </button>
+  {/if}
+
   <button
     class="status-floating-box-item config-button"
     onclick={onConfigClick}
@@ -269,6 +290,41 @@
     height: 18px;
     min-width: 18px;
     min-height: 18px;
+  }
+
+  .location-button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(0, 0, 0, 0.8);
+    transition: opacity 0.2s;
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    min-height: 18px;
+  }
+
+  .location-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+  }
+
+  :global([data-theme="dark"]) .location-button {
+    color: rgba(255, 255, 255, 0.8);
+  }
+
+  .location-button:hover:not(:disabled) {
+    opacity: 0.8;
+  }
+
+  .location-icon {
+    width: 18px;
+    height: 18px;
+    display: block;
   }
 
   :global([data-theme="dark"]) .config-button {

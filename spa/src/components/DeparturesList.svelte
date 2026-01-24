@@ -7,11 +7,13 @@
     unsupportedProviders = [],
     display = undefined,
     isPageSuspended = false,
+    statusMessages = [],
   }: {
     groupedDepartures?: GroupedDepartures[];
     unsupportedProviders?: string[];
     display?: DisplayConfiguration;
     isPageSuspended?: boolean;
+    statusMessages?: string[];
   } = $props();
 
   function formatTimeRelative(departure: any): string {
@@ -109,7 +111,10 @@
     }
     // Format: "StopName → DirectionName" (matches Python - no time suffix)
     // Strip "->" prefix from direction name (matches Python: direction_clean = group.direction_name.lstrip("->"))
-    const directionClean = group.directionName.replace(/^->/, "");
+    const directionClean = group.directionName.replace(/^->/, "").trim();
+    if (!directionClean) {
+      return group.stopName;
+    }
     return `${group.stopName} → ${directionClean}`;
   }
 
@@ -154,7 +159,13 @@
 
 {#if groupedDepartures.length === 0}
   <div role="status" aria-live="polite" class="no-departures">
-    {#if unsupportedProviders.length > 0}
+    {#if statusMessages.length > 0}
+      <div class="status-messages" aria-live="polite" aria-atomic="true">
+        {#each statusMessages as message (message)}
+          <div class="status-message">{message}</div>
+        {/each}
+      </div>
+    {:else if unsupportedProviders.length > 0}
       {unsupportedProviders.join(" and ")} API provider{unsupportedProviders.length > 1 ? "s are" : " is"} not yet implemented in this version.
     {:else}
       No departures available
@@ -258,6 +269,18 @@
     color: #9ca3af;
     padding: 2rem 0;
     font-style: italic;
+  }
+
+  .status-messages {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    font-style: normal;
+    color: #6b7280;
+  }
+
+  .status-message {
+    font-size: calc(var(--font-size-no-departures, 2.5rem) * 0.6);
   }
 
   .direction-group {

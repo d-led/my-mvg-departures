@@ -2,11 +2,13 @@
   import { onMount, tick } from "svelte";
   import { ConfigParser } from "../adapters/config/config-parser.js";
   import { CompositeDepartureRepository } from "../adapters/composite-departure-repository.js";
+  import { MvgStationRepository } from "../adapters/mvg/mvg-station-repository.js";
   import { LocalStorageCache } from "../adapters/storage/local-storage-cache.js";
   import { LocalStorageConfigStorage } from "../adapters/storage/local-storage-config-storage.js";
   import { DepartureGroupingService } from "../application/services/departure-grouping-service.js";
   import { MultiStopPoller } from "../application/services/multi-stop-poller.js";
-  import type { AppConfig, RouteConfiguration, GroupedDepartures } from "../domain/models/index.js";
+  import { OnTheRunPoller } from "../application/services/on-the-run-poller.js";
+  import type { AppConfig, RouteConfiguration, GroupedDepartures, OnTheRunConfiguration } from "../domain/models/index.js";
   import { calculateFillVerticalSpace, setFontSizesFromConfig } from "../utils/font-scaling.js";
   import { initDestinationScrolling } from "../utils/destination-scrolling.js";
   import { initTimeFormatToggle, cleanupTimeFormatToggle } from "../utils/time-format-toggle.js";
@@ -21,10 +23,19 @@
   let apiStatus = $state<"success" | "error" | "degraded" | "unknown">("unknown");
   let lastUpdateTime = $state<Date | null>(null);
   let refreshIntervalSeconds = $state<number>(20);
+  type Poller = {
+    start: () => Promise<void>;
+    stop: () => void;
+    refreshNow: () => Promise<void>;
+  };
   // eslint-disable-next-line svelte/prefer-svelte-reactivity -- Set is reactive in Svelte 5 with proper usage
-  let activePollers = new Set<MultiStopPoller>(); // Track all active pollers
+  let activePollers = new Set<Poller>(); // Track all active pollers
   let unsupportedProviders = $state<string[]>([]);
   let isPageSuspended = $state<boolean>(false);
+  let onTheRunConfig = $state<OnTheRunConfiguration | null>(null);
+  let onTheRunPoller = $state<OnTheRunPoller | null>(null);
+  let onTheRunStatusMessages = $state<string[]>([]);
+  const ON_THE_RUN_ROUTE = "on-the-run";
 
   function formatDate(date: Date): string {
     // Format date as YYYY-MM-DD (e.g., "2026-01-21")
@@ -37,6 +48,7 @@
   const configStorage = new LocalStorageConfigStorage();
   const configParser = new ConfigParser();
   const cache = new LocalStorageCache();
+  const mvgStationRepository = new MvgStationRepository();
   // departureRepository will be created per route based on stop configs
   let departureRepository: CompositeDepartureRepository | null = null;
   let groupingService: DepartureGroupingService | null = null;
@@ -301,6 +313,7 @@
     
     if (stored) {
       config = stored;
+      onTheRunConfig = stored.onTheRun ?? null;
       console.log(`Loaded config with ${stored.routes.length} route(s)`);
       stored.routes.forEach((route, idx) => {
         console.log(`  Route ${idx + 1}: path="${route.path}", ${route.stops.length} stop(s), fillVerticalSpace=${route.display?.fillVerticalSpace ?? false}`);
@@ -350,6 +363,7 @@
       poller.stop();
     }
     activePollers.clear();
+    onTheRunPoller = null;
     
     // Cleanup time format toggle
     cleanupTimeFormatToggle();
@@ -364,6 +378,7 @@
     unsupportedProviders = [];
     currentRoute = route;
     await configStorage.setCurrentRoutePath(route.path);
+    onTheRunStatusMessages = [];
     
     // Update browser tab title (happens on initial load and when switching routes)
     const pageTitle = route.display?.title ?? "MVG Departures";
@@ -376,6 +391,13 @@
       // Use hash to avoid server-side routing issues
       const hash = route.path === "/" ? "" : route.path;
       window.location.hash = hash;
+    }
+
+    const isOnTheRunRoute = route.isOnTheRun ?? route.path === ON_THE_RUN_ROUTE;
+    if (isOnTheRunRoute && onTheRunConfig) {
+      onTheRunStatusMessages = ["Fetching location..."];
+      await startOnTheRunPolling(route, onTheRunConfig);
+      return;
     }
 
     // Start polling for all stops in route
@@ -472,6 +494,88 @@
     }
   }
 
+  async function startOnTheRunPolling(
+    route: RouteConfiguration,
+    config: OnTheRunConfiguration,
+  ) {
+    console.log("Starting on-the-run polling");
+    groupedDepartures = [];
+    unsupportedProviders = [];
+    onTheRunStatusMessages = ["Fetching location..."];
+    apiStatus = "unknown";
+
+    const refreshInterval = config.updateLocationIntervalSeconds ?? 20;
+    refreshIntervalSeconds = refreshInterval;
+
+    const newPoller = new OnTheRunPoller(
+      mvgStationRepository,
+      cache,
+      config,
+      {
+        onUpdate: async (groups, pollerId) => {
+          if (!activePollers.has(newPoller)) {
+            console.log(
+              `[${pollerId}] Ignoring update from stopped poller (race condition prevented)`,
+            );
+            return;
+          }
+
+          console.log(
+            `[${pollerId}] Received ${groups.length} direction group(s) with ${groups.reduce((sum, group) => sum + group.departures.length, 0)} total departures`,
+          );
+          groupedDepartures = groups;
+          apiStatus = unsupportedProviders.length > 0 ? "degraded" : "success";
+          lastUpdateTime = new Date();
+
+          if (isPageSuspended) {
+            console.log("New data received - clearing stale state");
+            isPageSuspended = false;
+          }
+
+          await tick();
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              setTimeout(() => {
+                initializeAll();
+              }, 50);
+            });
+          });
+        },
+        onError: (error, pollerId) => {
+          if (!activePollers.has(newPoller)) {
+            console.log(`[${pollerId}] Ignoring error from stopped poller`);
+            return;
+          }
+          console.error(`[${pollerId}] On-the-run poll error:`, error);
+          apiStatus = "error";
+        },
+        onUnsupportedProviders: (providers) => {
+          unsupportedProviders = providers;
+        },
+        onStatusUpdate: (messages, pollerId) => {
+          if (!activePollers.has(newPoller)) {
+            console.log(`[${pollerId}] Ignoring status update from stopped poller`);
+            return;
+          }
+          onTheRunStatusMessages = messages;
+        },
+      },
+      route.display,
+    );
+
+    onTheRunPoller = newPoller;
+    activePollers.add(newPoller);
+    await newPoller.start();
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          initializeAll();
+        }, 50);
+      });
+    });
+  }
+
   async function handleConfigSave(tomlConfig: string): Promise<void> {
     // Validation is done in ConfigModal before calling this
     // But we still validate here as a safety check
@@ -481,6 +585,7 @@
     await configStorage.saveConfig(parsed);
     await configStorage.saveConfigToml(tomlConfig);
     config = parsed;
+    onTheRunConfig = parsed.onTheRun ?? null;
     showConfigModal = false;
     await initializeRoute();
   }
@@ -502,6 +607,21 @@
       switchRoute(route, true); // true = update hash (user explicitly changed route)
     }
   }
+
+  function isOnTheRunRouteActive(): boolean {
+    return (
+      currentRoute?.isOnTheRun === true ||
+      currentRoute?.path === ON_THE_RUN_ROUTE
+    );
+  }
+
+  async function handleLocationUpdateClick() {
+    if (!onTheRunPoller) {
+      console.warn("On-the-run poller not available");
+      return;
+    }
+    await onTheRunPoller.refreshNow();
+  }
 </script>
 
 <div class="container" class:fill-vertical-space={currentRoute?.display?.fillVerticalSpace ?? false} role="main" aria-label="MVG Departures Dashboard">
@@ -515,7 +635,13 @@
   </div>
 
   <div id="departures" role="region" aria-label="Departure information" aria-live="polite" aria-atomic="false">
-    <DeparturesList {groupedDepartures} {unsupportedProviders} display={currentRoute?.display} {isPageSuspended} />
+    <DeparturesList
+      {groupedDepartures}
+      {unsupportedProviders}
+      display={currentRoute?.display}
+      {isPageSuspended}
+      statusMessages={isOnTheRunRouteActive() ? onTheRunStatusMessages : []}
+    />
   </div>
 
   <StatusBar
@@ -525,6 +651,9 @@
     currentRoutePath={currentRoute?.path ?? null}
     onRouteChange={handleRouteChange}
     refreshIntervalSeconds={refreshIntervalSeconds}
+    showLocationUpdate={Boolean(onTheRunConfig)}
+    onLocationUpdateClick={handleLocationUpdateClick}
+    locationUpdateDisabled={!onTheRunPoller || !isOnTheRunRouteActive()}
   />
 
   {#if showConfigModal}
