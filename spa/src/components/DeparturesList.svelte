@@ -265,7 +265,7 @@
   .no-departures {
     width: 100%;
     text-align: center;
-    font-size: var(--font-size-no-departures, 2.5rem);
+    font-size: 1.75rem;
     color: #9ca3af;
     padding: 2rem 0;
     font-style: italic;
@@ -280,7 +280,8 @@
   }
 
   .status-message {
-    font-size: calc(var(--font-size-no-departures, 2.5rem) * 0.6);
+    font-size: 1.25rem;
+    line-height: 1.4;
   }
 
   .direction-group {
