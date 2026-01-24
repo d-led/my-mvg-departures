@@ -53,6 +53,7 @@ export class OnTheRunPoller {
     private readonly config: OnTheRunConfiguration,
     private readonly callbacks: OnTheRunPollerCallbacks,
     private readonly routeDisplay?: DisplayConfiguration,
+    private readonly configuredStops: StopConfiguration[] = [],
   ) {
     this.pollerId = `on-the-run-${Date.now()}-${Math.random().toString(36).substring(7)}`;
     console.log(`[${this.pollerId}] Created OnTheRunPoller`);
@@ -350,6 +351,9 @@ export class OnTheRunPoller {
     );
 
     for (const subStop of sortedSubStops) {
+      const configuredUngroupedTitle = this.resolveSubStopUngroupedTitle(
+        subStop.stopPointId,
+      );
       stopConfigs.push(
         createStopConfiguration({
           stationId: subStop.stopPointId,
@@ -357,7 +361,7 @@ export class OnTheRunPoller {
           maxDeparturesPerStop: this.config.maxDeparturesPerStop,
           maxDeparturesPerRoute: this.config.maxDeparturesPerRoute,
           showUngrouped: true,
-          ungroupedTitle: "",
+          ungroupedTitle: configuredUngroupedTitle ?? "",
           apiProvider: "mvg",
         }),
       );
@@ -374,6 +378,32 @@ export class OnTheRunPoller {
       return aNumber - bNumber;
     }
     return a.localeCompare(b);
+  }
+
+  private resolveSubStopUngroupedTitle(stopPointId: string): string | null {
+    if (this.configuredStops.length === 0) {
+      return null;
+    }
+    const match = this.configuredStops.find(
+      (stop) =>
+        stop.stationId === stopPointId && this.hasTitle(stop.ungroupedTitle),
+    );
+    if (!match?.ungroupedTitle) {
+      return null;
+    }
+    const cleaned = this.stripParentheticalContent(match.ungroupedTitle);
+    return cleaned.length > 0 ? cleaned : null;
+  }
+
+  private hasTitle(title?: string): boolean {
+    return Boolean(title && title.trim().length > 0);
+  }
+
+  private stripParentheticalContent(title: string): string {
+    return title
+      .replace(/\s*\([^)]*\)/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
   private deriveSubStops(departures: Departure[]): SubStopInfo[] {

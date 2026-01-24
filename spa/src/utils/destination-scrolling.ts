@@ -5,11 +5,8 @@
 
 export function initDestinationScrolling(): void {
   const destinations = document.querySelectorAll(".destination-text");
-  console.log(
-    `[destination-scrolling] Checking ${destinations.length} destinations`,
-  );
 
-  destinations.forEach((textEl, index) => {
+  destinations.forEach((textEl) => {
     // Type guard: ensure textEl is HTMLElement to access style property
     if (!(textEl instanceof HTMLElement)) {
       return;
@@ -49,10 +46,6 @@ export function initDestinationScrolling(): void {
     // Even if the container expands, we check against the actual available space
     const isClipped = textScrollWidth > availableDestinationWidth;
 
-    console.log(
-      `[destination-scrolling] Destination ${index}: textScroll=${textScrollWidth}, availableWidth=${availableDestinationWidth}, routeContainerWidth=${routeContainerClientWidth}, routeNumberWidth=${routeNumberWidth}, isClipped=${isClipped}, text="${textEl.textContent?.substring(0, 20)}..."`,
-    );
-
     if (isClipped) {
       // Text is clipped - add clipped class and calculate exact scroll distance
       // Negative because we need to scroll left (text is wider than available space)
@@ -66,23 +59,9 @@ export function initDestinationScrolling(): void {
         !wasClipped ||
         Math.abs(parseFloat(currentScrollDistance) - scrollDistance) > 1
       ) {
-        console.log(
-          `[destination-scrolling] Adding clipped class to destination ${index}, scrollDistance=${scrollDistance}px`,
-        );
         textEl.classList.add("clipped");
         // Set CSS variable with the exact scroll distance
         textEl.style.setProperty("--scroll-distance", scrollDistance + "px");
-        // Verify it was set
-        const verifyDistance =
-          textEl.style.getPropertyValue("--scroll-distance");
-        const hasClippedClass = textEl.classList.contains("clipped");
-        console.log(
-          `[destination-scrolling] Verified: hasClippedClass=${hasClippedClass}, --scroll-distance=${verifyDistance}`,
-        );
-      } else {
-        console.log(
-          `[destination-scrolling] Destination ${index} already clipped, skipping update`,
-        );
       }
     } else {
       // Text fits - remove clipped class

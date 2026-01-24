@@ -8,7 +8,13 @@
   import { DepartureGroupingService } from "../application/services/departure-grouping-service.js";
   import { MultiStopPoller } from "../application/services/multi-stop-poller.js";
   import { OnTheRunPoller } from "../application/services/on-the-run-poller.js";
-  import type { AppConfig, RouteConfiguration, GroupedDepartures, OnTheRunConfiguration } from "../domain/models/index.js";
+  import type {
+    AppConfig,
+    RouteConfiguration,
+    GroupedDepartures,
+    OnTheRunConfiguration,
+    StopConfiguration,
+  } from "../domain/models/index.js";
   import { calculateFillVerticalSpace, setFontSizesFromConfig } from "../utils/font-scaling.js";
   import { initDestinationScrolling } from "../utils/destination-scrolling.js";
   import { initTimeFormatToggle, cleanupTimeFormatToggle } from "../utils/time-format-toggle.js";
@@ -43,6 +49,13 @@
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
+  }
+
+  function collectConfiguredStops(appConfig: AppConfig | null): StopConfiguration[] {
+    if (!appConfig) {
+      return [];
+    }
+    return appConfig.routes.flatMap((route) => route.stops ?? []);
   }
 
   const configStorage = new LocalStorageConfigStorage();
@@ -496,7 +509,7 @@
 
   async function startOnTheRunPolling(
     route: RouteConfiguration,
-    config: OnTheRunConfiguration,
+    onTheRunConfig: OnTheRunConfiguration,
   ) {
     console.log("Starting on-the-run polling");
     groupedDepartures = [];
@@ -504,13 +517,13 @@
     onTheRunStatusMessages = ["Fetching location..."];
     apiStatus = "unknown";
 
-    const refreshInterval = config.updateLocationIntervalSeconds ?? 20;
+    const refreshInterval = onTheRunConfig.updateLocationIntervalSeconds ?? 20;
     refreshIntervalSeconds = refreshInterval;
 
     const newPoller = new OnTheRunPoller(
       mvgStationRepository,
       cache,
-      config,
+      onTheRunConfig,
       {
         onUpdate: async (groups, pollerId) => {
           if (!activePollers.has(newPoller)) {
@@ -561,6 +574,7 @@
         },
       },
       route.display,
+      collectConfiguredStops(config),
     );
 
     onTheRunPoller = newPoller;
