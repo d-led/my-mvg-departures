@@ -359,27 +359,31 @@
 
   .route-selector-container {
     position: relative;
-    width: 1.2em !important;
-    height: 1.2em !important;
-    min-width: 1.2em !important;
-    min-height: 1.2em !important;
+    width: 18px !important;
+    height: 18px !important;
+    min-width: 18px !important;
+    min-height: 18px !important;
   }
 
   .route-selector-button {
     background: none;
     border: none;
     cursor: pointer;
-    padding: 0.1em;
+    padding: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: inherit;
+    color: rgba(0, 0, 0, 0.85);
     transition: opacity 0.2s;
-    width: 1.2em;
-    height: 1.2em;
-    min-width: 1.2em;
-    min-height: 1.2em;
+    width: 18px;
+    height: 18px;
+    min-width: 18px;
+    min-height: 18px;
     opacity: 0.9;
+  }
+
+  [data-theme="dark"] .route-selector-button {
+    color: rgba(255, 255, 255, 0.85);
   }
 
   .route-selector-button:hover {
