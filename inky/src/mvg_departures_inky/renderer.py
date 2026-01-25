@@ -433,8 +433,39 @@ class InkyRenderer:
         """Get the 7-color palette as RGB tuples.
 
         Returns:
-            List of (R, G, B) tuples for the 7 colors.
+            List of (R, G, B) tuples for the display palette.
+
+            Note: Depending on the detected Inky hardware, the palette can be 6 colors (e.g. "multi")
+            or 7 colors (e.g. Spectra). We always return the palette in the device/library order so
+            that palette indices line up with what the Inky library expects.
         """
+        # Prefer the hardware/library palette blend when available.
+        # This matches how the Inky library maps colors internally (and respects device-specific
+        # palette ordering, which differs between Spectra and "multi" devices).
+        if hasattr(self.display, "_palette_blend"):
+            try:
+                # Keep this consistent with adapter._perform_full_update(set_image(..., saturation=0.5))
+                saturation = 0.5
+                palette_uint24 = self.display._palette_blend(saturation, dtype="uint24")
+                if palette_uint24 is not None:
+                    palette_rgb_from_blend: list[tuple[int, int, int]] = []
+                    for color_value in palette_uint24:
+                        if isinstance(color_value, int):
+                            # Extract R, G, B from 24-bit value: 0xRRGGBB
+                            r = int((color_value >> 16) & 0xFF)
+                            g = int((color_value >> 8) & 0xFF)
+                            b = int(color_value & 0xFF)
+                            palette_rgb_from_blend.append((r, g, b))
+                        elif isinstance(color_value, (tuple, list)) and len(color_value) >= 3:
+                            palette_rgb_from_blend.append(
+                                (int(color_value[0]), int(color_value[1]), int(color_value[2]))
+                            )
+
+                    if palette_rgb_from_blend:
+                        return palette_rgb_from_blend
+            except (AttributeError, TypeError, ValueError) as e:
+                logger.debug(f"Could not use _palette_blend: {e}")
+
         palette_rgb: list[tuple[int, int, int]] | None = None
         if hasattr(self.display, "palette") and self.display.palette:
             try:
