@@ -363,30 +363,18 @@ class InkyDisplayAdapter(DisplayAdapter):
             logger.error("Display not initialized, cannot perform update")
             return
 
-        # Prefer writing palette indices directly when available (solid fills, like stripes.py).
-        #
-        # The E673 ("Spectra 6"/multi) driver supports `set_pixel(x, y, v)` where
-        # `v` is encoded as `idx * 0x11` (see Pimoroni's example).
-        #
-        # This avoids the driver's `set_image()` quantization path which can introduce
-        # visible dithering/speckling in solid areas (headers, icon backgrounds).
-        if (
-            not isinstance(self.display, MockInkyDisplay)
-            and hasattr(self.display, "set_pixel")
-            and hasattr(self.display, "DESATURATED_PALETTE")
-        ):
-            self._write_image_with_set_pixel(img)
-        else:
-            # Fall back to the driver quantization path.
-            # Per Pimoroni examples: inky.set_image(image, saturation=saturation)
-            if hasattr(self.display, "set_image"):
-                try:
-                    self.display.set_image(img, saturation=0.5)
-                except TypeError:
-                    self.display.set_image(img)
-            else:
-                # Extremely defensive fallback (mock-like API)
+        # Set image on display (with optional saturation parameter for Spectra)
+        # Per Pimoroni examples: inky.set_image(resizedimage, saturation=saturation)
+        if hasattr(self.display, "set_image"):
+            try:
+                # Try with saturation parameter (for Spectra displays)
+                self.display.set_image(img, saturation=0.5)
+            except TypeError:
+                # Fallback if saturation parameter not supported
                 self.display.set_image(img)
+        else:
+            # For mock display, use set_image method
+            self.display.set_image(img)
 
         # Update display (this is the slow part for e-ink)
         # In mock mode, this saves to file instead
@@ -401,103 +389,6 @@ class InkyDisplayAdapter(DisplayAdapter):
             self.display.show(filename)
         else:
             self.display.show()
-
-    def _write_image_with_set_pixel(self, img: Image.Image) -> None:
-        """Write an image to the display via `set_pixel` (solid palette indices).
-
-        This maps each pixel to the nearest entry in the driver's DESATURATED_PALETTE and then
-        writes the palette index using the encoding expected by Inky (`idx * 0x11`).
-        """
-        if self.display is None:
-            raise RuntimeError("Display not initialized")
-
-        # Fast-path: if the renderer already produced a palette-indexed image in the driver's
-        # palette order, we can write the indices directly. This matches Pimoroni's `stripes.py`
-        # approach and avoids any accidental hue drift from RGB distance mapping.
-        if img.mode == "P":
-            palette = getattr(self.display, "DESATURATED_PALETTE", None)
-            if isinstance(palette, (list, tuple)) and palette:
-                max_idx = len(palette) - 1
-                pixels_p = img.load()
-                if pixels_p is None:
-                    raise RuntimeError("Failed to load pixel access for palette image")
-                set_pixel = self.display.set_pixel
-                width, height = img.size
-                for y in range(height):
-                    for x in range(width):
-                        pv = pixels_p[x, y]
-                        idx = int(pv) if isinstance(pv, int) else 1  # white
-                        if idx < 0 or idx > max_idx:
-                            idx = 1  # white
-                        set_pixel(x, y, idx * 0x11)
-                return
-
-        # Convert input image to RGB for distance-based mapping.
-        if img.mode == "RGBA":
-            # Composite alpha over white (e-ink background)
-            rgb = Image.new("RGB", img.size, (255, 255, 255))
-            rgb.paste(img, mask=img.split()[3])
-            rgb_img = rgb
-        elif img.mode != "RGB":
-            rgb_img = img.convert("RGB")
-        else:
-            rgb_img = img
-
-        palette = getattr(self.display, "DESATURATED_PALETTE", None)
-        if not isinstance(palette, (list, tuple)) or not palette:
-            raise RuntimeError("Display has no DESATURATED_PALETTE")
-
-        palette_rgb: list[tuple[int, int, int]] = []
-        for entry in palette:
-            if isinstance(entry, (list, tuple)) and len(entry) >= 3:
-                palette_rgb.append((int(entry[0]), int(entry[1]), int(entry[2])))
-        if not palette_rgb:
-            raise RuntimeError("DESATURATED_PALETTE had no usable RGB entries")
-
-        # Prefer low-cost mapping: map unique colors first (e-ink UI uses few colors).
-        color_counts = rgb_img.getcolors(maxcolors=65536)
-        cache: dict[tuple[int, int, int], int] = {}
-
-        def nearest_idx(color: tuple[int, int, int]) -> int:
-            cached = cache.get(color)
-            if cached is not None:
-                return cached
-            r, g, b = color
-            best_i = 0
-            best_d = 1_000_000_000
-            for i, (pr, pg, pb) in enumerate(palette_rgb):
-                dr = r - pr
-                dg = g - pg
-                db = b - pb
-                d = dr * dr + dg * dg + db * db
-                if d < best_d:
-                    best_d = d
-                    best_i = i
-                    if d == 0:
-                        break
-            cache[color] = best_i
-            return best_i
-
-        if color_counts is not None:
-            for _, c in color_counts:
-                if isinstance(c, tuple) and len(c) >= 3:
-                    nearest_idx((int(c[0]), int(c[1]), int(c[2])))
-
-        # At this point, display is initialized and supports set_pixel (checked by caller).
-        set_pixel = self.display.set_pixel
-        width, height = rgb_img.size
-        pixels = rgb_img.load()
-        if pixels is None:
-            raise RuntimeError("Failed to load pixel access for image")
-
-        for y in range(height):
-            for x in range(width):
-                pv = pixels[x, y]
-                if isinstance(pv, tuple) and len(pv) >= 3:
-                    idx = nearest_idx((int(pv[0]), int(pv[1]), int(pv[2])))
-                else:
-                    idx = 1  # white
-                set_pixel(x, y, idx * 0x11)
 
     def _detect_input_changes(
         self,
