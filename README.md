@@ -1,6 +1,8 @@
-# My MVG Departures - a Customizable Departures Dashboard for Munich
+# My MVG Departures - a set of Customizable Departures Dashboards for public Transport
 
 A server-side rendered live dashboard for Munich public transport (MVG) departures. Featuring a responsive and live web UI. Usable on various screen sizes.
+
+Alternative versions: [browser-based (single-page-app)](https://d-led.github.io/my-mvg-departures/) and an [E-Ink version](./inky/).
 
 ![Giesing departures screenshot](./docs/img/giesing-screenshot.png)
 
@@ -18,6 +20,8 @@ A server-side rendered live dashboard for Munich public transport (MVG) departur
 > **⚠️ Important Disclaimer**: This dashboard is provided as a visual aid and should not be considered a definitive reference. Omissions, technical and logical errors, upstream MVG API dependencies, or incorrect configuration may result in incomplete or inaccurate dashboards. The discrepancy between real departures and planned departures may also be significant. Always verify critical departure information through official MVG channels.
 
 ![DIY dashboard](./docs/img/diy_setup.jpg)
+
+![E-Ink departures monitor](./docs/img/pimoroni-inky-impression-version.jpg)
 
 ## Why This Dashboard?
 

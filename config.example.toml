@@ -71,17 +71,19 @@ sleep_ms_between_calls = 500
 # - Headers: HK Grotesk Bold
 # - Routes: Fredoka One
 
+font_family = "hk_grotesk"
+
 # Font scaling factor (0.0-1.0, default 0.8)
 # Note: fill_vertical_space is always enabled for Inky displays (not configurable)
 # Scales only the route/body fonts, not the header fonts (headers are fitted to their text width)
 # Lower values = smaller body fonts, higher values = larger body fonts
 # This allows fine-tuning body font size independently of header font size
-font_scaling_factor_when_filling = 0.8
+font_scaling_factor_when_filling = 0.92
 
 # Time display mode: "relative" or "absolute"
 # - relative: Always show relative time (e.g., "5m", "10m")
 # - absolute: Always show absolute time (e.g., "14:30", "15:45") [default]
-time_mode = "absolute"
+time_mode = "relative"
 
 # Dithering settings
 # Enable dithering for better color representation on e-ink displays (default: false)
@@ -117,8 +119,8 @@ landscape_mode = false
 [[stops]]
 station_id = "de:09162:1110"
 station_name = "Giesing"
-max_departures_per_stop = 6
-max_departures_per_route = 2
+max_departures_per_stop = 4
+max_departures_per_route = 1
 # Maximum number of departures to fetch from API before grouping/filtering
 # The API will fetch more data (e.g., 300 results over 120 minutes) but return up to this limit
 # Default: 50. Increase for stops with many routes to get more departures in advance
@@ -242,8 +244,8 @@ show_ungrouped = false
 station_id = "de:09162:1110:4:4"
 station_name = "Giesing"
 ungrouped_title = "Tegernseer Str."
-max_departures_per_stop = 3
-max_departures_per_route = 2
+max_departures_per_stop = 2
+max_departures_per_route = 1
 random_header_colors = true
 # Salt value to influence color generation (default: 0)
 # Different salt values produce different color palettes for the same headers
@@ -257,8 +259,8 @@ max_hours_in_advance = 3
 station_id = "de:09162:1056:1:1"
 station_name = "Balanstr."
 ungrouped_title = "Giesing"
-max_departures_per_stop = 4
-max_departures_per_route = 2
+max_departures_per_stop = 2
+max_departures_per_route = 1
 random_header_colors = true
 show_ungrouped = true
 

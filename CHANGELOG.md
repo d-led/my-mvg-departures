@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.1.0]
+
+### Highlights
+
+- **Three “flavors”**:
+  - **PyView**: server-side polling + API load optimizations
+  - **SPA**: Svelte single-page app with client-side polling
+  - **Inky**: Pimoroni Inky e-ink display (Raspberry Pi) implementation
+
+### Features
+
+- **SPA (Svelte)**
+  - **Route switching + per-route title**
+  - **Config modal with copy/paste** (plus better help text)
+  - **“On the run” mode** and assorted UI refinements (scrolling, overlap fixes, older browser tweaks)
+- **PyView (server-rendered)**
+  - **Staleness display** (grey out stale departures; feature parity with SPA)
+  - **Improved stop point matching**
+  - **Config key rename**: `update_location_interval_seconds` → `refresh_interval_seconds`
+  - **Better status messaging** (e.g. no nearby stations) and reduced logging noise
+- **Inky (e-ink)**
+  - **New `inky/` subproject** with dedicated config, renderer, and tests
+  - **Partial updates, rotation/orientation support, font scaling/spacing improvements**
+  - **Hardware-aware palette + native colors** (and dithering disabled by default)
+  - **Service + deployment scripts** for Raspberry Pi (setup, install, logs, restart)
+- **VBB**
+  - **Initial VBB adapter work** plus “degraded / not implemented yet” UI messaging
+
+### Maintenance
+
+- **Python**: move to **Python 3.13** and dependency/packaging updates (incl. better Raspberry Pi install story)
+- **CI / build**: improved workflows, added package locks & caching, published SPA, and fixed Docker images
+
 ## [0.0.12]
 
 ### Features
