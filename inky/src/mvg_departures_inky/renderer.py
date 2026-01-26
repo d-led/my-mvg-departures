@@ -4,12 +4,8 @@ import logging
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    import hitherdither
-else:
-    import hitherdither
 from mvg_departures.adapters.web.builders.departure_grouping_calculator import (
     DepartureGroupingCalculator,
 )
@@ -165,6 +161,38 @@ class InkyRenderer:
         self._red = getattr(display, "RED", 4)
         self._yellow = getattr(display, "YELLOW", 5)
         self._orange = getattr(display, "ORANGE", 6)
+
+    def _get_driver_palette_rgb(self, palette_index: int) -> tuple[int, int, int] | None:
+        """Return the device palette RGB for a given palette index.
+
+        This lets us render with the *actual* e-ink pigment colors (eg. true green/blue),
+        so later palette quantization with dithering disabled keeps solid fills solid.
+        """
+        if hasattr(self.display, "DESATURATED_PALETTE"):
+            try:
+                palette = self.display.DESATURATED_PALETTE
+                if (
+                    isinstance(palette, (list, tuple))
+                    and 0 <= palette_index < len(palette)
+                    and isinstance(palette[palette_index], (list, tuple))
+                    and len(palette[palette_index]) >= 3
+                ):
+                    rgb = palette[palette_index]
+                    return (int(rgb[0]), int(rgb[1]), int(rgb[2]))
+            except Exception as e:
+                logger.debug(f"Could not read DESATURATED_PALETTE[{palette_index}]: {e}")
+
+        if hasattr(self.display, "palette") and self.display.palette:
+            try:
+                palette = self.display.palette
+                if isinstance(palette, (list, tuple)):
+                    i = palette_index * 3
+                    if i + 2 < len(palette):
+                        return (int(palette[i]), int(palette[i + 1]), int(palette[i + 2]))
+            except Exception as e:
+                logger.debug(f"Could not read display.palette[{palette_index}]: {e}")
+
+        return None
 
     def _get_font(
         self, size: int, bold: bool = False
@@ -334,100 +362,29 @@ class InkyRenderer:
         return result
 
     def _dither_image_to_palette(self, rgb_image: Image.Image) -> Image.Image:
-        """Dither RGB image to 7-color palette using hitherdither.
+        """Convert RGB image to the device palette without dithering.
 
-        This method converts an RGB image to the Inky Impression Spectra's 7-color palette
-        using dithering for better color representation. Based on Pimoroni's dither.py example.
-
-        Args:
-            rgb_image: PIL Image in RGB mode.
-
-        Returns:
-            PIL Image in palette mode (P) with dithered colors.
+        For UI-style content (large flat areas like headers and icon backgrounds), ordered dithering
+        produces visible speckling (eg. blue with white dots). The Inky driver also performs
+        dithering when converting RGB->P internally. To get solid colors, we quantize here with
+        `Image.Dither.NONE` and return a palette ("P") image.
         """
-        # Get the display palette (7 colors)
-        palette_rgb = None
-        if hasattr(self.display, "_palette_blend"):
-            # Use display's palette blend method if available (real hardware)
-            try:
-                saturation = 0.5  # Medium saturation for good color representation
-                palette_uint24 = self.display._palette_blend(saturation, dtype="uint24")
-                # Convert 24-bit RGB values (0xRRGGBB) to (R, G, B) tuples
-                if palette_uint24 is not None:
-                    palette_rgb = []
-                    for color_value in palette_uint24:
-                        if isinstance(color_value, int):
-                            # Extract R, G, B from 24-bit value: 0xRRGGBB
-                            r = int((color_value >> 16) & 0xFF)
-                            g = int((color_value >> 8) & 0xFF)
-                            b = int(color_value & 0xFF)
-                            palette_rgb.append((r, g, b))
-                        elif isinstance(color_value, (tuple, list)) and len(color_value) >= 3:
-                            # Already in (R, G, B) format
-                            palette_rgb.append(
-                                (int(color_value[0]), int(color_value[1]), int(color_value[2]))
-                            )
-            except (AttributeError, TypeError, ValueError) as e:
-                logger.debug(f"Could not use _palette_blend: {e}")
+        palette_rgb = self._get_display_palette_rgb()
 
-        if palette_rgb is None and hasattr(self.display, "palette") and self.display.palette:
-            # Use display's palette directly
-            try:
-                display_palette = self.display.palette
-                # Check if it's a real list/array with enough elements
-                if isinstance(display_palette, (list, tuple)) and len(display_palette) >= 21:
-                    # Convert palette to RGB tuples (first 7 colors)
-                    palette_rgb = []
-                    for i in range(7):
-                        idx = i * 3
-                        if idx + 2 < len(display_palette):
-                            palette_rgb.append(
-                                (
-                                    display_palette[idx],
-                                    display_palette[idx + 1],
-                                    display_palette[idx + 2],
-                                )
-                            )
-                        else:
-                            palette_rgb.append((255, 255, 255))  # Default to white
-            except (TypeError, AttributeError, IndexError):
-                pass
+        palette_img = Image.new("P", (1, 1))
+        palette_data: list[int] = []
+        for r, g, b in palette_rgb:
+            palette_data.extend([r, g, b])
 
-        # Fallback: use our standard 7-color palette
-        if palette_rgb is None or len(palette_rgb) == 0:
-            palette_rgb = [
-                (0, 0, 0),  # 0: Black
-                (255, 255, 255),  # 1: White
-                (4, 120, 87),  # 2: Green (#047857)
-                (8, 123, 196),  # 3: Blue (#087BC4)
-                (255, 0, 0),  # 4: Red
-                (255, 255, 0),  # 5: Yellow
-                (255, 165, 0),  # 6: Orange
-            ]
+        # Fill remaining palette slots (256 * 3) with white.
+        while len(palette_data) < 768:
+            palette_data.extend([255, 255, 255])
+        palette_img.putpalette(palette_data)
 
-        # Create hitherdither palette
-        # hitherdither.Palette can accept a list of RGB tuples
-        # Ensure we have at least one color
-        if not palette_rgb or len(palette_rgb) == 0:
-            logger.error("Empty palette_rgb, using fallback")
-            palette_rgb = [
-                (0, 0, 0),  # 0: Black
-                (255, 255, 255),  # 1: White
-            ]
-        # hitherdither.Palette accepts list of RGB tuples (it will convert internally if needed)
-        hither_palette = hitherdither.palette.Palette(palette_rgb)
-
-        # Use Bayer dithering (fast and good quality, as per Pimoroni example)
-        # Thresholds for snapping colors
-        thresholds = [64, 64, 64]
-        # Order 8 for good quality (higher = better but slower)
-        dithered = hitherdither.ordered.bayer.bayer_dithering(
-            rgb_image, hither_palette, thresholds, order=8
-        )
-
-        # Convert to palette mode
-        # hitherdither returns Any, but convert("P") returns Image.Image
-        return dithered.convert("P")  # type: ignore[no-any-return]  # hitherdither.bayer_dithering returns Any, but convert() returns Image.Image
+        # Quantize to the palette with dithering disabled (solid colors).
+        if rgb_image.mode != "RGB":
+            rgb_image = rgb_image.convert("RGB")
+        return rgb_image.quantize(palette=palette_img, dither=Image.Dither.NONE)
 
     def _get_display_palette_rgb(self) -> list[tuple[int, int, int]]:
         """Get the 7-color palette as RGB tuples.
@@ -439,7 +396,28 @@ class InkyRenderer:
             or 7 colors (e.g. Spectra). We always return the palette in the device/library order so
             that palette indices line up with what the Inky library expects.
         """
-        # Prefer the hardware/library palette blend when available.
+        # Prefer the driver's explicit palette first.
+        #
+        # On real hardware (notably E673 / "Spectra 6"/multi), the constant indices (e.g. BLUE=4)
+        # must match the palette ordering we use for quantization so that any later `set_pixel`
+        # writes (idx * 0x11) hit the expected pigment. Using DESATURATED_PALETTE keeps this
+        # mapping stable across restarts and avoids "drift" from blended palettes.
+        if hasattr(self.display, "DESATURATED_PALETTE"):
+            try:
+                palette = self.display.DESATURATED_PALETTE
+                if isinstance(palette, (list, tuple)) and palette:
+                    palette_rgb_from_driver: list[tuple[int, int, int]] = []
+                    for entry in palette:
+                        if isinstance(entry, (tuple, list)) and len(entry) >= 3:
+                            palette_rgb_from_driver.append(
+                                (int(entry[0]), int(entry[1]), int(entry[2]))
+                            )
+                    if palette_rgb_from_driver:
+                        return palette_rgb_from_driver
+            except Exception as e:
+                logger.debug(f"Could not use DESATURATED_PALETTE: {e}")
+
+        # Otherwise, prefer the hardware/library palette blend when available.
         # This matches how the Inky library maps colors internally (and respects device-specific
         # palette ordering, which differs between Spectra and "multi" devices).
         if hasattr(self.display, "_palette_blend"):
@@ -1471,7 +1449,22 @@ class InkyRenderer:
             header = group.get("header", "")
             departures = group.get("departures", [])
 
-            header_bg_color_rgb = (0, 80, 140)
+            # Prefer the driver's native blue pigment when available.
+            # This ensures consistent, solid header colors on E673 ("Spectra 6"/multi) and
+            # avoids accidental snapping to teal/green when the driver quantizes.
+            header_bg_color_rgb = (0, 80, 140)  # MVG blue fallback
+            if hasattr(self.display, "DESATURATED_PALETTE") and hasattr(self.display, "BLUE"):
+                try:
+                    palette = self.display.DESATURATED_PALETTE
+                    if not palette:
+                        raise ValueError("DESATURATED_PALETTE is empty")
+                    blue_idx = int(self.display.BLUE)
+                    if isinstance(palette, (list, tuple)) and 0 <= blue_idx < len(palette):
+                        rgb = palette[blue_idx]
+                        if isinstance(rgb, (list, tuple)) and len(rgb) >= 3:
+                            header_bg_color_rgb = (int(rgb[0]), int(rgb[1]), int(rgb[2]))
+                except Exception as e:
+                    logger.debug(f"Could not use DESATURATED_PALETTE for header: {e}")
 
             # White text on colored background
             header_text_color_rgb = (255, 255, 255)
@@ -1804,10 +1797,13 @@ class InkyRenderer:
 
         if time_text:
             # Check if this is a realtime departure (green time in web version)
-            # Use green RGB color for realtime (will be dithered to green palette index)
-            # Green from web version: #047857 = RGB(4, 120, 87)
+            # Use the device's native green pigment for realtime (solid, no speckling).
             is_realtime = dep_data.get("is_realtime", False)
-            time_color_rgb = (4, 120, 87) if is_realtime else (0, 0, 0)
+            if is_realtime:
+                green_idx = int(getattr(self.display, "GREEN", 2))
+                time_color_rgb = self._get_driver_palette_rgb(green_idx) or (0, 255, 0)
+            else:
+                time_color_rgb = (0, 0, 0)
 
             # Calculate actual time width for this specific time text
             time_width = time_bbox[2] - time_bbox[0]
