@@ -1264,9 +1264,15 @@ function calculateFillVerticalSpace() {
   const maxFontFitsInRow = (heightPerRow - rowVerticalPaddingPx) / lineHeight;
   const rootFontSize = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
   // Cap font sizes so route numbers and destinations stay readable (no truncation on small screens)
-  const maxRouteDestinationTimePx = Math.min(maxFontFitsInRow, 4 * rootFontSize);
+  let maxRouteDestinationTimePx = Math.min(maxFontFitsInRow, 4 * rootFontSize);
   const maxHeaderFontPx = Math.min(maxFontFitsInRow, 2.5 * rootFontSize);
-  const maxPlatformPx = Math.min(maxFontFitsInRow, 2.5 * rootFontSize);
+  let maxPlatformPx = Math.min(maxFontFitsInRow, 2.5 * rootFontSize);
+  // On small screens, further cap departure row font so the departure content fits horizontally
+  const viewportWidth = window.innerWidth;
+  const maxDepartureFontByWidth =
+    viewportWidth < 400 ? 14 : viewportWidth < 600 ? 18 : 4 * rootFontSize;
+  maxRouteDestinationTimePx = Math.min(maxRouteDestinationTimePx, maxDepartureFontByWidth);
+  maxPlatformPx = Math.min(maxPlatformPx, maxDepartureFontByWidth);
 
   const reservedPadding = 0;
   const fontUsableHeight = heightPerRow - reservedPadding;
