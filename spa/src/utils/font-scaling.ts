@@ -224,34 +224,67 @@ export function calculateFillVerticalSpace(config: FontScalingConfig): void {
   const heightPerRow = availableHeight / totalRows;
   console.log(`[font-scaling] heightPerRow=${heightPerRow}px`);
 
-  // Calculate base font size from height per row
-  const reservedPadding = 0; // No reserved padding - use full row height
-  const fontUsableHeight = heightPerRow - reservedPadding;
-  // Use a slightly higher line height (1.25 instead of 1.2) to better distribute vertical space
+  // Use a slightly higher line height (1.25) to better distribute vertical space
   const lineHeight = 1.25;
+  // Max font that fits in a row without vertical clipping: lineHeight * fontSize <= rowHeight - padding
+  const rowVerticalPaddingPx = 8; // 0.25rem top + 0.25rem bottom
+  const maxFontFitsInRow = (heightPerRow - rowVerticalPaddingPx) / lineHeight;
+  const rootFontSize =
+    parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  // Reasonable max font sizes so route numbers and destinations stay readable on small screens
+  // (avoid huge fonts when there are only a few rows, which caused vertical truncation)
+  const maxRouteDestinationTimePx = Math.min(
+    maxFontFitsInRow,
+    4 * rootFontSize,
+  ); // 4rem cap
+  const maxHeaderFontPx = Math.min(maxFontFitsInRow, 2.5 * rootFontSize); // 2.5rem cap
+  const maxPlatformPx = Math.min(maxFontFitsInRow, 2.5 * rootFontSize);
+
+  const reservedPadding = 0;
+  const fontUsableHeight = heightPerRow - reservedPadding;
   const baseFontSize = fontUsableHeight / lineHeight;
 
-  // Calculate proportional font sizes for different elements
-  // These ratios are based on the default font sizes in the config:
-  // route_number: 4rem, destination: 4rem (same as time), time: 4rem, platform: 2.5rem
-  // direction_header: same as destination (4rem), stop_header: 3rem
-  // So relative to a base of ~3.5rem (but destination and time are 4rem):
-  // Get font scaling factor from config (defaults to 1.0)
+  // Calculate proportional font sizes (same ratios as before)
   const fontScalingFactor = config.fontScalingFactorWhenFilling || 1.0;
 
   const fontSizes = {
-    routeNumber: baseFontSize * (4.0 / 3.5) * fontScalingFactor, // 4rem relative to 3.5rem base
-    destination: baseFontSize * (4.0 / 3.5) * fontScalingFactor, // Same as time - 4rem relative to 3.5rem base
-    time: baseFontSize * (4.0 / 3.5) * fontScalingFactor, // 4rem relative to 3.5rem base
-    platform: baseFontSize * (2.5 / 3.5) * fontScalingFactor, // 2.5rem relative to 3.5rem base
-    directionHeader: baseFontSize * (4.0 / 3.5) * fontScalingFactor, // Same size as destination and time
-    stopHeader: baseFontSize * (3.0 / 3.5) * fontScalingFactor, // 3rem relative to 3.5rem base
-    noDepartures: baseFontSize * (2.5 / 3.5) * fontScalingFactor, // 2.5rem relative to 3.5rem base
+    routeNumber: baseFontSize * (4.0 / 3.5) * fontScalingFactor,
+    destination: baseFontSize * (4.0 / 3.5) * fontScalingFactor,
+    time: baseFontSize * (4.0 / 3.5) * fontScalingFactor,
+    platform: baseFontSize * (2.5 / 3.5) * fontScalingFactor,
+    directionHeader: baseFontSize * (4.0 / 3.5) * fontScalingFactor,
+    stopHeader: baseFontSize * (3.0 / 3.5) * fontScalingFactor,
+    noDepartures: baseFontSize * (2.5 / 3.5) * fontScalingFactor,
     paginationIndicator: baseFontSize * (2.0 / 3.5) * fontScalingFactor,
     countdownText: baseFontSize * (1.8 / 3.5) * fontScalingFactor,
     delayAmount: baseFontSize * (2.0 / 3.5) * fontScalingFactor,
-    statusHeader: baseFontSize * (4.0 / 3.5) * fontScalingFactor, // Same as direction header (heading font)
+    statusHeader: baseFontSize * (4.0 / 3.5) * fontScalingFactor,
   };
+
+  // Cap so content fits in row and stays readable (no vertical/horizontal truncation)
+  fontSizes.routeNumber = Math.min(
+    fontSizes.routeNumber,
+    maxRouteDestinationTimePx,
+  );
+  fontSizes.destination = Math.min(
+    fontSizes.destination,
+    maxRouteDestinationTimePx,
+  );
+  fontSizes.time = Math.min(fontSizes.time, maxRouteDestinationTimePx);
+  fontSizes.platform = Math.min(fontSizes.platform, maxPlatformPx);
+  fontSizes.directionHeader = Math.min(
+    fontSizes.directionHeader,
+    maxHeaderFontPx,
+  );
+  fontSizes.stopHeader = Math.min(fontSizes.stopHeader, maxHeaderFontPx);
+  fontSizes.statusHeader = Math.min(fontSizes.statusHeader, maxHeaderFontPx);
+  fontSizes.noDepartures = Math.min(fontSizes.noDepartures, maxPlatformPx);
+  fontSizes.paginationIndicator = Math.min(
+    fontSizes.paginationIndicator,
+    maxPlatformPx,
+  );
+  fontSizes.countdownText = Math.min(fontSizes.countdownText, maxPlatformPx);
+  fontSizes.delayAmount = Math.min(fontSizes.delayAmount, maxPlatformPx);
 
   // Apply minimum font size to ensure legibility (at least 12px)
   const minFontSize = 12;
@@ -427,10 +460,100 @@ export function calculateFillVerticalSpace(config: FontScalingConfig): void {
     `[font-scaling] Set departures container: height=${availableHeight}px, overflow=hidden`,
   );
 
-  // Scale all header text if it doesn't fit (only in fill_vertical_space mode)
+  // Fit-first: cap direction/status header so all destination titles fit horizontally (no truncation)
+  const fitUpperBound = fontSizes.directionHeader; // already capped by maxHeaderFontPx above
+  const cappedDirectionHeader = capDirectionHeaderFontToFitAll(fitUpperBound);
+  if (cappedDirectionHeader < fontSizes.directionHeader) {
+    fontSizes.directionHeader = cappedDirectionHeader;
+    fontSizes.statusHeader = cappedDirectionHeader;
+    root.style.setProperty(
+      "--font-size-direction-header",
+      fontSizes.directionHeader + "px",
+    );
+    root.style.setProperty(
+      "--font-size-status-header",
+      fontSizes.statusHeader + "px",
+    );
+    console.log(
+      `[font-scaling] Direction/status header set to ${cappedDirectionHeader}px to fit all titles`,
+    );
+  }
+
+  // Scale any header text that still doesn't fit (safety net)
   scaleHeadersIfNeeded();
 
   console.log("[font-scaling] calculateFillVerticalSpace completed");
+}
+
+/**
+ * Returns the maximum font size (px) that fits all direction header titles in their
+ * current container width. Use this to cap header font so we fit titles instead of
+ * maximizing to fill vertical space.
+ */
+function capDirectionHeaderFontToFitAll(currentHeaderFontPx: number): number {
+  const departuresEl = document.getElementById("departures");
+  if (!departuresEl) return currentHeaderFontPx;
+
+  const headers = departuresEl.querySelectorAll(".direction-header");
+  if (headers.length === 0) return currentHeaderFontPx;
+
+  let minFitSize = currentHeaderFontPx;
+  headers.forEach((header) => {
+    const fitSize = getMaxFittingFontSizeForHeader(
+      header as HTMLElement,
+      currentHeaderFontPx,
+    );
+    if (fitSize < minFitSize) minFitSize = fitSize;
+  });
+  return minFitSize;
+}
+
+/**
+ * For one direction header, returns the largest font size in [12, maxSizePx] that fits
+ * the header text on one line within its current available width.
+ */
+function getMaxFittingFontSizeForHeader(
+  header: HTMLElement,
+  maxSizePx: number,
+): number {
+  let headerTextEl = header.querySelector(
+    ".direction-header-text",
+  ) as HTMLElement;
+  if (!headerTextEl) headerTextEl = header;
+
+  const clockEl = header.querySelector(".direction-header-time") as HTMLElement;
+  const originalFontSize = headerTextEl.style.fontSize;
+  const originalWhiteSpace = headerTextEl.style.whiteSpace;
+
+  const minFontSize = 12;
+  const searchMax = Math.max(minFontSize, Math.min(maxSizePx, 200)); // clamp for safety
+  let minSize = minFontSize;
+  let maxSize = searchMax;
+  let bestSize = minFontSize;
+
+  // Binary search for largest font size that fits on one line
+  while (maxSize - minSize > 0.5) {
+    const testSize = (minSize + maxSize) / 2;
+    headerTextEl.style.fontSize = testSize + "px";
+    headerTextEl.style.whiteSpace = "nowrap";
+    if (clockEl) clockEl.style.fontSize = testSize + "px";
+    void headerTextEl.offsetHeight;
+
+    const fits = headerTextEl.scrollWidth <= headerTextEl.clientWidth;
+    headerTextEl.style.whiteSpace = originalWhiteSpace;
+    void headerTextEl.offsetHeight;
+
+    if (!fits) {
+      maxSize = testSize;
+    } else {
+      minSize = testSize;
+      bestSize = testSize;
+    }
+  }
+
+  headerTextEl.style.fontSize = originalFontSize;
+  if (clockEl) clockEl.style.fontSize = "";
+  return bestSize;
 }
 
 function scaleHeadersIfNeeded(): void {
