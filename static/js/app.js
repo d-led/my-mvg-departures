@@ -1238,6 +1238,9 @@ function calculateFillVerticalSpace() {
 
   if (totalRows === 0) return;
 
+  const numHeaders = directionGroups.length;
+  const numDepartureRows = totalRows - numHeaders;
+
   // Calculate available viewport height more accurately
   // Measure the actual status bar height from the DOM
   const statusBar = document.querySelector(".status-floating-box");
@@ -1255,42 +1258,62 @@ function calculateFillVerticalSpace() {
   // Be aggressive - use all available space
   const availableHeight = viewportHeight - statusBarHeight;
 
-  // Calculate height per row (distribute evenly across all available space)
+  // Headers and departure rows have independent font sizes. Header height from even split.
   const heightPerRow = availableHeight / totalRows;
+  const headerHeight = heightPerRow;
 
   const lineHeight = 1.25;
-  // Max font that fits in a row without vertical clipping
-  const rowVerticalPaddingPx = 8;
-  const maxFontFitsInRow = (heightPerRow - rowVerticalPaddingPx) / lineHeight;
   const rootFontSize = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-  // Cap font sizes so route numbers and destinations stay readable (no truncation on small screens)
-  let maxRouteDestinationTimePx = Math.min(maxFontFitsInRow, 4 * rootFontSize);
-  const maxHeaderFontPx = Math.min(maxFontFitsInRow, 2.5 * rootFontSize);
-  let maxPlatformPx = Math.min(maxFontFitsInRow, 2.5 * rootFontSize);
-  // On small screens, further cap departure row font so the departure content fits horizontally
   const viewportWidth = window.innerWidth;
+  // 8pt ≈ 10.67px at 96dpi; use 11px as minimum legible cap so text never gets too small
+  const MIN_LEGIBLE_FONT_PX = 11;
+  // Tight row padding so rows stay small; larger minimum row font for legibility
+  const rowVerticalPaddingPx = 4;
+  const MIN_ROW_FONT_PX = 18;
+
+  // Departure rows: height = 1 font height + small padding (small rows); row font larger (min 18px, as large as fits)
+  const remainingForRows =
+    numDepartureRows > 0 ? availableHeight - numHeaders * headerHeight : 0;
+  const maxRowHeightPerRow =
+    numDepartureRows > 0 ? remainingForRows / numDepartureRows : heightPerRow;
+  const rowBaseFontSize =
+    numDepartureRows > 0
+      ? Math.min(
+          4 * rootFontSize,
+          Math.max(MIN_ROW_FONT_PX, (maxRowHeightPerRow - rowVerticalPaddingPx) / lineHeight),
+        )
+      : (heightPerRow - rowVerticalPaddingPx) / lineHeight;
+  const departureRowHeight =
+    numDepartureRows > 0
+      ? rowBaseFontSize * lineHeight + rowVerticalPaddingPx
+      : heightPerRow;
+
+  const maxFontFitsInHeaderRow = (headerHeight - rowVerticalPaddingPx) / lineHeight;
+  let maxRouteDestinationTimePx = Math.min(rowBaseFontSize * 1.2, 4 * rootFontSize);
+  const maxHeaderFontPx = Math.min(maxFontFitsInHeaderRow, 2.5 * rootFontSize);
+  let maxPlatformPx = Math.min(rowBaseFontSize * 1.2, 2.5 * rootFontSize);
   const maxDepartureFontByWidth =
-    viewportWidth < 400 ? 14 : viewportWidth < 600 ? 18 : 4 * rootFontSize;
+    viewportWidth < 400 ? 18 : viewportWidth < 600 ? 22 : 4 * rootFontSize;
   maxRouteDestinationTimePx = Math.min(maxRouteDestinationTimePx, maxDepartureFontByWidth);
   maxPlatformPx = Math.min(maxPlatformPx, maxDepartureFontByWidth);
 
   const reservedPadding = 0;
-  const fontUsableHeight = heightPerRow - reservedPadding;
-  const baseFontSize = fontUsableHeight / lineHeight;
+  const headerFontUsableHeight = headerHeight - reservedPadding;
+  const headerBaseFontSize = headerFontUsableHeight / lineHeight;
   const fontScalingFactor = window.DEPARTURES_CONFIG?.fontScalingFactorWhenFilling || 1.0;
 
   const fontSizes = {
-    routeNumber: baseFontSize * (4.0 / 3.5) * fontScalingFactor,
-    destination: baseFontSize * (4.0 / 3.5) * fontScalingFactor,
-    time: baseFontSize * (4.0 / 3.5) * fontScalingFactor,
-    platform: baseFontSize * (2.5 / 3.5) * fontScalingFactor,
-    directionHeader: baseFontSize * (4.0 / 3.5) * fontScalingFactor,
-    stopHeader: baseFontSize * (3.0 / 3.5) * fontScalingFactor,
-    noDepartures: baseFontSize * (2.5 / 3.5) * fontScalingFactor,
-    paginationIndicator: baseFontSize * (2.0 / 3.5) * fontScalingFactor,
-    countdownText: baseFontSize * (1.8 / 3.5) * fontScalingFactor,
-    delayAmount: baseFontSize * (2.0 / 3.5) * fontScalingFactor,
-    statusHeader: baseFontSize * (4.0 / 3.5) * fontScalingFactor,
+    routeNumber: rowBaseFontSize * (4.0 / 3.5) * fontScalingFactor,
+    destination: rowBaseFontSize * (4.0 / 3.5) * fontScalingFactor,
+    time: rowBaseFontSize * (4.0 / 3.5) * fontScalingFactor,
+    platform: rowBaseFontSize * (2.5 / 3.5) * fontScalingFactor,
+    directionHeader: headerBaseFontSize * (4.0 / 3.5) * fontScalingFactor,
+    stopHeader: headerBaseFontSize * (3.0 / 3.5) * fontScalingFactor,
+    noDepartures: rowBaseFontSize * (2.5 / 3.5) * fontScalingFactor,
+    paginationIndicator: rowBaseFontSize * (2.0 / 3.5) * fontScalingFactor,
+    countdownText: rowBaseFontSize * (1.8 / 3.5) * fontScalingFactor,
+    delayAmount: rowBaseFontSize * (2.0 / 3.5) * fontScalingFactor,
+    statusHeader: headerBaseFontSize * (4.0 / 3.5) * fontScalingFactor,
   };
 
   // Cap so content fits in row and stays readable
@@ -1306,11 +1329,10 @@ function calculateFillVerticalSpace() {
   fontSizes.countdownText = Math.min(fontSizes.countdownText, maxPlatformPx);
   fontSizes.delayAmount = Math.min(fontSizes.delayAmount, maxPlatformPx);
 
-  // Apply minimum font size to ensure legibility (at least 12px)
-  const minFontSize = 12;
+  // Apply minimum font size cap so text stays legible (8pt ≈ 11px)
   Object.keys(fontSizes).forEach((key) => {
-    if (fontSizes[key] < minFontSize) {
-      fontSizes[key] = minFontSize;
+    if (fontSizes[key] < MIN_LEGIBLE_FONT_PX) {
+      fontSizes[key] = MIN_LEGIBLE_FONT_PX;
     }
   });
 
@@ -1354,9 +1376,12 @@ function calculateFillVerticalSpace() {
     const width = el.scrollWidth;
     if (width > maxRouteWidth) maxRouteWidth = width;
   });
-  // Ensure column is wide enough for route number + icon (e.g. "139", "N75") so nothing is truncated
-  const routeColumnWidth = Math.max(maxRouteWidth + fontSizes.routeNumber * 0.3, fontSizes.routeNumber * 3.5);
-  root.style.setProperty("--route-column-width", routeColumnWidth + "px");
+  let routeColumnWidth = Math.max(maxRouteWidth + fontSizes.routeNumber * 0.3, fontSizes.routeNumber * 3.5);
+
+  let maxDestinationScrollWidth = 0;
+  departuresEl.querySelectorAll(".destination-text").forEach((el) => {
+    if (el.scrollWidth > maxDestinationScrollWidth) maxDestinationScrollWidth = el.scrollWidth;
+  });
 
   // Measure the maximum width of platforms
   let maxPlatformWidth = 0;
@@ -1365,9 +1390,7 @@ function calculateFillVerticalSpace() {
     const width = el.scrollWidth;
     if (width > maxPlatformWidth) maxPlatformWidth = width;
   });
-  // Add small padding for visual breathing room (only if there are platforms)
-  const platformColumnWidth = maxPlatformWidth > 0 ? maxPlatformWidth + fontSizes.platform * 0.3 : 0;
-  root.style.setProperty("--platform-column-width", platformColumnWidth > 0 ? platformColumnWidth + "px" : "0px");
+  let platformColumnWidth = maxPlatformWidth > 0 ? maxPlatformWidth + fontSizes.platform * 0.3 : 0;
 
   // Measure the maximum width of time elements (including delay amounts)
   let maxTimeWidth = 0;
@@ -1376,14 +1399,67 @@ function calculateFillVerticalSpace() {
     const width = el.scrollWidth;
     if (width > maxTimeWidth) maxTimeWidth = width;
   });
-  // Add small padding for visual breathing room
-  const timeColumnWidth = maxTimeWidth + fontSizes.time * 0.3;
-  root.style.setProperty("--time-column-width", timeColumnWidth + "px");
+  let timeColumnWidth = maxTimeWidth + fontSizes.time * 0.3;
 
   // Calculate total time container width: platform + gap (only if platform exists) + time + container padding
   const containerPadding = 12; // 0.75rem padding on each side (approximately 12px)
-  const effectiveGap = platformColumnWidth > 0 ? timeContainerGap : 0;
-  const timeContainerWidth = platformColumnWidth + effectiveGap + timeColumnWidth + containerPadding * 2;
+  let effectiveGap = platformColumnWidth > 0 ? timeContainerGap : 0;
+  let timeContainerWidth = platformColumnWidth + effectiveGap + timeColumnWidth + containerPadding * 2;
+
+  // Only on small screens with few departures: scale row fonts so icon + texts fit width (no wrapping)
+  const smallScreen = viewportWidth < 600;
+  const fewDepartures = numDepartureRows <= 4;
+  if (smallScreen && fewDepartures && numDepartureRows > 0) {
+    const rowPaddingLeft = 12;
+    const availableRowWidth = departuresEl.clientWidth - rowPaddingLeft;
+    const totalRequiredWidth = routeColumnWidth + routeContainerGap + maxDestinationScrollWidth + timeContainerWidth;
+    if (totalRequiredWidth > availableRowWidth && availableRowWidth > 0) {
+      const scale = availableRowWidth / totalRequiredWidth;
+      fontSizes.routeNumber = Math.max(MIN_LEGIBLE_FONT_PX, fontSizes.routeNumber * scale);
+      fontSizes.destination = Math.max(MIN_LEGIBLE_FONT_PX, fontSizes.destination * scale);
+      fontSizes.time = Math.max(MIN_LEGIBLE_FONT_PX, fontSizes.time * scale);
+      fontSizes.platform = Math.max(MIN_LEGIBLE_FONT_PX, fontSizes.platform * scale);
+      root.style.setProperty("--font-size-route-number", fontSizes.routeNumber + "px");
+      root.style.setProperty("--font-size-destination", fontSizes.destination + "px");
+      root.style.setProperty("--font-size-time", fontSizes.time + "px");
+      root.style.setProperty("--font-size-platform", fontSizes.platform + "px");
+      root.style.setProperty("--route-container-gap", fontSizes.routeNumber * 0.5 + "px");
+      root.style.setProperty("--time-container-gap", fontSizes.time * 0.2 + "px");
+      root.style.setProperty("--route-column-width", "auto");
+      root.style.setProperty("--time-container-width", "auto");
+      root.style.setProperty("--platform-column-width", "auto");
+      root.style.setProperty("--time-column-width", "auto");
+      void departuresEl.offsetHeight;
+      maxRouteWidth = 0;
+      routeNumbers.forEach((el) => {
+        const w = el.scrollWidth;
+        if (w > maxRouteWidth) maxRouteWidth = w;
+      });
+      routeColumnWidth = Math.max(maxRouteWidth + fontSizes.routeNumber * 0.3, fontSizes.routeNumber * 3.5);
+      maxDestinationScrollWidth = 0;
+      departuresEl.querySelectorAll(".destination-text").forEach((el) => {
+        if (el.scrollWidth > maxDestinationScrollWidth) maxDestinationScrollWidth = el.scrollWidth;
+      });
+      maxPlatformWidth = 0;
+      platforms.forEach((el) => {
+        const w = el.scrollWidth;
+        if (w > maxPlatformWidth) maxPlatformWidth = w;
+      });
+      platformColumnWidth = maxPlatformWidth > 0 ? maxPlatformWidth + fontSizes.platform * 0.3 : 0;
+      maxTimeWidth = 0;
+      times.forEach((el) => {
+        const w = el.scrollWidth;
+        if (w > maxTimeWidth) maxTimeWidth = w;
+      });
+      timeColumnWidth = maxTimeWidth + fontSizes.time * 0.3;
+      effectiveGap = platformColumnWidth > 0 ? fontSizes.time * 0.2 : 0;
+      timeContainerWidth = platformColumnWidth + effectiveGap + timeColumnWidth + containerPadding * 2;
+    }
+  }
+
+  root.style.setProperty("--route-column-width", routeColumnWidth + "px");
+  root.style.setProperty("--platform-column-width", platformColumnWidth > 0 ? platformColumnWidth + "px" : "0px");
+  root.style.setProperty("--time-column-width", timeColumnWidth + "px");
   root.style.setProperty("--time-container-width", timeContainerWidth + "px");
 
   // Set line-height to match our calculation for better vertical space distribution
@@ -1398,10 +1474,10 @@ function calculateFillVerticalSpace() {
       header.style.marginBottom = "0";
       // Keep minimal symmetric padding for readability and vertical centering
       header.style.padding = "0 0.75rem";
-      // Set exact height to match calculated row height
-      header.style.height = heightPerRow + "px";
-      header.style.minHeight = heightPerRow + "px";
-      header.style.maxHeight = heightPerRow + "px";
+      // Set exact height to match calculated header row height
+      header.style.height = headerHeight + "px";
+      header.style.minHeight = headerHeight + "px";
+      header.style.maxHeight = headerHeight + "px";
       // Ensure flex alignment centers content vertically
       header.style.display = "flex";
       header.style.alignItems = "center";
@@ -1410,13 +1486,12 @@ function calculateFillVerticalSpace() {
     }
   });
 
-  // Set exact heights on departure rows to eliminate extra spacing
+  // Set exact heights on departure rows (capped when few departures so rows aren't huge)
   const departureRows = departuresEl.querySelectorAll(".departure-row");
   departureRows.forEach((row) => {
-    // Set exact height (not just min-height) to ensure tight fit
-    row.style.height = heightPerRow + "px";
-    row.style.minHeight = heightPerRow + "px";
-    row.style.maxHeight = heightPerRow + "px";
+    row.style.height = departureRowHeight + "px";
+    row.style.minHeight = departureRowHeight + "px";
+    row.style.maxHeight = departureRowHeight + "px";
     // Keep minimal padding for readability (reduced from default)
     row.style.padding = "0.25rem 0 0.25rem 0.75rem";
     // Apply line-height to match our calculation for better vertical distribution
@@ -1429,11 +1504,11 @@ function calculateFillVerticalSpace() {
     group.style.marginBottom = "0";
   });
 
-  // Ensure the departures container uses the full available height
-  // This prevents any bottom whitespace from container padding/margins
-  departuresEl.style.height = availableHeight + "px";
+  // Content height = headers + departure rows (may be less than available when few rows, so no huge rows)
+  const contentHeight = numHeaders * headerHeight + numDepartureRows * departureRowHeight;
+  departuresEl.style.height = contentHeight + "px";
   departuresEl.style.maxHeight = availableHeight + "px";
-  departuresEl.style.overflow = "hidden"; // Prevent scrolling since we're filling exactly
+  departuresEl.style.overflowY = contentHeight > availableHeight ? "auto" : "hidden";
 
   // Fit-first: cap direction/status header so all destination titles fit horizontally
   const cappedDirectionHeader = capDirectionHeaderFontToFitAll(fontSizes.directionHeader);
