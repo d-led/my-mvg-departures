@@ -1265,35 +1265,48 @@ function calculateFillVerticalSpace() {
   const lineHeight = 1.25;
   const rootFontSize = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
   const viewportWidth = window.innerWidth;
-  // 8pt ≈ 10.67px at 96dpi; use 11px as minimum legible cap so text never gets too small
-  const MIN_LEGIBLE_FONT_PX = 11;
-  // Tight row padding so rows stay small; larger minimum row font for legibility
-  const rowVerticalPaddingPx = 4;
-  const MIN_ROW_FONT_PX = 18;
+  // 8pt ≈ 10.67px at 96dpi; minimum legible cap relative to root
+  const MIN_LEGIBLE_FONT_PX = Math.max(11, rootFontSize * 0.7);
 
-  // Departure rows: height = 1 font height + small padding (small rows); row font larger (min 18px, as large as fits)
+  // Aspect ratio and number of departures drive sizing (not fixed pixels)
+  const aspectRatio = viewportWidth / viewportHeight;
+  const isLandscape = aspectRatio > 1;
+  // Row padding: minimal and relative to root so rows stay small at any resolution
+  const rowVerticalPaddingPx = Math.max(2, Math.round(rootFontSize * 0.15));
+  // Min row font relative to root; portrait can go larger, landscape capped so fonts aren't huge
+  const minRowFontPx = rootFontSize * 1.1;
+  const maxRowFontByOrientation = isLandscape ? rootFontSize * 1.2 : rootFontSize * 1.55;
+
+  // Departure rows: height = 1 font height + minimal padding; font from space per row (numDepartureRows) and orientation cap
   const remainingForRows =
     numDepartureRows > 0 ? availableHeight - numHeaders * headerHeight : 0;
   const maxRowHeightPerRow =
     numDepartureRows > 0 ? remainingForRows / numDepartureRows : heightPerRow;
+  const rowFontFromSpace =
+    numDepartureRows > 0
+      ? (maxRowHeightPerRow - rowVerticalPaddingPx) / lineHeight
+      : (heightPerRow - rowVerticalPaddingPx) / lineHeight;
   const rowBaseFontSize =
     numDepartureRows > 0
       ? Math.min(
-          4 * rootFontSize,
-          Math.max(MIN_ROW_FONT_PX, (maxRowHeightPerRow - rowVerticalPaddingPx) / lineHeight),
+          maxRowFontByOrientation,
+          Math.max(minRowFontPx, rowFontFromSpace),
         )
-      : (heightPerRow - rowVerticalPaddingPx) / lineHeight;
+      : rowFontFromSpace;
   const departureRowHeight =
     numDepartureRows > 0
       ? rowBaseFontSize * lineHeight + rowVerticalPaddingPx
       : heightPerRow;
 
   const maxFontFitsInHeaderRow = (headerHeight - rowVerticalPaddingPx) / lineHeight;
-  let maxRouteDestinationTimePx = Math.min(rowBaseFontSize * 1.2, 4 * rootFontSize);
+  let maxRouteDestinationTimePx = Math.min(rowBaseFontSize * 1.2, maxRowFontByOrientation);
   const maxHeaderFontPx = Math.min(maxFontFitsInHeaderRow, 2.5 * rootFontSize);
-  let maxPlatformPx = Math.min(rowBaseFontSize * 1.2, 2.5 * rootFontSize);
-  const maxDepartureFontByWidth =
-    viewportWidth < 400 ? 18 : viewportWidth < 600 ? 22 : 4 * rootFontSize;
+  let maxPlatformPx = Math.min(rowBaseFontSize * 1.2, maxRowFontByOrientation);
+  // Cap by viewport width (relative to resolution): narrow viewport = smaller max font
+  const maxDepartureFontByWidth = Math.min(
+    maxRowFontByOrientation,
+    viewportWidth / 22,
+  );
   maxRouteDestinationTimePx = Math.min(maxRouteDestinationTimePx, maxDepartureFontByWidth);
   maxPlatformPx = Math.min(maxPlatformPx, maxDepartureFontByWidth);
 
@@ -1407,9 +1420,9 @@ function calculateFillVerticalSpace() {
   let timeContainerWidth = platformColumnWidth + effectiveGap + timeColumnWidth + containerPadding * 2;
 
   // Only on small screens with few departures: scale row fonts so icon + texts fit width (no wrapping)
-  const smallScreen = viewportWidth < 600;
+  // Scale row fonts to fit width only in portrait (narrow) with few departures; aspect-ratio driven
   const fewDepartures = numDepartureRows <= 4;
-  if (smallScreen && fewDepartures && numDepartureRows > 0) {
+  if (!isLandscape && fewDepartures && numDepartureRows > 0) {
     const rowPaddingLeft = 12;
     const availableRowWidth = departuresEl.clientWidth - rowPaddingLeft;
     const totalRequiredWidth = routeColumnWidth + routeContainerGap + maxDestinationScrollWidth + timeContainerWidth;
