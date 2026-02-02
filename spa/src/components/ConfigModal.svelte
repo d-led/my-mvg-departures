@@ -131,8 +131,44 @@
         }, 2000);
         return;
       }
-      configParser.parseToml(text);
-      configText = text;
+
+      // If the clipboard contains a gist raw URL from gist.githubusercontent.com,
+      // fetch the contents and use that as the config text. Use URL constructor
+      // to validate the URL safely.
+      let contentToUse = trimmed;
+      try {
+        const maybeUrl = new URL(trimmed);
+        if (maybeUrl.hostname === "gist.githubusercontent.com") {
+          try {
+            const resp = await fetch(maybeUrl.href);
+            if (!resp.ok) {
+              throw new Error(`Failed to fetch gist: ${resp.status} ${resp.statusText}`);
+            }
+            const fetched = await resp.text();
+            if (fetched.trim()) {
+              contentToUse = fetched;
+            } else {
+              throw new Error("Fetched gist is empty");
+            }
+          } catch (fetchErr) {
+            // If gist fetch fails, surface a helpful error and abort paste.
+            console.error("Failed to fetch gist URL:", fetchErr);
+            const message = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
+            errorMessage = `Failed to fetch gist URL: ${message}`;
+            pasteError = true;
+            setTimeout(() => {
+              pasteError = false;
+            }, 2000);
+            return;
+          }
+        }
+      } catch (urlErr) {
+        // Not a valid URL — ignore and continue with clipboard text as-is.
+      }
+
+      // Validate TOML content (either fetched content or raw clipboard text)
+      configParser.parseToml(contentToUse);
+      configText = contentToUse;
       pasteError = false;
       pasteSuccess = true;
       setTimeout(() => {
@@ -140,8 +176,7 @@
       }, 2000);
     } catch (error) {
       console.error("Failed to paste from clipboard:", error);
-      const message =
-        error instanceof Error ? error.message : String(error);
+      const message = error instanceof Error ? error.message : String(error);
       errorMessage = message.includes("Invalid TOML")
         ? message
         : "Clipboard does not contain valid TOML configuration.";
