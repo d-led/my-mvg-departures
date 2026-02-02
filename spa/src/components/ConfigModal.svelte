@@ -1,6 +1,7 @@
 <script lang="ts">
   import { LocalStorageConfigStorage } from "../adapters/storage/local-storage-config-storage.js";
   import { ConfigParser } from "../adapters/config/config-parser.js";
+  import ConfigWizard from "./ConfigWizard.svelte";
 
   let {
     onSave,
@@ -17,8 +18,15 @@
   let copySuccess = $state(false);
   let pasteSuccess = $state(false);
   let pasteError = $state(false);
+  let showWizard = $state(false);
   const configStorage = new LocalStorageConfigStorage();
   const configParser = new ConfigParser();
+
+  function extractStationIdFromBlock(block: string): string | null {
+    // Extract station_id from a [[stops]] block
+    const match = block.match(/station_id\s*=\s*"([^"]+)"/);
+    return match ? match[1] : null;
+  }
 
   async function loadStoredConfig(): Promise<void> {
     const storedToml = await configStorage.getConfigToml();
@@ -186,6 +194,174 @@
       }, 2000);
     }
   }
+
+  async function handleWizardComplete(stops: any[]) {
+    // Build TOML config from wizard stops
+    // APPEND new stops to existing config, preserving everything else
+
+    try {
+      // Parse existing config if it exists
+      let displaySection = "";
+      let existingStopsBlocks = "";
+      let routeSections = "";
+      let otherSections = "";
+      let stopsToAdd = new Set(stops.map((s) => s.station_id));
+
+      console.log("=== WIZARD CONFIG MERGE ===");
+      console.log("Stops to add/update:", Array.from(stopsToAdd));
+      console.log("Existing config length:", configText.length);
+
+      if (configText.trim()) {
+        try {
+          configParser.parseToml(configText);
+          // Extract all sections from existing config
+          const lines = configText.split("\n");
+          let currentSection = "";
+          let sectionContent: string[] = [];
+          let currentStopId = "";
+          let currentStopBlock = "";
+
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+
+            if (line.startsWith("[display]")) {
+              currentSection = "display";
+              sectionContent = [line];
+            } else if (line.startsWith("[[stops]]")) {
+              // Save previous block
+              if (currentStopBlock) {
+                const blockStopId = extractStationIdFromBlock(currentStopBlock);
+                console.log(
+                  `Found stop block with ID: ${blockStopId}, keeping: ${!stopsToAdd.has(blockStopId)}`
+                );
+                if (blockStopId && stopsToAdd.has(blockStopId)) {
+                  // REPLACE this stop block (it's being reconfigured by wizard)
+                  stopsToAdd.delete(blockStopId);
+                } else if (blockStopId) {
+                  // KEEP existing stops not touched by wizard (preserve everything including direction_mappings)
+                  existingStopsBlocks += (existingStopsBlocks ? "\n" : "") + currentStopBlock;
+                }
+              }
+              // Start new stop block
+              currentSection = "stop";
+              currentStopBlock = line;
+            } else if (line.startsWith("[stops.") || line.startsWith("[stops]")) {
+              // Include direction_mappings in the stop block so they're preserved
+              // (only for kept stops; replaced stops won't have these anyway)
+              currentSection = "stop";
+              currentStopBlock += "\n" + line;
+            } else if (line.startsWith("[[routes]]")) {
+              currentSection = "routes";
+              routeSections += (routeSections ? "\n" : "") + line;
+            } else if (line.startsWith("[") || line.startsWith("[[")) {
+              currentSection = "other";
+              otherSections += (otherSections ? "\n" : "") + line;
+            } else {
+              if (currentSection === "display") {
+                sectionContent.push(line);
+              } else if (currentSection === "stop") {
+                currentStopBlock += "\n" + line;
+              } else if (currentSection === "routes") {
+                routeSections += "\n" + line;
+              } else if (currentSection === "other") {
+                otherSections += "\n" + line;
+              }
+              // currentSection === "skip" means we're in [stops.direction_mappings] - don't add to any block
+            }
+          }
+
+          // Process last stop block
+          if (currentStopBlock && currentSection === "stop") {
+            const blockStopId = extractStationIdFromBlock(currentStopBlock);
+            console.log(
+              `Last stop block with ID: ${blockStopId}, keeping: ${!stopsToAdd.has(blockStopId)}`
+            );
+            if (blockStopId && stopsToAdd.has(blockStopId)) {
+              stopsToAdd.delete(blockStopId);
+            } else if (blockStopId) {
+              existingStopsBlocks += (existingStopsBlocks ? "\n" : "") + currentStopBlock;
+            }
+          }
+
+          displaySection = sectionContent.join("\n");
+
+          console.log("Extracted sections:");
+          console.log("- Display:", displaySection.length, "chars");
+          console.log("- Existing stops:", existingStopsBlocks.length, "chars");
+          console.log("- Routes:", routeSections.length, "chars");
+          console.log("- Other:", otherSections.length, "chars");
+        } catch (error) {
+          console.error("Failed to parse existing config:", error);
+          // If parsing fails, just build new config from scratch
+        }
+      }
+
+      // Build final config
+      let newConfig = "";
+
+      // 1. Display section (if exists)
+      if (displaySection) {
+        newConfig += displaySection + "\n\n";
+      }
+
+      // 2. Existing stops NOT modified by wizard
+      if (existingStopsBlocks) {
+        newConfig += existingStopsBlocks + "\n\n";
+      }
+
+      // 3. NEW stops from wizard
+      for (const stop of stops) {
+        newConfig += "[[stops]]\n";
+        newConfig += `station_id = "${stop.station_id}"\n`;
+        newConfig += `station_name = "${stop.station_name}"\n`;
+        newConfig += `max_departures_per_stop = ${stop.max_departures_per_stop}\n`;
+        newConfig += `max_departures_per_route = ${stop.max_departures_per_route}\n`;
+        newConfig += `max_hours_in_advance = ${stop.max_hours_in_advance}\n`;
+        newConfig += `show_ungrouped = ${stop.show_ungrouped}\n`;
+
+        if (stop.custom_title) {
+          newConfig += `ungrouped_title = "${stop.custom_title}"\n`;
+        }
+
+        if (
+          stop.direction_mappings &&
+          Object.keys(stop.direction_mappings).length > 0
+        ) {
+          newConfig += "\n[stops.direction_mappings]\n";
+          for (const [key, value] of Object.entries(stop.direction_mappings)) {
+            const patterns = Array.isArray(value)
+              ? value
+              : ([value as string]);
+            const quoted = patterns.map((pattern) => `"${pattern}"`).join(", ");
+            newConfig += `"${key}" = [${quoted}]\n`;
+          }
+        }
+        newConfig += "\n";
+      }
+
+      // 4. Routes section
+      if (routeSections) {
+        newConfig += routeSections + "\n\n";
+      }
+
+      // 5. Other sections
+      if (otherSections) {
+        newConfig += otherSections;
+      }
+
+      configText = newConfig.trim();
+      console.log("Final merged config length:", configText.length);
+      console.log("=== END MERGE ===");
+
+      showWizard = false;
+      errorMessage = null; // Clear any previous errors
+      // Don't auto-save - let user review the generated config first
+    } catch (error) {
+      errorMessage =
+        error instanceof Error ? error.message : "Failed to generate config";
+      console.error("Wizard completion error:", error);
+    }
+  }
 </script>
 
 <div
@@ -200,21 +376,44 @@
   tabindex="0"
   aria-label="Close configuration dialog"
 >
-  <div class="modal-content">
-    <div class="modal-header">
-      <h2>Configuration</h2>
-      <button class="close-button" onclick={onCancel} aria-label="Close">×</button>
-    </div>
-    <div class="modal-body">
-      <p>Paste your TOML configuration below:</p>
-      <div class="info-links">
-        <p>
-          <a href="https://github.com/d-led/my-mvg-departures/blob/main/docs/FINDING_STOP_IDS.md" target="_blank" rel="noopener noreferrer">Find station IDs using the project tooling</a>.
-        </p>
-        <p>
-          This is the <a href="https://d-led.github.io/my-mvg-departures/" target="_blank" rel="noopener noreferrer">SPA version</a> of the MVG Departures app.
-        </p>
+  {#if showWizard}
+    <ConfigWizard
+      onComplete={handleWizardComplete}
+      onCancel={() => (showWizard = false)}
+    />
+  {:else}
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Configuration</h2>
+        <button class="close-button" onclick={onCancel} aria-label="Close">×</button>
       </div>
+      <div class="modal-body">
+        <div class="config-method-selector">
+          <button
+            class="method-button method-button-active"
+            onclick={() => {}}
+            title="Manual TOML configuration"
+          >
+            Manual TOML
+          </button>
+          <button
+            class="method-button"
+            onclick={() => (showWizard = true)}
+            title="Step-by-step wizard to find and configure stops"
+          >
+            Wizard (experimental)
+          </button>
+        </div>
+
+        <p>Paste your TOML configuration below:</p>
+        <div class="info-links">
+          <p>
+            <a href="https://github.com/d-led/my-mvg-departures/blob/main/docs/FINDING_STOP_IDS.md" target="_blank" rel="noopener noreferrer">Find station IDs using the project tooling</a>.
+          </p>
+          <p>
+            This is the <a href="https://d-led.github.io/my-mvg-departures/" target="_blank" rel="noopener noreferrer">SPA version</a> of the MVG Departures app.
+          </p>
+        </div>
       {#if errorMessage}
         <div class="error-message" role="alert">
           {errorMessage}
@@ -276,9 +475,67 @@
       </button>
     </div>
   </div>
+  {/if}
 </div>
 
 <style>
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+  }
+
+  .config-method-selector {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    border-bottom: 2px solid #e5e7eb;
+  }
+
+  :global([data-theme="dark"]) .config-method-selector {
+    border-bottom-color: #374151;
+  }
+
+  .method-button {
+    padding: 0.75rem 1rem;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-weight: 500;
+    color: #6b7280;
+    transition: all 0.2s;
+    margin-bottom: -2px;
+  }
+
+  .method-button:hover {
+    color: #111827;
+  }
+
+  .method-button-active {
+    color: #087bc4;
+    border-bottom-color: #087bc4;
+  }
+
+  :global([data-theme="dark"]) .method-button {
+    color: #9ca3af;
+  }
+
+  :global([data-theme="dark"]) .method-button:hover {
+    color: #f9fafb;
+  }
+
+  :global([data-theme="dark"]) .method-button-active {
+    color: #60a5fa;
+    border-bottom-color: #60a5fa;
+  }
   .modal-overlay {
     position: fixed;
     top: 0;
