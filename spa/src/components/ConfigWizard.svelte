@@ -444,13 +444,19 @@
           continue;
         }
         
-        // Use the actual platform/stop label as the title, unless user customized it
-        const defaultLabel = getDefaultSubStopTitle(subStopId, subStopData.platformValue, subStopData.platformKind);
-        const displayTitle = subStopData.title !== defaultLabel
-          ? subStopData.title  // User customized it
-          : undefined;  // Don't store custom_title if using default
-        
-        console.log(`Adding sub-stop: ${subStopId} (parent: ${subStopData.parentStopId}) with title: "${displayTitle || defaultLabel}"`);
+        // Use the actual platform/stop label as the default title (Stop X / Platform Y)
+        const defaultLabel = getDefaultSubStopTitle(
+          subStopId,
+          subStopData.platformValue,
+          subStopData.platformKind,
+        );
+        const displayTitle =
+          subStopData.title !== defaultLabel ? subStopData.title : undefined;
+        const ungroupedTitle = displayTitle ?? defaultLabel;
+
+        console.log(
+          `Adding sub-stop: ${subStopId} (parent: ${subStopData.parentStopId}) with title: "${ungroupedTitle}"`,
+        );
         
         const config: any = {
           station_id: subStopId,
@@ -461,9 +467,8 @@
           show_ungrouped: true,
         };
         
-        if (displayTitle) {
-          config.custom_title = displayTitle;
-        }
+        // Always set ungrouped_title so the header shows "Stop X" instead of "Other"
+        config.custom_title = ungroupedTitle;
         
         stopsConfig.push(config);
       }
