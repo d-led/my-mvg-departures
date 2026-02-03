@@ -1,13 +1,184 @@
-import {
-  parse as tomlParse,
-  patch as tomlPatch,
-  stringify as tomlStringify,
-} from "toml-patch";
+import { parse as tomlParse, patch as tomlPatch } from "toml-patch";
 import type {
   TomlData,
   TomlRouteData,
   TomlStopData,
 } from "../adapters/config/toml-types.js";
+
+// Custom TOML stringify that properly handles direction_mappings
+// This needs to preserve the TOML structure while serializing direction_mappings as sections
+function stringifyToml(data: TomlData): string {
+  // For main stops (parsed from TOML), we need special handling of direction_mappings
+  // The toml-patch library's stringify doesn't properly handle this
+  const lines: string[] = [];
+
+  // Serialize display section if present
+  if (data.display && typeof data.display === "object") {
+    lines.push("[display]");
+    const displayObj = data.display as Record<string, unknown>;
+    for (const [key, value] of Object.entries(displayObj)) {
+      lines.push(serializeKeyValue(key, value));
+    }
+    lines.push("");
+  }
+
+  // Serialize api section if present
+  if (data.api && typeof data.api === "object") {
+    lines.push("[api]");
+    const apiObj = data.api as Record<string, unknown>;
+    for (const [key, value] of Object.entries(apiObj)) {
+      lines.push(serializeKeyValue(key, value));
+    }
+    lines.push("");
+  }
+
+  // Serialize main stops
+  if (data.stops && Array.isArray(data.stops)) {
+    for (const stop of data.stops) {
+      lines.push("[[stops]]");
+      const stopObj = stop as unknown as Record<string, unknown>;
+      const directionMappings = stopObj.direction_mappings as
+        | Record<string, unknown>
+        | undefined;
+
+      for (const [key, value] of Object.entries(stopObj)) {
+        if (key !== "direction_mappings") {
+          lines.push(serializeKeyValue(key, value));
+        }
+      }
+
+      // Serialize direction_mappings as a TOML section if present
+      if (directionMappings && Object.keys(directionMappings).length > 0) {
+        lines.push("[stops.direction_mappings]");
+        for (const [key, value] of Object.entries(directionMappings)) {
+          lines.push(serializeKeyValue(key, value));
+        }
+      }
+
+      lines.push("");
+    }
+  }
+
+  // Serialize routes
+  if (data.routes && Array.isArray(data.routes)) {
+    for (const route of data.routes) {
+      const routeObj = route as Record<string, unknown>;
+      lines.push("[[routes]]");
+
+      for (const [key, value] of Object.entries(routeObj)) {
+        if (key !== "stops" && key !== "display") {
+          lines.push(serializeKeyValue(key, value));
+        }
+      }
+
+      // Serialize route.display if present
+      if (routeObj.display && typeof routeObj.display === "object") {
+        lines.push("[routes.display]");
+        const displayObj = routeObj.display as Record<string, unknown>;
+        for (const [key, value] of Object.entries(displayObj)) {
+          lines.push(serializeKeyValue(key, value));
+        }
+      }
+
+      // Serialize route stops - these are inline, not sections
+      const routeStops = routeObj.stops as TomlStopData[] | undefined;
+      if (routeStops && Array.isArray(routeStops)) {
+        lines.push("stops = [");
+        for (let i = 0; i < routeStops.length; i++) {
+          const stop = routeStops[i];
+          const stopObj = stop as unknown as Record<string, unknown>;
+          const fields: string[] = [];
+
+          for (const [key, value] of Object.entries(stopObj)) {
+            if (key !== "direction_mappings") {
+              fields.push(`  ${serializeKeyValue(key, value).trim()}`);
+            }
+          }
+
+          if (i < routeStops.length - 1) {
+            lines.push("  { " + fields.join(", ") + " },");
+          } else {
+            lines.push("  { " + fields.join(", ") + " }");
+          }
+        }
+        lines.push("]");
+      }
+
+      lines.push("");
+    }
+  }
+
+  // Remove trailing empty lines
+  while (lines.length > 0 && lines[lines.length - 1] === "") {
+    lines.pop();
+  }
+
+  return lines.join("\n");
+}
+
+function needsQuoting(key: string): boolean {
+  // TOML keys need quotes if they contain special characters
+  return !/^[A-Za-z0-9_-]+$/.test(key);
+}
+
+function quoteKey(key: string): string {
+  if (needsQuoting(key)) {
+    const escaped = key.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    return `"${escaped}"`;
+  }
+  return key;
+}
+
+function serializeKeyValue(key: string, value: unknown): string {
+  const quotedKey = quoteKey(key);
+
+  if (value === null || value === undefined) {
+    return `${quotedKey} = ""`;
+  }
+  if (typeof value === "string") {
+    const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    return `${quotedKey} = "${escaped}"`;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return `${quotedKey} = ${value}`;
+  }
+  if (Array.isArray(value)) {
+    const items = value.map((v) => {
+      if (typeof v === "string") {
+        const escaped = v.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+        return `"${escaped}"`;
+      }
+      return String(v);
+    });
+    return `${quotedKey} = [${items.join(", ")}]`;
+  }
+  // For inline table objects
+  if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    const entries = Object.entries(obj)
+      .map(([k, v]) => {
+        const quotedInlineKey = quoteKey(k);
+        if (typeof v === "string") {
+          const escaped = v.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+          return `${quotedInlineKey} = "${escaped}"`;
+        }
+        if (Array.isArray(v)) {
+          const items = (v as unknown[]).map((vi) => {
+            if (typeof vi === "string") {
+              const escaped = vi.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+              return `"${escaped}"`;
+            }
+            return String(vi);
+          });
+          return `${quotedInlineKey} = [${items.join(", ")}]`;
+        }
+        return `${quotedInlineKey} = ${v}`;
+      })
+      .join(", ");
+    return `${quotedKey} = { ${entries} }`;
+  }
+  return `${quotedKey} = "${value}"`;
+}
 
 export type WizardStop = {
   station_id: string;
@@ -168,7 +339,7 @@ export function applyWizardConfig(
     // For main stops, tomlPatch can handle simple array-of-tables updates
     output = existingToml.trim()
       ? tomlPatch(existingToml, parsed)
-      : tomlStringify(parsed);
+      : stringifyToml(parsed);
   } else {
     const routeDetails = result.route;
     if (!routeDetails?.path) {
@@ -209,7 +380,7 @@ export function applyWizardConfig(
       parsed.routes = updatedRoutes;
     }
     // For routes, tomlPatch has limitations, so use tomlStringify
-    output = tomlStringify(parsed);
+    output = stringifyToml(parsed);
   }
 
   // Validate TOML syntax after patching/stringifying
