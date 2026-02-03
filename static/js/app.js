@@ -1278,35 +1278,18 @@ function calculateFillVerticalSpace() {
   const maxRowFontByOrientation = isLandscape ? rootFontSize * 1.2 : rootFontSize * 1.55;
 
   // Departure rows: height = 1 font height + minimal padding; font from space per row (numDepartureRows) and orientation cap
-  const remainingForRows =
-    numDepartureRows > 0 ? availableHeight - numHeaders * headerHeight : 0;
-  const maxRowHeightPerRow =
-    numDepartureRows > 0 ? remainingForRows / numDepartureRows : heightPerRow;
-  const rowFontFromSpace =
-    numDepartureRows > 0
-      ? (maxRowHeightPerRow - rowVerticalPaddingPx) / lineHeight
-      : (heightPerRow - rowVerticalPaddingPx) / lineHeight;
-  const rowBaseFontSize =
-    numDepartureRows > 0
-      ? Math.min(
-          maxRowFontByOrientation,
-          Math.max(minRowFontPx, rowFontFromSpace),
-        )
-      : rowFontFromSpace;
-  const departureRowHeight =
-    numDepartureRows > 0
-      ? rowBaseFontSize * lineHeight + rowVerticalPaddingPx
-      : heightPerRow;
+  const remainingForRows = numDepartureRows > 0 ? availableHeight - numHeaders * headerHeight : 0;
+  const maxRowHeightPerRow = numDepartureRows > 0 ? remainingForRows / numDepartureRows : heightPerRow;
+  const rowFontFromSpace = numDepartureRows > 0 ? (maxRowHeightPerRow - rowVerticalPaddingPx) / lineHeight : (heightPerRow - rowVerticalPaddingPx) / lineHeight;
+  const rowBaseFontSize = numDepartureRows > 0 ? Math.min(maxRowFontByOrientation, Math.max(minRowFontPx, rowFontFromSpace)) : rowFontFromSpace;
+  const departureRowHeight = numDepartureRows > 0 ? rowBaseFontSize * lineHeight + rowVerticalPaddingPx : heightPerRow;
 
   const maxFontFitsInHeaderRow = (headerHeight - rowVerticalPaddingPx) / lineHeight;
   let maxRouteDestinationTimePx = Math.min(rowBaseFontSize * 1.2, maxRowFontByOrientation);
   const maxHeaderFontPx = Math.min(maxFontFitsInHeaderRow, 2.5 * rootFontSize);
   let maxPlatformPx = Math.min(rowBaseFontSize * 1.2, maxRowFontByOrientation);
   // Cap by viewport width (relative to resolution): narrow viewport = smaller max font
-  const maxDepartureFontByWidth = Math.min(
-    maxRowFontByOrientation,
-    viewportWidth / 22,
-  );
+  const maxDepartureFontByWidth = Math.min(maxRowFontByOrientation, viewportWidth / 22);
   maxRouteDestinationTimePx = Math.min(maxRouteDestinationTimePx, maxDepartureFontByWidth);
   maxPlatformPx = Math.min(maxPlatformPx, maxDepartureFontByWidth);
 
