@@ -1,12 +1,20 @@
-# My MVG Departures - a set of Customizable Departures Dashboards for public Transport
+# My MVG Departures - Customizable Departures Dashboards for Public Transport
 
-A server-side rendered live dashboard for Munich public transport (MVG) departures. Featuring a responsive and live web UI. Usable on various screen sizes.
+A family of customizable dashboards for Munich public transport (MVG) departures, available in three versions:
 
-Alternative versions: [browser-based (single-page-app)](https://d-led.github.io/my-mvg-departures/) and an [E-Ink version](./inky/).
+1. **[Server-Side Version](#server-side-version)** (this README) - Python/PyView live-updating web dashboard with WebSocket support
+2. **[SPA Version](https://d-led.github.io/my-mvg-departures/)** - Client-side Single Page Application requiring no server (see [spa/README.md](spa/README.md))
+3. **[Inky E-Paper Version](./inky/)** - Static e-ink display for Raspberry Pi with Pimoroni Inky displays
+
+All versions share the same TOML configuration format and core features. The SPA version includes a **[configuration wizard](https://d-led.github.io/my-mvg-departures/)** that runs entirely in your browser - use it to generate your TOML config for any version!
 
 ![Giesing departures screenshot](./docs/img/giesing-screenshot.png)
 
-## Features
+## Server-Side Version
+
+This document describes the **Python/PyView server-side version** featuring:
+
+### Features
 
 - **Live Departure Updates**: Real-time departure information from MVG API
 - **Configurable Stops**: Monitor multiple stops with custom direction groupings
@@ -68,10 +76,12 @@ This design philosophy recognizes that **you don't need to see every departure**
 
 **Result:** Instead of mental arithmetic across multiple stops, you can quickly scan grouped departures, identify your best options, and make confident decisions about when to leave and which route to take.
 
-## Requirements
+## Requirements (Server-Side Version)
 
 - Python 3.13
 - Virtual environment tool: `uv`, `poetry`, `pipenv`, or `pyenv`
+
+> **💡 Tip**: For a no-installation option, try the **[SPA version](https://d-led.github.io/my-mvg-departures/)** which runs entirely in your browser!
 
 ## Installation
 
@@ -125,7 +135,11 @@ pip install -e .
 
 ## Configuration
 
-Configuration uses a TOML file for stops and display settings. The preferred way is to set the `CONFIG_FILE` environment variable pointing to your TOML file:
+Configuration uses a TOML file for stops and display settings.
+
+> **🎯 Easy Configuration**: Use the **[SPA Configuration Wizard](https://d-led.github.io/my-mvg-departures/)** to generate your TOML config interactively in your browser! The generated config works with all versions (server-side, SPA, and Inky).
+
+The preferred way is to set the `CONFIG_FILE` environment variable pointing to your TOML file:
 
 ```bash
 export CONFIG_FILE=/path/to/your/config.toml
@@ -199,11 +213,13 @@ Use the `list_routes.sh` script to list routes for a station:
 
 The app supports multiple transit APIs via the `api_provider` setting:
 
-| Provider        | Coverage                | CLI Tool     | API Documentation                                             |
-| --------------- | ----------------------- | ------------ | ------------------------------------------------------------- |
-| `mvg` (default) | Munich (MVG)            | `mvg-config` | [MVG API](https://www.mvg.de/)                                |
-| `vbb`           | Berlin/Brandenburg      | `vbb-config` | [v6.bvg.transport.rest](https://v6.bvg.transport.rest/)       |
-| `db`            | Germany (Deutsche Bahn) | `db-config`  | [v6.db.transport.rest](https://v6.db.transport.rest/api.html) |
+| Provider        | Coverage                | CLI Tool     | Status         | API Documentation                                             |
+| --------------- | ----------------------- | ------------ | -------------- | ------------------------------------------------------------- |
+| `mvg` (default) | Munich (MVG)            | `mvg-config` | **Stable**     | [MVG API](https://www.mvg.de/)                                |
+| `vbb`           | Berlin/Brandenburg      | `vbb-config` | _Experimental_ | [v6.bvg.transport.rest](https://v6.bvg.transport.rest/)       |
+| `db`            | Germany (Deutsche Bahn) | `db-config`  | _Experimental_ | [v6.db.transport.rest](https://v6.db.transport.rest/api.html) |
+
+> **ℹ️ Note**: VBB (Berlin/Brandenburg) and DB (Deutsche Bahn) providers are **experimental**. They may have incomplete features, different data formats, or reliability issues. The MVG provider is the primary, fully-tested implementation.
 
 ```toml
 [[stops]]
@@ -538,19 +554,30 @@ See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for detailed contribution guide
 - [DaisyUI](https://daisyui.com/) - Component library
 - [Heroicons](https://heroicons.com/) - MIT-licensed SVG icons used for connection status indicators
 
-## SPA Version
+## Other Versions
 
-A client-side Single Page Application (SPA) version is available that runs entirely in the browser without requiring a server. The SPA version:
+### SPA Version
 
-- **No server required**: Runs entirely client-side using SvelteJS
+A client-side Single Page Application that runs entirely in the browser without requiring a server:
+
+- **Try it online**: **[https://d-led.github.io/my-mvg-departures/](https://d-led.github.io/my-mvg-departures/)**
+- **Configuration wizard**: Interactive UI for creating TOML configs
 - **Same UI/UX**: Maintains the exact same look and feel as the server version
-- **Configuration via browser**: Paste TOML config directly in the browser (stored in localStorage)
-- **Route switching**: Switch between different route configurations via URL hash paths
-- **Static hosting**: Can be deployed to GitHub Pages, Netlify, Vercel, or any static hosting service
+- **No backend**: Fetches data directly from MVG API in the browser
+- **Static hosting**: Deploy to GitHub Pages, Netlify, Vercel, etc.
 
-**Try it online**: [SPA Version on GitHub Pages](https://d-led.github.io/my-mvg-departures/)
+For development and deployment details, see **[spa/README.md](spa/README.md)**.
 
-For development and deployment details, see [`spa/README.md`](spa/README.md).
+### Inky E-Paper Version
+
+Static e-ink display version for Raspberry Pi with Pimoroni Inky displays:
+
+- **E-Paper optimized**: Designed for 7.5" portrait displays (480x800 pixels)
+- **Low power**: Perfect for always-on departure displays
+- **Vertical fill layout**: Automatically fits all departures
+- **Python-based**: Uses the same configuration format
+
+For setup and usage, see **[inky/README.md](inky/README.md)**.
 
 ## Alternative
 

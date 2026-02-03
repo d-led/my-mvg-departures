@@ -2,7 +2,19 @@
 
 This document covers development-related topics for the MVG Departures project.
 
+## Project Structure
+
+The project consists of three main versions:
+
+1. **Server-Side (Python/PyView)**: This repository's root - server-side rendered web dashboard
+2. **SPA (TypeScript/Svelte)**: Located in `spa/` - client-side browser application
+3. **Inky (Python)**: Located in `inky/` - e-ink display version for Raspberry Pi
+
+All versions share the same TOML configuration format.
+
 ## Running Tests
+
+### Server-Side (Python)
 
 ```bash
 # Using pytest directly
@@ -20,7 +32,37 @@ uv run pytest
 
 The test script runs all tests, linting, and type checking. Keep it green.
 
+### SPA (TypeScript)
+
+```bash
+cd spa
+
+# Run all checks (TypeScript, Svelte, ESLint, Prettier, Tests)
+./scripts/test.sh
+
+# Or run individually:
+npm run typecheck  # TypeScript type checking
+npm run check      # Svelte check
+npm run lint       # ESLint
+npm run prettier   # Prettier formatting
+npm test          # Vitest unit tests
+```
+
+### Inky (Python)
+
+```bash
+cd inky
+
+# Run tests
+pytest
+
+# With coverage
+pytest --cov=mvg_inky --cov-report=html
+```
+
 ## Code Quality
+
+### Server-Side (Python)
 
 ```bash
 # Format code
@@ -31,6 +73,20 @@ ruff check src tests
 
 # Type checking
 mypy src
+```
+
+### SPA (TypeScript)
+
+```bash
+cd spa
+
+# Format and lint (done automatically by test script)
+npm run prettier
+npm run lint
+
+# Type checking
+npm run typecheck
+npm run check  # Svelte-specific checks
 ```
 
 ## Extending the Application

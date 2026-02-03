@@ -1,6 +1,8 @@
 # MVG Departures - Inky Display
 
-This is the Inky e-ink display version of the MVG departures application, designed for Pimoroni Inky Impression displays (targeting 7.5" displays in portrait mode - 480x800 pixels).
+E-ink display version of the MVG departures application, designed for Pimoroni Inky Impression displays (targeting 7.5" displays in portrait mode - 480x800 pixels).
+
+This version is part of the MVG Departures family. See the [main README](../README.md) for the server-side version and [SPA version](https://d-led.github.io/my-mvg-departures/) for a browser-based alternative.
 
 ## Features
 
@@ -65,7 +67,9 @@ The hardware dependencies (`inky` library and its Linux-specific dependencies) a
 
 ## Configuration
 
-Use the same `config.toml` file as the main project. The Inky adapter will use the first route configuration.
+Use the same TOML configuration format as the server-side and SPA versions. The Inky adapter will use the first route configuration from your config file.
+
+> **🎯 Easy Configuration**: Use the **[SPA Configuration Wizard](https://d-led.github.io/my-mvg-departures/)** to generate your TOML config interactively in your browser, then save it for use with the Inky version!
 
 You can specify a custom config file using the `CONFIG_FILE` environment variable:
 
