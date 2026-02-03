@@ -1,4 +1,5 @@
 <script lang="ts">
+  /* eslint-disable svelte/prefer-svelte-reactivity */
   import { onMount } from "svelte";
 
   let {
@@ -56,7 +57,7 @@
       // Base: https://www.mvg.de/api/bgw-pt/v3
       // Endpoint: /locations?query=...&locationTypes=STATION
       
-      const params = new URLSearchParams({
+      const params = new globalThis.URLSearchParams({
         query: searchQuery.trim(),
         locationTypes: "STATION",
       });
@@ -242,7 +243,7 @@
 
   async function fetchSubStopsFromDepartures(stopId: string, stopName: string) {
     try {
-      const params = new URLSearchParams({
+      const params = new globalThis.URLSearchParams({
         globalId: stopId,
         limit: "100",
         transportTypes: "UBAHN,TRAM,SBAHN,BUS,REGIONAL_BUS,BAHN",
@@ -578,7 +579,7 @@
                   class="form-input path-input"
                   oninput={(e) => {
                     // Auto-sanitize: lowercase, replace spaces with hyphens, remove special chars
-                    const input = e.currentTarget as HTMLInputElement;
+                    const input = e.currentTarget as globalThis.HTMLInputElement;
                     input.value = input.value
                       .toLowerCase()
                       .replace(/\s+/g, '-')
@@ -675,7 +676,7 @@
             <div class="loading-indicator">Loading route information...</div>
           {:else}
             <div class="substops-context">
-              {#each Array.from(selectedStops) as stopId}
+              {#each Array.from(selectedStops) as stopId (stopId)}
                 {@const mainStop = searchResults.find((s) => s.id === stopId)}
                 {#if mainStop}
                   <div class="context-item">
@@ -790,21 +791,21 @@
                   <h4>{stop?.name} (Full Stop)</h4>
                   <div class="config-fields">
                     <div class="field">
-                      <label>Station ID:</label>
+                      <span class="field-label">Station ID:</span>
                       <code>{stopId}</code>
                     </div>
                     <div class="field">
-                      <label>Show ungrouped:</label>
+                      <span class="field-label">Show ungrouped:</span>
                       <span>false</span>
                     </div>
                     <div class="field">
-                      <label>Direction mappings:</label>
+                      <span class="field-label">Direction mappings:</span>
                       <div class="mappings-preview">
-                        {#each Array.from(selectedSubStops.entries()) as [subStopId, subStopData]}
+                        {#each Array.from(selectedSubStops.entries()) as [subStopId, subStopData] (subStopId)}
                           <div class="mapping-item">
                             <strong>"{subStopData.title}"</strong>
                             <div class="mapping-routes">
-                              {#each subStopRoutes.get(subStopId) || [] as route}
+                              {#each subStopRoutes.get(subStopId) || [] as route (route.line)}
                                 <span class="route-chip-small">{route.line}</span>
                               {/each}
                             </div>
@@ -817,29 +818,29 @@
               {/each}
             {/if}
             
-            {#each Array.from(selectedSubStops.entries()) as [subStopId, subStopData]}
+            {#each Array.from(selectedSubStops.entries()) as [subStopId, subStopData] (subStopId)}
               {@const stop = searchResults.find((s) => s.id === Array.from(selectedStops)[0])}
               <div class="config-item">
                 <h4>{stop?.name} - {subStopData.title}</h4>
                 <div class="config-fields">
                   <div class="field">
-                    <label>Station ID:</label>
+                    <span class="field-label">Station ID:</span>
                     <code>{subStopId}</code>
                   </div>
                   <div class="field">
-                    <label>Title:</label>
+                    <span class="field-label">Title:</span>
                     <span>{subStopData.title}</span>
                   </div>
                   <div class="field">
-                    <label>Show ungrouped:</label>
+                    <span class="field-label">Show ungrouped:</span>
                     <span>true</span>
                   </div>
                   <div class="field">
-                    <label>Max departures per stop:</label>
+                    <span class="field-label">Max departures per stop:</span>
                     <span>4</span>
                   </div>
                   <div class="field">
-                    <label>Max departures per route:</label>
+                    <span class="field-label">Max departures per route:</span>
                     <span>2</span>
                   </div>
                 </div>
@@ -1068,11 +1069,6 @@
     background-color: #1e3a8a;
   }
 
-  .target-icon {
-    font-size: 2rem;
-    flex-shrink: 0;
-  }
-
   .target-icon-main {
     font-size: 2.5rem;
     flex-shrink: 0;
@@ -1271,10 +1267,6 @@
     gap: 0.25rem;
   }
 
-  .stop-group {
-    margin-bottom: 0.1rem;
-  }
-
   .checkbox-item {
     display: flex;
     align-items: flex-start;
@@ -1340,34 +1332,6 @@
     background-color: #374151;
   }
 
-  .sub-stops {
-    margin-left: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-    margin-bottom: 0.25rem;
-  }
-
-  .sub-stop-item {
-    padding: 0.25rem 0.5rem !important;
-    border: 1px solid #e5e7eb !important;
-    background-color: #f9fafb;
-  }
-
-  :global([data-theme="dark"]) .sub-stop-item {
-    border-color: #374151 !important;
-    background-color: #111827;
-  }
-
-  .sub-stop-name {
-    font-size: 0.8rem;
-    color: #6b7280;
-  }
-
-  :global([data-theme="dark"]) .sub-stop-name {
-    color: #9ca3af;
-  }
-
   .config-preview {
     display: flex;
     flex-direction: column;
@@ -1403,12 +1367,12 @@
     font-size: 0.875rem;
   }
 
-  .field label {
+  .field .field-label {
     font-weight: 500;
     color: #6b7280;
   }
 
-  :global([data-theme="dark"]) .field label {
+  :global([data-theme="dark"]) .field .field-label {
     color: #9ca3af;
   }
 

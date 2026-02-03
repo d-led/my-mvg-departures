@@ -1,4 +1,5 @@
 <script lang="ts">
+  /* eslint-disable svelte/prefer-svelte-reactivity */
   import { LocalStorageConfigStorage } from "../adapters/storage/local-storage-config-storage.js";
   import { ConfigParser } from "../adapters/config/config-parser.js";
   import ConfigWizard from "./ConfigWizard.svelte";
@@ -19,6 +20,22 @@
   let pasteSuccess = $state(false);
   let pasteError = $state(false);
   let showWizard = $state(false);
+  let showDelete = $state(false);
+  let deleteStep = $state<"select" | "confirm">("select");
+  let deleteCandidates = $state<
+    {
+      id: string;
+      stopId: string;
+      stopName: string;
+      kind: "direction" | "ungrouped";
+      directionName?: string;
+      label: string;
+    }[]
+  >([]);
+  let deleteSelections = $state<Set<string>>(new Set());
+  let deleteError = $state<string | null>(null);
+  let deleteRouteLabel = $state<string>("");
+  let deleteDisabled = $state(false);
   const configStorage = new LocalStorageConfigStorage();
   const configParser = new ConfigParser();
 
@@ -26,6 +43,529 @@
     // Extract station_id from a [[stops]] block
     const match = block.match(/station_id\s*=\s*"([^"]+)"/);
     return match ? match[1] : null;
+  }
+
+  function extractStationNameFromBlock(block: string): string | null {
+    const match = block.match(/station_name\s*=\s*"([^"]+)"/);
+    return match ? match[1] : null;
+  }
+
+  function extractDirectionMappingsFromBlock(block: string): Record<string, string[]> {
+    // Extract [stops.direction_mappings] section from a stop block
+    const mappings: Record<string, string[]> = {};
+    const lines = block.split("\n");
+    let inMappings = false;
+
+    for (const line of lines) {
+      if (line.startsWith("[stops.direction_mappings]")) {
+        inMappings = true;
+        continue;
+      }
+      if (inMappings) {
+        // Stop reading mappings when we hit another section
+        if (line.startsWith("[")) {
+          break;
+        }
+        // Parse mapping line: "key" = [val1, val2, ...]
+        const match = line.match(/^\s*"([^"]+)"\s*=\s*\[(.*?)\]\s*$/);
+        if (match) {
+          const key = match[1];
+          const valueStr = match[2];
+          const values = valueStr
+            .split(",")
+            .map((v) => v.trim().replace(/^"|"$/g, ""));
+          mappings[key] = values;
+        }
+      }
+    }
+
+    return mappings;
+  }
+
+  function getCurrentRoutePath(): string {
+    const hash = window.location.hash.slice(1); // Remove leading #
+    if (!hash || hash === "/") {
+      return "/";
+    }
+    return hash;
+  }
+
+  type StopBlock = {
+    stationId: string;
+    startIndex: number;
+    endIndex: number;
+    text: string;
+  };
+
+  function findStopBlocks(text: string): StopBlock[] {
+    const lines = text.split("\n");
+    const lineStartOffsets: number[] = [];
+    let offset = 0;
+    for (const line of lines) {
+      lineStartOffsets.push(offset);
+      offset += line.length + 1; // +1 for newline
+    }
+
+    const blocks: StopBlock[] = [];
+    let currentStartLine = -1;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const isSection = line.startsWith("[");
+      const isStopStart = line.startsWith("[[stops]]");
+      const isStopNested = line.startsWith("[stops.") || line.startsWith("[stops]");
+
+      if (isStopStart) {
+        if (currentStartLine !== -1) {
+          const startIndex = lineStartOffsets[currentStartLine];
+          const endIndex = lineStartOffsets[i] - 1;
+          const textSlice = text.slice(startIndex, endIndex);
+          const match = textSlice.match(/station_id\s*=\s*"([^"]+)"/);
+          if (match) {
+            blocks.push({
+              stationId: match[1],
+              startIndex,
+              endIndex,
+              text: textSlice,
+            });
+          }
+        }
+        currentStartLine = i;
+      } else if (currentStartLine !== -1 && isSection && !isStopNested) {
+        const startIndex = lineStartOffsets[currentStartLine];
+        const endIndex = lineStartOffsets[i] - 1;
+        const textSlice = text.slice(startIndex, endIndex);
+        const match = textSlice.match(/station_id\s*=\s*"([^"]+)"/);
+        if (match) {
+          blocks.push({
+            stationId: match[1],
+            startIndex,
+            endIndex,
+            text: textSlice,
+          });
+        }
+        currentStartLine = -1;
+      }
+    }
+
+    if (currentStartLine !== -1) {
+      const startIndex = lineStartOffsets[currentStartLine];
+      const endIndex = text.length;
+      const textSlice = text.slice(startIndex, endIndex);
+      const match = textSlice.match(/station_id\s*=\s*"([^"]+)"/);
+      if (match) {
+        blocks.push({
+          stationId: match[1],
+          startIndex,
+          endIndex,
+          text: textSlice,
+        });
+      }
+    }
+
+    return blocks;
+  }
+
+  function findStopsInsertIndex(text: string): number {
+    const blocks = findStopBlocks(text);
+    if (blocks.length > 0) {
+      return blocks[blocks.length - 1].endIndex;
+    }
+
+    const routesMatch = text.match(/^\[\[routes\]\]/m);
+    if (routesMatch && routesMatch.index !== undefined) {
+      return routesMatch.index;
+    }
+
+    return text.length;
+  }
+
+  function buildStopBlock(
+    stop: any,
+    mergedMappings: Record<string, string[]> | null = null,
+  ): string {
+    let block = "[[stops]]\n";
+    block += `station_id = "${stop.station_id}"\n`;
+    block += `station_name = "${stop.station_name}"\n`;
+    block += `max_departures_per_stop = ${stop.max_departures_per_stop}\n`;
+    block += `max_departures_per_route = ${stop.max_departures_per_route}\n`;
+    block += `max_hours_in_advance = ${stop.max_hours_in_advance}\n`;
+    block += `show_ungrouped = ${stop.show_ungrouped}\n`;
+
+    if (stop.custom_title) {
+      block += `ungrouped_title = "${stop.custom_title}"\n`;
+    }
+
+    const mappings = mergedMappings ?? stop.direction_mappings;
+    if (mappings && Object.keys(mappings).length > 0) {
+      block += "\n[stops.direction_mappings]\n";
+      for (const [key, value] of Object.entries(mappings)) {
+        const patterns = Array.isArray(value) ? value : [value as string];
+        const quoted = patterns.map((pattern) => `"${pattern}"`).join(", ");
+        block += `"${key}" = [${quoted}]\n`;
+      }
+    }
+
+    return block.trimEnd();
+  }
+
+  function buildDeleteCandidates(): {
+    candidates: {
+      id: string;
+      stopId: string;
+      stopName: string;
+      kind: "direction" | "ungrouped";
+      directionName?: string;
+      label: string;
+    }[];
+    routeLabel: string;
+    disabled: boolean;
+    error?: string;
+  } {
+    if (!configText.trim()) {
+      return {
+        candidates: [],
+        routeLabel: "",
+        disabled: true,
+        error: "No configuration found.",
+      };
+    }
+
+    try {
+      const parsed = configParser.parseToml(configText);
+      const currentPath = getCurrentRoutePath();
+      const route = parsed.routes.find((r) => r.path === currentPath) ??
+        (currentPath === "/" ? parsed.routes.find((r) => r.path === "/") : undefined);
+
+      if (!route) {
+        return {
+          candidates: [],
+          routeLabel: currentPath,
+          disabled: true,
+          error: "Current route not found in config.",
+        };
+      }
+
+      if (route.isOnTheRun || currentPath === "on-the-run") {
+        return {
+          candidates: [],
+          routeLabel: route.display?.title ?? currentPath,
+          disabled: true,
+          error: "Delete is disabled for Next to me.",
+        };
+      }
+
+      const candidates: {
+        id: string;
+        stopId: string;
+        stopName: string;
+        kind: "direction" | "ungrouped";
+        directionName?: string;
+        label: string;
+      }[] = [];
+
+      for (const stop of route.stops) {
+        const stopName = stop.stationName;
+        const stopId = stop.stationId;
+        const directionKeys = Object.keys(stop.directionMappings ?? {});
+
+        if (directionKeys.length > 0) {
+          for (const directionName of directionKeys) {
+            const displayDirection = directionName.replace(/^->\s*/, "");
+            const label = `${stopName} → ${displayDirection}`;
+            candidates.push({
+              id: `${stopId}::direction::${directionName}`,
+              stopId,
+              stopName,
+              kind: "direction",
+              directionName,
+              label,
+            });
+          }
+        }
+
+        if (stop.showUngrouped) {
+          const ungroupedTitle = stop.ungroupedTitle ?? "Other";
+          const label = `${stopName} → ${ungroupedTitle}`;
+          candidates.push({
+            id: `${stopId}::ungrouped`,
+            stopId,
+            stopName,
+            kind: "ungrouped",
+            label,
+          });
+        }
+
+        if (directionKeys.length === 0 && stop.showUngrouped !== true) {
+          candidates.push({
+            id: `${stopId}::ungrouped`,
+            stopId,
+            stopName,
+            kind: "ungrouped",
+            label: stopName,
+          });
+        }
+      }
+
+      return {
+        candidates,
+        routeLabel: route.display?.title ?? route.path ?? currentPath,
+        disabled: false,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        candidates: [],
+        routeLabel: "",
+        disabled: true,
+        error: `Invalid TOML: ${message}`,
+      };
+    }
+  }
+
+  function startDeleteFlow() {
+    const result = buildDeleteCandidates();
+    deleteCandidates = result.candidates;
+    deleteRouteLabel = result.routeLabel;
+    deleteDisabled = result.disabled;
+    deleteError = result.error ?? null;
+    deleteSelections = new Set();
+    deleteStep = "select";
+    showDelete = true;
+  }
+
+  function toggleDeleteSelection(id: string) {
+    const next = new Set(deleteSelections);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    deleteSelections = next;
+  }
+
+  function applyDeletions() {
+    if (deleteSelections.size === 0) {
+      return;
+    }
+
+    const currentPath = getCurrentRoutePath();
+    const deletionsByStop = new Map<
+      string,
+      { directions: Set<string>; removeUngrouped: boolean }
+    >();
+
+    for (const candidate of deleteCandidates) {
+      if (!deleteSelections.has(candidate.id)) {
+        continue;
+      }
+      const stopKey = `${candidate.stopId}::${candidate.stopName}`;
+      if (!deletionsByStop.has(stopKey)) {
+        deletionsByStop.set(stopKey, {
+          directions: new Set(),
+          removeUngrouped: false,
+        });
+      }
+      const entry = deletionsByStop.get(stopKey)!;
+      if (candidate.kind === "direction" && candidate.directionName) {
+        entry.directions.add(candidate.directionName);
+      }
+      if (candidate.kind === "ungrouped") {
+        entry.removeUngrouped = true;
+      }
+    }
+
+    const lines = configText.split("\n");
+    const output: string[] = [];
+    let currentRoutePathInBlock: string | null = null;
+    let insideRouteBlock = false;
+    let currentStopLines: string[] | null = null;
+    let currentStopIsRouteStop = false;
+
+    const flushStop = () => {
+      if (!currentStopLines) {
+        return;
+      }
+
+      const block = currentStopLines.join("\n");
+      const stopId = extractStationIdFromBlock(block);
+      const stopName = extractStationNameFromBlock(block);
+      const stopKey = stopId && stopName ? `${stopId}::${stopName}` : null;
+      const isDefaultRoute = currentPath === "/";
+      const shouldModify =
+        stopKey &&
+        deletionsByStop.has(stopKey) &&
+        ((currentStopIsRouteStop && currentRoutePathInBlock === currentPath) ||
+          (!currentStopIsRouteStop && isDefaultRoute));
+
+      if (!shouldModify) {
+        output.push(block);
+        currentStopLines = null;
+        currentStopIsRouteStop = false;
+        return;
+      }
+
+      const deletion = deletionsByStop.get(stopKey!);
+      if (!deletion) {
+        output.push(block);
+        currentStopLines = null;
+        currentStopIsRouteStop = false;
+        return;
+      }
+
+      const modified = applyStopDeletions(block, deletion);
+      if (modified.keep) {
+        output.push(modified.block);
+      }
+
+      currentStopLines = null;
+      currentStopIsRouteStop = false;
+    };
+
+    const applyStopDeletions = (
+      block: string,
+      deletion: { directions: Set<string>; removeUngrouped: boolean },
+    ): { keep: boolean; block: string } => {
+      const lines = block.split("\n");
+      const cleaned: string[] = [];
+      let directionHeader: string | null = null;
+      const directionLines: string[] = [];
+      let inDirectionMappings = false;
+      let hasMappingLines = false;
+      let skipDeletedArrayDepth = 0;
+      const countBrackets = (value: string): number => {
+        let depth = 0;
+        for (const ch of value) {
+          if (ch === "[") depth += 1;
+          if (ch === "]") depth -= 1;
+        }
+        return depth;
+      };
+
+      for (const line of lines) {
+        if (
+          line.startsWith("[stops.direction_mappings]") ||
+          line.startsWith("[routes.stops.direction_mappings]")
+        ) {
+          inDirectionMappings = true;
+          directionHeader = line;
+          continue;
+        }
+
+        if (inDirectionMappings) {
+          if (skipDeletedArrayDepth > 0) {
+            skipDeletedArrayDepth += countBrackets(line);
+            if (skipDeletedArrayDepth <= 0) {
+              skipDeletedArrayDepth = 0;
+            }
+            continue;
+          }
+
+          const trimmed = line.trim();
+          if (trimmed.startsWith("#") || trimmed === "") {
+            directionLines.push(line);
+            continue;
+          }
+          const match = line.match(/^"([^"]+)"\s*=/);
+          if (match && deletion.directions.has(match[1])) {
+            const depth = countBrackets(line);
+            if (depth > 0) {
+              skipDeletedArrayDepth = depth;
+            }
+            continue;
+          }
+          directionLines.push(line);
+          hasMappingLines = true;
+          continue;
+        }
+
+        if (deletion.removeUngrouped) {
+          if (line.startsWith("show_ungrouped")) {
+            cleaned.push("show_ungrouped = false");
+            continue;
+          }
+          if (line.startsWith("ungrouped_title")) {
+            continue;
+          }
+        }
+
+        cleaned.push(line);
+      }
+
+      if (directionHeader && directionLines.length > 0) {
+        cleaned.push(directionHeader);
+        cleaned.push(...directionLines);
+      }
+
+      const showUngroupedMatch = cleaned.find((line) =>
+        line.startsWith("show_ungrouped"),
+      );
+      const showUngrouped =
+        showUngroupedMatch?.includes("true") ?? false;
+      const hasDirections = hasMappingLines;
+
+      if (!showUngrouped && !hasDirections) {
+        return { keep: false, block: "" };
+      }
+
+      return { keep: true, block: cleaned.join("\n") };
+    };
+
+    for (const line of lines) {
+      if (line.startsWith("[[routes]]")) {
+        flushStop();
+        insideRouteBlock = true;
+        currentRoutePathInBlock = null;
+        output.push(line);
+        continue;
+      }
+
+      if (line.startsWith("path =") && insideRouteBlock) {
+        const match = line.match(/path\s*=\s*"([^"]+)"/);
+        if (match) {
+          currentRoutePathInBlock = match[1];
+        }
+        output.push(line);
+        continue;
+      }
+
+      if (line.startsWith("[[routes.stops]]") || line.startsWith("[[stops]]")) {
+        flushStop();
+        currentStopLines = [line];
+        currentStopIsRouteStop = line.startsWith("[[routes.stops]]");
+        continue;
+      }
+
+      if (
+        currentStopLines &&
+        (line.startsWith("[[") ||
+          (line.startsWith("[") &&
+            !line.startsWith("[stops.direction_mappings]") &&
+            !line.startsWith("[routes.stops.direction_mappings]")))
+      ) {
+        flushStop();
+        output.push(line);
+        continue;
+      }
+
+      if (currentStopLines) {
+        currentStopLines.push(line);
+        continue;
+      }
+
+      if (line.startsWith("[") && !line.startsWith("[routes") && !line.startsWith("[[routes")) {
+        insideRouteBlock = false;
+        currentRoutePathInBlock = null;
+      }
+
+      output.push(line);
+    }
+
+    flushStop();
+
+    configText = output.join("\n").trim();
+    showDelete = false;
+    deleteSelections = new Set();
+    deleteStep = "select";
   }
 
   async function loadStoredConfig(): Promise<void> {
@@ -145,7 +685,7 @@
       // to validate the URL safely.
       let contentToUse = trimmed;
       try {
-        const maybeUrl = new URL(trimmed);
+        const maybeUrl = new globalThis.URL(trimmed);
         if (maybeUrl.hostname === "gist.githubusercontent.com") {
           try {
             const resp = await fetch(maybeUrl.href);
@@ -170,7 +710,7 @@
             return;
           }
         }
-      } catch (urlErr) {
+      } catch {
         // Not a valid URL — ignore and continue with clipboard text as-is.
       }
 
@@ -200,156 +740,74 @@
     // APPEND new stops to existing config, preserving everything else
 
     try {
-      // Parse existing config if it exists
-      let displaySection = "";
-      let existingStopsBlocks = "";
-      let routeSections = "";
-      let otherSections = "";
-      let stopsToAdd = new Set(stops.map((s) => s.station_id));
+      const existingConfig = configText;
+      let updatedConfig = existingConfig;
 
       console.log("=== WIZARD CONFIG MERGE ===");
-      console.log("Stops to add/update:", Array.from(stopsToAdd));
-      console.log("Existing config length:", configText.length);
+      console.log(
+        "Stops to add/update:",
+        stops.map((stop) => stop.station_id),
+      );
+      console.log("Existing config length:", existingConfig.length);
 
-      if (configText.trim()) {
-        try {
-          configParser.parseToml(configText);
-          // Extract all sections from existing config
-          const lines = configText.split("\n");
-          let currentSection = "";
-          let sectionContent: string[] = [];
-          let currentStopId = "";
-          let currentStopBlock = "";
-
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-
-            if (line.startsWith("[display]")) {
-              currentSection = "display";
-              sectionContent = [line];
-            } else if (line.startsWith("[[stops]]")) {
-              // Save previous block
-              if (currentStopBlock) {
-                const blockStopId = extractStationIdFromBlock(currentStopBlock);
-                console.log(
-                  `Found stop block with ID: ${blockStopId}, keeping: ${!stopsToAdd.has(blockStopId)}`
-                );
-                if (blockStopId && stopsToAdd.has(blockStopId)) {
-                  // REPLACE this stop block (it's being reconfigured by wizard)
-                  stopsToAdd.delete(blockStopId);
-                } else if (blockStopId) {
-                  // KEEP existing stops not touched by wizard (preserve everything including direction_mappings)
-                  existingStopsBlocks += (existingStopsBlocks ? "\n" : "") + currentStopBlock;
-                }
-              }
-              // Start new stop block
-              currentSection = "stop";
-              currentStopBlock = line;
-            } else if (line.startsWith("[stops.") || line.startsWith("[stops]")) {
-              // Include direction_mappings in the stop block so they're preserved
-              // (only for kept stops; replaced stops won't have these anyway)
-              currentSection = "stop";
-              currentStopBlock += "\n" + line;
-            } else if (line.startsWith("[[routes]]")) {
-              currentSection = "routes";
-              routeSections += (routeSections ? "\n" : "") + line;
-            } else if (line.startsWith("[") || line.startsWith("[[")) {
-              currentSection = "other";
-              otherSections += (otherSections ? "\n" : "") + line;
-            } else {
-              if (currentSection === "display") {
-                sectionContent.push(line);
-              } else if (currentSection === "stop") {
-                currentStopBlock += "\n" + line;
-              } else if (currentSection === "routes") {
-                routeSections += "\n" + line;
-              } else if (currentSection === "other") {
-                otherSections += "\n" + line;
-              }
-              // currentSection === "skip" means we're in [stops.direction_mappings] - don't add to any block
-            }
-          }
-
-          // Process last stop block
-          if (currentStopBlock && currentSection === "stop") {
-            const blockStopId = extractStationIdFromBlock(currentStopBlock);
-            console.log(
-              `Last stop block with ID: ${blockStopId}, keeping: ${!stopsToAdd.has(blockStopId)}`
-            );
-            if (blockStopId && stopsToAdd.has(blockStopId)) {
-              stopsToAdd.delete(blockStopId);
-            } else if (blockStopId) {
-              existingStopsBlocks += (existingStopsBlocks ? "\n" : "") + currentStopBlock;
-            }
-          }
-
-          displaySection = sectionContent.join("\n");
-
-          console.log("Extracted sections:");
-          console.log("- Display:", displaySection.length, "chars");
-          console.log("- Existing stops:", existingStopsBlocks.length, "chars");
-          console.log("- Routes:", routeSections.length, "chars");
-          console.log("- Other:", otherSections.length, "chars");
-        } catch (error) {
-          console.error("Failed to parse existing config:", error);
-          // If parsing fails, just build new config from scratch
-        }
+      if (existingConfig.trim()) {
+        configParser.parseToml(existingConfig);
       }
 
-      // Build final config
-      let newConfig = "";
+      const stopBlocks = findStopBlocks(existingConfig);
+      const stopBlocksById = new Map(
+        stopBlocks.map((block) => [block.stationId, block]),
+      );
 
-      // 1. Display section (if exists)
-      if (displaySection) {
-        newConfig += displaySection + "\n\n";
-      }
+      const replacements: { start: number; end: number; text: string }[] = [];
+      const stopsToAppend: any[] = [];
 
-      // 2. Existing stops NOT modified by wizard
-      if (existingStopsBlocks) {
-        newConfig += existingStopsBlocks + "\n\n";
-      }
-
-      // 3. NEW stops from wizard
       for (const stop of stops) {
-        newConfig += "[[stops]]\n";
-        newConfig += `station_id = "${stop.station_id}"\n`;
-        newConfig += `station_name = "${stop.station_name}"\n`;
-        newConfig += `max_departures_per_stop = ${stop.max_departures_per_stop}\n`;
-        newConfig += `max_departures_per_route = ${stop.max_departures_per_route}\n`;
-        newConfig += `max_hours_in_advance = ${stop.max_hours_in_advance}\n`;
-        newConfig += `show_ungrouped = ${stop.show_ungrouped}\n`;
-
-        if (stop.custom_title) {
-          newConfig += `ungrouped_title = "${stop.custom_title}"\n`;
-        }
-
-        if (
-          stop.direction_mappings &&
-          Object.keys(stop.direction_mappings).length > 0
-        ) {
-          newConfig += "\n[stops.direction_mappings]\n";
-          for (const [key, value] of Object.entries(stop.direction_mappings)) {
-            const patterns = Array.isArray(value)
-              ? value
-              : ([value as string]);
-            const quoted = patterns.map((pattern) => `"${pattern}"`).join(", ");
-            newConfig += `"${key}" = [${quoted}]\n`;
+        const existingBlock = stopBlocksById.get(stop.station_id);
+        if (existingBlock) {
+          const existingMappings = extractDirectionMappingsFromBlock(
+            existingBlock.text,
+          );
+          const mergedMappings: Record<string, string[]> = {
+            ...existingMappings,
+          };
+          if (stop.direction_mappings) {
+            Object.assign(mergedMappings, stop.direction_mappings);
           }
+
+          const newBlock = buildStopBlock(stop, mergedMappings);
+          replacements.push({
+            start: existingBlock.startIndex,
+            end: existingBlock.endIndex,
+            text: newBlock,
+          });
+        } else {
+          stopsToAppend.push(stop);
         }
-        newConfig += "\n";
       }
 
-      // 4. Routes section
-      if (routeSections) {
-        newConfig += routeSections + "\n\n";
+      replacements.sort((a, b) => b.start - a.start);
+      for (const replacement of replacements) {
+        updatedConfig =
+          updatedConfig.slice(0, replacement.start) +
+          replacement.text +
+          updatedConfig.slice(replacement.end);
       }
 
-      // 5. Other sections
-      if (otherSections) {
-        newConfig += otherSections;
+      if (stopsToAppend.length > 0) {
+        const newBlocks = stopsToAppend
+          .map((stop) => buildStopBlock(stop))
+          .join("\n\n");
+        const insertAt = findStopsInsertIndex(updatedConfig);
+        const before = updatedConfig.slice(0, insertAt).replace(/\s*$/, "");
+        const after = updatedConfig.slice(insertAt).replace(/^\s*/, "");
+        const beforeSeparator = before ? "\n\n" : "";
+        const afterSeparator = after ? "\n\n" : "";
+        updatedConfig =
+          before + beforeSeparator + newBlocks + afterSeparator + after;
       }
 
-      configText = newConfig.trim();
+      configText = updatedConfig.trim();
       console.log("Final merged config length:", configText.length);
       console.log("=== END MERGE ===");
 
@@ -381,6 +839,76 @@
       onComplete={handleWizardComplete}
       onCancel={() => (showWizard = false)}
     />
+  {:else if showDelete}
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Delete from Current Route</h2>
+        <button
+          class="close-button"
+          onclick={() => (showDelete = false)}
+          aria-label="Close"
+        >×</button>
+      </div>
+      <div class="modal-body">
+        <p class="delete-route-label">
+          Current route: <strong>{deleteRouteLabel || "(default)"}</strong>
+        </p>
+        <p class="delete-hint">
+          Select the headers to delete (current route only). Next to me is excluded.
+        </p>
+
+        {#if deleteError}
+          <div class="error-message" role="alert">
+            {deleteError}
+          </div>
+        {/if}
+
+        {#if deleteDisabled}
+          <div class="delete-disabled">Delete is not available for this route.</div>
+        {:else if deleteCandidates.length === 0}
+          <div class="delete-disabled">No deletable headers found.</div>
+        {:else}
+          {#if deleteStep === "select"}
+            <div class="delete-list" role="list">
+              {#each deleteCandidates as item (item.id)}
+                <label class="delete-item" role="listitem">
+                  <input
+                    type="checkbox"
+                    class="delete-checkbox"
+                    checked={deleteSelections.has(item.id)}
+                    onchange={() => toggleDeleteSelection(item.id)}
+                  />
+                  <span class="delete-item-label">{item.label}</span>
+                </label>
+              {/each}
+            </div>
+          {:else if deleteStep === "confirm"}
+            <div class="delete-confirm">
+              <h3>Confirm deletion</h3>
+              <ul>
+                {#each deleteCandidates.filter((c) => deleteSelections.has(c.id)) as item (item.id)}
+                  <li>{item.label}</li>
+                {/each}
+              </ul>
+            </div>
+          {/if}
+        {/if}
+      </div>
+      <div class="modal-footer">
+        {#if deleteStep === "confirm"}
+          <button class="button button-secondary" onclick={() => (deleteStep = "select")}>Back</button>
+          <button class="button button-secondary" onclick={() => (showDelete = false)}>Cancel</button>
+          <button class="button button-primary" onclick={applyDeletions} disabled={deleteSelections.size === 0}>Confirm Delete</button>
+        {:else}
+          <button class="button button-secondary" onclick={() => (showDelete = false)}>Cancel</button>
+          <button
+            class="button button-primary"
+            onclick={() => (deleteStep = "confirm")}
+            disabled={deleteSelections.size === 0 || deleteDisabled}
+          >Review Delete</button>
+        {/if}
+      </div>
+    </div>
   {:else}
     <div class="modal-content">
       <div class="modal-header">
@@ -402,6 +930,13 @@
             title="Step-by-step wizard to find and configure stops"
           >
             Wizard (experimental)
+          </button>
+          <button
+            class="method-button"
+            onclick={startDeleteFlow}
+            title="Delete headers from the current route"
+          >
+            Delete (current route)
           </button>
         </div>
 
@@ -517,6 +1052,84 @@
 
   .method-button:hover {
     color: #111827;
+  }
+
+  .delete-route-label {
+    margin-top: 0.5rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .delete-hint {
+    color: #6b7280;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+  }
+
+  .delete-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 320px;
+    overflow: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    background: #f9fafb;
+  }
+
+  :global([data-theme="dark"]) .delete-list {
+    border-color: #374151;
+    background: #111827;
+  }
+
+  .delete-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.95rem;
+  }
+
+  .delete-checkbox {
+    width: 1.1rem;
+    height: 1.1rem;
+  }
+
+  .delete-item-label {
+    font-weight: 500;
+  }
+
+  .delete-confirm {
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    background: #fff7ed;
+  }
+
+  :global([data-theme="dark"]) .delete-confirm {
+    border-color: #374151;
+    background: #1f2937;
+  }
+
+  .delete-confirm h3 {
+    margin-top: 0;
+  }
+
+  .delete-confirm ul {
+    margin: 0;
+    padding-left: 1.25rem;
+  }
+
+  .delete-disabled {
+    color: #6b7280;
+    padding: 0.75rem;
+    border: 1px dashed #d1d5db;
+    border-radius: 0.5rem;
+    background: #f9fafb;
+  }
+
+  :global([data-theme="dark"]) .delete-disabled {
+    border-color: #4b5563;
+    background: #111827;
   }
 
   .method-button-active {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 
 /**
  * Tests for config merging logic in ConfigModal.svelte
@@ -6,6 +6,16 @@ import { describe, it, expect, beforeEach } from "vitest";
  */
 
 describe("ConfigModal - Stop Configuration Merging", () => {
+  type WizardStop = {
+    station_id: string;
+    station_name: string;
+    max_departures_per_stop: number;
+    max_departures_per_route: number;
+    max_hours_in_advance: number;
+    show_ungrouped: boolean;
+    custom_title?: string;
+    direction_mappings?: Record<string, string[]>;
+  };
   /**
    * Extract and parse a TOML config to verify structure
    */
@@ -85,6 +95,192 @@ describe("ConfigModal - Stop Configuration Merging", () => {
     return sections;
   }
 
+  function findStopBlocks(configText: string) {
+    const lines = configText.split("\n");
+    const lineStartOffsets: number[] = [];
+    let offset = 0;
+    for (const line of lines) {
+      lineStartOffsets.push(offset);
+      offset += line.length + 1;
+    }
+
+    const blocks: {
+      stationId: string;
+      startIndex: number;
+      endIndex: number;
+      text: string;
+    }[] = [];
+    let currentStartLine = -1;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const isSection = line.startsWith("[");
+      const isStopStart = line.startsWith("[[stops]]");
+      const isStopNested =
+        line.startsWith("[stops.") || line.startsWith("[stops]");
+
+      if (isStopStart) {
+        if (currentStartLine !== -1) {
+          const startIndex = lineStartOffsets[currentStartLine];
+          const endIndex = lineStartOffsets[i] - 1;
+          const textSlice = configText.slice(startIndex, endIndex);
+          const match = textSlice.match(/station_id\s*=\s*"([^"]+)"/);
+          if (match) {
+            blocks.push({
+              stationId: match[1],
+              startIndex,
+              endIndex,
+              text: textSlice,
+            });
+          }
+        }
+        currentStartLine = i;
+      } else if (currentStartLine !== -1 && isSection && !isStopNested) {
+        const startIndex = lineStartOffsets[currentStartLine];
+        const endIndex = lineStartOffsets[i] - 1;
+        const textSlice = configText.slice(startIndex, endIndex);
+        const match = textSlice.match(/station_id\s*=\s*"([^"]+)"/);
+        if (match) {
+          blocks.push({
+            stationId: match[1],
+            startIndex,
+            endIndex,
+            text: textSlice,
+          });
+        }
+        currentStartLine = -1;
+      }
+    }
+
+    if (currentStartLine !== -1) {
+      const startIndex = lineStartOffsets[currentStartLine];
+      const endIndex = configText.length;
+      const textSlice = configText.slice(startIndex, endIndex);
+      const match = textSlice.match(/station_id\s*=\s*"([^"]+)"/);
+      if (match) {
+        blocks.push({
+          stationId: match[1],
+          startIndex,
+          endIndex,
+          text: textSlice,
+        });
+      }
+    }
+
+    return blocks;
+  }
+
+  function extractDirectionMappingsFromBlock(block: string) {
+    const mappings: Record<string, string[]> = {};
+    const directionSectionMatch = block.match(
+      /\[stops\.direction_mappings\]([\s\S]*?)(?=\n\[|$)/,
+    );
+    if (!directionSectionMatch) {
+      return mappings;
+    }
+
+    const lines = directionSectionMatch[1].split("\n");
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const match = trimmed.match(/^"([^"]+)"\s*=\s*\[(.*)\]$/);
+      if (!match) continue;
+      const key = match[1];
+      const valueList = match[2]
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .map((value) => value.replace(/^"|"$/g, ""));
+      mappings[key] = valueList;
+    }
+    return mappings;
+  }
+
+  function buildStopBlock(
+    stop: WizardStop,
+    mergedMappings: Record<string, string[]> | null = null,
+  ) {
+    let block = "[[stops]]\n";
+    block += `station_id = "${stop.station_id}"\n`;
+    block += `station_name = "${stop.station_name}"\n`;
+    block += `max_departures_per_stop = ${stop.max_departures_per_stop}\n`;
+    block += `max_departures_per_route = ${stop.max_departures_per_route}\n`;
+    block += `max_hours_in_advance = ${stop.max_hours_in_advance}\n`;
+    block += `show_ungrouped = ${stop.show_ungrouped}\n`;
+    if (stop.custom_title) {
+      block += `ungrouped_title = "${stop.custom_title}"\n`;
+    }
+
+    const mappings = mergedMappings ?? stop.direction_mappings;
+    if (mappings && Object.keys(mappings).length > 0) {
+      block += "\n[stops.direction_mappings]\n";
+      for (const [key, value] of Object.entries(mappings)) {
+        const patterns = Array.isArray(value) ? value : [value as string];
+        const quoted = patterns.map((pattern) => `"${pattern}"`).join(", ");
+        block += `"${key}" = [${quoted}]\n`;
+      }
+    }
+
+    return block.trimEnd();
+  }
+
+  function mergeWizardStopsForTest(configText: string, stops: WizardStop[]) {
+    const stopBlocks = findStopBlocks(configText);
+    const stopBlocksById = new Map(
+      stopBlocks.map((block) => [block.stationId, block]),
+    );
+    const replacements: { start: number; end: number; text: string }[] = [];
+    const stopsToAppend: WizardStop[] = [];
+
+    for (const stop of stops) {
+      const existingBlock = stopBlocksById.get(stop.station_id);
+      if (existingBlock) {
+        const existingMappings = extractDirectionMappingsFromBlock(
+          existingBlock.text,
+        );
+        const mergedMappings = { ...existingMappings };
+        if (stop.direction_mappings) {
+          Object.assign(mergedMappings, stop.direction_mappings);
+        }
+        const newBlock = buildStopBlock(stop, mergedMappings);
+        replacements.push({
+          start: existingBlock.startIndex,
+          end: existingBlock.endIndex,
+          text: newBlock,
+        });
+      } else {
+        stopsToAppend.push(stop);
+      }
+    }
+
+    let updatedConfig = configText;
+    replacements.sort((a, b) => b.start - a.start);
+    for (const replacement of replacements) {
+      updatedConfig =
+        updatedConfig.slice(0, replacement.start) +
+        replacement.text +
+        updatedConfig.slice(replacement.end);
+    }
+
+    if (stopsToAppend.length > 0) {
+      const newBlocks = stopsToAppend
+        .map((stop) => buildStopBlock(stop))
+        .join("\n\n");
+      const stopBlocksAfterReplace = findStopBlocks(updatedConfig);
+      const insertAt = stopBlocksAfterReplace.length
+        ? stopBlocksAfterReplace[stopBlocksAfterReplace.length - 1].endIndex
+        : updatedConfig.length;
+      const before = updatedConfig.slice(0, insertAt).replace(/\s*$/, "");
+      const after = updatedConfig.slice(insertAt).replace(/^\s*/, "");
+      const beforeSeparator = before ? "\n\n" : "";
+      const afterSeparator = after ? "\n\n" : "";
+      updatedConfig =
+        before + beforeSeparator + newBlocks + afterSeparator + after;
+    }
+
+    return updatedConfig.trim();
+  }
+
   it("should preserve existing stops when adding a new stop", () => {
     // Existing config with 2 stops
     const existingConfig = `[display]
@@ -121,87 +317,7 @@ ungrouped_title = "Stop 2"`;
       },
     ];
 
-    // Simulate the merging logic
-    const lines = existingConfig.split("\n");
-    const stopsToAdd = new Set(newStops.map((s) => s.station_id));
-    let displaySection = "";
-    let existingStopsBlocks = "";
-    let currentStopBlock = "";
-    let currentSection = "";
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-
-      if (line.startsWith("[display]")) {
-        currentSection = "display";
-        displaySection = line;
-      } else if (line.startsWith("[[stops]]")) {
-        // Save previous block
-        if (currentStopBlock) {
-          const blockStopId = currentStopBlock.match(
-            /station_id\s*=\s*"([^"]+)"/
-          );
-          if (blockStopId && blockStopId[1]) {
-            if (!stopsToAdd.has(blockStopId[1])) {
-              // KEEP existing stops not being reconfigured
-              existingStopsBlocks +=
-                (existingStopsBlocks ? "\n" : "") + currentStopBlock;
-            }
-          }
-        }
-        currentSection = "stop";
-        currentStopBlock = line;
-      } else if (
-        line.startsWith("[stops.") ||
-        line.startsWith("[stops]")
-      ) {
-        currentSection = "skip";
-      } else {
-        if (currentSection === "display") {
-          displaySection += "\n" + line;
-        } else if (currentSection === "stop") {
-          currentStopBlock += "\n" + line;
-        }
-      }
-    }
-
-    // Process last stop block
-    if (currentStopBlock && currentSection === "stop") {
-      const blockStopId = currentStopBlock.match(
-        /station_id\s*=\s*"([^"]+)"/
-      );
-      if (blockStopId && blockStopId[1]) {
-        if (!stopsToAdd.has(blockStopId[1])) {
-          existingStopsBlocks +=
-            (existingStopsBlocks ? "\n" : "") + currentStopBlock;
-        }
-      }
-    }
-
-    // Build final config
-    let finalConfig = "";
-    if (displaySection) {
-      finalConfig += displaySection + "\n\n";
-    }
-    if (existingStopsBlocks) {
-      finalConfig += existingStopsBlocks + "\n\n";
-    }
-
-    // Add new stops
-    for (const stop of newStops) {
-      finalConfig += "[[stops]]\n";
-      finalConfig += `station_id = "${stop.station_id}"\n`;
-      finalConfig += `station_name = "${stop.station_name}"\n`;
-      finalConfig += `max_departures_per_stop = ${stop.max_departures_per_stop}\n`;
-      finalConfig += `max_departures_per_route = ${stop.max_departures_per_route}\n`;
-      finalConfig += `max_hours_in_advance = ${stop.max_hours_in_advance}\n`;
-      finalConfig += `show_ungrouped = ${stop.show_ungrouped}\n`;
-
-      if (stop.custom_title) {
-        finalConfig += `ungrouped_title = "${stop.custom_title}"\n`;
-      }
-      finalConfig += "\n";
-    }
+    const finalConfig = mergeWizardStopsForTest(existingConfig, newStops);
 
     // Verify the result
     const parsed = parseConfigSections(finalConfig);
@@ -253,66 +369,7 @@ ungrouped_title = "Old Title"`;
       },
     ];
 
-    // Simulate merging
-    const stopsToAdd = new Set(modifiedStops.map((s) => s.station_id));
-    let existingStopsBlocks = "";
-    let currentStopBlock = "";
-    let currentSection = "";
-    const lines = existingConfig.split("\n");
-
-    for (const line of lines) {
-      if (line.startsWith("[display]")) {
-        currentSection = "display";
-      } else if (line.startsWith("[[stops]]")) {
-        if (currentStopBlock) {
-          const blockStopId = currentStopBlock.match(
-            /station_id\s*=\s*"([^"]+)"/
-          );
-          if (blockStopId && !stopsToAdd.has(blockStopId[1])) {
-            existingStopsBlocks +=
-              (existingStopsBlocks ? "\n" : "") + currentStopBlock;
-          }
-        }
-        currentSection = "stop";
-        currentStopBlock = line;
-      } else if (line.startsWith("[stops.")) {
-        currentSection = "skip";
-      } else if (currentSection === "stop") {
-        currentStopBlock += "\n" + line;
-      }
-    }
-
-    // Process last stop
-    if (currentStopBlock) {
-      const blockStopId = currentStopBlock.match(
-        /station_id\s*=\s*"([^"]+)"/
-      );
-      if (blockStopId && !stopsToAdd.has(blockStopId[1])) {
-        existingStopsBlocks +=
-          (existingStopsBlocks ? "\n" : "") + currentStopBlock;
-      }
-    }
-
-    // Build final config
-    let finalConfig = "";
-    if (existingStopsBlocks) {
-      finalConfig += existingStopsBlocks + "\n\n";
-    }
-
-    for (const stop of modifiedStops) {
-      finalConfig += "[[stops]]\n";
-      finalConfig += `station_id = "${stop.station_id}"\n`;
-      finalConfig += `station_name = "${stop.station_name}"\n`;
-      finalConfig += `max_departures_per_stop = ${stop.max_departures_per_stop}\n`;
-      finalConfig += `max_departures_per_route = ${stop.max_departures_per_route}\n`;
-      finalConfig += `max_hours_in_advance = ${stop.max_hours_in_advance}\n`;
-      finalConfig += `show_ungrouped = ${stop.show_ungrouped}\n`;
-
-      if (stop.custom_title) {
-        finalConfig += `ungrouped_title = "${stop.custom_title}"\n`;
-      }
-      finalConfig += "\n";
-    }
+    const finalConfig = mergeWizardStopsForTest(existingConfig, modifiedStops);
 
     // Verify
     const parsed = parseConfigSections(finalConfig);
@@ -322,7 +379,7 @@ ungrouped_title = "Old Title"`;
     // Verify Giesing was updated
     const giesingBlock = parsed.stops.get("de:09162:1110") || "";
     expect(giesingBlock).toContain("max_departures_per_stop = 6");
-    expect(giesingBlock).toContain("ungrouped_title = \"New Title\"");
+    expect(giesingBlock).toContain('ungrouped_title = "New Title"');
 
     console.log("✓ Modified stop replaced correctly, others preserved");
   });
@@ -356,65 +413,7 @@ show_ungrouped = false
       },
     ];
 
-    // The main stop (de:09162:1110) should be preserved
-    // The new sub-stop (de:09162:1110:2) should be added
-    const stopsToAdd = new Set(newStops.map((s) => s.station_id));
-    let existingStopsBlocks = "";
-    let currentStopBlock = "";
-    const lines = existingConfig.split("\n");
-
-    for (const line of lines) {
-      if (line.startsWith("[[stops]]")) {
-        if (currentStopBlock) {
-          const blockStopId = currentStopBlock.match(
-            /station_id\s*=\s*"([^"]+)"/
-          );
-          if (blockStopId && !stopsToAdd.has(blockStopId[1])) {
-            existingStopsBlocks +=
-              (existingStopsBlocks ? "\n" : "") + currentStopBlock;
-          }
-        }
-        currentStopBlock = line;
-      } else if (
-        line.startsWith("[stops.") ||
-        line.startsWith("[stops]")
-      ) {
-        // Skip these for now (they'll be stripped)
-      } else if (currentStopBlock) {
-        currentStopBlock += "\n" + line;
-      }
-    }
-
-    if (currentStopBlock) {
-      const blockStopId = currentStopBlock.match(
-        /station_id\s*=\s*"([^"]+)"/
-      );
-      if (blockStopId && !stopsToAdd.has(blockStopId[1])) {
-        existingStopsBlocks +=
-          (existingStopsBlocks ? "\n" : "") + currentStopBlock;
-      }
-    }
-
-    // Build final
-    let finalConfig = "";
-    if (existingStopsBlocks) {
-      finalConfig += existingStopsBlocks + "\n\n";
-    }
-
-    for (const stop of newStops) {
-      finalConfig += "[[stops]]\n";
-      finalConfig += `station_id = "${stop.station_id}"\n`;
-      finalConfig += `station_name = "${stop.station_name}"\n`;
-      finalConfig += `max_departures_per_stop = ${stop.max_departures_per_stop}\n`;
-      finalConfig += `max_departures_per_route = ${stop.max_departures_per_route}\n`;
-      finalConfig += `max_hours_in_advance = ${stop.max_hours_in_advance}\n`;
-      finalConfig += `show_ungrouped = ${stop.show_ungrouped}\n`;
-
-      if (stop.custom_title) {
-        finalConfig += `ungrouped_title = "${stop.custom_title}"\n`;
-      }
-      finalConfig += "\n";
-    }
+    const finalConfig = mergeWizardStopsForTest(existingConfig, newStops);
 
     // Verify
     const parsed = parseConfigSections(finalConfig);
@@ -459,86 +458,7 @@ station_id = "de:09162:1110"`;
       },
     ];
 
-    // The [[routes]] section should be preserved
-    const stopsToAdd = new Set(newStops.map((s) => s.station_id));
-    let displaySection = "";
-    let existingStopsBlocks = "";
-    let routeSections = "";
-    let currentSection = "";
-    let currentStopBlock = "";
-    let sectionContent: string[] = [];
-
-    const lines = existingConfig.split("\n");
-
-    for (const line of lines) {
-      if (line.startsWith("[display]")) {
-        currentSection = "display";
-        sectionContent = [line];
-      } else if (line.startsWith("[[stops]]")) {
-        if (currentStopBlock) {
-          const blockStopId = currentStopBlock.match(
-            /station_id\s*=\s*"([^"]+)"/
-          );
-          if (blockStopId && !stopsToAdd.has(blockStopId[1])) {
-            existingStopsBlocks +=
-              (existingStopsBlocks ? "\n" : "") + currentStopBlock;
-          }
-        }
-        currentSection = "stop";
-        currentStopBlock = line;
-      } else if (line.startsWith("[stops.") || line.startsWith("[stops]")) {
-        currentSection = "skip";
-      } else if (line.startsWith("[[routes]]")) {
-        currentSection = "routes";
-        routeSections += (routeSections ? "\n" : "") + line;
-      } else if (line.startsWith("[") || line.startsWith("[[")) {
-        currentSection = "other";
-      } else {
-        if (currentSection === "display") {
-          sectionContent.push(line);
-        } else if (currentSection === "stop") {
-          currentStopBlock += "\n" + line;
-        } else if (currentSection === "routes") {
-          routeSections += "\n" + line;
-        }
-      }
-    }
-
-    // Process last stop
-    if (currentStopBlock && currentSection === "stop") {
-      const blockStopId = currentStopBlock.match(
-        /station_id\s*=\s*"([^"]+)"/
-      );
-      if (blockStopId && !stopsToAdd.has(blockStopId[1])) {
-        existingStopsBlocks +=
-          (existingStopsBlocks ? "\n" : "") + currentStopBlock;
-      }
-    }
-
-    displaySection = sectionContent.join("\n");
-
-    // Build final config
-    let finalConfig = "";
-    if (displaySection) {
-      finalConfig += displaySection + "\n\n";
-    }
-    if (existingStopsBlocks) {
-      finalConfig += existingStopsBlocks + "\n\n";
-    }
-
-    for (const stop of newStops) {
-      finalConfig += "[[stops]]\n";
-      finalConfig += `station_id = "${stop.station_id}"\n`;
-      finalConfig += `station_name = "${stop.station_name}"\n`;
-      finalConfig += `max_departures_per_stop = ${stop.max_departures_per_stop}\n`;
-      finalConfig += `max_departures_per_route = ${stop.max_departures_per_route}\n`;
-      finalConfig += `max_hours_in_advance = ${stop.max_hours_in_advance}\n`;
-      finalConfig += `show_ungrouped = ${stop.show_ungrouped}\n\n`;
-    }
-
-    if (routeSections) {
-      finalConfig += routeSections + "\n\n";
-    }
+    const finalConfig = mergeWizardStopsForTest(existingConfig, newStops);
 
     // Verify routes section is preserved
     expect(finalConfig).toContain("[[routes]]");
@@ -577,74 +497,218 @@ show_ungrouped = false
       },
     ];
 
-    // Simulate merge with direction_mappings preservation
-    const stopsToAdd = new Set(newStops.map((s) => s.station_id));
-    let existingStopsBlocks = "";
-    let currentSection = "";
-    let currentStopBlock = "";
-
-    const lines = existingConfig.split("\n");
-
-    for (const line of lines) {
-      if (line.startsWith("[[stops]]")) {
-        if (currentStopBlock) {
-          const blockStopId = currentStopBlock.match(
-            /station_id\s*=\s*"([^"]+)"/
-          );
-          if (blockStopId && !stopsToAdd.has(blockStopId[1])) {
-            // Keep it INCLUDING direction_mappings
-            existingStopsBlocks +=
-              (existingStopsBlocks ? "\n" : "") + currentStopBlock;
-          }
-        }
-        currentSection = "stop";
-        currentStopBlock = line;
-      } else if (line.startsWith("[stops.") || line.startsWith("[stops]")) {
-        // Include direction_mappings in preserved stops
-        currentSection = "stop";
-        currentStopBlock += "\n" + line;
-      } else if (currentStopBlock) {
-        currentStopBlock += "\n" + line;
-      }
-    }
-
-    // Process last stop
-    if (currentStopBlock) {
-      const blockStopId = currentStopBlock.match(
-        /station_id\s*=\s*"([^"]+)"/
-      );
-      if (blockStopId && !stopsToAdd.has(blockStopId[1])) {
-        existingStopsBlocks +=
-          (existingStopsBlocks ? "\n" : "") + currentStopBlock;
-      }
-    }
-
-    // Build final
-    let finalConfig = "";
-    if (existingStopsBlocks) {
-      finalConfig += existingStopsBlocks + "\n\n";
-    }
-
-    for (const stop of newStops) {
-      finalConfig += "[[stops]]\n";
-      finalConfig += `station_id = "${stop.station_id}"\n`;
-      finalConfig += `station_name = "${stop.station_name}"\n`;
-      finalConfig += `max_departures_per_stop = ${stop.max_departures_per_stop}\n`;
-      finalConfig += `max_departures_per_route = ${stop.max_departures_per_route}\n`;
-      finalConfig += `max_hours_in_advance = ${stop.max_hours_in_advance}\n`;
-      finalConfig += `show_ungrouped = ${stop.show_ungrouped}\n\n`;
-    }
+    const finalConfig = mergeWizardStopsForTest(existingConfig, newStops);
 
     // Verify both stops are in config
     expect(finalConfig).toContain('station_id = "de:09162:1110"');
     expect(finalConfig).toContain('station_id = "de:09162:1108:3:3"');
-    
+
     // Verify direction_mappings is preserved
     expect(finalConfig).toContain("[stops.direction_mappings]");
     expect(finalConfig).toContain('"Platform 1"');
     expect(finalConfig).toContain('"Platform 2"');
 
-    console.log("✓ Preserved existing stop with direction_mappings while adding sub-stop");
+    console.log(
+      "✓ Preserved existing stop with direction_mappings while adding sub-stop",
+    );
+    console.log("Final config:\n", finalConfig);
+  });
+
+  it("should preserve all other sub-stops when updating one sub-stop of same main stop", () => {
+    // Scenario: A main stop has multiple physical sub-stops (e.g., different platforms)
+    // User goes to wizard and updates only one sub-stop
+    // Should preserve all other sub-stops with their direction_mappings intact
+    const existingConfig = `[display]
+hide_cancelled = true
+
+[[stops]]
+station_id = "de:01234:5001:1:1"
+station_name = "Main Station"
+max_departures_per_stop = 4
+max_departures_per_route = 2
+max_hours_in_advance = 3
+show_ungrouped = false
+
+[stops.direction_mappings]
+"->Direction A" = ["1 Destination A", "2 Destination B"]
+
+[[stops]]
+station_id = "de:01234:5001:2:2"
+station_name = "Main Station"
+max_departures_per_stop = 4
+max_departures_per_route = 2
+max_hours_in_advance = 3
+show_ungrouped = true
+ungrouped_title = "Platform 2"
+
+[stops.direction_mappings]
+"->Direction B" = ["3 Destination C", "4 Destination D"]
+
+[[stops]]
+station_id = "de:01234:5001:3:3"
+station_name = "Main Station"
+max_departures_per_stop = 4
+max_departures_per_route = 2
+max_hours_in_advance = 3
+show_ungrouped = true
+ungrouped_title = "Platform 3"
+
+[[stops]]
+station_id = "de:01234:5001:4:4"
+station_name = "Main Station"
+max_departures_per_stop = 4
+max_departures_per_route = 2
+max_hours_in_advance = 3
+show_ungrouped = true
+ungrouped_title = "Platform 4"
+
+[[stops]]
+station_id = "de:01234:5001:5:5"
+station_name = "Main Station"
+max_departures_per_stop = 4
+max_departures_per_route = 2
+max_hours_in_advance = 3
+show_ungrouped = true
+ungrouped_title = "Platform 5"`;
+
+    // Wizard: User only updates sub-stop 4:4
+    const wizardStops = [
+      {
+        station_id: "de:01234:5001:4:4",
+        station_name: "Main Station",
+        max_departures_per_stop: 4,
+        max_departures_per_route: 2,
+        max_hours_in_advance: 3,
+        show_ungrouped: true,
+        custom_title: "Platform 4 Updated",
+      },
+    ];
+
+    const finalConfig = mergeWizardStopsForTest(existingConfig, wizardStops);
+
+    // CRITICAL: Verify all OTHER sub-stops are preserved with their direction_mappings
+    expect(finalConfig).toContain('station_id = "de:01234:5001:1:1"');
+    expect(finalConfig).toContain('station_id = "de:01234:5001:2:2"');
+    expect(finalConfig).toContain('station_id = "de:01234:5001:3:3"');
+    expect(finalConfig).toContain('station_id = "de:01234:5001:4:4"'); // Updated one
+    expect(finalConfig).toContain('station_id = "de:01234:5001:5:5"');
+
+    // Verify direction_mappings for 1:1 and 2:2 are preserved
+    expect(finalConfig).toContain('"->Direction A"');
+    expect(finalConfig).toContain('"->Direction B"');
+    expect(finalConfig).toContain("Destination A");
+    expect(finalConfig).toContain("Destination C");
+
+    // Verify other ungrouped titles are preserved
+    expect(finalConfig).toContain("Platform 2");
+    expect(finalConfig).toContain("Platform 3");
+    expect(finalConfig).toContain("Platform 4 Updated"); // Updated one
+
+    console.log("✓ All other sub-stops preserved when updating one sub-stop");
+    console.log("Final config:\n", finalConfig);
+  });
+
+  it("should NOT lose direction_mappings when wizard updates existing stop", () => {
+    // CORRECT BEHAVIOR: When wizard updates an existing stop,
+    // it should either:
+    // A) Detect conflict and ask user to merge/replace/skip
+    // B) Provide the MERGED mappings back in the stop config
+    // NOT: Silently replace with only new mappings
+
+    const existingConfig = `[display]
+hide_cancelled = true
+
+[[stops]]
+station_id = "de:01234:5001"
+station_name = "Main Station"
+max_departures_per_stop = 4
+max_departures_per_route = 2
+max_hours_in_advance = 3
+show_ungrouped = false
+
+[stops.direction_mappings]
+"Direction A" = ["1 Dest A", "2 Dest B"]
+"Direction B" = ["3 Dest C", "4 Dest D"]`;
+
+    // CORRECT: Wizard detects this stop exists and merges mappings
+    // So it returns the COMPLETE merged set:
+    const wizardStopsCorrect = [
+      {
+        station_id: "de:01234:5001",
+        station_name: "Main Station",
+        max_departures_per_stop: 4,
+        max_departures_per_route: 2,
+        max_hours_in_advance: 3,
+        show_ungrouped: false,
+        direction_mappings: {
+          "Direction A": ["1 Dest A", "2 Dest B"], // From existing
+          "Direction B": ["3 Dest C", "4 Dest D"], // From existing
+          "Direction C (new)": ["5 Dest E", "6 Dest F"], // From wizard
+        },
+      },
+    ];
+
+    const finalConfig = mergeWizardStopsForTest(
+      existingConfig,
+      wizardStopsCorrect,
+    );
+
+    // CORRECT: All mappings should be present
+    expect(finalConfig).toContain('"Direction A"');
+    expect(finalConfig).toContain('"Direction B"');
+    expect(finalConfig).toContain('"Direction C (new)"');
+    expect(finalConfig).toContain("Dest A");
+    expect(finalConfig).toContain("Dest C");
+    expect(finalConfig).toContain("Dest E");
+
+    console.log(
+      "✓ CORRECT: All direction_mappings preserved when wizard merges",
+    );
+    console.log("Final config:\n", finalConfig);
+  });
+
+  it("should skip exact duplicate stops in config", () => {
+    // If wizard returns the exact same stop that already exists,
+    // we should skip the existing one to avoid duplicate entries
+
+    const existingConfig = `[display]
+hide_cancelled = true
+
+[[stops]]
+station_id = "de:01234:5001"
+station_name = "Main Station"
+max_departures_per_stop = 4
+max_departures_per_route = 2
+max_hours_in_advance = 3
+show_ungrouped = false
+
+[stops.direction_mappings]
+"Direction A" = ["1 Dest A"]`;
+
+    // Wizard returns the SAME stop (user didn't actually change anything)
+    const wizardStops = [
+      {
+        station_id: "de:01234:5001",
+        station_name: "Main Station",
+        max_departures_per_stop: 4,
+        max_departures_per_route: 2,
+        max_hours_in_advance: 3,
+        show_ungrouped: false,
+        direction_mappings: {
+          "Direction A": ["1 Dest A"],
+        },
+      },
+    ];
+
+    const finalConfig = mergeWizardStopsForTest(existingConfig, wizardStops);
+
+    // Should only have one instance (no duplicates)
+    const stopMatches = Array.from(
+      finalConfig.matchAll(/station_id = "de:01234:5001"/g),
+    );
+    expect(stopMatches.length).toBe(1);
+
+    console.log("✓ Exact duplicates skipped (only one instance)");
     console.log("Final config:\n", finalConfig);
   });
 });
