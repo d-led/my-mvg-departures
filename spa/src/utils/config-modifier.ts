@@ -127,20 +127,30 @@ function ensureRouteDisplay(
     return route;
   }
 
-  if (!route.display) {
-    return { ...route, display: { title } };
-  }
+  // Always use array format [[routes.display]] to match config.example.toml structure
+  // This ensures compatibility when merging with existing configs
+  const existingDisplay = route.display;
 
-  if (Array.isArray(route.display)) {
-    if (route.display.length === 0) {
+  if (Array.isArray(existingDisplay)) {
+    // Update first element's title
+    if (existingDisplay.length === 0) {
       return { ...route, display: [{ title }] };
     }
-    const updatedDisplay = [...route.display];
+    const updatedDisplay = [...existingDisplay];
     updatedDisplay[0] = { ...updatedDisplay[0], title };
     return { ...route, display: updatedDisplay };
   }
 
-  return { ...route, display: { ...route.display, title } };
+  // If display is an inline table, convert to array format
+  if (existingDisplay && typeof existingDisplay === "object") {
+    return {
+      ...route,
+      display: [{ ...existingDisplay, title }],
+    };
+  }
+
+  // No existing display, create array format
+  return { ...route, display: [{ title }] };
 }
 
 export function applyWizardConfig(
@@ -151,9 +161,14 @@ export function applyWizardConfig(
     ? (tomlParse(existingToml) as TomlData)
     : ({} as TomlData);
 
+  let output: string;
   if (result.target === "main") {
     const existingStops = parsed.stops ?? [];
     parsed.stops = upsertStops(existingStops, result.stops);
+    // For main stops, tomlPatch can handle simple array-of-tables updates
+    output = existingToml.trim()
+      ? tomlPatch(existingToml, parsed)
+      : tomlStringify(parsed);
   } else {
     const routeDetails = result.route;
     if (!routeDetails?.path) {
@@ -193,11 +208,19 @@ export function applyWizardConfig(
       updatedRoutes[routeIndex] = updatedRoute;
       parsed.routes = updatedRoutes;
     }
+    // For routes, tomlPatch has limitations, so use tomlStringify
+    output = tomlStringify(parsed);
   }
 
-  return existingToml.trim()
-    ? tomlPatch(existingToml, parsed)
-    : tomlStringify(parsed);
+  // Validate TOML syntax after patching/stringifying
+  try {
+    tomlParse(output);
+  } catch (e) {
+    throw new Error(
+      `Wizard produced invalid TOML: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+  return output;
 }
 
 export function getWizardConfigContext(

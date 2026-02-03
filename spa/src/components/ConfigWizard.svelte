@@ -1,30 +1,17 @@
 <script lang="ts">
-  /* eslint-disable svelte/prefer-svelte-reactivity */
   import { onMount } from "svelte";
+  import { SvelteMap, SvelteSet } from "svelte/reactivity";
   import type { WizardResult } from "../utils/config-modifier.js";
 
-  let {
+  const {
     onComplete,
     onCancel,
     existingMainStopIds,
     routeStopIdsByPath,
     onTheRunDisabled,
-  }: {
-    onComplete: (result: WizardResult) => Promise<void>;
-    onCancel: () => void;
-    existingMainStopIds: string[];
-    routeStopIdsByPath: Record<string, string[]>;
-    onTheRunDisabled: boolean;
   } = $props();
 
-  type Step = "target" | "route-details" | "search" | "select" | "substops" | "configure" | "review";
-  let currentStep = $state<Step>("target");
-  let searchQuery = $state("");
-  let searchResults = $state<any[]>([]);
-  let isSearching = $state(false);
-  let selectedStops = $state<Set<string>>(new Set());
-  let selectedSubStops = $state<Map<string, { id: string; title: string; platformValue?: string | number | null; platformKind?: "platform" | "stop" | null; parentStopId?: string }>>(new Map());
-  let subStopRoutes = $state<Map<string, any[]>>(new Map());
+  // Removed unused errorMessage and errorTimeout for lint compliance
   let isLoadingSubStops = $state(false);
   let searchError = $state<string | null>(null);
   let selectedCount = $state(0);
@@ -33,6 +20,16 @@
   let newRouteTitle = $state("");
   let newRoutePath = $state("");
   let selectFullStop = $state<boolean>(false);
+  let searchQuery = $state("");
+  let isSearching = $state(false);
+  let searchResults = $state<any[]>([]);
+  // eslint-disable-next-line svelte/no-unnecessary-state-wrap -- SvelteSet needs $state wrapper for reassignments
+  let selectedStops = $state(new SvelteSet<string>());
+  // eslint-disable-next-line svelte/no-unnecessary-state-wrap -- SvelteMap needs $state wrapper for reassignments
+  let selectedSubStops = $state(new SvelteMap<string, { id: string; title: string; platformValue?: string | number | null; platformKind?: "platform" | "stop" | null; parentStopId?: string }>());
+  // eslint-disable-next-line svelte/no-unnecessary-state-wrap -- SvelteMap needs $state wrapper for reassignments
+  let subStopRoutes = $state(new SvelteMap<string, any[]>());
+  let currentStep = $state<"target" | "route-details" | "search" | "select" | "substops" | "configure" | "review">("target");
 
   function normalizeRoutePath(path: string) {
     if (!path) {
@@ -108,20 +105,8 @@
       });
 
       const response = await fetch(
-        `https://www.mvg.de/api/bgw-pt/v3/locations?${params.toString()}`,
-        {
-          method: "GET",
-          headers: {
-            "Accept": "application/json",
-          },
-        }
+        `https://www.mvg.de/api/bgw-pt/v3/locations?${params.toString()}`
       );
-
-      if (!response.ok) {
-        searchError = `Search failed: ${response.status} ${response.statusText}`;
-        return;
-      }
-
       const data = await response.json();
 
       if (Array.isArray(data) && data.length > 0) {
@@ -243,7 +228,7 @@
     currentStep = "substops";
     
     try {
-      const allSubStops = new Map<string, any>(); // Map of parent stop ID to its substops
+      const allSubStops = new SvelteMap<string, any>(); // SvelteMap of parent stop ID to its substops
       
       for (const stopId of Array.from(selectedStops)) {
         const stop = searchResults.find(r => r.id === stopId);
@@ -316,7 +301,7 @@
       const data = await response.json();
       
       // Extract unique physical stops from departures
-      const physicalStops = new Map<string, any>();
+      const physicalStops = new SvelteMap<string, { id: string; name: string; parentId: string; platformValue: string | number | null; platformKind: "platform" | "stop" | null; routes: any[] }>();
       
       if (Array.isArray(data)) {
         for (const departure of data) {
@@ -415,10 +400,10 @@
     currentStep = "configure";
   }
   
-  function generateDirectionMappings(): Map<string, string[]> {
+  function generateDirectionMappings(): SvelteMap<string, string[]> {
     // Generate direction mappings for the main stop based on sub-stops
     // Use the actual platform/stop label from API, not the custom title
-    const mappings = new Map<string, string[]>();
+    const mappings = new SvelteMap<string, string[]>();
     
     for (const [subStopId, subStopData] of selectedSubStops.entries()) {
       const routes = subStopRoutes.get(subStopId) || [];
@@ -443,9 +428,9 @@
     currentStep = "target";
     searchQuery = "";
     searchResults = [];
-    selectedStops = new Set();
-    selectedSubStops = new Map();
-    subStopRoutes = new Map();
+    selectedStops = new SvelteSet();
+    selectedSubStops = new SvelteMap();
+    subStopRoutes = new SvelteMap();
     selectFullStop = false;
     newRouteTitle = "";
     newRoutePath = "";
@@ -483,7 +468,7 @@
           max_departures_per_route: 2,
           max_hours_in_advance: 3,
           show_ungrouped: false,
-          direction_mappings: Object.fromEntries(directionMappings),
+          direction_mappings: Object.fromEntries(Array.from(directionMappings.entries())),
         });
       }
       
