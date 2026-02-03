@@ -220,25 +220,36 @@ export function calculateFillVerticalSpace(config: FontScalingConfig): void {
     `[font-scaling] viewportHeight=${viewportHeight}, statusBarHeight=${statusBarHeight}, availableHeight=${availableHeight}, totalRows=${totalRows}`,
   );
 
-  // Calculate height per row (distribute evenly across all available space)
-  const heightPerRow = availableHeight / totalRows;
-  console.log(`[font-scaling] heightPerRow=${heightPerRow}px`);
+  // Calculate height per row, but cap it to maintain legibility
+  // When there are few departures, we don't want to fill all vertical space with huge fonts
+  const rootFontSize =
+    parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  
+  // Calculate what the height per row would be if we filled vertical space
+  const calculatedHeightPerRow = availableHeight / totalRows;
+  
+  // Cap the row height to a reasonable maximum to prevent huge fonts with few departures
+  // This translates to roughly 3.5rem maximum row height (56px at 16px root font)
+  // This keeps the display compact and legible similar to the many-departure view
+  const maxReasonableRowHeight = 3.5 * rootFontSize;
+  const heightPerRow = Math.min(calculatedHeightPerRow, maxReasonableRowHeight);
+  
+  console.log(`[font-scaling] calculatedHeightPerRow=${calculatedHeightPerRow}px, cappedTo=${heightPerRow}px, totalRows=${totalRows}`);
 
   // Use a slightly higher line height (1.25) to better distribute vertical space
   const lineHeight = 1.25;
   // Max font that fits in a row without vertical clipping: lineHeight * fontSize <= rowHeight - padding
   const rowVerticalPaddingPx = 8; // 0.25rem top + 0.25rem bottom
   const maxFontFitsInRow = (heightPerRow - rowVerticalPaddingPx) / lineHeight;
-  const rootFontSize =
-    parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-  // Reasonable max font sizes so route numbers and destinations stay readable on small screens
-  // (avoid huge fonts when there are only a few rows, which caused vertical truncation)
+  
+  // Reasonable max font sizes to keep display compact and legible like the many-departure view
+  // Cap to 2rem for main elements (route, destination, time)
   const maxRouteDestinationTimePx = Math.min(
     maxFontFitsInRow,
-    4 * rootFontSize,
-  ); // 4rem cap
-  const maxHeaderFontPx = Math.min(maxFontFitsInRow, 2.5 * rootFontSize); // 2.5rem cap
-  const maxPlatformPx = Math.min(maxFontFitsInRow, 2.5 * rootFontSize);
+    2 * rootFontSize,
+  ); // 2rem cap for compact, legible display
+  const maxHeaderFontPx = Math.min(maxFontFitsInRow, 1.5 * rootFontSize); // 1.5rem cap
+  const maxPlatformPx = Math.min(maxFontFitsInRow, 1.5 * rootFontSize); // 1.5rem cap
 
   const reservedPadding = 0;
   const fontUsableHeight = heightPerRow - reservedPadding;
