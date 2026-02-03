@@ -3,6 +3,12 @@
   import { LocalStorageConfigStorage } from "../adapters/storage/local-storage-config-storage.js";
   import { ConfigParser } from "../adapters/config/config-parser.js";
   import ConfigWizard from "./ConfigWizard.svelte";
+  import {
+    applyWizardConfig,
+    getWizardConfigContext,
+    type WizardConfigContext,
+    type WizardResult,
+  } from "../utils/config-modifier.js";
 
   let {
     onSave,
@@ -36,6 +42,7 @@
   let deleteError = $state<string | null>(null);
   let deleteRouteLabel = $state<string>("");
   let deleteDisabled = $state(false);
+  let wizardContext = $state<WizardConfigContext | null>(null);
   const configStorage = new LocalStorageConfigStorage();
   const configParser = new ConfigParser();
 
@@ -50,38 +57,6 @@
     return match ? match[1] : null;
   }
 
-  function extractDirectionMappingsFromBlock(block: string): Record<string, string[]> {
-    // Extract [stops.direction_mappings] section from a stop block
-    const mappings: Record<string, string[]> = {};
-    const lines = block.split("\n");
-    let inMappings = false;
-
-    for (const line of lines) {
-      if (line.startsWith("[stops.direction_mappings]")) {
-        inMappings = true;
-        continue;
-      }
-      if (inMappings) {
-        // Stop reading mappings when we hit another section
-        if (line.startsWith("[")) {
-          break;
-        }
-        // Parse mapping line: "key" = [val1, val2, ...]
-        const match = line.match(/^\s*"([^"]+)"\s*=\s*\[(.*?)\]\s*$/);
-        if (match) {
-          const key = match[1];
-          const valueStr = match[2];
-          const values = valueStr
-            .split(",")
-            .map((v) => v.trim().replace(/^"|"$/g, ""));
-          mappings[key] = values;
-        }
-      }
-    }
-
-    return mappings;
-  }
-
   function getCurrentRoutePath(): string {
     const hash = window.location.hash.slice(1); // Remove leading #
     if (!hash || hash === "/") {
@@ -90,123 +65,15 @@
     return hash;
   }
 
-  type StopBlock = {
-    stationId: string;
-    startIndex: number;
-    endIndex: number;
-    text: string;
-  };
-
-  function findStopBlocks(text: string): StopBlock[] {
-    const lines = text.split("\n");
-    const lineStartOffsets: number[] = [];
-    let offset = 0;
-    for (const line of lines) {
-      lineStartOffsets.push(offset);
-      offset += line.length + 1; // +1 for newline
-    }
-
-    const blocks: StopBlock[] = [];
-    let currentStartLine = -1;
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      const isSection = line.startsWith("[");
-      const isStopStart = line.startsWith("[[stops]]");
-      const isStopNested = line.startsWith("[stops.") || line.startsWith("[stops]");
-
-      if (isStopStart) {
-        if (currentStartLine !== -1) {
-          const startIndex = lineStartOffsets[currentStartLine];
-          const endIndex = lineStartOffsets[i] - 1;
-          const textSlice = text.slice(startIndex, endIndex);
-          const match = textSlice.match(/station_id\s*=\s*"([^"]+)"/);
-          if (match) {
-            blocks.push({
-              stationId: match[1],
-              startIndex,
-              endIndex,
-              text: textSlice,
-            });
-          }
-        }
-        currentStartLine = i;
-      } else if (currentStartLine !== -1 && isSection && !isStopNested) {
-        const startIndex = lineStartOffsets[currentStartLine];
-        const endIndex = lineStartOffsets[i] - 1;
-        const textSlice = text.slice(startIndex, endIndex);
-        const match = textSlice.match(/station_id\s*=\s*"([^"]+)"/);
-        if (match) {
-          blocks.push({
-            stationId: match[1],
-            startIndex,
-            endIndex,
-            text: textSlice,
-          });
-        }
-        currentStartLine = -1;
-      }
-    }
-
-    if (currentStartLine !== -1) {
-      const startIndex = lineStartOffsets[currentStartLine];
-      const endIndex = text.length;
-      const textSlice = text.slice(startIndex, endIndex);
-      const match = textSlice.match(/station_id\s*=\s*"([^"]+)"/);
-      if (match) {
-        blocks.push({
-          stationId: match[1],
-          startIndex,
-          endIndex,
-          text: textSlice,
-        });
-      }
-    }
-
-    return blocks;
+  function isOnTheRunRoute(path: string): boolean {
+    return path === "on-the-run" || path === "/on-the-run";
   }
 
-  function findStopsInsertIndex(text: string): number {
-    const blocks = findStopBlocks(text);
-    if (blocks.length > 0) {
-      return blocks[blocks.length - 1].endIndex;
-    }
-
-    const routesMatch = text.match(/^\[\[routes\]\]/m);
-    if (routesMatch && routesMatch.index !== undefined) {
-      return routesMatch.index;
-    }
-
-    return text.length;
+  function openWizard() {
+    wizardContext = getWizardConfigContext(configText);
+    showWizard = true;
   }
 
-  function buildStopBlock(
-    stop: any,
-    mergedMappings: Record<string, string[]> | null = null,
-  ): string {
-    let block = "[[stops]]\n";
-    block += `station_id = "${stop.station_id}"\n`;
-    block += `station_name = "${stop.station_name}"\n`;
-    block += `max_departures_per_stop = ${stop.max_departures_per_stop}\n`;
-    block += `max_departures_per_route = ${stop.max_departures_per_route}\n`;
-    block += `max_hours_in_advance = ${stop.max_hours_in_advance}\n`;
-    block += `show_ungrouped = ${stop.show_ungrouped}\n`;
-
-    if (stop.custom_title) {
-      block += `ungrouped_title = "${stop.custom_title}"\n`;
-    }
-
-    const mappings = mergedMappings ?? stop.direction_mappings;
-    if (mappings && Object.keys(mappings).length > 0) {
-      block += "\n[stops.direction_mappings]\n";
-      for (const [key, value] of Object.entries(mappings)) {
-        const patterns = Array.isArray(value) ? value : [value as string];
-        const quoted = patterns.map((pattern) => `"${pattern}"`).join(", ");
-        block += `"${key}" = [${quoted}]\n`;
-      }
-    }
-
-    return block.trimEnd();
-  }
 
   function buildDeleteCandidates(): {
     candidates: {
@@ -735,81 +602,19 @@
     }
   }
 
-  async function handleWizardComplete(stops: any[]) {
-    // Build TOML config from wizard stops
-    // APPEND new stops to existing config, preserving everything else
+  async function handleWizardComplete(result: WizardResult) {
+    // Build TOML config from wizard result
+    // Preserve existing layout and only update the target section
 
     try {
       const existingConfig = configText;
-      let updatedConfig = existingConfig;
-
-      console.log("=== WIZARD CONFIG MERGE ===");
-      console.log(
-        "Stops to add/update:",
-        stops.map((stop) => stop.station_id),
-      );
-      console.log("Existing config length:", existingConfig.length);
 
       if (existingConfig.trim()) {
         configParser.parseToml(existingConfig);
       }
 
-      const stopBlocks = findStopBlocks(existingConfig);
-      const stopBlocksById = new Map(
-        stopBlocks.map((block) => [block.stationId, block]),
-      );
-
-      const replacements: { start: number; end: number; text: string }[] = [];
-      const stopsToAppend: any[] = [];
-
-      for (const stop of stops) {
-        const existingBlock = stopBlocksById.get(stop.station_id);
-        if (existingBlock) {
-          const existingMappings = extractDirectionMappingsFromBlock(
-            existingBlock.text,
-          );
-          const mergedMappings: Record<string, string[]> = {
-            ...existingMappings,
-          };
-          if (stop.direction_mappings) {
-            Object.assign(mergedMappings, stop.direction_mappings);
-          }
-
-          const newBlock = buildStopBlock(stop, mergedMappings);
-          replacements.push({
-            start: existingBlock.startIndex,
-            end: existingBlock.endIndex,
-            text: newBlock,
-          });
-        } else {
-          stopsToAppend.push(stop);
-        }
-      }
-
-      replacements.sort((a, b) => b.start - a.start);
-      for (const replacement of replacements) {
-        updatedConfig =
-          updatedConfig.slice(0, replacement.start) +
-          replacement.text +
-          updatedConfig.slice(replacement.end);
-      }
-
-      if (stopsToAppend.length > 0) {
-        const newBlocks = stopsToAppend
-          .map((stop) => buildStopBlock(stop))
-          .join("\n\n");
-        const insertAt = findStopsInsertIndex(updatedConfig);
-        const before = updatedConfig.slice(0, insertAt).replace(/\s*$/, "");
-        const after = updatedConfig.slice(insertAt).replace(/^\s*/, "");
-        const beforeSeparator = before ? "\n\n" : "";
-        const afterSeparator = after ? "\n\n" : "";
-        updatedConfig =
-          before + beforeSeparator + newBlocks + afterSeparator + after;
-      }
-
+      const updatedConfig = applyWizardConfig(existingConfig, result);
       configText = updatedConfig.trim();
-      console.log("Final merged config length:", configText.length);
-      console.log("=== END MERGE ===");
 
       showWizard = false;
       errorMessage = null; // Clear any previous errors
@@ -838,6 +643,9 @@
     <ConfigWizard
       onComplete={handleWizardComplete}
       onCancel={() => (showWizard = false)}
+      existingMainStopIds={wizardContext?.mainStopIds ?? []}
+      routeStopIdsByPath={wizardContext?.routeStopIdsByPath ?? {}}
+      onTheRunDisabled={isOnTheRunRoute(getCurrentRoutePath())}
     />
   {:else if showDelete}
     <div class="modal-content">
@@ -926,8 +734,13 @@
           </button>
           <button
             class="method-button"
-            onclick={() => (showWizard = true)}
-            title="Step-by-step wizard to find and configure stops"
+            onclick={openWizard}
+            disabled={isOnTheRunRoute(getCurrentRoutePath())}
+            title={
+              isOnTheRunRoute(getCurrentRoutePath())
+                ? "Wizard is disabled for Next to me"
+                : "Step-by-step wizard to find and configure stops"
+            }
           >
             Wizard (experimental)
           </button>

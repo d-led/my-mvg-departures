@@ -1,13 +1,20 @@
 <script lang="ts">
   /* eslint-disable svelte/prefer-svelte-reactivity */
   import { onMount } from "svelte";
+  import type { WizardResult } from "../utils/config-modifier.js";
 
   let {
     onComplete,
     onCancel,
+    existingMainStopIds,
+    routeStopIdsByPath,
+    onTheRunDisabled,
   }: {
-    onComplete: (stops: any[]) => Promise<void>;
+    onComplete: (result: WizardResult) => Promise<void>;
     onCancel: () => void;
+    existingMainStopIds: string[];
+    routeStopIdsByPath: Record<string, string[]>;
+    onTheRunDisabled: boolean;
   } = $props();
 
   type Step = "target" | "route-details" | "search" | "select" | "substops" | "configure" | "review";
@@ -27,6 +34,44 @@
   let newRoutePath = $state("");
   let selectFullStop = $state<boolean>(false);
 
+  function normalizeRoutePath(path: string) {
+    if (!path) {
+      return "";
+    }
+    return path.startsWith("/") ? path : `/${path}`;
+  }
+
+  function isOnTheRunRoute(path: string) {
+    return path === "on-the-run" || path === "/on-the-run";
+  }
+
+  function getTargetRoutePath() {
+    if (configTarget === "current") {
+      return normalizeRoutePath(currentRoutePath);
+    }
+    if (configTarget === "route") {
+      return normalizeRoutePath(newRoutePath);
+    }
+    return "";
+  }
+
+  function getDisabledStopIds() {
+    if (configTarget === "main") {
+      return new Set(existingMainStopIds);
+    }
+
+    const routePath = getTargetRoutePath();
+    if (!routePath) {
+      return new Set<string>();
+    }
+
+    return new Set(routeStopIdsByPath[routePath] ?? []);
+  }
+
+  function isStopDisabled(stopId: string) {
+    return getDisabledStopIds().has(stopId);
+  }
+
   onMount(() => {
     // Get current route from hash-based routing (e.g., /#/hochaeckerstrasse)
     const hash = window.location.hash;
@@ -38,8 +83,8 @@
       }
     }
     
-    // Preselect the current route
-    if (currentRoutePath) {
+    // Preselect the current route unless it's on-the-run
+    if (currentRoutePath && !onTheRunDisabled && !isOnTheRunRoute(currentRoutePath)) {
       configTarget = "current";
     } else {
       configTarget = "main";
@@ -119,6 +164,10 @@
   }
 
   function handleSelectStop(stopId: string) {
+    if (isStopDisabled(stopId)) {
+      return;
+    }
+
     if (selectedStops.has(stopId)) {
       selectedStops.delete(stopId);
     } else {
@@ -412,7 +461,7 @@
     if (configTarget === "current") {
       console.log("Skipping 'on the run' config - not saved to main stops");
       resetWizard();
-      await onComplete([]);
+      await onComplete({ target: "main", stops: [] });
       return;
     }
     
@@ -476,7 +525,17 @@
     }
 
     console.log("Final stopsConfig being sent to merge:", stopsConfig);
-    await onComplete(stopsConfig);
+    const wizardResult: WizardResult = {
+      target: configTarget === "main" ? "main" : "route",
+      ...(configTarget !== "main" && {
+        route: {
+          path: getTargetRoutePath() || "/",
+          title: newRouteTitle,
+        },
+      }),
+      stops: stopsConfig,
+    };
+    await onComplete(wizardResult);
     resetWizard();
   }
 
@@ -648,10 +707,11 @@
 
           <div class="stops-checklist">
             {#each searchResults as stop (stop.id)}
-              <label class="checkbox-item">
+              <label class="checkbox-item" class:disabled={isStopDisabled(stop.id)}>
                 <input
                   type="checkbox"
                   checked={selectedStops.has(stop.id)}
+                  disabled={isStopDisabled(stop.id)}
                   onchange={() => handleSelectStop(stop.id)}
                 />
                 <span class="checkbox-label">
@@ -1295,6 +1355,20 @@
     margin-top: 0.15rem;
     cursor: pointer;
     flex-shrink: 0;
+  }
+
+  .checkbox-item input[type="checkbox"]:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+
+  .checkbox-item.disabled {
+    opacity: 0.6;
+    pointer-events: none;
+  }
+
+  .checkbox-item.disabled .checkbox-label {
+    color: var(--text-secondary, #666);
   }
 
   .checkbox-label {
