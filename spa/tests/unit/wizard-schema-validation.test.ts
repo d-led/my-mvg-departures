@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import {
   applyWizardConfig,
   getWizardConfigContext,
@@ -14,8 +16,10 @@ describe("Wizard TOML Schema Integrity", () => {
   let exampleConfig: string;
 
   beforeAll(() => {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
     exampleConfig = readFileSync(
-      "/Users/dmitryledentsov/src/my_mvg_departures/config.example.toml",
+      join(__dirname, "../../..", "config.example.toml"),
       "utf8",
     );
   });

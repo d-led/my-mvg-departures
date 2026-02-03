@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { applyWizardConfig } from "../../src/utils/config-modifier";
 import type { WizardResult } from "../../src/utils/config-modifier";
 
@@ -12,8 +14,10 @@ describe("config-modifier with real config.example.toml", () => {
 
   beforeAll(() => {
     // Load actual config from repo root
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
     configText = readFileSync(
-      "/Users/dmitryledentsov/src/my_mvg_departures/config.example.toml",
+      join(__dirname, "../../..", "config.example.toml"),
       "utf8",
     );
   });

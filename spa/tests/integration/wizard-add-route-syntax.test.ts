@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { readFileSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { applyWizardConfig } from "../../src/utils/config-modifier";
 import { parse as tomlParse } from "toml-patch";
 import type { WizardResult } from "../../src/utils/config-modifier";
@@ -11,8 +13,10 @@ describe("Wizard Add Route - Syntax Validation", () => {
   let exampleConfig: string;
 
   beforeAll(() => {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
     exampleConfig = readFileSync(
-      "/Users/dmitryledentsov/src/my_mvg_departures/config.example.toml",
+      join(__dirname, "../../..", "config.example.toml"),
       "utf8",
     );
   });

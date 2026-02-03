@@ -143,9 +143,27 @@
 
       // Listen for window resize to recalculate font sizes (matches Python exactly)
       // Handle window resize for fill_vertical_space (matches Python: lines 1426-1436)
+      // Skip resize events caused by pinch-zoom to prevent re-layout during zoom
       let resizeTimeout: number | null = null;
+      let lastLayoutWidth = window.innerWidth;
+      let lastLayoutHeight = window.innerHeight;
+      
       const handleResize = () => {
         if (currentRoute?.display?.fillVerticalSpace) {
+          // Only recalculate if the layout viewport actually changed
+          // Pinch-zoom changes visualViewport but not layout viewport (innerWidth/innerHeight)
+          const currentWidth = window.innerWidth;
+          const currentHeight = window.innerHeight;
+          
+          if (currentWidth === lastLayoutWidth && currentHeight === lastLayoutHeight) {
+            // Layout viewport unchanged - this is likely just a zoom, skip recalculation
+            return;
+          }
+          
+          // Update last known dimensions
+          lastLayoutWidth = currentWidth;
+          lastLayoutHeight = currentHeight;
+          
           // Debounce resize events (matches Python: 150ms)
           if (resizeTimeout) clearTimeout(resizeTimeout);
           resizeTimeout = window.setTimeout(() => {
