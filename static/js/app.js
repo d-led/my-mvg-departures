@@ -1258,12 +1258,21 @@ function calculateFillVerticalSpace() {
   // Be aggressive - use all available space
   const availableHeight = viewportHeight - statusBarHeight;
 
+  const rootFontSize = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+
+  // Calculate what the height per row would be if we filled vertical space
+  const calculatedHeightPerRow = availableHeight / totalRows;
+
+  // Only apply the cap when there are relatively few rows (prevents huge fonts)
+  // When there are many rows, use calculated height to ensure everything fits
+  const maxReasonableRowHeight = 3.5 * rootFontSize;
+  const shouldCapHeight = calculatedHeightPerRow > maxReasonableRowHeight;
+  const heightPerRow = shouldCapHeight ? maxReasonableRowHeight : calculatedHeightPerRow;
+
   // Headers and departure rows have independent font sizes. Header height from even split.
-  const heightPerRow = availableHeight / totalRows;
   const headerHeight = heightPerRow;
 
   const lineHeight = 1.25;
-  const rootFontSize = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
   const viewportWidth = window.innerWidth;
   // 8pt ≈ 10.67px at 96dpi; minimum legible cap relative to root
   const MIN_LEGIBLE_FONT_PX = Math.max(11, rootFontSize * 0.7);
@@ -1274,7 +1283,8 @@ function calculateFillVerticalSpace() {
   // Row padding: minimal and relative to root so rows stay small at any resolution
   const rowVerticalPaddingPx = Math.max(2, Math.round(rootFontSize * 0.15));
   // Min row font relative to root; portrait can go larger, landscape capped so fonts aren't huge
-  const minRowFontPx = rootFontSize * 1.1;
+  // BUT when we have many rows (height capped), don't enforce minimum to prevent scrolling
+  const minRowFontPx = shouldCapHeight ? 0 : rootFontSize * 1.1;
   const maxRowFontByOrientation = isLandscape ? rootFontSize * 1.2 : rootFontSize * 1.55;
 
   // Departure rows: height = 1 font height + minimal padding; font from space per row (numDepartureRows) and orientation cap
@@ -1285,9 +1295,11 @@ function calculateFillVerticalSpace() {
   const departureRowHeight = numDepartureRows > 0 ? rowBaseFontSize * lineHeight + rowVerticalPaddingPx : heightPerRow;
 
   const maxFontFitsInHeaderRow = (headerHeight - rowVerticalPaddingPx) / lineHeight;
-  let maxRouteDestinationTimePx = Math.min(rowBaseFontSize * 1.2, maxRowFontByOrientation);
-  const maxHeaderFontPx = Math.min(maxFontFitsInHeaderRow, 2.5 * rootFontSize);
-  let maxPlatformPx = Math.min(rowBaseFontSize * 1.2, maxRowFontByOrientation);
+  // Reasonable max font sizes to keep display compact and legible like the many-departure view
+  // Cap to 2rem for main elements (route, destination, time)
+  let maxRouteDestinationTimePx = Math.min(rowBaseFontSize * 1.2, maxRowFontByOrientation, 2 * rootFontSize);
+  const maxHeaderFontPx = Math.min(maxFontFitsInHeaderRow, 1.5 * rootFontSize); // 1.5rem cap
+  let maxPlatformPx = Math.min(rowBaseFontSize * 1.2, maxRowFontByOrientation, 1.5 * rootFontSize); // 1.5rem cap
   // Cap by viewport width (relative to resolution): narrow viewport = smaller max font
   const maxDepartureFontByWidth = Math.min(maxRowFontByOrientation, viewportWidth / 22);
   maxRouteDestinationTimePx = Math.min(maxRouteDestinationTimePx, maxDepartureFontByWidth);
@@ -1751,9 +1763,27 @@ if (document.readyState === "loading") {
 }
 
 // Handle window resize for fill_vertical_space
+// Skip resize events caused by pinch-zoom to prevent re-layout during zoom
 let resizeTimeout;
+let lastLayoutWidth = window.innerWidth;
+let lastLayoutHeight = window.innerHeight;
+
 window.addEventListener("resize", () => {
   if (window.DEPARTURES_CONFIG && window.DEPARTURES_CONFIG.fillVerticalSpace) {
+    // Only recalculate if the layout viewport actually changed
+    // Pinch-zoom changes visualViewport but not layout viewport (innerWidth/innerHeight)
+    const currentWidth = window.innerWidth;
+    const currentHeight = window.innerHeight;
+
+    if (currentWidth === lastLayoutWidth && currentHeight === lastLayoutHeight) {
+      // Layout viewport unchanged - this is likely just a zoom, skip recalculation
+      return;
+    }
+
+    // Update last known dimensions
+    lastLayoutWidth = currentWidth;
+    lastLayoutHeight = currentHeight;
+
     // Debounce resize events
     clearTimeout(resizeTimeout);
     resizeTimeout = setTimeout(() => {
