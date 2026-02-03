@@ -72,36 +72,56 @@ function stringifyToml(data: TomlData): string {
       }
 
       // Serialize route.display if present
-      if (routeObj.display && typeof routeObj.display === "object") {
+      // display should be an array-of-tables (from [[routes.display]])
+      if (routeObj.display && Array.isArray(routeObj.display)) {
+        // Array-of-tables: [[routes.display]]
+        const displayArray = routeObj.display as Record<string, unknown>[];
+        for (const displayObj of displayArray) {
+          lines.push("[[routes.display]]");
+          for (const [key, value] of Object.entries(displayObj)) {
+            // Skip 'stops' - it should be serialized at route level, not inside display
+            if (key !== "stops") {
+              lines.push(serializeKeyValue(key, value));
+            }
+          }
+        }
+      } else if (routeObj.display && typeof routeObj.display === "object") {
+        // Inline object (shouldn't happen in normal config, but handle it)
         lines.push("[routes.display]");
         const displayObj = routeObj.display as Record<string, unknown>;
         for (const [key, value] of Object.entries(displayObj)) {
-          lines.push(serializeKeyValue(key, value));
+          // Skip 'stops' - it should be serialized at route level, not inside display
+          if (key !== "stops") {
+            lines.push(serializeKeyValue(key, value));
+          }
         }
       }
 
-      // Serialize route stops - these are inline, not sections
+      // Serialize route stops as array-of-tables [[routes.stops]]
+      // This allows direction_mappings to be proper TOML sections
       const routeStops = routeObj.stops as TomlStopData[] | undefined;
       if (routeStops && Array.isArray(routeStops)) {
-        lines.push("stops = [");
-        for (let i = 0; i < routeStops.length; i++) {
-          const stop = routeStops[i];
+        for (const stop of routeStops) {
+          lines.push("[[routes.stops]]");
           const stopObj = stop as unknown as Record<string, unknown>;
-          const fields: string[] = [];
+          const directionMappings = stopObj.direction_mappings as
+            | Record<string, unknown>
+            | undefined;
 
           for (const [key, value] of Object.entries(stopObj)) {
             if (key !== "direction_mappings") {
-              fields.push(`  ${serializeKeyValue(key, value).trim()}`);
+              lines.push(serializeKeyValue(key, value));
             }
           }
 
-          if (i < routeStops.length - 1) {
-            lines.push("  { " + fields.join(", ") + " },");
-          } else {
-            lines.push("  { " + fields.join(", ") + " }");
+          // Serialize direction_mappings as a TOML section if present
+          if (directionMappings && Object.keys(directionMappings).length > 0) {
+            lines.push("[routes.stops.direction_mappings]");
+            for (const [key, value] of Object.entries(directionMappings)) {
+              lines.push(serializeKeyValue(key, value));
+            }
           }
         }
-        lines.push("]");
       }
 
       lines.push("");
@@ -114,6 +134,107 @@ function stringifyToml(data: TomlData): string {
   }
 
   return lines.join("\n");
+}
+
+// Generate TOML snippet for a single route
+function serializeRoute(route: TomlRouteData): string {
+  const lines: string[] = [];
+  const routeObj = route as unknown as Record<string, unknown>;
+
+  lines.push("[[routes]]");
+
+  // Serialize route-level properties (except display and stops)
+  for (const [key, value] of Object.entries(routeObj)) {
+    if (key !== "stops" && key !== "display") {
+      lines.push(serializeKeyValue(key, value));
+    }
+  }
+
+  // Serialize display as [[routes.display]] if present
+  if (routeObj.display && Array.isArray(routeObj.display)) {
+    const displayArray = routeObj.display as Record<string, unknown>[];
+    for (const displayObj of displayArray) {
+      lines.push("[[routes.display]]");
+      for (const [key, value] of Object.entries(displayObj)) {
+        if (key !== "stops") {
+          lines.push(serializeKeyValue(key, value));
+        }
+      }
+    }
+  }
+
+  // Serialize stops as [[routes.stops]]
+  const routeStops = routeObj.stops as TomlStopData[] | undefined;
+  if (routeStops && Array.isArray(routeStops)) {
+    for (const stop of routeStops) {
+      lines.push("[[routes.stops]]");
+      const stopObj = stop as unknown as Record<string, unknown>;
+      const directionMappings = stopObj.direction_mappings as
+        | Record<string, unknown>
+        | undefined;
+
+      for (const [key, value] of Object.entries(stopObj)) {
+        if (key !== "direction_mappings") {
+          lines.push(serializeKeyValue(key, value));
+        }
+      }
+
+      if (directionMappings && Object.keys(directionMappings).length > 0) {
+        lines.push("[routes.stops.direction_mappings]");
+        for (const [key, value] of Object.entries(directionMappings)) {
+          lines.push(serializeKeyValue(key, value));
+        }
+      }
+    }
+  }
+
+  return lines.join("\n");
+}
+
+// Insert a new route at the end of the file (preserving all existing content)
+function insertRouteSnippet(
+  existingToml: string,
+  route: TomlRouteData,
+): string {
+  const snippet = serializeRoute(route);
+  const trimmed = existingToml.trimEnd();
+  return `${trimmed}\n\n${snippet}\n`;
+}
+
+// Replace an existing route with updated version (preserving everything else)
+function replaceRouteSnippet(
+  existingToml: string,
+  routeIndex: number,
+  updatedRoute: TomlRouteData,
+): string {
+  const lines = existingToml.split("\n");
+  const routeStarts: number[] = [];
+
+  // Find all [[routes]] markers
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].trim() === "[[routes]]") {
+      routeStarts.push(i);
+    }
+  }
+
+  if (routeIndex >= routeStarts.length) {
+    throw new Error(`Route index ${routeIndex} not found`);
+  }
+
+  const startLine = routeStarts[routeIndex];
+  const endLine =
+    routeIndex + 1 < routeStarts.length
+      ? routeStarts[routeIndex + 1]
+      : lines.length;
+
+  // Generate the new route snippet
+  const snippet = serializeRoute(updatedRoute);
+
+  // Replace the route section
+  const before = lines.slice(0, startLine).join("\n");
+  const after = lines.slice(endLine).join("\n");
+
+  return `${before}\n${snippet}\n${after}`;
 }
 
 function needsQuoting(key: string): boolean {
@@ -162,6 +283,9 @@ function serializeKeyValue(key: string, value: unknown): string {
           const escaped = v.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
           return `${quotedInlineKey} = "${escaped}"`;
         }
+        if (typeof v === "number" || typeof v === "boolean") {
+          return `${quotedInlineKey} = ${v}`;
+        }
         if (Array.isArray(v)) {
           const items = (v as unknown[]).map((vi) => {
             if (typeof vi === "string") {
@@ -172,12 +296,14 @@ function serializeKeyValue(key: string, value: unknown): string {
           });
           return `${quotedInlineKey} = [${items.join(", ")}]`;
         }
-        return `${quotedInlineKey} = ${v}`;
+        // Skip complex nested objects in inline tables
+        return null;
       })
+      .filter((entry): entry is string => entry !== null)
       .join(", ");
     return `${quotedKey} = { ${entries} }`;
   }
-  return `${quotedKey} = "${value}"`;
+  return `${quotedKey} = ""`;
 }
 
 export type WizardStop = {
@@ -314,9 +440,15 @@ function ensureRouteDisplay(
 
   // If display is an inline table, convert to array format
   if (existingDisplay && typeof existingDisplay === "object") {
+    // Exclude 'stops' from display - it belongs at route level
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { stops, ...displayWithoutStops } = existingDisplay as Record<
+      string,
+      unknown
+    >;
     return {
       ...route,
-      display: [{ ...existingDisplay, title }],
+      display: [{ ...displayWithoutStops, title }],
     };
   }
 
@@ -357,6 +489,7 @@ export function applyWizardConfig(
     );
 
     if (routeIndex === -1) {
+      // Adding a new route - generate snippet and insert at end
       const newRoute: TomlRouteData = ensureRouteDisplay(
         {
           path: normalizedPath,
@@ -364,8 +497,9 @@ export function applyWizardConfig(
         },
         routeDetails.title,
       );
-      parsed.routes = [...routes, newRoute];
+      output = insertRouteSnippet(existingToml, newRoute);
     } else {
+      // Updating existing route - generate snippet and replace
       const existingRoute = routes[routeIndex];
       const existingStops = existingRoute.stops ?? [];
       const updatedRoute: TomlRouteData = ensureRouteDisplay(
@@ -375,12 +509,8 @@ export function applyWizardConfig(
         },
         routeDetails.title,
       );
-      const updatedRoutes = [...routes];
-      updatedRoutes[routeIndex] = updatedRoute;
-      parsed.routes = updatedRoutes;
+      output = replaceRouteSnippet(existingToml, routeIndex, updatedRoute);
     }
-    // For routes, tomlPatch has limitations, so use tomlStringify
-    output = stringifyToml(parsed);
   }
 
   // Validate TOML syntax after patching/stringifying

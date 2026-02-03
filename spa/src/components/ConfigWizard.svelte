@@ -210,6 +210,13 @@
         platformKind,
         parentStopId,
       });
+      
+      // When selecting a sub-stop, also add its parent stop to the main selection
+      // so both the parent and child are configured
+      if (parentStopId && !selectedStops.has(parentStopId)) {
+        selectedStops.add(parentStopId);
+        selectedCount = selectedStops.size;
+      }
     }
   }
   

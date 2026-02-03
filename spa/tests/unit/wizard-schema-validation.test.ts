@@ -264,5 +264,86 @@ describe("Wizard TOML Schema Integrity", () => {
         }
       }
     });
+
+    it("should never serialize stops inside [[routes.display]]", () => {
+      // This is a critical regression test - stops MUST be at route level, not inside display
+      const result: WizardResult = {
+        target: "route",
+        route: {
+          path: "/stopstest",
+          title: "Stops Test",
+        },
+        stops: [
+          {
+            station_id: "de:test:stops:1",
+            station_name: "Test Stop 1",
+            max_departures_per_stop: 4,
+            max_departures_per_route: 2,
+            max_hours_in_advance: 3,
+            show_ungrouped: true,
+          },
+          {
+            station_id: "de:test:stops:2",
+            station_name: "Test Stop 2",
+            max_departures_per_stop: 4,
+            max_departures_per_route: 2,
+            max_hours_in_advance: 3,
+            show_ungrouped: false,
+          },
+        ],
+      };
+
+      const output = applyWizardConfig(exampleConfig, result);
+      const lines = output.split("\n");
+
+      // Find the [[routes.display]] section for our new route
+      let inOurRoute = false;
+      let inDisplaySection = false;
+      let afterDisplaySection = false;
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+
+        // Track when we enter our route
+        if (line.includes('path = "/stopstest"')) {
+          inOurRoute = true;
+        }
+
+        // Exit our route when we hit the next [[routes]] or end of file
+        if (inOurRoute && i > 0 && line.match(/^\[\[routes\]\]$/)) {
+          inOurRoute = false;
+        }
+
+        if (inOurRoute) {
+          // Track [[routes.display]] section
+          if (line.match(/^\[\[routes\.display\]\]$/)) {
+            inDisplaySection = true;
+          }
+
+          // Exit display section when we hit another section marker
+          if (inDisplaySection && line.match(/^(stops\s*=|\[\[)/)) {
+            inDisplaySection = false;
+            afterDisplaySection = true;
+          }
+
+          // CRITICAL: stops should NEVER appear inside [[routes.display]]
+          if (inDisplaySection && line.includes("station_id")) {
+            throw new Error(
+              `REGRESSION: stops found inside [[routes.display]] at line ${i + 1}:\n${line}\n\nFull route block:\n${lines.slice(Math.max(0, i - 20), i + 10).join("\n")}`,
+            );
+          }
+
+          // Stops should appear AFTER display section as inline array
+          if (afterDisplaySection && line.match(/^stops\s*=/)) {
+            // This is correct - stops at route level
+            expect(line).toMatch(/^stops\s*=\s*\[/);
+          }
+        }
+      }
+
+      // Verify both stops exist in the output
+      expect(output).toContain("de:test:stops:1");
+      expect(output).toContain("de:test:stops:2");
+    });
   });
 });
