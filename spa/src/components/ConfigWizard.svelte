@@ -86,6 +86,17 @@
     } else {
       configTarget = "main";
     }
+
+    // Add global keyboard event listener
+    const handleGlobalKeydown = (event: KeyboardEvent) => {
+      handleKeydown(event);
+    };
+    
+    window.addEventListener("keydown", handleGlobalKeydown);
+    
+    return () => {
+      window.removeEventListener("keydown", handleGlobalKeydown);
+    };
   });
 
   async function handleSearch() {
@@ -532,8 +543,58 @@
   }
 
   function handleKeydown(event: KeyboardEvent) {
+    // Ignore keypresses if user is typing in an input field
+    const target = event.target as HTMLElement;
+    if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
+      // Let Enter work in the search input
+      if (event.key === "Enter" && currentStep === "search" && target.classList.contains("search-input")) {
+        handleSearch();
+        return;
+      }
+      // Let Enter work in route-details inputs
+      if (event.key === "Enter" && currentStep === "route-details") {
+        if (newRouteTitle.trim() && newRoutePath.trim()) {
+          currentStep = "search";
+          event.preventDefault();
+        }
+        return;
+      }
+      return;
+    }
+
     if (event.key === "Escape") {
       onCancel();
+      return;
+    }
+
+    if (event.key === "Enter") {
+      // Handle Enter key to proceed to next step
+      if (currentStep === "target") {
+        if (configTarget === "route") {
+          currentStep = "route-details";
+        } else if (configTarget) {
+          currentStep = "search";
+        }
+      } else if (currentStep === "route-details") {
+        if (newRouteTitle.trim() && newRoutePath.trim()) {
+          currentStep = "search";
+        }
+      } else if (currentStep === "search") {
+        if (!isSearching && searchQuery.trim()) {
+          handleSearch();
+        }
+      } else if (currentStep === "select") {
+        if (selectedCount > 0) {
+          proceedToSubStops();
+        }
+      } else if (currentStep === "substops") {
+        if (!isLoadingSubStops) {
+          proceedToConfiguration();
+        }
+      } else if (currentStep === "configure") {
+        handleComplete();
+      }
+      event.preventDefault();
     }
   }
 </script>
