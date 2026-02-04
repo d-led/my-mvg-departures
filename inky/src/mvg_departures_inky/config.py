@@ -295,6 +295,7 @@ class InkyDisplayConfig:
             "Tram": "ico-tram.svg",
             "Bus": "ico-bus.svg",
             "Regionalbus": "ico-bus.svg",  # Map Regionalbus to bus icon
+            "Bahn": "ico-train.svg",  # Map Bahn (trains) to train icon
         }
         icon_name = icon_map.get(transport_type)
         if not icon_name:

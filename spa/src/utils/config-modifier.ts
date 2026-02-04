@@ -1,4 +1,4 @@
-import { parse as tomlParse, patch as tomlPatch } from "toml-patch";
+import { parse as tomlParse } from "toml-patch";
 import type {
   TomlData,
   TomlRouteData,
@@ -468,10 +468,8 @@ export function applyWizardConfig(
   if (result.target === "main") {
     const existingStops = parsed.stops ?? [];
     parsed.stops = upsertStops(existingStops, result.stops);
-    // For main stops, tomlPatch can handle simple array-of-tables updates
-    output = existingToml.trim()
-      ? tomlPatch(existingToml, parsed)
-      : stringifyToml(parsed);
+    // Use custom stringify to properly handle direction_mappings as sections
+    output = stringifyToml(parsed);
   } else {
     const routeDetails = result.route;
     if (!routeDetails?.path) {

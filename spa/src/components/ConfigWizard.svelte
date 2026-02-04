@@ -322,7 +322,8 @@
       
       if (Array.isArray(data)) {
         for (const departure of data) {
-          const physicalStopId = departure.stopPointGlobalId || stopId;
+          // MVG API returns empty string "" for stopPointGlobalId on S-Bahn trains
+          // Extract platform info first to construct IDs if needed
           const platformLabel =
             departure.platformName ??
             departure.platformDisplay ??
@@ -338,9 +339,26 @@
           } else if (stopPosition !== undefined && stopPosition !== null && `${stopPosition}`.trim() !== "") {
             platformValue = stopPosition;
             platformKind = "stop";
+          }
+          
+          // Create physical stop ID:
+          // 1. Use stopPointGlobalId if present and non-empty (e.g., "de:09162:100:22:25" for regional trains)
+          // 2. If missing/empty but we have platform info, create synthetic ID (e.g., "de:09162:100:platform:1" for S-Bahn)
+          // 3. Otherwise fall back to main stop ID
+          let physicalStopId: string;
+          const apiStopId = departure.stopPointGlobalId && departure.stopPointGlobalId.trim();
+          
+          if (apiStopId) {
+            // Use API-provided ID as-is
+            physicalStopId = apiStopId;
+          } else if (platformValue !== null && `${platformValue}`.trim() !== "") {
+            // Create synthetic ID for platforms without stopPointGlobalId (S-Bahn, U-Bahn)
+            // Format: de:09162:100:platform:1
+            physicalStopId = `${stopId}:platform:${platformValue}`;
           } else {
-            // For bus stops without explicit platform info, extract from ID
-            // Format: de:09162:1108:3:3 -> last segment is stop number
+            // No platform info available, use main stop
+            physicalStopId = stopId;
+            // Try to extract from ID as last resort
             const idParts = physicalStopId.split(":");
             if (idParts.length >= 5) {
               const stopNum = idParts[idParts.length - 1];
@@ -351,8 +369,18 @@
             }
           }
 
-          const transportType = departure.transportType || departure.type;
+          let transportType = departure.transportType || departure.type;
           const lineLabel = departure.label || departure.line;
+          
+          // Infer transport type from line name if misclassified
+          // Regional trains (RB, RE, etc.) are sometimes returned as BUS by MVG API
+          if (transportType === "BUS" || transportType === "REGIONAL_BUS") {
+            const lineUpper = lineLabel.toUpperCase();
+            if (lineUpper.match(/^(RB|RE|IC|ICE|EC)\s*\d+/)) {
+              // This is a train, not a bus
+              transportType = "BAHN";
+            }
+          }
           
           if (!physicalStops.has(physicalStopId)) {
             physicalStops.set(physicalStopId, {
@@ -386,7 +414,16 @@
         }
       }
 
-      const subStops = Array.from(physicalStops.values());
+      // Filter to only show substops with real unique IDs from the API
+      // Exclude synthetic IDs (contain ":platform:") and main stop ID
+      const subStops = Array.from(physicalStops.values()).filter(stop => {
+        // Exclude if ID equals main stop (S-Bahn with empty stopPointGlobalId)
+        if (stop.id === stopId) return false;
+        // Exclude if ID is synthetic (we created it with ":platform:" marker)
+        if (stop.id.includes(':platform:')) return false;
+        // Include all other stops (have real unique stopPointGlobalId from API)
+        return true;
+      });
       
       console.log(`Found ${subStops.length} physical stops with platform info:`, subStops.map(s => ({
         id: s.id,
@@ -417,29 +454,7 @@
     currentStep = "configure";
   }
   
-  function generateDirectionMappings(): SvelteMap<string, string[]> {
-    // Generate direction mappings for the main stop based on sub-stops
-    // Use the actual platform/stop label from API, not the custom title
-    const mappings = new SvelteMap<string, string[]>();
-    
-    for (const [subStopId, subStopData] of selectedSubStops.entries()) {
-      const routes = subStopRoutes.get(subStopId) || [];
-      const routeStrings = routes.map((r: any) => `${r.line} ${r.destination}`);
-      
-      if (routeStrings.length > 0) {
-        // Use the auto-generated platform/stop label (Platform X, Stop Y) as the mapping key
-        // This ensures routes are correctly grouped by their physical platform/stop
-        const label = getDefaultSubStopTitle(
-          subStopId,
-          subStopData.platformValue,
-          subStopData.platformKind
-        );
-        mappings.set(label, routeStrings);
-      }
-    }
-    
-    return mappings;
-  }
+
   
   function resetWizard() {
     currentStep = "target";
@@ -457,7 +472,6 @@
 
   async function handleComplete() {
     const stopsConfig: any[] = [];
-    const directionMappings = generateDirectionMappings();
     
     // If configuring "on the run" (current), don't save to main config
     if (configTarget === "current") {
@@ -468,6 +482,7 @@
     }
     
     console.log("=== WIZARD HANDLECOMPLETE ===");
+    console.log("configTarget:", configTarget);
     console.log("selectFullStop:", selectFullStop);
     console.log("selectedStops:", Array.from(selectedStops));
     console.log("selectedSubStops:", Array.from(selectedSubStops.entries()));
@@ -475,18 +490,20 @@
     for (const stopId of Array.from(selectedStops)) {
       const stop = searchResults.find((r) => r.id === stopId);
       
-      // If full stop is selected, create a main entry with direction mappings
-      if (selectFullStop && directionMappings.size > 0) {
-        console.log(`Adding main stop: ${stopId} with ${directionMappings.size} direction mappings`);
-        stopsConfig.push({
+      // If full stop is selected, create a simple stop with show_ungrouped=true
+      // NO direction_mappings - just show all departures
+      if (selectFullStop) {
+        console.log(`Adding full stop: ${stopId} with show_ungrouped=true`);
+        const stopConfig: any = {
           station_id: stopId,
           station_name: stop?.name || stopId,
           max_departures_per_stop: 4,
           max_departures_per_route: 2,
           max_hours_in_advance: 3,
-          show_ungrouped: false,
-          direction_mappings: Object.fromEntries(Array.from(directionMappings.entries())),
-        });
+          show_ungrouped: true,
+        };
+        
+        stopsConfig.push(stopConfig);
       }
       
       // Add individual sub-stops that belong to this parent stop
@@ -516,10 +533,11 @@
           max_departures_per_stop: 4,
           max_departures_per_route: 2,
           max_hours_in_advance: 3,
+          // Individual platforms also show ungrouped departures
           show_ungrouped: true,
         };
         
-        // Always set ungrouped_title so the header shows "Stop X" instead of "Other"
+        // Always set custom_title so the header shows "Platform 1" instead of station name
         config.custom_title = ungroupedTitle;
         
         stopsConfig.push(config);
@@ -852,7 +870,7 @@
                             <div class="substop-routes">
                               <span class="routes-label">Routes:</span>
                               <div class="route-list">
-                                {#each routes as route (route.line + route.destination)}
+                                {#each routes as route (route.transportType + '-' + route.line + '-' + route.destination)}
                                   <div class="route-row" title="{route.line} → {route.destination}">
                                     <span class="route-number">
                                       {#if route.transportType === "UBAHN"}
@@ -861,7 +879,11 @@
                                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 31.98 31.98" class="route-icon" aria-hidden="true"><path d="M15.99,0A15.99,15.99,0,1,0,31.98,15.99,16.023,16.023,0,0,0,15.99,0" fill="#009551" fill-rule="evenodd"/><path d="M25.67,6.31c0,4.74-.04,4.66-.04,4.66C23.29,8.68,14.77,5.05,13.08,7.86c-1.99,3.31,4.32,4.53,9.48,6.29,6.15,2.1,6.06,9.19,1.58,12.61-5.93,4.52-13.23,2.38-18.69-1.71V20.16c1.3,1.52,3.44,2.52,6.47,3.61,1.72.62,6.13,1.59,7.26-.41,1.52-2.69-2.43-3.54-4.02-3.83a16.155,16.155,0,0,1-6.35-2.44c-4.64-3.07-4.42-9.04.11-12.23C14,1.27,21.12,2.52,25.67,6.31" fill="#fff" fill-rule="evenodd"/></svg>
                                       {:else if route.transportType === "TRAM"}
                                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" class="route-icon" aria-hidden="true"><rect width="32" height="32" fill="#dd0b2f"/><path d="M18.9,11.8h2.01v1.38a2.719,2.719,0,0,1,2.43-1.59a1.758,1.758,0,0,1,1.13.36A2.972,2.972,0,0,1,25.24,13a2.567,2.567,0,0,1,2.38-1.41a1.847,1.847,0,0,1,1.62.79a3.47,3.47,0,0,1,.5,2.02v4.81H27.56V15.39c0-1.13-.32-1.7-.97-1.7a1,1,0,0,0-.92.68a3.158,3.158,0,0,0-.25,1.33v3.5H23.23V15.16c0-.99-.32-1.48-.96-1.48a1.013,1.013,0,0,0-.94.76a3.694,3.694,0,0,0-.24,1.4V19.2H18.9V11.8m-3.73,4.06a1.611,1.611,0,0,0-.87.23a1.005,1.005,0,0,0-.19,1.53.829.829,0,0,0,.62.25a1.107,1.107,0,0,0,.99-.6a2.53,2.53,0,0,0,.32-1.3l-.01-.04C15.54,15.88,15.25,15.86,15.17,15.86Zm.84-1.28v-.21a1.018,1.018,0,0,0-.51-.89a1.785,1.785,0,0,0-.95-.28a5.384,5.384,0,0,0-1.91.57V12.1a5.613,5.613,0,0,1,2.38-.47q3.045,0,3.04,3.19v4.4H16.18V18.09a4.924,4.924,0,0,1-.94,1a2.094,2.094,0,0,1-1.24.32a2.081,2.081,0,0,1-1.6-.71a2.6,2.6,0,0,1-.64-1.83a2,2,0,0,1,1.58-2.07A10.788,10.788,0,0,1,16.01,14.58ZM9.13,11.8l.06,1.51a3.412,3.412,0,0,1,.68-1.18a1.556,1.556,0,0,1,1.14-.42c.09,0,.32.03.69.07l-.05,2.18a2.9,2.9,0,0,0-.79-.1c-1,0-1.5.77-1.5,2.3v3.07H7.17V13.7c0-.31-.02-.95-.06-1.91H9.13ZM1.3,9.37H7.71v1.97H5.66V19.2H3.4V11.34H1.3Z" fill="#fff" fill-rule="evenodd"/></svg>
+                                      {:else if route.transportType === "BAHN"}
+                                        <!-- Train icon -->
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92.81 122.88" class="route-icon" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M66.69,101.35H26.68l-4.7,6.94h49.24L66.69,101.35L66.69,101.35z M17.56,114.81l-5.47,8.07H0l19.64-29.46 h-3.49c-4.76,0-8.66-3.9-8.66-8.66V8.66C7.5,3.9,11.39,0,16.15,0h61.22c4.76,0,8.66,3.9,8.66,8.66v76.1c0,4.76-3.9,8.66-8.66,8.66 h-3.4l18.83,29.04H80.45l-4.99-7.65H17.56L17.56,114.81z M62.97,67.66h10.48c1.14,0,2.07,0.93,2.07,2.07V80.2 c0,1.14-0.93,2.07-2.07,2.07H62.97c-1.14,0-2.07-0.93-2.07-2.07V69.72C60.9,68.59,61.83,67.66,62.97,67.66L62.97,67.66z M18.98,67.66h10.48c1.14,0,2.07,0.93,2.07,2.07V80.2c0,1.14-0.93,2.07-2.07,2.07H18.98c-1.14,0-2.07-0.93-2.07-2.07V69.72 C16.91,68.59,17.84,67.66,18.98,67.66L18.98,67.66z M25.1,16.7h42.81c4.6,0,8.36,3.76,8.36,8.37v13.17c0,4.6-3.76,8.36-8.36,8.36 H25.1c-4.6,0-8.36-3.76-8.36-8.36V25.07C16.74,20.47,20.5,16.7,25.1,16.7L25.1,16.7z M38.33,3.8h16.2C55.34,3.8,56,4.46,56,5.27 v6.38c0,0.81-0.66,1.47-1.47,1.47h-16.2c-0.81,0-1.47-0.66-1.47-1.47V5.27C36.85,4.46,37.51,3.8,38.33,3.8L38.33,3.8z"/></svg>
                                       {:else}
+                                        <!-- Default to Bus -->
                                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" class="route-icon" aria-hidden="true"><path d="M16,0A16,16,0,1,1,0,16,16.034,16.034,0,0,1,16,0" fill="#005d79" fill-rule="evenodd"/><path d="M28.43,12.85a7.084,7.084,0,0,0-2.25-.56q-1.68,0-1.68,1.08c0,.46.39.84,1.18,1.15a10.3,10.3,0,0,1,2.21,1.02a3.178,3.178,0,0,1,1.19,2.7a3.2,3.2,0,0,1-1.33,2.8a4.846,4.846,0,0,1-2.85.78a10.854,10.854,0,0,1-3.09-.57l.23-2.38a6.584,6.584,0,0,0,2.69.7c1.08,0,1.62-.37,1.62-1.12,0-.51-.4-.93-1.19-1.27a16.466,16.466,0,0,1-2.2-1.03a2.906,2.906,0,0,1-1.19-2.49A3.1,3.1,0,0,1,23.1,10.9a4.932,4.932,0,0,1,2.83-.73a11.091,11.091,0,0,1,2.7.45l-.2,2.23M12.35,10.47h2.62v7.04a2.58,2.58,0,0,0,.4,1.52a1.476,1.476,0,0,0,1.26.62c1.03,0,1.55-.81,1.55-2.43V10.47h2.63V17.6a4.05,4.05,0,0,1-1.28,3.2a4.48,4.48,0,0,1-3.05,1.02a4.185,4.185,0,0,1-2.85-1a3.709,3.709,0,0,1-1.28-2.96Zm-4.8,9.04a1.2,1.2,0,0,0,.88-.38a1.274,1.274,0,0,0,.38-.94c0-.84-.55-1.27-1.65-1.27H6.06V19.5H7.55Zm-.53-4.57a1.771,1.771,0,0,0,1.02-.28A1.129,1.129,0,0,0,8.1,12.8a1.521,1.521,0,0,0-.93-.3H6.05v2.45h.97ZM3.47,10.45H8a3.514,3.514,0,0,1,2.13.62a2.454,2.454,0,0,1,1,2.12a3.087,3.087,0,0,1-.41,1.71a2.761,2.761,0,0,1-1.33.99a2.506,2.506,0,0,1,2.02,2.72q0,2.97-4.07,2.97H3.46V10.45Z" fill="#fff" fill-rule="evenodd"/></svg>
                                       {/if}
                                       <span class="route-line-text">{route.line}</span>
@@ -918,7 +940,7 @@
                           <div class="mapping-item">
                             <strong>"{subStopData.title}"</strong>
                             <div class="mapping-routes">
-                              {#each subStopRoutes.get(subStopId) || [] as route (route.line)}
+                              {#each subStopRoutes.get(subStopId) || [] as route (route.transportType + '-' + route.line + '-' + route.destination)}
                                 <span class="route-chip-small">{route.line}</span>
                               {/each}
                             </div>

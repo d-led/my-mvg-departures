@@ -67,6 +67,19 @@ export class MvgDepartureRepository implements DepartureRepository {
       result.delayInMinutes != null ? result.delayInMinutes * 60 : null;
 
     const transportTypeEnum = result.transportType ?? "";
+    const lineName = result.label ?? "";
+
+    // Infer transport type from line name if misclassified
+    // Regional trains (RB, RE, etc.) are sometimes returned as BUS by MVG API
+    let inferredTransportType = transportTypeEnum;
+    if (transportTypeEnum === "BUS" || transportTypeEnum === "REGIONAL_BUS") {
+      const lineUpper = lineName.toUpperCase();
+      if (lineUpper.match(/^(RB|RE|IC|ICE|EC)\s*\d+/)) {
+        // This is a train, not a bus
+        inferredTransportType = "BAHN";
+      }
+    }
+
     const transportTypeMap: Record<string, string> = {
       UBAHN: "U-Bahn",
       SBAHN: "S-Bahn",
@@ -76,7 +89,7 @@ export class MvgDepartureRepository implements DepartureRepository {
       REGIONAL_BUS: "Regionalbus",
     };
     const transportType =
-      transportTypeMap[transportTypeEnum] ?? transportTypeEnum;
+      transportTypeMap[inferredTransportType] ?? inferredTransportType;
 
     const iconMap: Record<string, string> = {
       UBAHN: "mdi:subway",
@@ -86,7 +99,7 @@ export class MvgDepartureRepository implements DepartureRepository {
       BAHN: "mdi:train",
       REGIONAL_BUS: "mdi:bus",
     };
-    const icon = iconMap[transportTypeEnum] ?? "";
+    const icon = iconMap[inferredTransportType] ?? "";
 
     // Match Python: platform = result.get("platform")
     // Python model is int | None, but we store as string for display (Python converts to str when rendering)

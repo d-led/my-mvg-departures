@@ -105,6 +105,18 @@ class MvgDepartureRepository(DepartureRepository):
         delay_seconds = result.get("delayInMinutes", 0) * 60 if result.get("delayInMinutes") else 0
 
         transport_type_enum = result.get("transportType", "")
+        line_name = result.get("label", "")
+        
+        # Infer transport type from line name if misclassified
+        # Regional trains (RB, RE, etc.) are sometimes returned as BUS by MVG API
+        inferred_transport_type = transport_type_enum
+        if transport_type_enum in ("BUS", "REGIONAL_BUS"):
+            import re
+            line_upper = line_name.upper()
+            if re.match(r"^(RB|RE|IC|ICE|EC)\s*\d+", line_upper):
+                # This is a train, not a bus
+                inferred_transport_type = "BAHN"
+        
         transport_type_map = {
             "UBAHN": "U-Bahn",
             "SBAHN": "S-Bahn",
@@ -113,7 +125,7 @@ class MvgDepartureRepository(DepartureRepository):
             "BAHN": "Bahn",
             "REGIONAL_BUS": "Regionalbus",
         }
-        transport_type = transport_type_map.get(transport_type_enum, transport_type_enum)
+        transport_type = transport_type_map.get(inferred_transport_type, inferred_transport_type)
 
         icon_map = {
             "UBAHN": "mdi:subway",
@@ -123,7 +135,7 @@ class MvgDepartureRepository(DepartureRepository):
             "BAHN": "mdi:train",
             "REGIONAL_BUS": "mdi:bus",
         }
-        icon = icon_map.get(transport_type_enum, "")
+        icon = icon_map.get(inferred_transport_type, "")
 
         return {
             "time": time,
