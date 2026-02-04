@@ -15,7 +15,6 @@
   // Removed unused errorMessage and errorTimeout for lint compliance
   let isLoadingSubStops = $state(false);
   let searchError = $state<string | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- used in template for inline validation
   let filterRoutesError = $state<string | null>(null);
   let selectedCount = $state(0);
   let configTarget = $state<"main" | "route" | "current" | "">("" as any);
@@ -794,6 +793,7 @@
           <div class="route-form">
             <div class="form-field">
               <label for="route-title">Route Title</label>
+              <!-- svelte-ignore a11y_autofocus -->
               <input
                 id="route-title"
                 type="text"
@@ -836,6 +836,7 @@
           <p>Search for a transit stop by name:</p>
 
           <div class="search-container">
+            <!-- svelte-ignore a11y_autofocus -->
             <input
               type="text"
               placeholder="e.g., Giesing München"
@@ -1062,7 +1063,7 @@
                             aria-label="Remove group"
                           >×</button>
                         </div>
-                        {#if !group.title || group.title.trim() === ""}
+                        {#if filterRoutesError && (!group.title || group.title.trim() === "")}
                           <p class="inline-error">⚠️ Title is required</p>
                         {/if}
                         <div class="direction-group-routes">
@@ -1094,7 +1095,7 @@
                           </button>
                             {/each}
                           </div>
-                          {#if group.routes.length === 0}
+                          {#if filterRoutesError && group.routes.length === 0}
                             <p class="inline-error">⚠️ Select at least one route for this group</p>
                           {/if}
                         </div>
@@ -1156,7 +1157,7 @@
                             aria-label="Remove group"
                           >×</button>
                         </div>
-                        {#if !group.title || group.title.trim() === ""}
+                        {#if filterRoutesError && (!group.title || group.title.trim() === "")}
                           <p class="inline-error">⚠️ Title is required</p>
                         {/if}
                         <div class="direction-group-routes">
@@ -1188,7 +1189,7 @@
                               </button>
                             {/each}
                           </div>
-                          {#if group.routes.length === 0}
+                          {#if filterRoutesError && group.routes.length === 0}
                             <p class="inline-error">⚠️ Select at least one route for this group</p>
                           {/if}
                         </div>
