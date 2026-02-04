@@ -52,21 +52,20 @@
     return "";
   }
 
-  function getDisabledStopIds() {
+  function isSubStopDisabled(subStopId: string) {
+    // In the substops step, disable sub-stops that are already configured
+    // in the CURRENT target route to prevent duplicates
     if (configTarget === "main") {
-      return new Set(existingMainStopIds);
+      return existingMainStopIds.includes(subStopId);
     }
 
     const routePath = getTargetRoutePath();
     if (!routePath) {
-      return new Set<string>();
+      return false;
     }
 
-    return new Set(routeStopIdsByPath[routePath] ?? []);
-  }
-
-  function isStopDisabled(stopId: string) {
-    return getDisabledStopIds().has(stopId);
+    const routeStops = routeStopIdsByPath[routePath] ?? [];
+    return routeStops.includes(subStopId);
   }
 
   onMount(() => {
@@ -160,10 +159,6 @@
   }
 
   function handleSelectStop(stopId: string) {
-    if (isStopDisabled(stopId)) {
-      return;
-    }
-
     if (selectedStops.has(stopId)) {
       selectedStops.delete(stopId);
     } else {
@@ -209,6 +204,10 @@
     platformKind?: "platform" | "stop" | null,
     parentStopId?: string,
   ) {
+    if (isSubStopDisabled(subStopId)) {
+      return;
+    }
+
     if (selectedSubStops.has(subStopId)) {
       selectedSubStops.delete(subStopId);
     } else {
@@ -760,11 +759,10 @@
 
           <div class="stops-checklist">
             {#each searchResults as stop (stop.id)}
-              <label class="checkbox-item" class:disabled={isStopDisabled(stop.id)}>
+              <label class="checkbox-item">
                 <input
                   type="checkbox"
                   checked={selectedStops.has(stop.id)}
-                  disabled={isStopDisabled(stop.id)}
                   onchange={() => handleSelectStop(stop.id)}
                 />
                 <span class="checkbox-label">
@@ -820,11 +818,13 @@
                         {@const routes = subStopRoutes.get(subStop.id) || []}
                         {@const isSelected = selectedSubStops.has(subStop.id)}
                         {@const subStopData = selectedSubStops.get(subStop.id)}
-                        <div class="substop-card" class:selected={isSelected}>
+                        {@const isDisabled = isSubStopDisabled(subStop.id)}
+                        <div class="substop-card" class:selected={isSelected} class:disabled={isDisabled}>
                           <label class="substop-checkbox-label">
                             <input
                               type="checkbox"
                               checked={isSelected}
+                              disabled={isDisabled}
                               onchange={() => handleSelectSubStop(subStop.id, subStop.name, subStop.platformValue, subStop.platformKind, stopId)}
                             />
                             <span class="substop-info">
@@ -996,13 +996,6 @@
         </button>
       {:else if currentStep === "search"}
         <button class="button button-secondary" onclick={onCancel}>Cancel</button>
-        <button
-          class="button button-primary"
-          onclick={handleSearch}
-          disabled={isSearching || !searchQuery.trim()}
-        >
-          {isSearching ? "Searching..." : "Search"}
-        </button>
       {:else if currentStep === "select"}
         <button class="button button-secondary" onclick={() => (currentStep = "search")}>
           Back
@@ -1488,15 +1481,6 @@
     opacity: 0.5;
   }
 
-  .checkbox-item.disabled {
-    opacity: 0.6;
-    pointer-events: none;
-  }
-
-  .checkbox-item.disabled .checkbox-label {
-    color: var(--text-secondary, #666);
-  }
-
   .checkbox-label {
     display: flex;
     flex-direction: column;
@@ -1845,6 +1829,12 @@
   .substop-card.selected {
     border-color: #087bc4;
     background-color: #dbeafe;
+  }
+
+  .substop-card.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
   }
 
   :global([data-theme="dark"]) .substop-card {
