@@ -15,6 +15,8 @@
   // Removed unused errorMessage and errorTimeout for lint compliance
   let isLoadingSubStops = $state(false);
   let searchError = $state<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- used in template for inline validation
+  let filterRoutesError = $state<string | null>(null);
   let selectedCount = $state(0);
   let configTarget = $state<"main" | "route" | "current" | "">("" as any);
   let currentRoutePath = $state("");
@@ -365,7 +367,7 @@
       
       // Also collect ALL unique routes for the main stop (from all physical stops)
       const mainStopRoutes: any[] = [];
-      const mainStopRouteKeys = new Set<string>();
+      const mainStopRouteKeys = new SvelteSet<string>();
       for (const stop of physicalStops.values()) {
         for (const route of stop.routes) {
           const routeKey = `${route.line} ${route.destination}`;
@@ -389,19 +391,58 @@
     }
   }
 
+  function validateDirectionMappings(): string | null {
+    // Validate all direction mapping groups have titles and at least one route
+    const stopIdsToCheck = new SvelteSet<string>();
+    
+    // Add main stop if full stop is selected
+    if (selectFullStop) {
+      selectedStops.forEach(id => stopIdsToCheck.add(id));
+    }
+    
+    // Add all substops
+    selectedSubStops.forEach((_, id) => stopIdsToCheck.add(id));
+    
+    for (const stopId of stopIdsToCheck) {
+      const groups = directionMappings.get(stopId);
+      if (groups && groups.length > 0) {
+        for (let i = 0; i < groups.length; i++) {
+          const group = groups[i];
+          if (!group.title || group.title.trim() === "") {
+            return `Direction group ${i + 1} has no title. Please provide a title or remove the empty group.`;
+          }
+          if (group.routes.length === 0) {
+            return `Direction group "${group.title}" has no routes selected. Please select at least one route or remove the group.`;
+          }
+        }
+      }
+    }
+    
+    return null;
+  }
+
   async function proceedToConfiguration() {
     if (selectedStops.size === 0) return;
+    
+    // Validate direction mappings if they exist
+    const validationError = validateDirectionMappings();
+    if (validationError) {
+      filterRoutesError = validationError;
+      return;
+    }
+    
+    filterRoutesError = null;
     currentStep = "configure";
   }
 
   function proceedToRouteFiltering() {
-    // Only show route filtering if we have substops with routes
+    // Show route filtering if we have substops with routes OR if full stop is selected
     const hasSubStopsWithRoutes = Array.from(selectedSubStops.keys()).some(subStopId => {
       const routes = subStopRoutes.get(subStopId) || [];
       return routes.length > 0;
     });
     
-    if (hasSubStopsWithRoutes) {
+    if (hasSubStopsWithRoutes || selectFullStop) {
       currentStep = "filter-routes";
     } else {
       currentStep = "configure";
@@ -434,6 +475,7 @@
     if (groups) {
       groups.splice(groupIndex, 1);
       directionMappings.set(stopId, [...groups]); // Trigger reactivity
+      filterRoutesError = null; // Clear validation error
     }
   }
 
@@ -442,6 +484,7 @@
     if (groups && groups[groupIndex]) {
       groups[groupIndex].title = title;
       directionMappings.set(stopId, [...groups]); // Trigger reactivity
+      filterRoutesError = null; // Clear validation error
     }
   }
 
@@ -462,6 +505,7 @@
       );
       
       directionMappings.set(stopId, newGroups);
+      filterRoutesError = null; // Clear validation error
     }
   }
   
@@ -485,14 +529,6 @@
 
   async function handleComplete() {
     const stopsConfig: any[] = [];
-    
-    // If configuring "on the run" (current), don't save to main config
-    if (configTarget === "current") {
-      console.log("Skipping 'on the run' config - not saved to main stops");
-      resetWizard();
-      await onComplete({ target: "main", stops: [] });
-      return;
-    }
     
     console.log("=== WIZARD HANDLECOMPLETE ===");
     console.log("configTarget:", configTarget);
@@ -906,7 +942,11 @@
                     </label>
                     
                     <div class="substop-options">
-                      {#each mainStop.subStops as subStop (subStop.id)}
+                      {#each mainStop.subStops.toSorted((a: any, b: any) => {
+                        const aVal = typeof a.platformValue === 'number' ? a.platformValue : (typeof a.platformValue === 'string' ? parseInt(a.platformValue) || 0 : 0);
+                        const bVal = typeof b.platformValue === 'number' ? b.platformValue : (typeof b.platformValue === 'string' ? parseInt(b.platformValue) || 0 : 0);
+                        return aVal - bVal;
+                      }) as subStop (subStop.id)}
                         {@const routes = subStopRoutes.get(subStop.id) || []}
                         {@const isSelected = selectedSubStops.has(subStop.id)}
                         {@const subStopData = selectedSubStops.get(subStop.id)}
@@ -994,93 +1034,6 @@
             <p>Create groups of routes with custom titles for each platform (e.g., "Towards City", "Northbound"). Each group will show the selected routes.</p>
 
             <div class="direction-mappings-list">
-              {#each Array.from(selectedStops) as stopId (stopId)}
-                {@const stop = searchResults.find((s) => s.id === stopId)}
-                {@const allRoutes = new Map()}
-                {@const mainStopRoutes = subStopRoutes.get(stopId) || []}
-                {#each mainStopRoutes as route}
-                  {@const routeKey = `${route.line} ${route.destination}`}
-                  {#if !allRoutes.has(routeKey)}
-                    {void allRoutes.set(routeKey, route)}
-                  {/if}
-                {/each}
-                {#each Array.from(selectedSubStops.entries()) as [subStopId, subStopData]}
-                  {@const routes = subStopRoutes.get(subStopId) || []}
-                  {#each routes as route}
-                    {@const routeKey = `${route.line} ${route.destination}`}
-                    {#if !allRoutes.has(routeKey)}
-                      {void allRoutes.set(routeKey, route)}
-                    {/if}
-                  {/each}
-                {/each}
-                
-                {#if allRoutes.size > 0}
-                  <div class="direction-mappings-container">
-                    <div class="direction-mappings-header">
-                      <h4>{stop?.name} (Main Stop)</h4>
-                      <button class="button-add-group" onclick={() => addDirectionGroup(stopId)}
-                        >+ Add Direction Group</button
-                      >
-                    </div>
-
-                    {#each (directionMappings.get(stopId) || []) as group, groupIndex (groupIndex)}
-                      <div class="direction-group-card">
-                        <div class="direction-group-header">
-                          <input
-                            type="text"
-                            placeholder="e.g., Towards City, Northbound"
-                            value={group.title}
-                            oninput={(e) => updateDirectionGroupTitle(stopId, groupIndex, e.currentTarget.value)}
-                            class="direction-group-title-input"
-                          />
-                          <button
-                            class="button-remove-group"
-                            onclick={() => removeDirectionGroup(stopId, groupIndex)}
-                            aria-label="Remove group"
-                          >×</button>
-                        </div>
-                        <div class="direction-group-routes">
-                          <p class="routes-select-label">Select routes for this group:</p>
-                          <div class="route-filter-options">
-                            {#each Array.from(allRoutes.values()) as route (route.transportType + '-' + route.line + '-' + route.destination)}
-                              {@const routeKey = `${route.line} ${route.destination}`}
-                              {@const isSelected = group.routes.includes(routeKey)}
-                              <button
-                                class="route-filter-button"
-                                class:selected={isSelected}
-                                onclick={() => toggleRouteInGroup(stopId, groupIndex, routeKey)}
-                              >
-                                <span class="route-filter-line">
-                                  {#if route.transportType === "UBAHN"}
-                                    <svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 25 25" class="route-icon" aria-hidden="true"><rect fill="#00508c" width="25" height="25"/><path fill="#fff" d="M20.9,2h-5v13.1c0,2.4-.8,4.1-3.4,4.1s-3.5-1.7-3.5-4.1V2h-4.9v13.5c0,5.7,4.6,7.8,8.4,7.8s8.4-2.1,8.4-7.8V2s0,0,0,0Z"/></svg>
-                                  {:else if route.transportType === "SBAHN"}
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 31.98 31.98" class="route-icon" aria-hidden="true"><path d="M15.99,0A15.99,15.99,0,1,0,31.98,15.99,16.023,16.023,0,0,0,15.99,0" fill="#009551" fill-rule="evenodd"/><path d="M25.67,6.31c0,4.74-.04,4.66-.04,4.66C23.29,8.68,14.77,5.05,13.08,7.86c-1.99,3.31,4.32,4.53,9.48,6.29,6.15,2.1,6.06,9.19,1.58,12.61-5.93,4.52-13.23,2.38-18.69-1.71V20.16c1.3,1.52,3.44,2.52,6.47,3.61,1.72.62,6.13,1.59,7.26-.41,1.52-2.69-2.43-3.54-4.02-3.83a16.155,16.155,0,0,1-6.35-2.44c-4.64-3.07-4.42-9.04.11-12.23C14,1.27,21.12,2.52,25.67,6.31" fill="#fff" fill-rule="evenodd"/></svg>
-                                  {:else if route.transportType === "TRAM"}
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" class="route-icon" aria-hidden="true"><rect width="32" height="32" fill="#dd0b2f"/><path d="M18.9,11.8h2.01v1.38a2.719,2.719,0,0,1,2.43-1.59a1.758,1.758,0,0,1,1.13.36A2.972,2.972,0,0,1,25.24,13a2.567,2.567,0,0,1,2.38-1.41a1.847,1.847,0,0,1,1.62.79a3.47,3.47,0,0,1,.5,2.02v4.81H27.56V15.39c0-1.13-.32-1.7-.97-1.7a1,1,0,0,0-.92.68a3.158,3.158,0,0,0-.25,1.33v3.5H23.23V15.16c0-.99-.32-1.48-.96-1.48a1.013,1.013,0,0,0-.94.76a3.694,3.694,0,0,0-.24,1.4V19.2H18.9V11.8m-3.73,4.06a1.611,1.611,0,0,0-.87.23a1.005,1.005,0,0,0-.19,1.53.829.829,0,0,0,.62.25a1.107,1.107,0,0,0,.99-.6a2.53,2.53,0,0,0,.32-1.3l-.01-.04C15.54,15.88,15.25,15.86,15.17,15.86Zm.84-1.28v-.21a1.018,1.018,0,0,0-.51-.89a1.785,1.785,0,0,0-.95-.28a5.384,5.384,0,0,0-1.91.57V12.1a5.613,5.613,0,0,1,2.38-.47q3.045,0,3.04,3.19v4.4H16.18V18.09a4.924,4.924,0,0,1-.94,1a2.094,2.094,0,0,1-1.24.32a2.081,2.081,0,0,1-1.6-.71a2.6,2.6,0,0,1-.64-1.83a2,2,0,0,1,1.58-2.07A10.788,10.788,0,0,1,16.01,14.58ZM9.13,11.8l.06,1.51a3.412,3.412,0,0,1,.68-1.18a1.556,1.556,0,0,1,1.14-.42c.09,0,.32.03.69.07l-.05,2.18a2.9,2.9,0,0,0-.79-.1c-1,0-1.5.77-1.5,2.3v3.07H7.17V13.7c0-.31-.02-.95-.06-1.91H9.13ZM1.3,9.37H7.71v1.97H5.66V19.2H3.4V11.34H1.3Z" fill="#fff" fill-rule="evenodd"/></svg>
-                                  {:else if route.transportType === "BAHN"}
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92.81 122.88" class="route-icon" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M66.69,101.35H26.68l-4.7,6.94h49.24L66.69,101.35L66.69,101.35z M17.56,114.81l-5.47,8.07H0l19.64-29.46 h-3.49c-4.76,0-8.66-3.9-8.66-8.66V8.66C7.5,3.9,11.39,0,16.15,0h61.22c4.76,0,8.66,3.9,8.66,8.66v76.1c0,4.76-3.9,8.66-8.66,8.66 h-3.4l18.83,29.04H80.45l-4.99-7.65H17.56L17.56,114.81z M62.97,67.66h10.48c1.14,0,2.07,0.93,2.07,2.07V80.2 c0,1.14-0.93,2.07-2.07,2.07H62.97c-1.14,0-2.07-0.93-2.07-2.07V69.72C60.9,68.59,61.83,67.66,62.97,67.66L62.97,67.66z M18.98,67.66h10.48c1.14,0,2.07,0.93,2.07,2.07V80.2c0,1.14-0.93,2.07-2.07,2.07H18.98c-1.14,0-2.07-0.93-2.07-2.07V69.72 C16.91,68.59,17.84,67.66,18.98,67.66L18.98,67.66z M25.1,16.7h42.81c4.6,0,8.36,3.76,8.36,8.37v13.17c0,4.6-3.76,8.36-8.36,8.36 H25.1c-4.6,0-8.36-3.76-8.36-8.36V25.07C16.74,20.47,20.5,16.7,25.1,16.7L25.1,16.7z M38.33,3.8h16.2C55.34,3.8,56,4.46,56,5.27 v6.38c0,0.81-0.66,1.47-1.47,1.47h-16.2c-0.81,0-1.47-0.66-1.47-1.47V5.27C36.85,4.46,37.51,3.8,38.33,3.8L38.33,3.8z"/></svg>
-                                  {:else}
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" class="route-icon" aria-hidden="true"><path d="M16,0A16,16,0,1,1,0,16,16.034,16.034,0,0,1,16,0" fill="#005d79" fill-rule="evenodd"/><path d="M28.43,12.85a7.084,7.084,0,0,0-2.25-.56q-1.68,0-1.68,1.08c0,.46.39.84,1.18,1.15a10.3,10.3,0,0,1,2.21,1.02a3.178,3.178,0,0,1,1.19,2.7a3.2,3.2,0,0,1-1.33,2.8a4.846,4.846,0,0,1-2.85.78a10.854,10.854,0,0,1-3.09-.57l.23-2.38a6.584,6.584,0,0,0,2.69.7c1.08,0,1.62-.37,1.62-1.12,0-.51-.4-.93-1.19-1.27a16.466,16.466,0,0,1-2.2-1.03a2.906,2.906,0,0,1-1.19-2.49A3.1,3.1,0,0,1,23.1,10.9a4.932,4.932,0,0,1,2.83-.73a11.091,11.091,0,0,1,2.7.45l-.2,2.23M12.35,10.47h2.62v7.04a2.58,2.58,0,0,0,.4,1.52a1.476,1.476,0,0,0,1.26.62c1.03,0,1.55-.81,1.55-2.43V10.47h2.63V17.6a4.05,4.05,0,0,1-1.28,3.2a4.48,4.48,0,0,1-3.05,1.02a4.185,4.185,0,0,1-2.85-1a3.709,3.709,0,0,1-1.28-2.96Zm-4.8,9.04a1.2,1.2,0,0,0,.88-.38a1.274,1.274,0,0,0,.38-.94c0-.84-.55-1.27-1.65-1.27H6.06V19.5H7.55Zm-.53-4.57a1.771,1.771,0,0,0,1.02-.28A1.129,1.129,0,0,0,8.1,12.8a1.521,1.521,0,0,0-.93-.3H6.05v2.45h.97ZM3.47,10.45H8a3.514,3.514,0,0,1,2.13.62a2.454,2.454,0,0,1,1,2.12a3.087,3.087,0,0,1-.41,1.71a2.761,2.761,0,0,1-1.33.99a2.506,2.506,0,0,1,2.02,2.72q0,2.97-4.07,2.97H3.46V10.45Z" fill="#fff" fill-rule="evenodd"/></svg>
-                                  {/if}
-                                  <span class="route-line-text">{route.line}</span>
-                                </span>
-                                <span class="route-filter-dest">{route.destination}</span>
-                              </button>
-                            {/each}
-                          </div>
-                        </div>
-                      </div>
-                    {/each}
-
-                    {#if !directionMappings.get(stopId) || (directionMappings.get(stopId)?.length ?? 0) === 0}
-                      <p class="info-text">
-                        💡 Click "Add Direction Group" to create groups for the main stop
-                      </p>
-                    {/if}
-                  </div>
-                {/if}
-              {/each}
-
               {#each Array.from(selectedSubStops.entries()) as [subStopId, subStopData] (subStopId)}
                 {@const routes = subStopRoutes.get(subStopId) || []}
                 {#if routes.length > 0}
@@ -1101,6 +1054,7 @@
                             value={group.title}
                             oninput={(e) => updateDirectionGroupTitle(subStopId, groupIndex, e.currentTarget.value)}
                             class="direction-group-title-input"
+                            class:error={!group.title || group.title.trim() === ""}
                           />
                           <button
                             class="button-remove-group"
@@ -1108,6 +1062,9 @@
                             aria-label="Remove group"
                           >×</button>
                         </div>
+                        {#if !group.title || group.title.trim() === ""}
+                          <p class="inline-error">⚠️ Title is required</p>
+                        {/if}
                         <div class="direction-group-routes">
                           <p class="routes-select-label">Select routes for this group:</p>
                           <div class="route-filter-options">
@@ -1137,6 +1094,9 @@
                           </button>
                             {/each}
                           </div>
+                          {#if group.routes.length === 0}
+                            <p class="inline-error">⚠️ Select at least one route for this group</p>
+                          {/if}
                         </div>
                       </div>
                     {/each}
@@ -1144,6 +1104,100 @@
                     {#if !directionMappings.get(subStopId) || (directionMappings.get(subStopId)?.length ?? 0) === 0}
                       <p class="info-text">
                         💡 Click "Add Direction Group" to create groups for this platform
+                      </p>
+                    {/if}
+                  </div>
+                {/if}
+              {/each}
+
+              {#each Array.from(selectedStops) as stopId (stopId)}
+                {@const stop = searchResults.find((s) => s.id === stopId)}
+                {@const allRoutes = new Map()}
+                {@const mainStopRoutes = subStopRoutes.get(stopId) || []}
+                {#each mainStopRoutes as route (`main-${stopId}-${route.line}-${route.destination}`)}
+                  {@const routeKey = `${route.line} ${route.destination}`}
+                  {#if !allRoutes.has(routeKey)}
+                    {void allRoutes.set(routeKey, route)}
+                  {/if}
+                {/each}
+                {#each Array.from(selectedSubStops.entries()) as [subStopId] (subStopId)}
+                  {@const routes = subStopRoutes.get(subStopId) || []}
+                  {#each routes as route (`sub-${subStopId}-${route.line}-${route.destination}`)}
+                    {@const routeKey = `${route.line} ${route.destination}`}
+                    {#if !allRoutes.has(routeKey)}
+                      {void allRoutes.set(routeKey, route)}
+                    {/if}
+                  {/each}
+                {/each}
+                
+                {#if allRoutes.size > 0}
+                  <div class="direction-mappings-container">
+                    <div class="direction-mappings-header">
+                      <h4>{stop?.name} (Main Stop)</h4>
+                      <button class="button-add-group" onclick={() => addDirectionGroup(stopId)}
+                        >+ Add Direction Group</button
+                      >
+                    </div>
+
+                    {#each (directionMappings.get(stopId) || []) as group, groupIndex (groupIndex)}
+                      <div class="direction-group-card">
+                        <div class="direction-group-header">
+                          <input
+                            type="text"
+                            placeholder="e.g., Towards City, Northbound"
+                            value={group.title}
+                            oninput={(e) => updateDirectionGroupTitle(stopId, groupIndex, e.currentTarget.value)}
+                            class="direction-group-title-input"
+                            class:error={!group.title || group.title.trim() === ""}
+                          />
+                          <button
+                            class="button-remove-group"
+                            onclick={() => removeDirectionGroup(stopId, groupIndex)}
+                            aria-label="Remove group"
+                          >×</button>
+                        </div>
+                        {#if !group.title || group.title.trim() === ""}
+                          <p class="inline-error">⚠️ Title is required</p>
+                        {/if}
+                        <div class="direction-group-routes">
+                          <p class="routes-select-label">Select routes for this group:</p>
+                          <div class="route-filter-options">
+                            {#each Array.from(allRoutes.values()) as route (route.transportType + '-' + route.line + '-' + route.destination)}
+                              {@const routeKey = `${route.line} ${route.destination}`}
+                              {@const isSelected = group.routes.includes(routeKey)}
+                              <button
+                                class="route-filter-button"
+                                class:selected={isSelected}
+                                onclick={() => toggleRouteInGroup(stopId, groupIndex, routeKey)}
+                              >
+                                <span class="route-filter-line">
+                                  {#if route.transportType === "UBAHN"}
+                                    <svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 25 25" class="route-icon" aria-hidden="true"><rect fill="#00508c" width="25" height="25"/><path fill="#fff" d="M20.9,2h-5v13.1c0,2.4-.8,4.1-3.4,4.1s-3.5-1.7-3.5-4.1V2h-4.9v13.5c0,5.7,4.6,7.8,8.4,7.8s8.4-2.1,8.4-7.8V2s0,0,0,0Z"/></svg>
+                                  {:else if route.transportType === "SBAHN"}
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 31.98 31.98" class="route-icon" aria-hidden="true"><path d="M15.99,0A15.99,15.99,0,1,0,31.98,15.99,16.023,16.023,0,0,0,15.99,0" fill="#009551" fill-rule="evenodd"/><path d="M25.67,6.31c0,4.74-.04,4.66-.04,4.66C23.29,8.68,14.77,5.05,13.08,7.86c-1.99,3.31,4.32,4.53,9.48,6.29,6.15,2.1,6.06,9.19,1.58,12.61-5.93,4.52-13.23,2.38-18.69-1.71V20.16c1.3,1.52,3.44,2.52,6.47,3.61,1.72.62,6.13,1.59,7.26-.41,1.52-2.69-2.43-3.54-4.02-3.83a16.155,16.155,0,0,1-6.35-2.44c-4.64-3.07-4.42-9.04.11-12.23C14,1.27,21.12,2.52,25.67,6.31" fill="#fff" fill-rule="evenodd"/></svg>
+                                  {:else if route.transportType === "TRAM"}
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" class="route-icon" aria-hidden="true"><rect width="32" height="32" fill="#dd0b2f"/><path d="M18.9,11.8h2.01v1.38a2.719,2.719,0,0,1,2.43-1.59a1.758,1.758,0,0,1,1.13.36A2.972,2.972,0,0,1,25.24,13a2.567,2.567,0,0,1,2.38-1.41a1.847,1.847,0,0,1,1.62.79a3.47,3.47,0,0,1,.5,2.02v4.81H27.56V15.39c0-1.13-.32-1.7-.97-1.7a1,1,0,0,0-.92.68a3.158,3.158,0,0,0-.25,1.33v3.5H23.23V15.16c0-.99-.32-1.48-.96-1.48a1.013,1.013,0,0,0-.94.76a3.694,3.694,0,0,0-.24,1.4V19.2H18.9V11.8m-3.73,4.06a1.611,1.611,0,0,0-.87.23a1.005,1.005,0,0,0-.19,1.53.829.829,0,0,0,.62.25a1.107,1.107,0,0,0,.99-.6a2.53,2.53,0,0,0,.32-1.3l-.01-.04C15.54,15.88,15.25,15.86,15.17,15.86Zm.84-1.28v-.21a1.018,1.018,0,0,0-.51-.89a1.785,1.785,0,0,0-.95-.28a5.384,5.384,0,0,0-1.91.57V12.1a5.613,5.613,0,0,1,2.38-.47q3.045,0,3.04,3.19v4.4H16.18V18.09a4.924,4.924,0,0,1-.94,1a2.094,2.094,0,0,1-1.24.32a2.081,2.081,0,0,1-1.6-.71a2.6,2.6,0,0,1-.64-1.83a2,2,0,0,1,1.58-2.07A10.788,10.788,0,0,1,16.01,14.58ZM9.13,11.8l.06,1.51a3.412,3.412,0,0,1,.68-1.18a1.556,1.556,0,0,1,1.14-.42c.09,0,.32.03.69.07l-.05,2.18a2.9,2.9,0,0,0-.79-.1c-1,0-1.5.77-1.5,2.3v3.07H7.17V13.7c0-.31-.02-.95-.06-1.91H9.13ZM1.3,9.37H7.71v1.97H5.66V19.2H3.4V11.34H1.3Z" fill="#fff" fill-rule="evenodd"/></svg>
+                                  {:else if route.transportType === "BAHN"}
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 92.81 122.88" class="route-icon" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M66.69,101.35H26.68l-4.7,6.94h49.24L66.69,101.35L66.69,101.35z M17.56,114.81l-5.47,8.07H0l19.64-29.46 h-3.49c-4.76,0-8.66-3.9-8.66-8.66V8.66C7.5,3.9,11.39,0,16.15,0h61.22c4.76,0,8.66,3.9,8.66,8.66v76.1c0,4.76-3.9,8.66-8.66,8.66 h-3.4l18.83,29.04H80.45l-4.99-7.65H17.56L17.56,114.81z M62.97,67.66h10.48c1.14,0,2.07,0.93,2.07,2.07V80.2 c0,1.14-0.93,2.07-2.07,2.07H62.97c-1.14,0-2.07-0.93-2.07-2.07V69.72C60.9,68.59,61.83,67.66,62.97,67.66L62.97,67.66z M18.98,67.66h10.48c1.14,0,2.07,0.93,2.07,2.07V80.2c0,1.14-0.93,2.07-2.07,2.07H18.98c-1.14,0-2.07-0.93-2.07-2.07V69.72 C16.91,68.59,17.84,67.66,18.98,67.66L18.98,67.66z M25.1,16.7h42.81c4.6,0,8.36,3.76,8.36,8.37v13.17c0,4.6-3.76,8.36-8.36,8.36 H25.1c-4.6,0-8.36-3.76-8.36-8.36V25.07C16.74,20.47,20.5,16.7,25.1,16.7L25.1,16.7z M38.33,3.8h16.2C55.34,3.8,56,4.46,56,5.27 v6.38c0,0.81-0.66,1.47-1.47,1.47h-16.2c-0.81,0-1.47-0.66-1.47-1.47V5.27C36.85,4.46,37.51,3.8,38.33,3.8L38.33,3.8z"/></svg>
+                                  {:else}
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" class="route-icon" aria-hidden="true"><path d="M16,0A16,16,0,1,1,0,16,16.034,16.034,0,0,1,16,0" fill="#005d79" fill-rule="evenodd"/><path d="M28.43,12.85a7.084,7.084,0,0,0-2.25-.56q-1.68,0-1.68,1.08c0,.46.39.84,1.18,1.15a10.3,10.3,0,0,1,2.21,1.02a3.178,3.178,0,0,1,1.19,2.7a3.2,3.2,0,0,1-1.33,2.8a4.846,4.846,0,0,1-2.85.78a10.854,10.854,0,0,1-3.09-.57l.23-2.38a6.584,6.584,0,0,0,2.69.7c1.08,0,1.62-.37,1.62-1.12,0-.51-.4-.93-1.19-1.27a16.466,16.466,0,0,1-2.2-1.03a2.906,2.906,0,0,1-1.19-2.49A3.1,3.1,0,0,1,23.1,10.9a4.932,4.932,0,0,1,2.83-.73a11.091,11.091,0,0,1,2.7.45l-.2,2.23M12.35,10.47h2.62v7.04a2.58,2.58,0,0,0,.4,1.52a1.476,1.476,0,0,0,1.26.62c1.03,0,1.55-.81,1.55-2.43V10.47h2.63V17.6a4.05,4.05,0,0,1-1.28,3.2a4.48,4.48,0,0,1-3.05,1.02a4.185,4.185,0,0,1-2.85-1a3.709,3.709,0,0,1-1.28-2.96Zm-4.8,9.04a1.2,1.2,0,0,0,.88-.38a1.274,1.274,0,0,0,.38-.94c0-.84-.55-1.27-1.65-1.27H6.06V19.5H7.55Zm-.53-4.57a1.771,1.771,0,0,0,1.02-.28A1.129,1.129,0,0,0,8.1,12.8a1.521,1.521,0,0,0-.93-.3H6.05v2.45h.97ZM3.47,10.45H8a3.514,3.514,0,0,1,2.13.62a2.454,2.454,0,0,1,1,2.12a3.087,3.087,0,0,1-.41,1.71a2.761,2.761,0,0,1-1.33.99a2.506,2.506,0,0,1,2.02,2.72q0,2.97-4.07,2.97H3.46V10.45Z" fill="#fff" fill-rule="evenodd"/></svg>
+                                  {/if}
+                                  <span class="route-line-text">{route.line}</span>
+                                </span>
+                                <span class="route-filter-dest">{route.destination}</span>
+                              </button>
+                            {/each}
+                          </div>
+                          {#if group.routes.length === 0}
+                            <p class="inline-error">⚠️ Select at least one route for this group</p>
+                          {/if}
+                        </div>
+                      </div>
+                    {/each}
+
+                    {#if !directionMappings.get(stopId) || (directionMappings.get(stopId)?.length ?? 0) === 0}
+                      <p class="info-text">
+                        💡 Click "Add Direction Group" to create groups for the main stop
                       </p>
                     {/if}
                   </div>
@@ -1225,13 +1279,19 @@
                     <div class="field">
                       <span class="field-label">Direction mappings:</span>
                       <div class="mappings-preview">
-                        {#each Array.from(selectedSubStops.entries()) as [subStopId, subStopData] (subStopId)}
+                        {#each directionMappings.get(stopId) || [] as group, groupIndex (`${stopId}-group-${groupIndex}`)}
                           <div class="mapping-item">
-                            <strong>"{subStopData.title}"</strong>
+                            <strong>"{group.title || '(unnamed)'}"</strong>
                             <div class="mapping-routes">
-                              {#each subStopRoutes.get(subStopId) || [] as route (route.transportType + '-' + route.line + '-' + route.destination)}
-                                <span class="route-chip-small">{route.line}</span>
-                              {/each}
+                              {#if group.routes.length > 0}
+                                {#each group.routes as routeKey (routeKey)}
+                                  {@const routeParts = routeKey.split(' ')}
+                                  {@const lineNumber = routeParts[0]}
+                                  <span class="route-chip-small">{lineNumber}</span>
+                                {/each}
+                              {:else}
+                                <span class="no-routes">(no routes selected)</span>
+                              {/if}
                             </div>
                           </div>
                         {/each}
@@ -1255,10 +1315,52 @@
                     <span class="field-label">Title:</span>
                     <span>{subStopData.title}</span>
                   </div>
-                  <div class="field">
-                    <span class="field-label">Show ungrouped:</span>
-                    <span>true</span>
-                  </div>
+                  
+                  {#if selectFullStop && directionMappings.has(subStopId)}
+                    <div class="field">
+                      <span class="field-label">Show ungrouped:</span>
+                      <span>false</span>
+                    </div>
+                    <div class="field">
+                      <span class="field-label">Direction mappings:</span>
+                      <div class="mappings-preview">
+                        {#each directionMappings.get(subStopId) || [] as group, groupIndex (`${subStopId}-group-${groupIndex}`)}
+                          <div class="mapping-item">
+                            <strong>"{group.title || '(unnamed)'}"</strong>
+                            <div class="mapping-routes">
+                              {#if group.routes.length > 0}
+                                {#each group.routes as routeKey (routeKey)}
+                                  {@const routeParts = routeKey.split(' ')}
+                                  {@const lineNumber = routeParts[0]}
+                                  <span class="route-chip-small">{lineNumber}</span>
+                                {/each}
+                              {:else}
+                                <span class="no-routes">(no routes selected)</span>
+                              {/if}
+                            </div>
+                          </div>
+                        {/each}
+                      </div>
+                    </div>
+                  {:else}
+                    <div class="field">
+                      <span class="field-label">Show ungrouped:</span>
+                      <span>true</span>
+                    </div>
+                    {#if filterSelectedRoutes.has(subStopId)}
+                      <div class="field">
+                        <span class="field-label">Filtered routes:</span>
+                        <div class="route-chips">
+                          {#each Array.from(filterSelectedRoutes.get(subStopId) || []) as routeKey (routeKey)}
+                            {@const routeParts = routeKey.split(' ')}
+                            {@const lineNumber = routeParts[0]}
+                            <span class="route-chip-small">{lineNumber}</span>
+                          {/each}
+                        </div>
+                      </div>
+                    {/if}
+                  {/if}
+                  
                   <div class="field">
                     <span class="field-label">Max departures per stop:</span>
                     <span>4</span>
@@ -1294,6 +1396,9 @@
           Next
         </button>
       {:else if currentStep === "search"}
+        <button class="button button-secondary" onclick={() => (currentStep = configTarget === "route" ? "route-details" : "target")}>
+          Back
+        </button>
         <button class="button button-secondary" onclick={onCancel}>Cancel</button>
       {:else if currentStep === "select"}
         <button class="button button-secondary" onclick={() => (currentStep = "search")}>
@@ -1331,12 +1436,12 @@
         </button>
       {:else if currentStep === "configure"}
         <button class="button button-secondary" onclick={() => {
-          // Go back to filter-routes if there were substops with routes
+          // Go back to filter-routes if there were substops with routes OR if full stop was selected
           const hasSubStopsWithRoutes = Array.from(selectedSubStops.keys()).some(subStopId => {
             const routes = subStopRoutes.get(subStopId) || [];
             return routes.length > 0;
           });
-          if (hasSubStopsWithRoutes) {
+          if (hasSubStopsWithRoutes || selectFullStop) {
             currentStep = "filter-routes";
           } else {
             const hasSubStops = Array.from(selectedStops)
@@ -2628,6 +2733,22 @@
     box-shadow: 0 0 0 3px rgba(8, 123, 196, 0.1);
   }
 
+  .direction-group-title-input.error {
+    border-color: #ef4444;
+  }
+
+  .direction-group-title-input.error:focus {
+    border-color: #dc2626;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+  }
+
+  .inline-error {
+    color: #dc2626;
+    font-size: 0.875rem;
+    margin: 0.5rem 0 0 0;
+    font-weight: 500;
+  }
+
   :global([data-theme="dark"]) .direction-group-title-input {
     background: #1f2937;
     color: #f9fafb;
@@ -2637,6 +2758,19 @@
   :global([data-theme="dark"]) .direction-group-title-input:focus {
     border-color: #60a5fa;
     box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.1);
+  }
+
+  :global([data-theme="dark"]) .direction-group-title-input.error {
+    border-color: #f87171;
+  }
+
+  :global([data-theme="dark"]) .direction-group-title-input.error:focus {
+    border-color: #ef4444;
+    box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.1);
+  }
+
+  :global([data-theme="dark"]) .inline-error {
+    color: #fca5a5;
   }
 
   .button-remove-group {
