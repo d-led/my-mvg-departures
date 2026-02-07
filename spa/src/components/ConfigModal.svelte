@@ -1000,7 +1000,7 @@
   .fullscreen-editor-content {
     background: white;
     border-radius: 0;
-    padding: 0;
+    padding: 8px;
     width: 100vw;
     height: 100vh;
     display: flex;
@@ -1008,6 +1008,13 @@
     box-shadow: none;
     border: 4px solid #087BC4;
     box-sizing: border-box;
+    gap: 8px;
+  }
+
+  @media (min-width: 600px) {
+    .fullscreen-editor-content {
+      padding: 24px;
+    }
   }
 
   :global([data-theme="dark"]) .fullscreen-editor-content {
@@ -1023,13 +1030,13 @@
   }
 
   .fullscreen-textarea {
-    flex: 1 1 auto;
-    width: 100vw;
-    height: 100vh;
+    flex: 1 1 0;
+    width: 100%;
+    height: 100%;
     min-height: 0;
     font-family: monospace;
     font-size: 1rem;
-    padding: 2rem 1rem 1rem 1rem;
+    padding: 0.5rem;
     border: none;
     border-radius: 0;
     resize: none;
@@ -1037,6 +1044,9 @@
     background: #f9fafb;
     color: #111827;
     outline: none;
+    overflow-x: auto;
+    white-space: pre;
+    word-break: normal;
   }
 
   .modal-content {
