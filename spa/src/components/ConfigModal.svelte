@@ -46,6 +46,11 @@
   const configStorage = new LocalStorageConfigStorage();
   const configParser = new ConfigParser();
 
+  // The commit SHA will be injected at build time (see VITE_COMMIT_SHA in vite config)
+  // Only show the commit SHA if it is set and non-empty
+  // @ts-ignore
+  const COMMIT_SHA: string | undefined = import.meta.env?.VITE_COMMIT_SHA;
+
   function extractStationIdFromBlock(block: string): string | null {
     // Extract station_id from a [[stops]] block
     const match = block.match(/station_id\s*=\s*"([^"]+)"/);
@@ -721,6 +726,9 @@
     <div class="modal-content">
       <div class="modal-header">
         <h2>Configuration</h2>
+        {#if COMMIT_SHA}
+            <span><small>Commit{COMMIT_SHA}</small></span>
+        {/if}
         <button class="close-button" onclick={onCancel} aria-label="Close">×</button>
       </div>
       <div class="modal-body">

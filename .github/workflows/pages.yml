@@ -46,10 +46,12 @@ jobs:
         run: |
           ./scripts/test.sh
 
-      - name: Build SPA
+      - name: Build SPA (with commit SHA)
         working-directory: spa
         run: |
-          npm run build
+          export VITE_COMMIT_SHA=$(git rev-parse --short HEAD)
+          echo "VITE_COMMIT_SHA=$VITE_COMMIT_SHA"
+          VITE_COMMIT_SHA="$VITE_COMMIT_SHA" npm run build
 
       - name: Verify config.example.toml is present
         working-directory: spa
