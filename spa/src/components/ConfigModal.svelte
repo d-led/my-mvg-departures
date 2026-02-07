@@ -47,26 +47,6 @@
   const configStorage = new LocalStorageConfigStorage();
   const configParser = new ConfigParser();
 
-  // The commit SHA will be injected at build time (see VITE_COMMIT_SHA in vite config)
-  // Only show the commit SHA if it is set and non-empty
-  // Use a global replacement at build time, fallback to empty string if not set
-  // This works for both iife and esm builds if replaced by the bundler
-  let COMMIT_SHA = $state('');
-  // Prefer global replacement if available (window.__COMMIT_SHA__)
-  if (typeof window !== 'undefined' && typeof (window as any).__COMMIT_SHA__ !== 'undefined') {
-    $COMMIT_SHA = (window as any).__COMMIT_SHA__;
-  } else {
-    // Try import.meta.env if available (esm)
-    try {
-      // @ts-ignore
-      if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_COMMIT_SHA) {
-        // @ts-ignore
-        $COMMIT_SHA = import.meta.env.VITE_COMMIT_SHA;
-      }
-    } catch (e) {
-      // ignore
-    }
-  }
 
   function extractStationIdFromBlock(block: string): string | null {
     // Extract station_id from a [[stops]] block
@@ -743,9 +723,6 @@
     <div class="modal-content">
       <div class="modal-header">
         <h2>Configuration</h2>
-        {#if COMMIT_SHA}
-          <span><small style="color: #888; font-size: 0.9em; margin-left: 0.5em;">Commit {COMMIT_SHA}</small></span>
-        {/if}
         <button class="close-button" onclick={onCancel} aria-label="Close">×</button>
       </div>
       <div class="modal-body">
@@ -1014,42 +991,46 @@
     background: rgba(0,0,0,0.8);
     z-index: 11000;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    align-items: stretch;
+    justify-content: stretch;
+    width: 100vw;
+    height: 100vh;
   }
 
   .fullscreen-editor-content {
     background: white;
-    border-radius: 0.5rem;
-    padding: 1rem;
-    width: 95vw;
-    max-width: 600px;
-    height: 90vh;
+    border-radius: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    box-shadow: none;
   }
 
   .fullscreen-close {
     align-self: flex-end;
     min-width: 100px;
     font-size: 1.1rem;
-    margin-bottom: 0.5rem;
+    margin: 1rem;
+    z-index: 1;
   }
 
   .fullscreen-textarea {
     flex: 1 1 auto;
-    width: 100%;
+    width: 100vw;
+    height: 100vh;
     min-height: 0;
     font-family: monospace;
     font-size: 1rem;
-    padding: 1rem;
-    border: 1px solid #d1d5db;
-    border-radius: 0.375rem;
+    padding: 2rem 1rem 1rem 1rem;
+    border: none;
+    border-radius: 0;
     resize: none;
     box-sizing: border-box;
     background: #f9fafb;
     color: #111827;
+    outline: none;
   }
 
   .modal-content {
