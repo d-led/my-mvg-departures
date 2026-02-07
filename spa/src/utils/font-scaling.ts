@@ -238,11 +238,16 @@ export function calculateFillVerticalSpace(config: FontScalingConfig): void {
     `[font-scaling] calculatedHeightPerRow=${calculatedHeightPerRow}px, cappedTo=${heightPerRow}px, totalRows=${totalRows}`,
   );
 
-  // Use a slightly higher line height (1.25) to better distribute vertical space
+  // Use a stable, continuous fit formula: as totalRows increases, fit gets tighter
+  // The fitFactor approaches 1.0 for many rows, and is more relaxed for few rows
+  // Example: fitFactor = 0.92 + 0.08 * (1 - Math.tanh((totalRows-6)/8))
+  // - For few rows (<=6), fitFactor ~1.0 (relaxed)
+  // - For many rows (>=20), fitFactor ~0.92 (tight)
+  const fitFactor = 0.92 + 0.08 * (1 - Math.tanh((totalRows - 6) / 8));
   const lineHeight = 1.25;
-  // Max font that fits in a row without vertical clipping: lineHeight * fontSize <= rowHeight - padding
   const rowVerticalPaddingPx = 8; // 0.25rem top + 0.25rem bottom
-  const maxFontFitsInRow = (heightPerRow - rowVerticalPaddingPx) / lineHeight;
+  const maxFontFitsInRow =
+    (heightPerRow - rowVerticalPaddingPx) / (lineHeight * fitFactor);
 
   // Reasonable max font sizes to keep display compact and legible like the many-departure view
   // Cap to 2rem for main elements (route, destination, time)
@@ -255,7 +260,7 @@ export function calculateFillVerticalSpace(config: FontScalingConfig): void {
 
   const reservedPadding = 0;
   const fontUsableHeight = heightPerRow - reservedPadding;
-  const baseFontSize = fontUsableHeight / lineHeight;
+  const baseFontSize = fontUsableHeight / (lineHeight * fitFactor);
 
   // Calculate proportional font sizes (same ratios as before)
   const fontScalingFactor = config.fontScalingFactorWhenFilling || 1.0;
