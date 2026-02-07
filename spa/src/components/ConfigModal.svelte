@@ -27,6 +27,7 @@
   let pasteError = $state(false);
   let showWizard = $state(false);
   let showDelete = $state(false);
+  let showFullscreenEditor = $state(false);
   let deleteStep = $state<"select" | "confirm">("select");
   let deleteCandidates = $state<
     {
@@ -48,8 +49,24 @@
 
   // The commit SHA will be injected at build time (see VITE_COMMIT_SHA in vite config)
   // Only show the commit SHA if it is set and non-empty
-  // @ts-ignore
-  const COMMIT_SHA: string | undefined = import.meta.env?.VITE_COMMIT_SHA;
+  // Use a global replacement at build time, fallback to empty string if not set
+  // This works for both iife and esm builds if replaced by the bundler
+  let COMMIT_SHA = $state('');
+  // Prefer global replacement if available (window.__COMMIT_SHA__)
+  if (typeof window !== 'undefined' && typeof (window as any).__COMMIT_SHA__ !== 'undefined') {
+    $COMMIT_SHA = (window as any).__COMMIT_SHA__;
+  } else {
+    // Try import.meta.env if available (esm)
+    try {
+      // @ts-ignore
+      if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_COMMIT_SHA) {
+        // @ts-ignore
+        $COMMIT_SHA = import.meta.env.VITE_COMMIT_SHA;
+      }
+    } catch (e) {
+      // ignore
+    }
+  }
 
   function extractStationIdFromBlock(block: string): string | null {
     // Extract station_id from a [[stops]] block
@@ -727,7 +744,7 @@
       <div class="modal-header">
         <h2>Configuration</h2>
         {#if COMMIT_SHA}
-            <span><small>Commit{COMMIT_SHA}</small></span>
+          <span><small style="color: #888; font-size: 0.9em; margin-left: 0.5em;">Commit {COMMIT_SHA}</small></span>
         {/if}
         <button class="close-button" onclick={onCancel} aria-label="Close">×</button>
       </div>
@@ -801,13 +818,36 @@
               <span class="error-indicator">✗</span>
             {/if}
           </button>
+          <button
+            class="icon-button"
+            onclick={() => (showFullscreenEditor = true)}
+            title="Expand editor for mobile editing"
+            aria-label="Expand editor"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="icon"><path d="M4 4h7V2H2v9h2V4zm16 0v7h2V2h-9v2h7zm0 16h-7v2h9v-9h-2v7zM4 20v-7H2v9h9v-2H4z"/></svg>
+          </button>
         </div>
         <textarea
           bind:value={configText}
           class="config-textarea"
           class:error={!!errorMessage}
           placeholder="Paste TOML config here..."
+          readonly={showFullscreenEditor}
         ></textarea>
+        {#if showFullscreenEditor}
+          <div class="fullscreen-editor-overlay" role="dialog" aria-modal="true" tabindex="-1" onkeydown={e => { if (e.key === 'Escape') showFullscreenEditor = false; }}>
+            <div class="fullscreen-editor-content">
+              <button class="button button-primary fullscreen-close" onclick={() => (showFullscreenEditor = false)}>
+                Done
+              </button>
+              <textarea
+                bind:value={configText}
+                class="fullscreen-textarea"
+                spellcheck="false"
+              ></textarea>
+            </div>
+          </div>
+        {/if}
       </div>
     </div>
     <div class="modal-footer">
@@ -964,17 +1004,52 @@
     color: #60a5fa;
     border-bottom-color: #60a5fa;
   }
-  .modal-overlay {
+
+  .fullscreen-editor-overlay {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background-color: rgba(0, 0, 0, 0.5);
+    background: rgba(0,0,0,0.8);
+    z-index: 11000;
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 10000;
+  }
+
+  .fullscreen-editor-content {
+    background: white;
+    border-radius: 0.5rem;
+    padding: 1rem;
+    width: 95vw;
+    max-width: 600px;
+    height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  }
+
+  .fullscreen-close {
+    align-self: flex-end;
+    min-width: 100px;
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .fullscreen-textarea {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    font-family: monospace;
+    font-size: 1rem;
+    padding: 1rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    resize: none;
+    box-sizing: border-box;
+    background: #f9fafb;
+    color: #111827;
   }
 
   .modal-content {
