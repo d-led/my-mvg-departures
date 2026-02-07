@@ -735,12 +735,6 @@
           <button
             class="method-button"
             onclick={openWizard}
-            disabled={isOnTheRunRoute(getCurrentRoutePath())}
-            title={
-              isOnTheRunRoute(getCurrentRoutePath())
-                ? "Wizard is disabled for Next to me"
-                : "Step-by-step wizard to find and configure stops"
-            }
           >
             Wizard (experimental)
           </button>

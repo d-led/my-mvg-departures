@@ -753,7 +753,7 @@
                 <span>Your main departures board</span>
               </div>
             </button>
-            {#if currentRoutePath}
+            {#if currentRoutePath && !isOnTheRunRoute(currentRoutePath) && !onTheRunDisabled}
               <button
                 class="target-button"
                 class:active={configTarget === "current"}
