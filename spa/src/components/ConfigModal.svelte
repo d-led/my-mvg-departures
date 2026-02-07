@@ -1006,6 +1006,12 @@
     display: flex;
     flex-direction: column;
     box-shadow: none;
+    border: 4px solid #087BC4;
+    box-sizing: border-box;
+  }
+
+  :global([data-theme="dark"]) .fullscreen-editor-content {
+    border: 4px solid #60a5fa;
   }
 
   .fullscreen-close {
