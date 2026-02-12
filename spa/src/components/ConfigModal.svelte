@@ -914,7 +914,7 @@
             title="Tweak numeric and display values"
             aria-label="Tweak display values"
           >
-            <img src="/assets/settings-line-icon.svg" alt="" class="icon" />
+            <img src="assets/settings-line-icon.svg" alt="" class="icon" />
           </button>
           <button
             class="icon-button"
