@@ -28,6 +28,10 @@
   let showWizard = $state(false);
   let showDelete = $state(false);
   let showFullscreenEditor = $state(false);
+  let showTweakOverlay = $state(false);
+  type TweakEntry = { key: string; value: string; lineIndex: number };
+  type TweakSection = { heading: string; entries: TweakEntry[] };
+  let tweakSections = $state<TweakSection[]>([]);
   let deleteStep = $state<"select" | "confirm">("select");
   let deleteCandidates = $state<
     {
@@ -76,6 +80,114 @@
     showWizard = true;
   }
 
+  /** True if the line is a TOML section header (not a comment; starts with [ and ends with ]). */
+  function isSectionHeader(line: string): boolean {
+    const t = line.trim();
+    return t.length > 0 && !t.startsWith("#") && t.startsWith("[") && t.endsWith("]");
+  }
+
+  /** Section heading text for display (trimmed, trailing # comment removed). */
+  function sectionHeadingText(line: string): string {
+    return line.trim().replace(/\s*#.*$/, "").trim();
+  }
+
+  /** Parse all TOML sections: every non-comment line starting with [ is a heading; collect key=value lines until the next heading. */
+  function parseDisplaySections(tomlText: string): TweakSection[] {
+    const lines = tomlText.split("\n");
+    const sections: TweakSection[] = [];
+    let i = 0;
+    const keyValueRe = /^\s*([a-z][a-z0-9_]*)\s*=\s*(.*)$/;
+
+    while (i < lines.length) {
+      const line = lines[i];
+      if (isSectionHeader(line)) {
+        const heading = sectionHeadingText(line);
+        const entries: TweakEntry[] = [];
+        i += 1;
+        while (i < lines.length) {
+          const next = lines[i];
+          if (isSectionHeader(next)) {
+            break;
+          }
+          const kv = next.match(keyValueRe);
+          if (kv) {
+            const [, key, raw] = kv;
+            const rawTrimmed = raw.trim();
+            const isNonScalar = rawTrimmed.startsWith("[") || rawTrimmed.startsWith("{");
+            if (!isNonScalar) {
+              let value = rawTrimmed;
+              if (value.startsWith('"')) {
+                let end = 1;
+                while (end < value.length) {
+                  if (value[end] === "\\" && end + 1 < value.length) {
+                    end += 2;
+                    continue;
+                  }
+                  if (value[end] === '"') {
+                    value = value.slice(1, end).replace(/\\"/g, '"');
+                    break;
+                  }
+                  end += 1;
+                }
+              } else if (value.startsWith("'") && value.endsWith("'") && value.length >= 2) {
+                value = value.slice(1, -1);
+              } else {
+                const hashIdx = value.indexOf("#");
+                if (hashIdx !== -1) value = value.slice(0, hashIdx).trim();
+              }
+              entries.push({ key, value, lineIndex: i });
+            }
+          }
+          i += 1;
+        }
+        sections.push({ heading, entries });
+        continue;
+      }
+      i += 1;
+    }
+    return sections;
+  }
+
+  /** Format value for TOML: quote strings, leave numbers/booleans/arrays/inline tables as-is. */
+  function tomlValue(value: string): string {
+    const trimmed = value.trim();
+    if (trimmed === "true" || trimmed === "false") return trimmed;
+    const n = Number(trimmed);
+    if (!Number.isNaN(n) && trimmed !== "") return trimmed;
+    if (trimmed.startsWith("[") || trimmed.startsWith("{")) return trimmed;
+    return `"${trimmed.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  }
+
+  /** Apply modified tweak sections back to TOML text (updates config text only, does not save). */
+  function applyTweakDisplay(tomlText: string, sections: TweakSection[]): string {
+    const lines = tomlText.split("\n");
+    const lineUpdates = new Map<number, string>();
+    for (const section of sections) {
+      for (const entry of section.entries) {
+        const line = lines[entry.lineIndex];
+        if (!line) continue;
+        const keyValueRe = /^\s*([a-z][a-z0-9_]*)\s*=\s*(.*)$/;
+        if (keyValueRe.test(line)) {
+          lineUpdates.set(entry.lineIndex, `${entry.key} = ${tomlValue(entry.value)}`);
+        }
+      }
+    }
+    const out: string[] = [];
+    for (let idx = 0; idx < lines.length; idx++) {
+      out.push(lineUpdates.has(idx) ? lineUpdates.get(idx)! : lines[idx]);
+    }
+    return out.join("\n");
+  }
+
+  function openTweak() {
+    tweakSections = parseDisplaySections(configText);
+    showTweakOverlay = true;
+  }
+
+  function closeTweakAndApply() {
+    configText = applyTweakDisplay(configText, tweakSections);
+    showTweakOverlay = false;
+  }
 
   function buildDeleteCandidates(): {
     candidates: {
@@ -825,9 +937,53 @@
             </div>
           </div>
         {/if}
+        {#if showTweakOverlay}
+          <div class="tweak-overlay" role="dialog" aria-modal="true" aria-label="Tweak display values" tabindex="-1" onkeydown={e => { if (e.key === 'Escape') closeTweakAndApply(); }}>
+            <div class="tweak-overlay-content">
+              <div class="tweak-close-bar">
+                <button class="button button-primary tweak-close" onclick={closeTweakAndApply}>
+                  Ok
+                </button>
+              </div>
+              <div class="tweak-list">
+                {#if tweakSections.length === 0}
+                  <p class="tweak-empty">No sections found. Add at least one TOML section (a line starting with [).</p>
+                {:else}
+                  {#each tweakSections as section, sectionIdx (sectionIdx)}
+                    <section class="tweak-section">
+                      <h3 class="tweak-section-title">{section.heading}</h3>
+                      <ul class="tweak-entries">
+                        {#each section.entries as entry (entry.lineIndex)}
+                          <li class="tweak-entry">
+                            <label class="tweak-key" for="tweak-input-{entry.lineIndex}">{entry.key}</label>
+                            <input
+                              id="tweak-input-{entry.lineIndex}"
+                              type="text"
+                              class="tweak-value"
+                              bind:value={entry.value}
+                              aria-label={entry.key}
+                            />
+                          </li>
+                        {/each}
+                      </ul>
+                    </section>
+                  {/each}
+                {/if}
+              </div>
+            </div>
+          </div>
+        {/if}
       </div>
     </div>
     <div class="modal-footer">
+      <button
+        class="button button-secondary"
+        onclick={openTweak}
+        disabled={!configText.trim() || isSaving || isLoadingExample}
+        title="Tweak numeric and display values"
+      >
+        Tweak
+      </button>
       <button 
         class="button button-example" 
         onclick={loadExampleConfig} 
@@ -1047,6 +1203,135 @@
     overflow-x: auto;
     white-space: pre;
     word-break: normal;
+  }
+
+  .tweak-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.8);
+    z-index: 11000;
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
+    width: 100vw;
+    height: 100vh;
+  }
+
+  .tweak-overlay-content {
+    background: white;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 8px;
+    box-sizing: border-box;
+    gap: 0;
+    border: 4px solid #087BC4;
+    overflow: hidden;
+    min-height: 0;
+  }
+
+  :global([data-theme="dark"]) .tweak-overlay-content {
+    background: #1d232a;
+    color: #f9fafb;
+    border-color: #60a5fa;
+  }
+
+  .tweak-close-bar {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    flex-shrink: 0;
+    display: flex;
+    justify-content: flex-end;
+    padding: 8px 0;
+    background: inherit;
+  }
+
+  .tweak-close {
+    min-width: 100px;
+    font-size: 1.1rem;
+  }
+
+  .tweak-list {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    padding-bottom: 1rem;
+    overflow: auto;
+    min-height: 0;
+  }
+
+  .tweak-empty {
+    margin: 0;
+    color: #6b7280;
+  }
+
+  :global([data-theme="dark"]) .tweak-empty {
+    color: #9ca3af;
+  }
+
+  .tweak-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  .tweak-section-title {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 700;
+  }
+
+  .tweak-entries {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+
+  .tweak-entry {
+    display: grid;
+    grid-template-rows: auto auto;
+    gap: 0.15rem;
+    padding: 0.3rem 0;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  :global([data-theme="dark"]) .tweak-entry {
+    border-bottom-color: #374151;
+  }
+
+  .tweak-key {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #374151;
+  }
+
+  :global([data-theme="dark"]) .tweak-key {
+    color: #9ca3af;
+  }
+
+  .tweak-value {
+    width: 100%;
+    min-width: 0;
+    padding: 0.3rem;
+    font-size: 1rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    box-sizing: border-box;
+  }
+
+  :global([data-theme="dark"]) .tweak-value {
+    background: #111827;
+    border-color: #4b5563;
+    color: #f9fafb;
   }
 
   .modal-content {

@@ -121,6 +121,6 @@ export default [
     },
   },
   {
-    ignores: ["dist/**", "node_modules/**", ".svelte-temp/**"],
+    ignores: ["dist/**", "node_modules/**", ".svelte-temp/**", "htmlcov/**"],
   },
 ];
