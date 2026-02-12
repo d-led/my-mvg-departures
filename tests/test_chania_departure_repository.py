@@ -1,6 +1,6 @@
 """Behavior-focused tests for ChaniaDepartureRepository and Chania stations list."""
 
-from datetime import datetime, timezone
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -10,6 +10,8 @@ from mvg_departures.adapters.chania_api.chania_departure_repository import (
     _effective_date_for_today,
 )
 from mvg_departures.adapters.chania_api.chania_stations import list_chania_stations
+
+ATHENS = ZoneInfo("Europe/Athens")
 
 
 @pytest.mark.asyncio
@@ -48,9 +50,8 @@ async def test_get_departures_parses_api_response(monkeypatch: pytest.MonkeyPatc
     assert dep.stop_point_global_id == "1"
     assert dep.line == "A1"  # bus number from API index 3
     assert dep.destination == "Line 1"  # English "To" from API index 2
-    utc = timezone.utc  # noqa: UP017
-    assert dep.planned_time == datetime(2026, 2, 8, 12, 34, tzinfo=utc)
-    assert dep.time == datetime(2026, 2, 8, 12, 34, tzinfo=utc)
+    assert dep.planned_time == datetime(2026, 2, 8, 12, 34, tzinfo=ATHENS)
+    assert dep.time == datetime(2026, 2, 8, 12, 34, tzinfo=ATHENS)
     assert dep.platform == 3
     assert dep.transport_type == "bus"
     assert dep.icon == "bus"
@@ -58,6 +59,48 @@ async def test_get_departures_parses_api_response(monkeypatch: pytest.MonkeyPatc
     assert dep.is_realtime is False
     assert dep.delay_seconds is None
     assert dep.messages == []
+
+
+@pytest.mark.asyncio
+async def test_get_departures_filters_by_after_time(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Given API returns rows at 10:00, 10:15, 10:30, when get_departures is called with after_time 10:15, then returns only 10:15 and 10:30."""
+
+    class MockResponse:
+        ok = True
+
+        async def json(self) -> object:
+            return {
+                "data": [
+                    ["1", "", "L1", "", "2026-02-08", "10:00", "1"],
+                    ["2", "", "L2", "", "2026-02-08", "10:15", "1"],
+                    ["3", "", "L3", "", "2026-02-08", "10:30", "1"],
+                ],
+            }
+
+        async def __aenter__(self) -> "MockResponse":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            pass
+
+    class MockSession:
+        def get(self, _url: str) -> MockResponse:
+            return MockResponse()
+
+        async def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("aiohttp.ClientSession", lambda: MockSession())
+
+    after = datetime(2026, 2, 8, 10, 15, tzinfo=ATHENS)
+    repo = ChaniaDepartureRepository()
+    departures = await repo.get_departures(
+        "11", limit=10, departure_date="2026-02-08", after_time=after
+    )
+
+    assert len(departures) == 2
+    assert departures[0].planned_time == datetime(2026, 2, 8, 10, 15, tzinfo=ATHENS)
+    assert departures[1].planned_time == datetime(2026, 2, 8, 10, 30, tzinfo=ATHENS)
 
 
 @pytest.mark.asyncio

@@ -13,6 +13,7 @@ import logging
 import sys
 from datetime import datetime
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 from mvg_departures.adapters.chania_api import ChaniaDepartureRepository, list_chania_stations
 
@@ -44,17 +45,22 @@ def _format_departure(dep: Departure, index: int) -> str:
     )
 
 
+CHANIA_TIMEZONE = ZoneInfo("Europe/Athens")
+
+
 async def fetch_departures_chania(
     station_id: str,
     date: str | None = None,
     limit: int = 20,
+    after_time: datetime | None = None,
 ) -> list[Departure]:
     """Fetch scheduled departures from KTEL Chania API for a station.
 
     Args:
-        station_id: Station ID (e.g. "11" for Chania, "59" for Paleochora).
+        station_id: Station ID (e.g. "11" for Chania, "14" for Paleochora).
         date: Departure date YYYY-MM-DD; if None, uses today (server date).
         limit: Maximum number of departures to return.
+        after_time: If set, only departures at or after this time (Athens tz).
 
     Returns:
         List of Departure domain objects.
@@ -67,12 +73,14 @@ async def fetch_departures_chania(
         transport_types=None,
         duration_minutes=60,
         departure_date=date,
+        after_time=after_time,
     )
 
 
 async def run_departures_command(
     station_id: str,
     date: str | None = None,
+    time_str: str | None = None,
     limit: int = 20,
     output_json: bool = False,
 ) -> None:
@@ -80,14 +88,29 @@ async def run_departures_command(
     if date is None:
         date = datetime.now().astimezone().strftime("%Y-%m-%d")
 
-    departures = await fetch_departures_chania(station_id=station_id, date=date, limit=limit)
+    after_time: datetime | None = None
+    if time_str is not None:
+        try:
+            # Parse HH:MM and build datetime on the given date in Athens
+            parts = time_str.strip().split(":")
+            hour, minute = int(parts[0]), int(parts[1]) if len(parts) >= 2 else 0
+            after_time = datetime.strptime(
+                f"{date} {hour:02d}:{minute:02d}", "%Y-%m-%d %H:%M"
+            ).replace(tzinfo=CHANIA_TIMEZONE)
+        except (ValueError, AttributeError):
+            logging.warning("Invalid --time %s; use HH:MM. Ignoring.", time_str)
+
+    departures = await fetch_departures_chania(
+        station_id=station_id, date=date, limit=limit, after_time=after_time
+    )
 
     if output_json:
         out = [_departure_to_dict(d) for d in departures]
         print(json.dumps(out, indent=2, ensure_ascii=False))
         return
 
-    print(f"\nKTEL Chania - Departures from station {station_id} on {date}\n")
+    time_hint = f" from {time_str} onward" if time_str else ""
+    print(f"\nKTEL Chania - Departures from station {station_id} on {date}{time_hint}\n")
     if not departures:
         print("  No departures found.")
         return
@@ -135,6 +158,9 @@ Examples:
   # Specific date, limit 10
   chania-config departures 11 --date 2025-06-15 --limit 10
 
+  # From 14:30 onward on the given date
+  chania-config departures 11 --date 2025-06-15 --time 14:30
+
   # Paleochora (ID 14), JSON output
   chania-config departures 14 --json
 
@@ -160,6 +186,12 @@ Finding station IDs:
         help="Departure date (default: today)",
     )
     dep_parser.add_argument(
+        "--time",
+        default=None,
+        metavar="HH:MM",
+        help="Only show departures at or after this time (e.g. 14:30)",
+    )
+    dep_parser.add_argument(
         "--limit", type=int, default=20, help="Max departures to show (default: 20)"
     )
     dep_parser.add_argument("--json", action="store_true", help="Output as JSON")
@@ -182,6 +214,7 @@ Finding station IDs:
             run_departures_command(
                 station_id=args.station_id,
                 date=args.date,
+                time_str=args.time,
                 limit=args.limit,
                 output_json=args.json,
             )

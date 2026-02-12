@@ -91,6 +91,9 @@ class ChaniaDepartureRepository(DepartureRepository):
         duration_minutes: int = 60,  # noqa: ARG002 (protocol; Chania uses date only)
         *,
         departure_date: str | None = None,  # YYYY-MM-DD; optional, for CLI one-time fetch
+        after_time: (
+            datetime | None
+        ) = None,  # optional; only departures at or after this time (Athens tz)
     ) -> list[Departure]:
         # When no date given (dashboard): use tomorrow if it's late evening in Greece.
         date = _effective_date_for_today() if departure_date is None else departure_date
@@ -112,25 +115,33 @@ class ChaniaDepartureRepository(DepartureRepository):
                 except (aiohttp.ContentTypeError, ValueError) as e:
                     logger.warning("Chania API invalid JSON for %s: %s", url, e)
                     return []
-            return self._parse_departures(data, limit)
+            return self._parse_departures(data, limit, after_time=after_time)
         finally:
             if use_own_session:
                 await session.close()
 
-    def _parse_departures(self, data: dict[str, Any], limit: int) -> list[Departure]:
+    def _parse_departures(
+        self,
+        data: dict[str, Any],
+        limit: int,
+        *,
+        after_time: datetime | None = None,
+    ) -> list[Departure]:
         raw = data.get("data")
         if not isinstance(raw, list):
             return []
         departures: list[Departure] = []
-        for dep in raw[:limit]:
+        for dep in raw:
             if not isinstance(dep, (list, tuple)) or len(dep) < 7:
                 continue
             try:
                 planned_time = datetime.strptime(
                     f"{dep[CHANIA_API_ROW_DATE]} {dep[CHANIA_API_ROW_TIME]}",
                     "%Y-%m-%d %H:%M",
-                ).replace(tzinfo=UTC)
+                ).replace(tzinfo=CHANIA_TIMEZONE)
             except (TypeError, ValueError):
+                continue
+            if after_time is not None and planned_time < after_time:
                 continue
             # Route ID as trip id; bus number (index 3) as line; English "To" as destination; platform from index 6
             bus_number = dep[CHANIA_API_ROW_BUS_NUMBER]
@@ -156,4 +167,6 @@ class ChaniaDepartureRepository(DepartureRepository):
                     messages=[],
                 )
             )
+            if len(departures) >= limit:
+                break
         return departures

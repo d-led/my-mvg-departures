@@ -52,6 +52,9 @@ max_departures_per_route = 2
   ```bash
   # From project root (with venv activated)
   chania-config departures 11 --date 2026-02-13 --limit 20
+
+  # Only departures from 14:30 onward on that date
+  chania-config departures 11 --date 2026-02-13 --time 14:30
   ```
 
   Or with Python (e.g. in a script or notebook):
