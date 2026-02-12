@@ -313,10 +313,25 @@ export class OnTheRunPoller {
     return this.config.updateLocationIntervalSeconds ?? 20;
   }
 
+  /** One parenthetical: optional label + distance from last GPS (e.g. " (45 m)" or " (Platform 2, 45 m)"). */
+  private formatLabelAndDistance(
+    label: string | undefined,
+    meters: number | undefined,
+  ): string {
+    const hasLabel = label != null && label.trim() !== "";
+    const hasDistance = meters != null && Number.isFinite(meters);
+    const distStr = hasDistance ? `${Math.round(meters)} m` : "";
+    if (hasLabel && hasDistance) return ` (${label.trim()}, ${distStr})`;
+    if (hasDistance) return ` (${distStr})`;
+    if (hasLabel) return ` (${label.trim()})`;
+    return "";
+  }
+
   private createBaseStopConfig(station: NearbyStation): StopConfiguration {
+    const suffix = this.formatLabelAndDistance(undefined, station.distanceMeters);
     return createStopConfiguration({
       stationId: station.id,
-      stationName: station.name,
+      stationName: `${station.name}${suffix}`,
       maxDeparturesPerStop: this.config.maxDeparturesPerStop,
       maxDeparturesPerRoute: this.config.maxDeparturesPerRoute,
       showUngrouped: true,
@@ -332,8 +347,10 @@ export class OnTheRunPoller {
     useSubStops: boolean,
   ): StopConfiguration[] {
     const stopConfigs: StopConfiguration[] = [];
-
-    const baseStopName = useSubStops ? `${station.name} (rest)` : station.name;
+    // MVG departures API returns stopPointGlobalId but no coordinates; use station distance only.
+    const baseStopName = useSubStops
+      ? `${station.name}${this.formatLabelAndDistance("rest", station.distanceMeters)}`
+      : `${station.name}${this.formatLabelAndDistance(undefined, station.distanceMeters)}`;
 
     stopConfigs.push(
       createStopConfiguration({
@@ -357,7 +374,7 @@ export class OnTheRunPoller {
       stopConfigs.push(
         createStopConfiguration({
           stationId: subStop.stopPointId,
-          stationName: `${station.name} (${subStop.label})`,
+          stationName: `${station.name}${this.formatLabelAndDistance(subStop.label, station.distanceMeters)}`,
           maxDeparturesPerStop: this.config.maxDeparturesPerStop,
           maxDeparturesPerRoute: this.config.maxDeparturesPerRoute,
           showUngrouped: true,

@@ -46,7 +46,11 @@ export class MvgStationRepository {
         latitude: location.latitude as number,
         longitude: location.longitude as number,
         distanceMeters:
-          typeof location.distance === "number" ? location.distance : undefined,
+          typeof location.distanceInMeters === "number"
+            ? location.distanceInMeters
+            : typeof location.distance === "number"
+              ? location.distance
+              : undefined,
       }))
       .filter(
         (location) =>
