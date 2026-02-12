@@ -48,13 +48,13 @@ jobs:
 
       - name: Build SPA
         working-directory: spa
+        env:
+          GITHUB_SHA: ${{ github.sha }}
         run: |
           npm run build
-
-      - name: Replace build SHA and show it
-        run: |
-          sed -i "s/__BUILD_SHA__/${GITHUB_SHA::7}/g" spa/dist/bundle.js
-          sed -i '/__BUILD_SHA_HIDE_START__/,/__BUILD_SHA_HIDE_END__/d' spa/dist/css/departures.css
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          sed -i "s|__BUILD_SHA__|$SHORT_SHA|g" dist/bundle.js
+          sed -i '/__BUILD_SHA_HIDE_START__/,/__BUILD_SHA_HIDE_END__/d' dist/css/departures.css
 
       - name: Verify config.example.toml is present
         working-directory: spa
