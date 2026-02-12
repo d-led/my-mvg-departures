@@ -9,8 +9,8 @@
     "prettier": "prettier -w ."
   },
   "devDependencies": {
-    "@types/node": "^25.0.10",
-    "cypress": "^15.9.0",
+    "@types/node": "^25.2.3",
+    "cypress": "^15.10.0",
     "mocha-junit-reporter": "^2.2.1",
     "prettier": "^3.8.1",
     "typescript": "^5.9.3"
