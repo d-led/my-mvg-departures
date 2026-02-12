@@ -198,6 +198,26 @@
     tick().then(() => tweakFilterInputEl?.focus());
   });
 
+  let lastTweakValueFocusedEl: HTMLInputElement | undefined = $state(undefined);
+
+  function clearTweakFilter() {
+    tweakFilterQuery = "";
+    tick().then(() => {
+      if (
+        lastTweakValueFocusedEl &&
+        document.contains(lastTweakValueFocusedEl)
+      ) {
+        lastTweakValueFocusedEl.focus();
+        lastTweakValueFocusedEl.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+        });
+      } else {
+        tweakFilterInputEl?.focus();
+      }
+    });
+  }
+
   /** Non-empty filter terms (lowercased) for AND matching. */
   const tweakFilterParts = $derived(
     tweakFilterQuery
@@ -247,6 +267,19 @@
       tweakEntryMatchesFilter(entry, parts)
     );
   }
+
+  /** Keys that appear in more than one section (for disambiguation in labels). */
+  const tweakDuplicateKeys = $derived.by(() => {
+    const keyCount = new Map<string, number>();
+    for (const section of tweakSections) {
+      for (const entry of section.entries) {
+        keyCount.set(entry.key, (keyCount.get(entry.key) ?? 0) + 1);
+      }
+    }
+    return new Set(
+      [...keyCount.entries()].filter(([, n]) => n > 1).map(([k]) => k),
+    );
+  });
 
   function buildDeleteCandidates(): {
     candidates: {
@@ -1006,17 +1039,31 @@
           </div>
         {/if}
         {#if showTweakOverlay}
-          <div class="tweak-overlay" role="dialog" aria-modal="true" aria-label="Tweak display values" tabindex="-1" onkeydown={e => { if (e.key === 'Escape') closeTweakAndApply(); }}>
+          <div class="tweak-overlay" role="dialog" aria-modal="true" aria-label="Tweak display values" tabindex="-1" onkeydown={e => { if (e.key === 'Escape') closeTweakAndApply(); else if (e.key === 'Enter') { e.preventDefault(); closeTweakAndApply(); } }}>
             <div class="tweak-overlay-content">
               <div class="tweak-close-bar">
-                <input
-                  type="text"
-                  class="tweak-filter-input"
-                  placeholder="Filter (space-separated, all must match)"
-                  bind:value={tweakFilterQuery}
-                  bind:this={tweakFilterInputEl}
-                  aria-label="Filter entries"
-                />
+                <div class="tweak-filter-wrap">
+                  <input
+                    type="text"
+                    class="tweak-filter-input"
+                    placeholder="Filter (space-separated, all must match)"
+                    bind:value={tweakFilterQuery}
+                    bind:this={tweakFilterInputEl}
+                    aria-label="Filter entries"
+                  />
+                  {#if tweakFilterQuery.trim()}
+                    <button
+                      type="button"
+                      class="tweak-filter-clear"
+                      onmousedown={(e) => e.preventDefault()}
+                      onclick={clearTweakFilter}
+                      aria-label="Clear filter"
+                      title="Clear filter"
+                    >
+                      ×
+                    </button>
+                  {/if}
+                </div>
                 <button class="button button-primary tweak-close" onclick={closeTweakAndApply}>
                   Ok
                 </button>
@@ -1027,28 +1074,35 @@
                 {:else}
                   {#each tweakSections as section, sectionIdx (sectionIdx)}
                     {@const hasVisible = tweakSectionHasVisibleEntries(section, tweakFilterParts)}
-                    <section
-                      class="tweak-section"
-                      class:tweak-section-blended={!hasVisible}
-                    >
-                      <h3 class="tweak-section-title">{section.heading}</h3>
-                      <ul class="tweak-entries">
-                        {#each section.entries as entry (entry.lineIndex)}
-                          {#if tweakShowEntry(section, entry, tweakFilterParts)}
-                            <li class="tweak-entry">
-                              <label class="tweak-key" for="tweak-input-{entry.lineIndex}">{entry.key}</label>
-                              <input
-                                id="tweak-input-{entry.lineIndex}"
-                                type="text"
-                                class="tweak-value"
-                                bind:value={entry.value}
-                                aria-label={entry.key}
-                              />
-                            </li>
-                          {/if}
-                        {/each}
-                      </ul>
-                    </section>
+                    {#if hasVisible}
+                      <section class="tweak-section">
+                        <h3 class="tweak-section-title">{section.heading}</h3>
+                        <ul class="tweak-entries">
+                          {#each section.entries as entry (`${sectionIdx}-${entry.lineIndex}`)}
+                            {#if tweakShowEntry(section, entry, tweakFilterParts)}
+                              <li class="tweak-entry">
+                                <label class="tweak-key" for="tweak-input-{sectionIdx}-{entry.lineIndex}">
+                                  {entry.key}
+                                  {#if tweakDuplicateKeys.has(entry.key)}
+                                    <span class="tweak-key-context"> [{section.heading}]</span>
+                                  {/if}
+                                </label>
+                                <input
+                                  id="tweak-input-{sectionIdx}-{entry.lineIndex}"
+                                  type="text"
+                                  class="tweak-value"
+                                  bind:value={entry.value}
+                                  onfocus={(e) => {
+                                    lastTweakValueFocusedEl = e.currentTarget;
+                                  }}
+                                  aria-label={tweakDuplicateKeys.has(entry.key) ? `${entry.key} in ${section.heading}` : entry.key}
+                                />
+                              </li>
+                            {/if}
+                          {/each}
+                        </ul>
+                      </section>
+                    {/if}
                   {/each}
                 {/if}
               </div>
@@ -1326,10 +1380,19 @@
     background: inherit;
   }
 
-  .tweak-filter-input {
+  .tweak-filter-wrap {
     flex: 1;
     min-width: 0;
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .tweak-filter-input {
+    width: 100%;
+    min-width: 0;
     padding: 0.5rem 0.75rem;
+    padding-right: 2rem;
     font-size: 1rem;
     border: 1px solid #d1d5db;
     border-radius: 0.375rem;
@@ -1350,18 +1413,44 @@
     color: #6b7280;
   }
 
+  .tweak-filter-clear {
+    position: absolute;
+    right: 0.4rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+    line-height: 1;
+    color: #6b7280;
+    background: transparent;
+    border: none;
+    border-radius: 0.25rem;
+    cursor: pointer;
+  }
+
+  .tweak-filter-clear:hover {
+    color: #111827;
+    background: #e5e7eb;
+  }
+
+  :global([data-theme="dark"]) .tweak-filter-clear {
+    color: #9ca3af;
+  }
+
+  :global([data-theme="dark"]) .tweak-filter-clear:hover {
+    color: #f9fafb;
+    background: #4b5563;
+  }
+
   .tweak-close {
     min-width: 100px;
     font-size: 1.1rem;
     flex-shrink: 0;
-  }
-
-  .tweak-section-blended .tweak-section-title {
-    opacity: 0.45;
-  }
-
-  .tweak-section-blended .tweak-entries {
-    display: none;
   }
 
   .tweak-list {
@@ -1422,8 +1511,18 @@
     color: #374151;
   }
 
+  .tweak-key-context {
+    font-weight: 400;
+    color: #6b7280;
+    font-size: 0.85rem;
+  }
+
   :global([data-theme="dark"]) .tweak-key {
     color: #9ca3af;
+  }
+
+  :global([data-theme="dark"]) .tweak-key-context {
+    color: #6b7280;
   }
 
   .tweak-value {

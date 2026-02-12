@@ -175,9 +175,10 @@ export class ConfigParser {
     }
 
     // Filter out stops with placeholder IDs (matches Python: s.get("station_id", "").find("XXX") == -1)
+    // Coerce station_id to string (TOML may parse unquoted values as numbers)
     return stopsData
       .filter((stop) => {
-        const stationId = stop.station_id || "";
+        const stationId = String(stop.station_id ?? "");
         return (
           stationId && stop.station_name && stationId.indexOf("XXX") === -1
         );
@@ -193,7 +194,7 @@ export class ConfigParser {
         }
 
         const stopConfigData = {
-          stationId: stop.station_id,
+          stationId: String(stop.station_id ?? ""),
           stationName: stop.station_name,
           maxDeparturesPerStop: stop.max_departures_per_stop,
           maxDeparturesPerRoute: stop.max_departures_per_route,
