@@ -1517,6 +1517,10 @@
     height: 1.5rem;
   }
 
+  :global([data-theme="dark"]) .icon-button img.icon {
+    filter: invert(1);
+  }
+
   :global([data-theme="dark"]) .icon {
     fill: #f9fafb;
   }
