@@ -1113,18 +1113,21 @@
       </div>
     </div>
     <div class="modal-footer">
-      <button 
-        class="button button-example" 
-        onclick={loadExampleConfig} 
-        disabled={isSaving || isLoadingExample}
-        title="Load example configuration"
-      >
-        {isLoadingExample ? "Loading..." : "Example"}
-      </button>
-      <button class="button button-secondary" onclick={onCancel} disabled={isSaving || isLoadingExample}>Cancel</button>
-      <button class="button button-primary" onclick={handleSave} disabled={!configText.trim() || isSaving || isLoadingExample}>
-        {isSaving ? "Saving..." : "Save"}
-      </button>
+      <span class="build-sha">__BUILD_SHA__</span>
+      <div class="modal-footer-actions">
+        <button 
+          class="button button-example" 
+          onclick={loadExampleConfig} 
+          disabled={isSaving || isLoadingExample}
+          title="Load example configuration"
+        >
+          {isLoadingExample ? "Loading..." : "Example"}
+        </button>
+        <button class="button button-secondary" onclick={onCancel} disabled={isSaving || isLoadingExample}>Cancel</button>
+        <button class="button button-primary" onclick={handleSave} disabled={!configText.trim() || isSaving || isLoadingExample}>
+          {isSaving ? "Saving..." : "Save"}
+        </button>
+      </div>
     </div>
   </div>
   {/if}
@@ -1782,10 +1785,27 @@
 
   .modal-footer {
     display: flex;
-    justify-content: flex-end;
+    align-items: center;
     gap: 0.75rem;
-    flex-shrink: 0; /* Don't shrink the footer */
-    margin-top: auto; /* Push footer to bottom */
+    flex-shrink: 0;
+    margin-top: auto;
+  }
+
+  .build-sha {
+    font-size: 0.75rem;
+    color: #565f89;
+    align-self: center;
+    margin-right: auto;
+  }
+
+  .modal-footer-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 0.75rem;
+  }
+
+  :global([data-theme="dark"]) .build-sha {
+    color: #6b7280;
   }
 
   .button-example {
