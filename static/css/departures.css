@@ -845,3 +845,141 @@ h1 {
     font-size: calc(var(--font-size-delay-amount) * 0.65);
   }
 }
+
+/* Chania one-time schedule button (location-style) */
+.chania-schedule-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.2em;
+  border-radius: 0.25rem;
+}
+.chania-schedule-button:hover {
+  opacity: 0.85;
+}
+.chania-schedule-button .location-icon {
+  width: 1em;
+  height: 1em;
+  display: block;
+}
+[data-theme="light"] .chania-schedule-button .location-icon {
+  stroke: #111827;
+}
+[data-theme="dark"] .chania-schedule-button .location-icon {
+  stroke: #f9fafb;
+}
+
+/* Chania schedule overlay */
+.chania-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+.chania-overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+.chania-overlay-content {
+  position: relative;
+  background: var(--fallback-bg, #fff);
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  max-width: 90vw;
+  max-height: 85vh;
+  overflow: auto;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+[data-theme="dark"] .chania-overlay-content {
+  background: #1d232a;
+}
+.chania-overlay-title {
+  margin: 0 0 0.75rem 0;
+  font-size: 1.25rem;
+}
+.chania-overlay-hint {
+  margin: 0 0 1rem 0;
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+.chania-overlay-hint a {
+  color: var(--banner-color, #087bc4);
+}
+.chania-overlay-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+.chania-overlay-form label {
+  font-size: 0.9rem;
+}
+.chania-overlay-form select,
+.chania-overlay-form input[type="date"] {
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.25rem;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+}
+[data-theme="dark"] .chania-overlay-form select,
+[data-theme="dark"] .chania-overlay-form input[type="date"] {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: #2a323c;
+  color: #f9fafb;
+}
+.chania-overlay-form button {
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  background: var(--banner-color, #087bc4);
+  color: #fff;
+  border: none;
+}
+.chania-departures-list {
+  margin-bottom: 1rem;
+  max-height: 50vh;
+  overflow: auto;
+}
+.chania-departures-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.chania-dep-row {
+  padding: 0.4rem 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  font-size: 0.95rem;
+}
+[data-theme="dark"] .chania-dep-row {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+.chania-platform {
+  opacity: 0.8;
+  font-size: 0.9em;
+}
+.chania-loading,
+.chania-error,
+.chania-no-departures {
+  margin: 0;
+  padding: 0.5rem 0;
+  font-size: 0.95rem;
+}
+.chania-error {
+  color: #dc2626;
+}
+.chania-overlay-ok {
+  display: block;
+  margin: 0 auto;
+  padding: 0.5rem 1.5rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  background: var(--banner-color, #087bc4);
+  color: #fff;
+  border: none;
+  font-size: 1rem;
+}

@@ -41,7 +41,7 @@ class StopConfiguration:
     exclude_destinations: list[str] = field(
         default_factory=list
     )  # Blacklist patterns to exclude from display. Supports route ("54"), destination ("Messestadt"), or route+destination ("54 Münchner Freiheit")
-    api_provider: str = "mvg"  # API provider: "mvg" (default), "db", or "vbb"
+    api_provider: str = "mvg"  # API provider: "mvg" (default), "db", "vbb", or "chania"
     max_departures_fetch: int = (
         50  # Maximum number of departures to fetch from API before grouping/filtering
     )

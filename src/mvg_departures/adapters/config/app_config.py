@@ -30,7 +30,7 @@ class AppConfig(BaseSettings):
     # API provider configuration
     api_provider: str = Field(
         default="mvg",
-        description="API provider to use: 'mvg' (default), 'db', or 'vbb'",
+        description="API provider to use: 'mvg' (default), 'db', 'vbb', or 'chania'",
     )
 
     # MVG API configuration
@@ -95,6 +95,10 @@ class AppConfig(BaseSettings):
     route_icon_display: str = Field(
         default="icon_with_text",
         description="Route icon display mode: 'none' (text only), 'icon_with_text' (icon + number), or 'badge' (number in transport type shape)",
+    )
+    find_closest_stop_url: str | None = Field(
+        default=None,
+        description="If set, show a 'Find your stop on map (GPS)' link in the one-time schedule overlay (e.g. for KTEL Chania). Not shown by default.",
     )
 
     # Font size configuration (in rem units)
@@ -221,9 +225,9 @@ class AppConfig(BaseSettings):
     @field_validator("api_provider")
     @classmethod
     def validate_api_provider(cls, v: str) -> str:
-        """Validate API provider is 'mvg', 'db', or 'vbb'."""
-        if v.lower() not in ("mvg", "db", "vbb"):
-            raise ValueError("api_provider must be either 'mvg', 'db', or 'vbb'")
+        """Validate API provider is 'mvg', 'db', 'vbb', or 'chania'."""
+        if v.lower() not in ("mvg", "db", "vbb", "chania"):
+            raise ValueError("api_provider must be 'mvg', 'db', 'vbb', or 'chania'")
         return v.lower()
 
     @field_validator("route_icon_display")
@@ -289,6 +293,7 @@ class AppConfig(BaseSettings):
             "font_size_no_departures_available": "font_size_no_departures_available",
             "font_size_status_header": "font_size_status_header",
             "split_show_delay": "split_show_delay",
+            "find_closest_stop_url": "find_closest_stop_url",
         }
 
         for toml_key, attr_name in display_mappings.items():

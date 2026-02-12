@@ -192,6 +192,19 @@
             </svg>
             <span class="sr-only" id="refresh-countdown-sr">Refresh countdown timer</span>
         </div>
+        <!-- One-time Chania schedule fetch (location-style button) -->
+        <button type="button"
+                class="status-floating-box-item chania-schedule-button"
+                id="chania-schedule-button"
+                aria-label="Check KTEL Chania schedule"
+                title="Check schedule (KTEL Chania)"
+                phx-update="ignore">
+            <svg class="location-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3.5 3.5 0 11-7 0 3.5 3.5 0 017 0z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z"/>
+            </svg>
+            <span class="sr-only">Check schedule</span>
+        </button>
         <!-- Optional server-initiated reload indicator (hidden by default, shown by JS when reload is requested) -->
         <div class="status-floating-box-item status-floating-box-reload"
              id="server-reload-indicator"
@@ -223,6 +236,108 @@
         </div>
     </div>
 </div>
+
+<!-- One-time Chania schedule overlay -->
+<div id="chania-schedule-overlay" class="chania-overlay" role="dialog" aria-modal="true" aria-label="KTEL Chania schedule" style="display: none;">
+    <div class="chania-overlay-backdrop"></div>
+    <div class="chania-overlay-content">
+        <h2 class="chania-overlay-title">KTEL Chania – Check schedule</h2>
+        {% if find_closest_stop_url %}
+        <p class="chania-overlay-hint">
+            <a href="{{ find_closest_stop_url }}" target="_blank" rel="noopener noreferrer">Find your stop on map (GPS)</a>
+        </p>
+        {% endif %}
+        <div class="chania-overlay-form">
+            <label for="chania-station-select">Station</label>
+            <select id="chania-station-select">
+                {% for s in chania_stations %}
+                <option value="{{ s.station_id }}">{{ s.station_name }} ({{ s.station_id }})</option>
+                {% endfor %}
+            </select>
+            <label for="chania-date-input">Date</label>
+            <input type="date" id="chania-date-input" />
+            <button type="button" id="chania-fetch-btn">Fetch</button>
+        </div>
+        <div id="chania-departures-list" class="chania-departures-list" aria-live="polite"></div>
+        <button type="button" id="chania-overlay-ok" class="chania-overlay-ok">OK</button>
+    </div>
+</div>
+
+<!-- Chania one-time schedule overlay script -->
+<script>
+(function() {
+    const overlay = document.getElementById('chania-schedule-overlay');
+    const btn = document.getElementById('chania-schedule-button');
+    const stationSelect = document.getElementById('chania-station-select');
+    const dateInput = document.getElementById('chania-date-input');
+    const fetchBtn = document.getElementById('chania-fetch-btn');
+    const listEl = document.getElementById('chania-departures-list');
+    const okBtn = document.getElementById('chania-overlay-ok');
+    const backdrop = overlay && overlay.querySelector('.chania-overlay-backdrop');
+
+    function setToday() {
+        const d = new Date();
+        dateInput.value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    }
+    if (dateInput) setToday();
+
+    function openOverlay() {
+        if (!overlay) return;
+        overlay.style.display = 'flex';
+        setToday();
+    }
+    function closeOverlay() {
+        if (!overlay) return;
+        overlay.style.display = 'none';
+    }
+
+    function formatTime(iso) {
+        try {
+            const d = new Date(iso);
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        } catch (_) { return iso; }
+    }
+
+    async function fetchDepartures() {
+        if (!stationSelect || !dateInput || !listEl || !fetchBtn) return;
+        const stationId = stationSelect.value;
+        const date = dateInput.value || undefined;
+        fetchBtn.disabled = true;
+        listEl.innerHTML = '<p class="chania-loading">Loading…</p>';
+        try {
+            const q = new URLSearchParams({ station_id: stationId });
+            if (date) q.set('date', date);
+            const r = await fetch('/api/chania/departures?' + q.toString());
+            const data = await r.json();
+            fetchBtn.disabled = false;
+            if (!r.ok) {
+                listEl.innerHTML = '<p class="chania-error">' + (data.error || 'Request failed') + '</p>';
+                return;
+            }
+            if (!Array.isArray(data) || data.length === 0) {
+                listEl.innerHTML = '<p class="chania-no-departures">No departures</p>';
+                return;
+            }
+            listEl.innerHTML = '<ul role="list">' + data.map(function(d) {
+                var t = formatTime(d.planned_time);
+                var plat = d.platform != null ? ' <span class="chania-platform">' + d.platform + '</span>' : '';
+                return '<li class="chania-dep-row">' + t + ' &nbsp; ' + (d.line || '') + ' → ' + (d.destination || '') + plat + '</li>';
+            }).join('') + '</ul>';
+        } catch (e) {
+            fetchBtn.disabled = false;
+            listEl.innerHTML = '<p class="chania-error">' + (e.message || 'Network error') + '</p>';
+        }
+    }
+
+    if (btn) btn.addEventListener('click', openOverlay);
+    if (okBtn) okBtn.addEventListener('click', closeOverlay);
+    if (backdrop) backdrop.addEventListener('click', closeOverlay);
+    if (fetchBtn) fetchBtn.addEventListener('click', fetchDepartures);
+    overlay && overlay.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') closeOverlay();
+    });
+})();
+</script>
 
 <!-- PyView client loader -->
 <script src="/static/js/pyview-loader.js?v={{ static_version }}"></script>

@@ -1,0 +1,46 @@
+# Example config for Chania KTEL backend connector
+
+[display]
+title = "Chania KTEL Departures"
+theme = "auto"
+fill_vertical_space = true
+refresh_interval_seconds = 30
+banner_color = "#087BC4"
+find_closest_stop_url = "https://www.e-ktel.com/en/services/find-closest-stop"
+font_size_route_number = "3rem"
+font_size_destination = "2.5rem"
+font_size_platform = "2rem"
+font_size_time = "3rem"
+font_size_stop_header = "2rem"
+font_size_direction_header = "1.5rem"
+
+[api]
+sleep_ms_between_calls = 500
+
+[[stops]]
+station_id = "11"
+station_name = "Chania"
+api_provider = "chania"
+max_departures_per_stop = 6
+max_departures_per_route = 3
+max_hours_in_advance = 3
+show_ungrouped = false
+
+[[stops]]
+station_id = "59"
+station_name = "Paleochora"
+api_provider = "chania"
+max_departures_per_stop = 6
+max_departures_per_route = 3
+max_hours_in_advance = 3
+show_ungrouped = false
+
+[[routes]]
+name = "Chania → Paleochora"
+path = "/chania-paleochora"
+stops = ["11", "59"]
+
+[[routes]]
+name = "Paleochora → Chania"
+path = "/paleochora-chania"
+stops = ["59", "11"]

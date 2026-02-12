@@ -291,6 +291,60 @@ class PyViewWebAdapter(DisplayAdapter):
 
         app.routes.append(Route("/healthz", healthz, methods=["GET"]))
 
+    def _setup_chania_api(self, app: Any) -> None:
+        """Set up one-time Chania schedule fetch API for the overlay."""
+        if TYPE_CHECKING:
+            from starlette.requests import Request
+        from starlette.responses import JSONResponse
+        from starlette.routing import Route
+
+        from mvg_departures.adapters.chania_api import (
+            ChaniaDepartureRepository,
+            list_chania_stations,
+        )
+
+        def chania_stations(_request: Request) -> Any:
+            """Return list of KTEL Chania stations (id, name) for dropdowns."""
+            stations = [
+                {"station_id": sid, "station_name": name} for sid, name in list_chania_stations()
+            ]
+            return JSONResponse(stations)
+
+        async def chania_departures(request: Request) -> Any:
+            station_id = request.query_params.get("station_id", "").strip()
+            date_param = request.query_params.get("date", "").strip() or None
+            if not station_id:
+                return JSONResponse(
+                    {"error": "station_id required"},
+                    status_code=400,
+                )
+            try:
+                repo = ChaniaDepartureRepository()
+                departures = await repo.get_departures(
+                    station_id=station_id,
+                    limit=50,
+                    departure_date=date_param,
+                )
+                out = [
+                    {
+                        "line": d.line,
+                        "destination": d.destination,
+                        "planned_time": d.planned_time.isoformat(),
+                        "platform": d.platform,
+                    }
+                    for d in departures
+                ]
+                return JSONResponse(out)
+            except Exception as e:
+                logger.warning("Chania API overlay fetch failed: %s", e)
+                return JSONResponse(
+                    {"error": str(e)},
+                    status_code=502,
+                )
+
+        app.routes.append(Route("/api/chania/stations", chania_stations, methods=["GET"]))
+        app.routes.append(Route("/api/chania/departures", chania_departures, methods=["GET"]))
+
     def _reset_all_route_sockets(self) -> int:
         """Unregister all sockets from all route states and bump reload_request_id.
 
@@ -440,6 +494,7 @@ class PyViewWebAdapter(DisplayAdapter):
         presence_tracker = get_presence_tracker()
         self._register_live_views(app, presence_tracker)
         self._setup_admin_endpoints(app, presence_tracker)
+        self._setup_chania_api(app)
 
         static_file_server = StaticFileServer()
         static_file_server.register_routes(app)

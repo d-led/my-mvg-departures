@@ -55,6 +55,20 @@ class TestRepositoryCreation:
 
         assert repo.__class__.__name__ == "VbbDepartureRepository"
 
+    def test_when_provider_is_chania_then_creates_chania_repository(self) -> None:
+        """Given Chania provider, when creating repository, then returns ChaniaDepartureRepository."""
+        stop_config = StopConfiguration(
+            station_id="11",
+            station_name="Chania",
+            direction_mappings={},
+            api_provider="chania",
+        )
+
+        composite = CompositeDepartureRepository(stop_configs=[stop_config])
+        repo = composite._create_repository_for_provider("chania")
+
+        assert repo.__class__.__name__ == "ChaniaDepartureRepository"
+
     def test_when_provider_unknown_then_defaults_to_mvg(self) -> None:
         """Given unknown provider, when creating repository, then defaults to MVG."""
         stop_config = StopConfiguration(

@@ -106,17 +106,18 @@ class MvgDepartureRepository(DepartureRepository):
 
         transport_type_enum = result.get("transportType", "")
         line_name = result.get("label", "")
-        
+
         # Infer transport type from line name if misclassified
         # Regional trains (RB, RE, etc.) are sometimes returned as BUS by MVG API
         inferred_transport_type = transport_type_enum
         if transport_type_enum in ("BUS", "REGIONAL_BUS"):
             import re
+
             line_upper = line_name.upper()
             if re.match(r"^(RB|RE|IC|ICE|EC)\s*\d+", line_upper):
                 # This is a train, not a bus
                 inferred_transport_type = "BAHN"
-        
+
         transport_type_map = {
             "UBAHN": "U-Bahn",
             "SBAHN": "S-Bahn",

@@ -54,6 +54,7 @@ class CompositeDepartureRepository(DepartureRepository):
 
     def _create_repository_for_provider(self, api_provider: str) -> DepartureRepository:
         """Create a repository instance for the given API provider."""
+        from mvg_departures.adapters.chania_api import ChaniaDepartureRepository
         from mvg_departures.adapters.db_api import DbDepartureRepository
         from mvg_departures.adapters.mvg_api import MvgDepartureRepository
         from mvg_departures.adapters.test_api import TestDepartureRepository
@@ -65,6 +66,8 @@ class CompositeDepartureRepository(DepartureRepository):
             return DbDepartureRepository(session=self._session)
         if api_provider == "vbb":
             return VbbDepartureRepository(session=self._session)
+        if api_provider == "chania":
+            return ChaniaDepartureRepository(session=self._session)
         return MvgDepartureRepository(session=self._session)
 
     def _initialize_repositories(self) -> None:

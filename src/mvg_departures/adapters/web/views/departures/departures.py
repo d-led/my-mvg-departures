@@ -418,6 +418,24 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             "split_show_delay": str(self.split_show_delay).lower(),
         }
 
+    def _build_chania_assigns(self) -> dict[str, Any]:
+        """Build Chania one-time fetch assigns for overlay (stations list + show button)."""
+        chania_stations = [
+            {"station_id": s.station_id, "station_name": s.station_name}
+            for s in self.stop_configs
+            if s.api_provider.lower() == "chania"
+        ]
+        if not chania_stations:
+            chania_stations = [
+                {"station_id": "11", "station_name": "Chania"},
+                {"station_id": "59", "station_name": "Paleochora"},
+            ]
+        return {
+            "has_chania_stops": any(s.api_provider.lower() == "chania" for s in self.stop_configs),
+            "chania_stations": chania_stations,
+            "find_closest_stop_url": self.config.find_closest_stop_url,
+        }
+
     def _build_template_assigns(
         self, state: DeparturesState, template_data: dict[str, Any]
     ) -> dict[str, Any]:
@@ -441,6 +459,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
             **self._build_config_assigns(),
             **self._build_state_assigns(state),
             **self._build_route_assigns(),
+            **self._build_chania_assigns(),
             "static_version": self._static_version,
         }
 
