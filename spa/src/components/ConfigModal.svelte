@@ -909,6 +909,15 @@
           </button>
           <button
             class="icon-button"
+            onclick={openTweak}
+            disabled={!configText.trim() || isSaving || isLoadingExample}
+            title="Tweak numeric and display values"
+            aria-label="Tweak display values"
+          >
+            <img src="/assets/settings-line-icon.svg" alt="" class="icon" />
+          </button>
+          <button
+            class="icon-button"
             onclick={() => (showFullscreenEditor = true)}
             title="Expand editor for mobile editing"
             aria-label="Expand editor"
@@ -976,14 +985,6 @@
       </div>
     </div>
     <div class="modal-footer">
-      <button
-        class="button button-secondary"
-        onclick={openTweak}
-        disabled={!configText.trim() || isSaving || isLoadingExample}
-        title="Tweak numeric and display values"
-      >
-        Tweak
-      </button>
       <button 
         class="button button-example" 
         onclick={loadExampleConfig} 
@@ -1508,6 +1509,12 @@
     width: 1.25rem;
     height: 1.25rem;
     fill: #111827;
+  }
+
+  .icon-button img.icon {
+    object-fit: contain;
+    width: 1.5rem;
+    height: 1.5rem;
   }
 
   :global([data-theme="dark"]) .icon {
