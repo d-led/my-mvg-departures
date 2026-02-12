@@ -851,6 +851,8 @@ h1 {
   }
 }
 
+/* __BUILD_SHA_HIDE_START__ */
 .build-sha {
   display: none;
 }
+/* __BUILD_SHA_HIDE_END__ */
