@@ -328,7 +328,10 @@ export class OnTheRunPoller {
   }
 
   private createBaseStopConfig(station: NearbyStation): StopConfiguration {
-    const suffix = this.formatLabelAndDistance(undefined, station.distanceMeters);
+    const suffix = this.formatLabelAndDistance(
+      undefined,
+      station.distanceMeters,
+    );
     return createStopConfiguration({
       stationId: station.id,
       stationName: `${station.name}${suffix}`,

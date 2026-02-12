@@ -1,5 +1,6 @@
 <script lang="ts">
   /* eslint-disable svelte/prefer-svelte-reactivity */
+  /* global HTMLInputElement */
   import { tick } from "svelte";
   import { LocalStorageConfigStorage } from "../adapters/storage/local-storage-config-storage.js";
   import { ConfigParser } from "../adapters/config/config-parser.js";
