@@ -25,3 +25,5 @@ htmlcov/
 # Git
 .git/
 
+# it's its own business
+spa/
