@@ -1,5 +1,6 @@
 <script lang="ts">
   /* eslint-disable svelte/prefer-svelte-reactivity */
+  import { tick } from "svelte";
   import { LocalStorageConfigStorage } from "../adapters/storage/local-storage-config-storage.js";
   import { ConfigParser } from "../adapters/config/config-parser.js";
   import ConfigWizard from "./ConfigWizard.svelte";
@@ -187,6 +188,64 @@
   function closeTweakAndApply() {
     configText = applyTweakDisplay(configText, tweakSections);
     showTweakOverlay = false;
+  }
+
+  let tweakFilterQuery = $state("");
+  let tweakFilterInputEl: HTMLInputElement | undefined = $state(undefined);
+
+  $effect(() => {
+    if (!showTweakOverlay) return;
+    tick().then(() => tweakFilterInputEl?.focus());
+  });
+
+  /** Non-empty filter terms (lowercased) for AND matching. */
+  const tweakFilterParts = $derived(
+    tweakFilterQuery
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((p) => p.toLowerCase()),
+  );
+
+  function tweakEntryMatchesFilter(
+    entry: TweakEntry,
+    parts: string[],
+  ): boolean {
+    if (parts.length === 0) return true;
+    const line = `${entry.key} ${entry.value}`.toLowerCase();
+    return parts.every((part) => line.includes(part));
+  }
+
+  /** True if the section heading (e.g. on_the_run) matches all filter parts. */
+  function tweakSectionHeadingMatchesFilter(
+    section: TweakSection,
+    parts: string[],
+  ): boolean {
+    if (parts.length === 0) return true;
+    const heading = section.heading.toLowerCase();
+    return parts.every((part) => heading.includes(part));
+  }
+
+  function tweakSectionHasVisibleEntries(
+    section: TweakSection,
+    parts: string[],
+  ): boolean {
+    return (
+      tweakSectionHeadingMatchesFilter(section, parts) ||
+      section.entries.some((e) => tweakEntryMatchesFilter(e, parts))
+    );
+  }
+
+  /** Show entry if section heading matches (show whole section) or this entry's key/value matches. */
+  function tweakShowEntry(
+    section: TweakSection,
+    entry: TweakEntry,
+    parts: string[],
+  ): boolean {
+    return (
+      tweakSectionHeadingMatchesFilter(section, parts) ||
+      tweakEntryMatchesFilter(entry, parts)
+    );
   }
 
   function buildDeleteCandidates(): {
@@ -950,6 +1009,14 @@
           <div class="tweak-overlay" role="dialog" aria-modal="true" aria-label="Tweak display values" tabindex="-1" onkeydown={e => { if (e.key === 'Escape') closeTweakAndApply(); }}>
             <div class="tweak-overlay-content">
               <div class="tweak-close-bar">
+                <input
+                  type="text"
+                  class="tweak-filter-input"
+                  placeholder="Filter (space-separated, all must match)"
+                  bind:value={tweakFilterQuery}
+                  bind:this={tweakFilterInputEl}
+                  aria-label="Filter entries"
+                />
                 <button class="button button-primary tweak-close" onclick={closeTweakAndApply}>
                   Ok
                 </button>
@@ -959,20 +1026,26 @@
                   <p class="tweak-empty">No sections found. Add at least one TOML section (a line starting with [).</p>
                 {:else}
                   {#each tweakSections as section, sectionIdx (sectionIdx)}
-                    <section class="tweak-section">
+                    {@const hasVisible = tweakSectionHasVisibleEntries(section, tweakFilterParts)}
+                    <section
+                      class="tweak-section"
+                      class:tweak-section-blended={!hasVisible}
+                    >
                       <h3 class="tweak-section-title">{section.heading}</h3>
                       <ul class="tweak-entries">
                         {#each section.entries as entry (entry.lineIndex)}
-                          <li class="tweak-entry">
-                            <label class="tweak-key" for="tweak-input-{entry.lineIndex}">{entry.key}</label>
-                            <input
-                              id="tweak-input-{entry.lineIndex}"
-                              type="text"
-                              class="tweak-value"
-                              bind:value={entry.value}
-                              aria-label={entry.key}
-                            />
-                          </li>
+                          {#if tweakShowEntry(section, entry, tweakFilterParts)}
+                            <li class="tweak-entry">
+                              <label class="tweak-key" for="tweak-input-{entry.lineIndex}">{entry.key}</label>
+                              <input
+                                id="tweak-input-{entry.lineIndex}"
+                                type="text"
+                                class="tweak-value"
+                                bind:value={entry.value}
+                                aria-label={entry.key}
+                              />
+                            </li>
+                          {/if}
                         {/each}
                       </ul>
                     </section>
@@ -1247,14 +1320,48 @@
     z-index: 2;
     flex-shrink: 0;
     display: flex;
-    justify-content: flex-end;
+    align-items: center;
+    gap: 0.5rem;
     padding: 8px 0;
     background: inherit;
+  }
+
+  .tweak-filter-input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.5rem 0.75rem;
+    font-size: 1rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    box-sizing: border-box;
+  }
+
+  .tweak-filter-input::placeholder {
+    color: #9ca3af;
+  }
+
+  :global([data-theme="dark"]) .tweak-filter-input {
+    background: #111827;
+    border-color: #4b5563;
+    color: #f9fafb;
+  }
+
+  :global([data-theme="dark"]) .tweak-filter-input::placeholder {
+    color: #6b7280;
   }
 
   .tweak-close {
     min-width: 100px;
     font-size: 1.1rem;
+    flex-shrink: 0;
+  }
+
+  .tweak-section-blended .tweak-section-title {
+    opacity: 0.45;
+  }
+
+  .tweak-section-blended .tweak-entries {
+    display: none;
   }
 
   .tweak-list {
