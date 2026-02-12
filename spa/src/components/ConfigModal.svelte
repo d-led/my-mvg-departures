@@ -1152,6 +1152,10 @@
     gap: 0.5rem;
     margin-bottom: 1rem;
     border-bottom: 2px solid #e5e7eb;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
   }
 
   :global([data-theme="dark"]) .config-method-selector {
@@ -1168,6 +1172,7 @@
     color: #6b7280;
     transition: all 0.2s;
     margin-bottom: -2px;
+    flex-shrink: 0;
   }
 
   .method-button:hover {
@@ -1802,6 +1807,24 @@
     margin-left: auto;
     display: flex;
     gap: 0.75rem;
+  }
+
+  @media (max-width: 420px) {
+    .modal-footer {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.5rem;
+    }
+
+    .build-sha {
+      margin-right: 0;
+      order: -1;
+    }
+
+    .modal-footer-actions {
+      margin-left: 0;
+      justify-content: flex-end;
+    }
   }
 
   :global([data-theme="dark"]) .build-sha {
