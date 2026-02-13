@@ -116,10 +116,12 @@ export function setFontSizesFromConfig(display?: {
     const width = (el as HTMLElement).scrollWidth;
     if (width > maxRouteWidth) maxRouteWidth = width;
   });
-  const routeColumnWidth = Math.max(
+  let routeColumnWidth = Math.max(
     maxRouteWidth + routeNumberPx * 0.3,
     routeNumberPx * 2.5,
   );
+  const maxRouteColPx = departuresEl.clientWidth * 0.45;
+  if (routeColumnWidth > maxRouteColPx) routeColumnWidth = maxRouteColPx;
   root.style.setProperty("--route-column-width", routeColumnWidth + "px");
 
   // Measure platforms
@@ -384,10 +386,12 @@ export function calculateFillVerticalSpace(config: FontScalingConfig): void {
     if (width > maxRouteWidth) maxRouteWidth = width;
   });
   // Add padding (0.3em gap from grid) and ensure minimum width
-  const routeColumnWidth = Math.max(
+  let routeColumnWidth = Math.max(
     maxRouteWidth + fontSizes.routeNumber * 0.3,
     fontSizes.routeNumber * 2.5,
   );
+  const maxRouteColPx = departuresEl.clientWidth * 0.45;
+  if (routeColumnWidth > maxRouteColPx) routeColumnWidth = maxRouteColPx;
   root.style.setProperty("--route-column-width", routeColumnWidth + "px");
 
   // Measure the maximum width of platforms

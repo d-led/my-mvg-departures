@@ -364,6 +364,22 @@
     display: flex;
     align-items: center;
     gap: 0.3em;
+    overflow: hidden;
+  }
+
+  .route-line-text {
+    display: inline-block;
+    min-width: 0;
+  }
+
+  .route-line-text.clipped {
+    animation: scroll-destination 20s ease-in-out infinite;
+    will-change: transform;
+  }
+
+  .route-number:hover .route-line-text.clipped,
+  .route-number:active .route-line-text.clipped {
+    animation-play-state: paused;
   }
 
   .route-badge {

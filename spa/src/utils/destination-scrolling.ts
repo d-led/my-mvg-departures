@@ -1,7 +1,36 @@
 /**
- * Initialize destination scrolling for clipped text
- * Ported from static/js/app.js
+ * Initialize destination and route/line scrolling for clipped text.
+ * Ported from static/js/app.js; keeps scrolling robust for long names (e.g. Chania).
  */
+
+export function initRouteNumberScrolling(): void {
+  document.querySelectorAll(".route-line-text").forEach((textEl) => {
+    if (!(textEl instanceof HTMLElement)) return;
+    const routeNumber = textEl.closest(".route-number");
+    if (!routeNumber || !(routeNumber instanceof HTMLElement)) return;
+
+    routeNumber.getBoundingClientRect();
+    textEl.getBoundingClientRect();
+    const cellWidth = routeNumber.offsetWidth;
+    const textScrollWidth = textEl.scrollWidth;
+    const wasClipped = textEl.classList.contains("clipped");
+    const isClipped = textScrollWidth > cellWidth;
+
+    if (isClipped) {
+      const scrollDistance = cellWidth - textScrollWidth;
+      const current = textEl.style.getPropertyValue("--scroll-distance");
+      if (!wasClipped || Math.abs(parseFloat(current) - scrollDistance) > 1) {
+        textEl.classList.add("clipped");
+        textEl.style.setProperty("--scroll-distance", scrollDistance + "px");
+      }
+    } else {
+      if (wasClipped) {
+        textEl.classList.remove("clipped");
+        textEl.style.removeProperty("--scroll-distance");
+      }
+    }
+  });
+}
 
 export function initDestinationScrolling(): void {
   const destinations = document.querySelectorAll(".destination-text");

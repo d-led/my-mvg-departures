@@ -16,7 +16,10 @@
     StopConfiguration,
   } from "../domain/models/index.js";
   import { calculateFillVerticalSpace, setFontSizesFromConfig } from "../utils/font-scaling.js";
-  import { initDestinationScrolling } from "../utils/destination-scrolling.js";
+  import {
+    initDestinationScrolling,
+    initRouteNumberScrolling,
+  } from "../utils/destination-scrolling.js";
   import { initTimeFormatToggle, cleanupTimeFormatToggle } from "../utils/time-format-toggle.js";
   import ConfigModal from "./ConfigModal.svelte";
   import DeparturesList from "./DeparturesList.svelte";
@@ -263,6 +266,7 @@
         // Wait for layout to complete after font scaling (matches Python view pattern)
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
+            initRouteNumberScrolling();
             initDestinationScrolling();
           });
         });
@@ -278,6 +282,7 @@
         // Wait for layout to complete after font size changes (matches Python view pattern)
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
+            initRouteNumberScrolling();
             initDestinationScrolling();
           });
         });

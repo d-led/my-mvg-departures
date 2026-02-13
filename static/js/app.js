@@ -264,10 +264,11 @@ function toggleTimeFormat() {
 
   currentTimeFormat = currentTimeFormat === "relative" ? "absolute" : "relative";
 
-  // Recalculate destination clipping and route column width after layout settles (time format change may affect container widths)
+  // Recalculate clipping and route column width after layout settles (time format change may affect container widths)
   setTimeout(() => {
     calculateRouteContainerGap();
     calculateRouteColumnWidth();
+    initRouteNumberScrolling();
     initDestinationScrolling();
   }, 200);
 }
@@ -654,10 +655,11 @@ window.addEventListener("phx:update", (event) => {
       initTimeFormatToggle();
     });
 
-    // Re-check destination scrolling and recalculate route column width after DOM update
+    // Re-check scrolling and route column width after DOM update
     requestAnimationFrame(() => {
       calculateRouteContainerGap();
       calculateRouteColumnWidth();
+      initRouteNumberScrolling();
       initDestinationScrolling();
     });
 
@@ -1109,7 +1111,8 @@ function calculateRouteContainerGap() {
   }
 }
 
-// Calculate route column width from all route numbers (for left alignment)
+// Calculate route column width from all route numbers (for left alignment).
+// Cap at a share of container width so long names (e.g. Chania) don't squeeze the destination column.
 function calculateRouteColumnWidth() {
   const root = document.documentElement;
   const departuresEl = document.getElementById("departures");
@@ -1130,14 +1133,48 @@ function calculateRouteColumnWidth() {
   let maxRouteWidth = 0;
   const routeNumbers = departuresEl.querySelectorAll(".route-number");
   routeNumbers.forEach((el) => {
-    // Use scrollWidth to get full content width even if constrained
     const width = el.scrollWidth;
     if (width > maxRouteWidth) maxRouteWidth = width;
   });
 
   // Add internal padding (0.2em) for spacing within the route column, plus ensure minimum width
-  const routeColumnWidth = Math.max(maxRouteWidth + fontSize * 0.2, fontSize * 2.5);
+  let routeColumnWidth = Math.max(maxRouteWidth + fontSize * 0.2, fontSize * 2.5);
+  // Cap so destination column gets at least ~50% (robust for long Chania line names)
+  const containerWidth = departuresEl.clientWidth;
+  const maxRouteColumnFraction = 0.45;
+  const capped = containerWidth * maxRouteColumnFraction;
+  if (routeColumnWidth > capped) routeColumnWidth = capped;
   root.style.setProperty("--route-column-width", routeColumnWidth + "px");
+}
+
+// Enable scrolling animation for clipped route/line text (e.g. long Chania names)
+function initRouteNumberScrolling() {
+  document.querySelectorAll(".route-line-text").forEach((textEl) => {
+    if (!(textEl instanceof HTMLElement)) return;
+    const routeNumber = textEl.closest(".route-number");
+    if (!routeNumber || !(routeNumber instanceof HTMLElement)) return;
+
+    routeNumber.getBoundingClientRect();
+    textEl.getBoundingClientRect();
+    const cellWidth = routeNumber.offsetWidth;
+    const textScrollWidth = textEl.scrollWidth;
+    const wasClipped = textEl.classList.contains("clipped");
+    const isClipped = textScrollWidth > cellWidth;
+
+    if (isClipped) {
+      const scrollDistance = cellWidth - textScrollWidth;
+      const current = textEl.style.getPropertyValue("--scroll-distance");
+      if (!wasClipped || Math.abs(parseFloat(current) - scrollDistance) > 1) {
+        textEl.classList.add("clipped");
+        textEl.style.setProperty("--scroll-distance", scrollDistance + "px");
+      }
+    } else {
+      if (wasClipped) {
+        textEl.classList.remove("clipped");
+        textEl.style.removeProperty("--scroll-distance");
+      }
+    }
+  });
 }
 
 // Check and enable scrolling animation for clipped destination text
@@ -1465,6 +1502,10 @@ function calculateFillVerticalSpace() {
     }
   }
 
+  // Cap route column so long line names (e.g. Chania) don't squeeze the destination column
+  const maxRouteColPx = departuresEl.clientWidth * 0.45;
+  if (routeColumnWidth > maxRouteColPx) routeColumnWidth = maxRouteColPx;
+
   root.style.setProperty("--route-column-width", routeColumnWidth + "px");
   root.style.setProperty("--platform-column-width", platformColumnWidth > 0 ? platformColumnWidth + "px" : "0px");
   root.style.setProperty("--time-column-width", timeColumnWidth + "px");
@@ -1700,10 +1741,10 @@ function initializeAll() {
   initRefreshCountdown();
   // Initialize time format toggle
   initTimeFormatToggle();
-  // Calculate route container gap and column width first (needed for destination scrolling and alignment)
+  // Calculate route container gap and column width first (needed for scrolling and alignment)
   calculateRouteContainerGap();
   calculateRouteColumnWidth();
-  // Initialize destination scrolling for clipped text
+  initRouteNumberScrolling();
   initDestinationScrolling();
   // Calculate dynamic font sizes if fill_vertical_space is enabled
   if (window.DEPARTURES_CONFIG && window.DEPARTURES_CONFIG.fillVerticalSpace) {
@@ -1716,6 +1757,8 @@ function initializeAll() {
     requestAnimationFrame(() => {
       calculateRouteContainerGap();
       calculateRouteColumnWidth();
+      initRouteNumberScrolling();
+      initDestinationScrolling();
       scaleHeadersIfNeeded();
     });
   }

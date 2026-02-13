@@ -80,6 +80,7 @@ body {
   display: flex;
   align-items: center;
   gap: 0.3em;
+  overflow: hidden;
 }
 [data-theme="light"] .route-number {
   color: #1f2937;
@@ -96,6 +97,17 @@ body {
 }
 .route-line-text {
   vertical-align: middle;
+  display: inline-block;
+  min-width: 0;
+}
+/* Scrolling for long route/line text (e.g. Chania "CHANIA-KASTELI-KISSAMOS") */
+.route-line-text.clipped {
+  animation: scroll-destination 20s ease-in-out infinite;
+  will-change: transform;
+}
+.route-number:hover .route-line-text.clipped,
+.route-number:active .route-line-text.clipped {
+  animation-play-state: paused;
 }
 /* Route badge (badge mode) - number inside transport type shape */
 .route-badge {
