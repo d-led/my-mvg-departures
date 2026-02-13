@@ -137,7 +137,7 @@
 
 
   function formatDateTime(date: Date): string {
-    // Format date and time as "YYYY-MM-DD HH:MM" (matches Python: lines 150-163)
+    // SPA runs in browser only: show local time as "YYYY-MM-DD HH:MM"
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
@@ -271,7 +271,7 @@
     text-align: center;
     font-size: 1.75rem;
     color: #9ca3af;
-    padding: 2rem 0;
+    padding: 0.4rem 0;
     font-style: italic;
   }
 
@@ -295,8 +295,8 @@
   .direction-header {
     font-size: var(--font-size-direction-header, 2.5rem);
     font-weight: 700;
-    margin: 0.5rem 0 0.25rem 0;
-    padding: 0.5rem 0.75rem;
+    margin: 0.15rem 0 0.1rem 0;
+    padding: 0.25rem 0.75rem;
     border-bottom: 2px solid rgba(0, 0, 0, 0.2);
     opacity: 0.85;
     display: flex;
@@ -325,9 +325,9 @@
   .departure-row {
     display: flex;
     align-items: center;
-    padding: 0.75rem 0 0.75rem 0.75rem;
+    padding: 0.2rem 0 0.2rem 0.75rem;
     border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-    min-height: 4.5rem;
+    min-height: 2.5rem;
     width: 100%;
     box-sizing: border-box;
   }
