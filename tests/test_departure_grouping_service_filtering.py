@@ -900,6 +900,43 @@ def test_build_result_list_excludes_empty_ungrouped() -> None:
     assert len(result) == 0
 
 
+def test_build_result_list_shows_ungrouped_when_no_direction_mappings() -> None:
+    """Given no direction_mappings and show_ungrouped=false, when ungrouped has departures, then still show them (e.g. Chania config)."""
+    service = DepartureGroupingService(MockDepartureRepository([]))
+    now = datetime.now(UTC)
+
+    stop_config = StopConfiguration(
+        station_id="11",
+        station_name="Chania",
+        direction_mappings={},
+        show_ungrouped=False,
+    )
+
+    ungrouped = [
+        Departure(
+            time=now + timedelta(minutes=30),
+            planned_time=now + timedelta(minutes=30),
+            delay_seconds=None,
+            platform=None,
+            is_realtime=False,
+            line="3",
+            destination="CHANIA-AIRPORT",
+            transport_type="bus",
+            icon="bus",
+            is_cancelled=False,
+            messages=[],
+        ),
+    ]
+    direction_groups: dict[str, list[Departure]] = {}
+
+    result = service._build_result_list(direction_groups, ungrouped, stop_config)
+
+    assert len(result) == 1
+    assert result[0].direction_name == "Other"
+    assert len(result[0].departures) == 1
+    assert result[0].departures[0].destination == "CHANIA-AIRPORT"
+
+
 @pytest.mark.asyncio
 async def test_group_departures_with_direction_mappings_and_ungrouped() -> None:
     """Given direction mappings and show_ungrouped=true, when grouping, then shows both mapped and ungrouped."""

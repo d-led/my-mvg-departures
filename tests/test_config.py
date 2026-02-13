@@ -156,6 +156,31 @@ station_name = "Universität"
         Path(temp_path).unlink()
 
 
+def test_config_default_route_inherits_display_ungrouped_title() -> None:
+    """Given [display] ungrouped_title and [[stops]] without it, when loading default route, then stops get that title."""
+    toml_content = """
+[display]
+ungrouped_title = "all departures"
+
+[[stops]]
+station_id = "11"
+station_name = "Chania"
+"""
+    with NamedTemporaryFile(mode="w", suffix=".toml", delete=False) as f:
+        f.write(toml_content)
+        temp_path = f.name
+
+    try:
+        config = AppConfig.for_testing(config_file=temp_path)
+        routes = config.get_routes_config()
+        assert len(routes) == 1
+        assert routes[0]["path"] == "/"
+        assert len(routes[0]["stops"]) == 1
+        assert routes[0]["stops"][0].get("ungrouped_title") == "all departures"
+    finally:
+        Path(temp_path).unlink()
+
+
 def test_config_validates_unique_route_paths() -> None:
     """Given TOML config with duplicate route paths, when loading config, then ValueError is raised."""
     toml_content = """

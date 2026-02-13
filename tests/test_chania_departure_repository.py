@@ -43,7 +43,8 @@ async def test_get_departures_parses_api_response(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr("aiohttp.ClientSession", lambda: MockSession())
 
     repo = ChaniaDepartureRepository()
-    departures = await repo.get_departures("1", limit=10)
+    # Explicit date: single-date fetch (e.g. CLI), no next-day fill
+    departures = await repo.get_departures("1", limit=10, departure_date="2026-02-08")
 
     assert len(departures) == 1
     dep = departures[0]
@@ -141,6 +142,59 @@ async def test_get_departures_respects_limit(monkeypatch: pytest.MonkeyPatch) ->
     # Bus number (index 3) empty in mock, so line falls back to To (index 2)
     assert departures[0].line == "L1"
     assert departures[1].line == "L2"
+
+
+@pytest.mark.asyncio
+async def test_get_departures_fetches_next_day_when_fewer_than_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Given dashboard (no explicit date), when first date returns fewer than limit, then next day is fetched and merged."""
+    call_count = 0
+
+    class MockResponse:
+        ok = True
+
+        async def json(self) -> object:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return {
+                    "data": [["1", "", "Today", "", "2026-02-08", "20:00", "1"]],
+                }
+            return {
+                "data": [
+                    ["2", "", "Tomorrow1", "", "2026-02-09", "08:00", "1"],
+                    ["3", "", "Tomorrow2", "", "2026-02-09", "09:00", "1"],
+                ],
+            }
+
+        async def __aenter__(self) -> "MockResponse":
+            return self
+
+        async def __aexit__(self, *args: object) -> None:
+            pass
+
+    class MockSession:
+        def get(self, _url: str) -> MockResponse:
+            return MockResponse()
+
+        async def close(self) -> None:
+            pass
+
+    monkeypatch.setattr("aiohttp.ClientSession", lambda: MockSession())
+    monkeypatch.setattr(
+        "mvg_departures.adapters.chania_api.chania_departure_repository._effective_date_for_today",
+        lambda: "2026-02-08",
+    )
+
+    repo = ChaniaDepartureRepository()
+    departures = await repo.get_departures("11", limit=10)
+
+    assert call_count == 2
+    assert len(departures) == 3
+    assert departures[0].planned_time == datetime(2026, 2, 8, 20, 0, tzinfo=ATHENS)
+    assert departures[1].planned_time == datetime(2026, 2, 9, 8, 0, tzinfo=ATHENS)
+    assert departures[2].planned_time == datetime(2026, 2, 9, 9, 0, tzinfo=ATHENS)
 
 
 @pytest.mark.asyncio

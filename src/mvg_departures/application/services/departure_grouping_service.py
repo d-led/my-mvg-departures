@@ -200,7 +200,9 @@ class DepartureGroupingService:
                     GroupedDepartures(direction_name=direction_name, departures=departures)
                 )
 
-        if stop_config.show_ungrouped and ungrouped:
+        # Show ungrouped when explicitly requested, or when there are no direction mappings
+        # (so all departures are ungrouped and would otherwise never be shown)
+        if (stop_config.show_ungrouped or not stop_config.direction_mappings) and ungrouped:
             ungrouped_label = stop_config.ungrouped_title or "Other"
             result.append(GroupedDepartures(direction_name=ungrouped_label, departures=ungrouped))
 

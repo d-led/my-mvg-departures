@@ -97,28 +97,58 @@ class ChaniaDepartureRepository(DepartureRepository):
     ) -> list[Departure]:
         # When no date given (dashboard): use tomorrow if it's late evening in Greece.
         date = _effective_date_for_today() if departure_date is None else departure_date
-        url = KTEL_CHANIA_API_URL.format(station_id=station_id, date=date)
         use_own_session = self._session is None
         session = self._session if self._session is not None else aiohttp.ClientSession()
         try:
-            async with session.get(url) as resp:
-                if not resp.ok:
-                    logger.warning(
-                        "Chania API error: %s %s for %s",
-                        resp.status,
-                        resp.reason,
-                        url,
-                    )
-                    return []
-                try:
-                    data: dict[str, Any] = await resp.json()
-                except (aiohttp.ContentTypeError, ValueError) as e:
-                    logger.warning("Chania API invalid JSON for %s: %s", url, e)
-                    return []
-            return self._parse_departures(data, limit, after_time=after_time)
+            departures = await self._fetch_for_date(
+                session, station_id, date, limit, after_time=after_time
+            )
+            # If dashboard (no explicit date) and we got fewer than limit, fetch next calendar day
+            # so we fill up to limit when today has few departures (e.g. evening).
+            if (
+                departure_date is None
+                and len(departures) < limit
+                and len(departures) > 0
+            ):
+                last_time = departures[-1].planned_time
+                next_date_dt = last_time.date() + timedelta(days=1)
+                next_date = next_date_dt.strftime("%Y-%m-%d")
+                remainder = limit - len(departures)
+                extra = await self._fetch_for_date(
+                    session, station_id, next_date, remainder, after_time=None
+                )
+                departures = (departures + extra)[:limit]
+            return departures
         finally:
             if use_own_session:
                 await session.close()
+
+    async def _fetch_for_date(
+        self,
+        session: "ClientSession",
+        station_id: str,
+        date: str,
+        limit: int,
+        *,
+        after_time: datetime | None = None,
+    ) -> list[Departure]:
+        """Fetch and parse departures for a single date. Used by get_departures."""
+        url = KTEL_CHANIA_API_URL.format(station_id=station_id, date=date)
+        async with session.get(url) as resp:
+            if not resp.ok:
+                logger.warning(
+                    "Chania API error: %s %s for %s",
+                    resp.status,
+                    resp.reason,
+                    url,
+                )
+                return []
+            try:
+                data: dict[str, Any] = await resp.json()
+            except (aiohttp.ContentTypeError, ValueError) as e:
+                logger.warning("Chania API invalid JSON for %s: %s", url, e)
+                return []
+        return self._parse_departures(data, limit, after_time=after_time)
 
     def _parse_departures(
         self,

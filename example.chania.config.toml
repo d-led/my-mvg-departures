@@ -1,4 +1,5 @@
 # Example config for Chania KTEL backend connector
+# Stations: run `./scripts/chania-config.sh stations` for full list (e.g. 11=Chania, 12=Rethymno, 14=Paleochora, 16=Plakias).
 
 [display]
 title = "Chania KTEL Departures"
@@ -13,6 +14,8 @@ font_size_platform = "2rem"
 font_size_time = "3rem"
 font_size_stop_header = "2rem"
 font_size_direction_header = "1.5rem"
+# Label for the single group when a stop has no direction_mappings (e.g. Chania-style)
+ungrouped_title = "all departures"
 
 [api]
 sleep_ms_between_calls = 500
@@ -21,13 +24,22 @@ sleep_ms_between_calls = 500
 station_id = "11"
 station_name = "Chania"
 api_provider = "chania"
-max_departures_per_stop = 6
+max_departures_per_stop = 20
 max_departures_per_route = 3
 max_hours_in_advance = 3
 show_ungrouped = false
 
 [[stops]]
-station_id = "59"
+station_id = "12"
+station_name = "Rethymno"
+api_provider = "chania"
+max_departures_per_stop = 12
+max_departures_per_route = 3
+max_hours_in_advance = 3
+show_ungrouped = false
+
+[[stops]]
+station_id = "14"
 station_name = "Paleochora"
 api_provider = "chania"
 max_departures_per_stop = 6
@@ -35,12 +47,14 @@ max_departures_per_route = 3
 max_hours_in_advance = 3
 show_ungrouped = false
 
-[[routes]]
-name = "Chania → Paleochora"
-path = "/chania-paleochora"
-stops = ["11", "59"]
+[[stops]]
+station_id = "16"
+station_name = "Plakias"
+api_provider = "chania"
+max_departures_per_stop = 6
+max_departures_per_route = 3
+max_hours_in_advance = 3
+show_ungrouped = false
 
-[[routes]]
-name = "Paleochora → Chania"
-path = "/paleochora-chania"
-stops = ["59", "11"]
+# Default route at / shows all four stops above.
+# For route-specific pages (e.g. /chania-paleochora), add [[routes]] with full [routes.stops] entries; see docs/config/samples/ktel-chania.md.

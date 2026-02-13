@@ -365,6 +365,7 @@ class AppConfig(BaseSettings):
             "header_background_brightness",
             "random_color_salt",
             "split_show_delay",
+            "ungrouped_title",
         ]
 
         for key in display_keys:
@@ -392,8 +393,19 @@ class AppConfig(BaseSettings):
         if not filtered_stops:
             return None
 
-        default_route: dict[str, Any] = {"path": "/", "stops": filtered_stops}
         display_settings = self._extract_display_settings(toml_data)
+        display_ungrouped_title = (
+            display_settings.get("ungrouped_title")
+            if isinstance(display_settings.get("ungrouped_title"), str)
+            else None
+        )
+        if display_ungrouped_title:
+            filtered_stops = [
+                {**s, "ungrouped_title": s.get("ungrouped_title") or display_ungrouped_title}
+                for s in filtered_stops
+            ]
+
+        default_route: dict[str, Any] = {"path": "/", "stops": filtered_stops}
         if display_settings:
             default_route["display"] = display_settings
 
