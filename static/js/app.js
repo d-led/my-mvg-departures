@@ -146,20 +146,34 @@ function updateHeaderClock(headerEl, dateTimeStr) {
   clockEl.setAttribute("aria-label", "Current date and time: " + dateTimeStr);
 }
 
-// Date/time display
+// Date/time display in configured timezone (default Europe/Berlin; server sends timezone in DEPARTURES_CONFIG)
 function updateDateTime() {
   const datetimeEl = document.getElementById("datetime-display");
   if (!datetimeEl) return;
 
   const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  const hours = String(now.getHours()).padStart(2, "0");
-  const minutes = String(now.getMinutes()).padStart(2, "0");
+  const tz = (window.DEPARTURES_CONFIG && window.DEPARTURES_CONFIG.timezone) || "Europe/Berlin";
 
-  const dateStr = year + "-" + month + "-" + day;
-  const timeStr = hours + ":" + minutes;
+  let dateStr;
+  let timeStr;
+  try {
+    const dateParts = new Intl.DateTimeFormat(undefined, {
+      timeZone: tz,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(now);
+    const get = (type) => dateParts.find((p) => p.type === type).value;
+    dateStr = `${get("year")}-${get("month")}-${get("day")}`;
+    timeStr = `${get("hour")}:${get("minute")}`;
+  } catch (_) {
+    dateStr = now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0") + "-" + String(now.getDate()).padStart(2, "0");
+    timeStr = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
+  }
+
   const fullDateTime = dateStr + " " + timeStr;
 
   // Update main header clock
@@ -1097,15 +1111,15 @@ function calculateRouteContainerGap() {
   if (firstRouteNumber) {
     const computedStyle = window.getComputedStyle(firstRouteNumber);
     const fontSize = parseFloat(computedStyle.fontSize);
-    // Use 0.5em equivalent for adequate spacing
-    const gap = fontSize * 0.5;
+    // Match SPA's .route-container { gap: 0.3em }
+    const gap = fontSize * 0.3;
     root.style.setProperty("--route-container-gap", gap + "px");
   } else {
     // Fallback: use CSS variable if available, or default
     const fontSizeVar = getComputedStyle(root).getPropertyValue("--font-size-route-number");
     if (fontSizeVar) {
       const fontSize = parseFloat(fontSizeVar);
-      const gap = fontSize * 0.5;
+      const gap = fontSize * 0.3;
       root.style.setProperty("--route-container-gap", gap + "px");
     }
   }
@@ -1215,9 +1229,9 @@ function initDestinationScrolling() {
       if (routeNumberEl) {
         const computedStyle = window.getComputedStyle(routeNumberEl);
         const fontSize = parseFloat(computedStyle.fontSize);
-        gap = fontSize * 0.5; // 0.5em equivalent
+        gap = fontSize * 0.3; // Match SPA's gap: 0.3em
       } else {
-        gap = 16 * 0.5; // Final fallback: 0.5em assuming 16px base
+        gap = 16 * 0.3; // Final fallback: 0.3em assuming 16px base
       }
     }
     const availableDestinationWidth = routeContainerClientWidth - routeNumberWidth - gap;
@@ -1347,18 +1361,21 @@ function calculateFillVerticalSpace() {
   const headerBaseFontSize = headerFontUsableHeight / lineHeight;
   const fontScalingFactor = window.DEPARTURES_CONFIG?.fontScalingFactorWhenFilling || 1.0;
 
+  // Ratios match SPA DeparturesList.svelte CSS defaults:
+  // route-number: 4rem, destination: 3.5rem, time: 4rem, platform: 2.5rem
+  // direction-header: 2.5rem, status-header: 1.875rem, delay-amount: 2rem
   const fontSizes = {
     routeNumber: rowBaseFontSize * (4.0 / 3.5) * fontScalingFactor,
-    destination: rowBaseFontSize * (4.0 / 3.5) * fontScalingFactor,
+    destination: rowBaseFontSize * (3.5 / 3.5) * fontScalingFactor,
     time: rowBaseFontSize * (4.0 / 3.5) * fontScalingFactor,
     platform: rowBaseFontSize * (2.5 / 3.5) * fontScalingFactor,
-    directionHeader: headerBaseFontSize * (4.0 / 3.5) * fontScalingFactor,
-    stopHeader: headerBaseFontSize * (3.0 / 3.5) * fontScalingFactor,
+    directionHeader: headerBaseFontSize * (2.5 / 2.5) * fontScalingFactor,
+    stopHeader: headerBaseFontSize * (2.5 / 2.5) * fontScalingFactor,
     noDepartures: rowBaseFontSize * (2.5 / 3.5) * fontScalingFactor,
     paginationIndicator: rowBaseFontSize * (2.0 / 3.5) * fontScalingFactor,
     countdownText: rowBaseFontSize * (1.8 / 3.5) * fontScalingFactor,
     delayAmount: rowBaseFontSize * (2.0 / 3.5) * fontScalingFactor,
-    statusHeader: headerBaseFontSize * (4.0 / 3.5) * fontScalingFactor,
+    statusHeader: headerBaseFontSize * (1.875 / 2.5) * fontScalingFactor,
   };
 
   // Cap so content fits in row and stays readable
@@ -1400,8 +1417,8 @@ function calculateFillVerticalSpace() {
   root.style.setProperty("--time-container-gap", timeContainerGap + "px");
 
   // Calculate route container gap dynamically based on route number font size
-  // Use a larger multiplier (0.5) to ensure adequate spacing between route number and destination
-  const routeContainerGap = fontSizes.routeNumber * 0.5;
+  // Match SPA's .route-container { gap: 0.3em }
+  const routeContainerGap = fontSizes.routeNumber * 0.3;
   root.style.setProperty("--route-container-gap", routeContainerGap + "px");
 
   // Dynamically calculate column widths based on actual content
@@ -1468,7 +1485,7 @@ function calculateFillVerticalSpace() {
       root.style.setProperty("--font-size-destination", fontSizes.destination + "px");
       root.style.setProperty("--font-size-time", fontSizes.time + "px");
       root.style.setProperty("--font-size-platform", fontSizes.platform + "px");
-      root.style.setProperty("--route-container-gap", fontSizes.routeNumber * 0.5 + "px");
+      root.style.setProperty("--route-container-gap", fontSizes.routeNumber * 0.3 + "px");
       root.style.setProperty("--time-container-gap", fontSizes.time * 0.2 + "px");
       root.style.setProperty("--route-column-width", "auto");
       root.style.setProperty("--time-container-width", "auto");

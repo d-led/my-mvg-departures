@@ -318,6 +318,7 @@ class TestTemplateParsing:
         assert "pagination_enabled" in assigns
         assert "departures_per_page" in assigns
         assert "refresh_interval_seconds" in assigns
+        assert "timezone" in assigns
         assert "api_status" in assigns
         assert "presence_local" in assigns
         assert "presence_total" in assigns

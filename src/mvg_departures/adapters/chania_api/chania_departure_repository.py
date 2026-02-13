@@ -105,11 +105,7 @@ class ChaniaDepartureRepository(DepartureRepository):
             )
             # If dashboard (no explicit date) and we got fewer than limit, fetch next calendar day
             # so we fill up to limit when today has few departures (e.g. evening).
-            if (
-                departure_date is None
-                and len(departures) < limit
-                and len(departures) > 0
-            ):
+            if departure_date is None and len(departures) < limit and len(departures) > 0:
                 last_time = departures[-1].planned_time
                 next_date_dt = last_time.date() + timedelta(days=1)
                 next_date = next_date_dt.strftime("%Y-%m-%d")

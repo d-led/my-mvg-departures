@@ -58,7 +58,9 @@
         fontScalingFactorWhenFilling: parseFloat('{{ font_scaling_factor_when_filling }}') || 1.0,
         // Server-initiated reload coordination (numeric, defaults to 0)
         reloadRequestId: parseInt('{{ reload_request_id }}') || 0,
-        theme: ('{{ theme }}' && '{{ theme }}' !== 'undefined' && '{{ theme }}' !== '') ? '{{ theme }}' : 'auto'
+        theme: ('{{ theme }}' && '{{ theme }}' !== 'undefined' && '{{ theme }}' !== '') ? '{{ theme }}' : 'auto',
+        // IANA timezone for clock (default Europe/Berlin; e.g. Europe/Athens for Chania)
+        timezone: ('{{ timezone }}' && '{{ timezone }}' !== 'undefined') ? '{{ timezone }}' : 'Europe/Berlin'
     };
     
     // Update page title from template data (overrides rootTemplate title)

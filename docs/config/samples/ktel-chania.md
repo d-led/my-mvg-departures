@@ -12,6 +12,7 @@ random_header_colors = true
 
 # Show "Find your stop on map (GPS)" link in the Check schedule overlay (off by default in other configs)
 [display]
+timezone = "Europe/Athens"   # Show times in Greece (matches e-ktel.com; default Europe/Berlin is 1h behind in winter)
 find_closest_stop_url = "https://www.e-ktel.com/en/services/find-closest-stop"
 
 [[stops]]

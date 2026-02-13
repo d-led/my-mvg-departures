@@ -33,9 +33,9 @@ body {
 .departure-row {
   display: flex;
   align-items: center;
-  padding: 0.75rem 0 0.75rem 0.75rem;
+  padding: 0.2rem 0 0.2rem 0.75rem;
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  min-height: 4.5rem;
+  min-height: 2.5rem;
   width: 100%;
   box-sizing: border-box;
 }
@@ -252,7 +252,7 @@ body {
   text-align: center;
   font-size: var(--font-size-no-departures);
   color: #9ca3af;
-  padding: 2rem 0;
+  padding: 0.4rem 0;
   font-style: italic;
 }
 [data-theme="light"] .no-departures {
@@ -264,8 +264,8 @@ body {
 .direction-header {
   font-size: var(--font-size-direction-header);
   font-weight: 700;
-  margin: 0.5rem 0 0.25rem 0;
-  padding: 0.5rem 0.75rem;
+  margin: 0.15rem 0 0.1rem 0;
+  padding: 0.25rem 0.75rem;
   border-bottom: 2px solid rgba(0, 0, 0, 0.2);
   opacity: 0.85;
   display: flex;
@@ -276,8 +276,8 @@ body {
   background-color: var(--banner-color);
 }
 h2.direction-header {
-  margin: 0.5rem 0 0.25rem 0;
-  padding: 0.5rem 0.75rem;
+  margin: 0.15rem 0 0.1rem 0;
+  padding: 0.25rem 0.75rem;
 }
 /* Remove top margin only from the very first header to eliminate white stripe */
 #departures > .direction-group:first-child > .direction-header,

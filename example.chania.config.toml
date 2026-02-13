@@ -4,6 +4,8 @@
 [display]
 title = "Chania KTEL Departures"
 theme = "auto"
+# Show times in Greece (matches e-ktel.com); default is Europe/Berlin (1h behind Greece in winter)
+timezone = "Europe/Athens"
 fill_vertical_space = true
 refresh_interval_seconds = 30
 banner_color = "#087BC4"

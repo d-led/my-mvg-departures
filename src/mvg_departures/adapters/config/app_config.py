@@ -294,6 +294,7 @@ class AppConfig(BaseSettings):
             "font_size_status_header": "font_size_status_header",
             "split_show_delay": "split_show_delay",
             "find_closest_stop_url": "find_closest_stop_url",
+            "timezone": "timezone",
         }
 
         for toml_key, attr_name in display_mappings.items():

@@ -361,6 +361,7 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 if self.config.route_icon_display is not None
                 else "icon_with_text"
             ),
+            "timezone": str(self.config.timezone) if self.config.timezone else "Europe/Berlin",
         }
 
     def _build_state_assigns(self, state: DeparturesState) -> dict[str, str]:
