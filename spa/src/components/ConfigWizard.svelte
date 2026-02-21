@@ -618,7 +618,7 @@
           max_departures_per_stop: 4,
           max_departures_per_route: 2,
           max_hours_in_advance: 3,
-          custom_title: ungroupedTitle,
+          custom_title: String(ungroupedTitle),
         };
         
         // If full stop is selected, use direction_mappings; otherwise use platform_filter_routes

@@ -1531,6 +1531,12 @@
     border-bottom-color: #60a5fa;
   }
 
+  /* Lock body scroll when fullscreen editor is open (prevents scroll bleed on mobile) - CSS only via :has() */
+  :global(body:has(.fullscreen-editor-overlay)) {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
   .fullscreen-editor-overlay {
     position: fixed;
     top: 0;
@@ -1544,6 +1550,9 @@
     justify-content: stretch;
     width: 100vw;
     height: 100vh;
+    overflow: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
   .fullscreen-editor-content {
@@ -1558,6 +1567,9 @@
     border: 4px solid #087BC4;
     box-sizing: border-box;
     gap: 8px;
+    overflow: hidden;
+    overscroll-behavior: contain;
+    min-height: 0;
   }
 
   @media (min-width: 600px) {
@@ -1594,6 +1606,9 @@
     color: #111827;
     outline: none;
     overflow-x: auto;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
     white-space: pre;
     word-break: normal;
   }

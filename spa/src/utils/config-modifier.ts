@@ -354,8 +354,8 @@ function mapWizardStop(stop: WizardStop): TomlStopData {
     show_ungrouped: stop.show_ungrouped,
   };
 
-  if (stop.custom_title) {
-    mapped.ungrouped_title = stop.custom_title;
+  if (stop.custom_title != null && stop.custom_title !== "") {
+    mapped.ungrouped_title = String(stop.custom_title);
   }
 
   if (
