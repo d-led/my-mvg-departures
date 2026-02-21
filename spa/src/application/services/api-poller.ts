@@ -64,12 +64,30 @@ export class ApiPoller {
       }
 
       // Fetch fresh data
+      const configuredLimit = this.stopConfig.maxDeparturesFetch ?? 50;
+      const minLimitForDisplay =
+        (this.stopConfig.maxHoursInAdvance ?? 0) >= 1
+          ? Math.ceil(this.stopConfig.maxHoursInAdvance! * 30)
+          : 0;
+      const fetchLimit = Math.max(configuredLimit, minLimitForDisplay);
+
+      const configuredDuration =
+        this.stopConfig.fetchMaxMinutesInAdvance ?? 120;
+      const minDurationForDisplay =
+        (this.stopConfig.maxHoursInAdvance ?? 0) >= 1
+          ? this.stopConfig.maxHoursInAdvance! * 60
+          : 0;
+      const durationMinutes = Math.max(
+        configuredDuration,
+        minDurationForDisplay,
+      );
+
       const departures = await this.departureRepository.getDepartures(
         this.stopConfig.stationId,
         {
-          limit: this.stopConfig.maxDeparturesFetch ?? 50,
+          limit: fetchLimit,
           offsetMinutes: this.stopConfig.departureLeewayMinutes ?? 0,
-          durationMinutes: this.stopConfig.fetchMaxMinutesInAdvance ?? 120,
+          durationMinutes,
         },
       );
 

@@ -33,7 +33,10 @@ export function generateHeaderColors(
     );
 
     if (useRandomColors) {
-      const directionClean = group.directionName.replace(/^->/, "");
+      const directionClean = String(group.directionName ?? "").replace(
+        /^->/,
+        "",
+      );
       const headerText = `${group.stopName} → ${directionClean}`;
       group.headerColor = generatePastelColor(headerText, brightness, salt);
       console.log(

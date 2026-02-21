@@ -111,7 +111,7 @@
     }
     // Format: "StopName → DirectionName" (matches Python - no time suffix)
     // Strip "->" prefix from direction name (matches Python: direction_clean = group.direction_name.lstrip("->"))
-    const directionClean = group.directionName.replace(/^->/, "").trim();
+    const directionClean = String(group.directionName ?? "").replace(/^->/, "").trim();
     if (!directionClean) {
       return group.stopName;
     }

@@ -9,8 +9,19 @@ export class DepartureGroupingService {
   async getGroupedDepartures(
     stopConfig: StopConfiguration,
   ): Promise<GroupedDepartures[]> {
-    const fetchLimit = stopConfig.maxDeparturesFetch ?? 50;
-    const durationMinutes = stopConfig.fetchMaxMinutesInAdvance ?? 120;
+    const configuredLimit = stopConfig.maxDeparturesFetch ?? 50;
+    const minLimitForDisplay =
+      (stopConfig.maxHoursInAdvance ?? 0) >= 1
+        ? Math.ceil(stopConfig.maxHoursInAdvance! * 30)
+        : 0;
+    const fetchLimit = Math.max(configuredLimit, minLimitForDisplay);
+
+    const configuredDuration = stopConfig.fetchMaxMinutesInAdvance ?? 120;
+    const minDurationForDisplay =
+      (stopConfig.maxHoursInAdvance ?? 0) >= 1
+        ? stopConfig.maxHoursInAdvance! * 60
+        : 0;
+    const durationMinutes = Math.max(configuredDuration, minDurationForDisplay);
     const offsetMinutes = stopConfig.departureLeewayMinutes ?? 0;
 
     const departures = await this.departureRepository.getDepartures(
@@ -86,7 +97,7 @@ export class DepartureGroupingService {
 
     // Add ungrouped if enabled
     if (stopConfig.showUngrouped && processedUngrouped.length > 0) {
-      const ungroupedTitle = stopConfig.ungroupedTitle ?? "Other";
+      const ungroupedTitle = String(stopConfig.ungroupedTitle ?? "Other");
       result.push({
         directionName: ungroupedTitle,
         stopName: stopConfig.stationName,

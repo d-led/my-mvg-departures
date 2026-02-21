@@ -144,12 +144,29 @@ export class MultiStopPoller {
         console.log(
           `Fetching fresh data from API for ${stopConfig.stationName}...`,
         );
+        const configuredLimit = stopConfig.maxDeparturesFetch ?? 50;
+        const minLimitForDisplay =
+          (stopConfig.maxHoursInAdvance ?? 0) >= 1
+            ? Math.ceil(stopConfig.maxHoursInAdvance! * 30)
+            : 0;
+        const fetchLimit = Math.max(configuredLimit, minLimitForDisplay);
+
+        const configuredDuration = stopConfig.fetchMaxMinutesInAdvance ?? 120;
+        const minDurationForDisplay =
+          (stopConfig.maxHoursInAdvance ?? 0) >= 1
+            ? stopConfig.maxHoursInAdvance! * 60
+            : 0;
+        const durationMinutes = Math.max(
+          configuredDuration,
+          minDurationForDisplay,
+        );
+
         const departures = await this.departureRepository.getDepartures(
           stopConfig.stationId,
           {
-            limit: stopConfig.maxDeparturesFetch ?? 50,
+            limit: fetchLimit,
             offsetMinutes: stopConfig.departureLeewayMinutes ?? 0,
-            durationMinutes: stopConfig.fetchMaxMinutesInAdvance ?? 120,
+            durationMinutes,
           },
         );
 

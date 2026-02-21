@@ -203,7 +203,10 @@ export class ConfigParser {
           departureLeewayMinutes: stop.departure_leeway_minutes,
           maxHoursInAdvance: stop.max_hours_in_advance,
           showUngrouped: stop.show_ungrouped,
-          ungroupedTitle: stop.ungrouped_title,
+          ungroupedTitle:
+            stop.ungrouped_title != null
+              ? String(stop.ungrouped_title)
+              : undefined,
           excludeDestinations: stop.exclude_destinations,
           directionMappings:
             Object.keys(directionMappings).length > 0
