@@ -37,6 +37,72 @@ max_departures_per_stop = 5
       expect(result).toContain("Marienplatz");
     });
 
+    it("should persist platform_filter_routes when adding stop to main config", () => {
+      const existingConfig = `
+[[stops]]
+station_id = "de:09162:1110"
+station_name = "Giesing"
+`;
+
+      const wizardResult: WizardResult = {
+        target: "main",
+        stops: [
+          {
+            station_id: "de:09162:1108:3:3",
+            station_name: "Marienplatz",
+            max_departures_per_stop: 4,
+            max_departures_per_route: 2,
+            max_hours_in_advance: 3,
+            show_ungrouped: true,
+            custom_title: "Platform 3",
+            platform_filter_routes: ["62", "U2"],
+          },
+        ],
+      };
+
+      const result = applyWizardConfig(existingConfig, wizardResult);
+
+      expect(result).toContain("platform_filter_routes");
+      expect(result).toContain('"62"');
+      expect(result).toContain('"U2"');
+    });
+
+    it("should merge platform_filter_routes when updating existing stop", () => {
+      const existingConfig = `
+[[stops]]
+station_id = "de:09162:1129:9:9"
+station_name = "Am Harras"
+max_departures_per_stop = 4
+max_departures_per_route = 2
+max_hours_in_advance = 3
+show_ungrouped = true
+ungrouped_title = "7"
+`;
+
+      const wizardResult: WizardResult = {
+        target: "main",
+        stops: [
+          {
+            station_id: "de:09162:1129:9:9",
+            station_name: "Am Harras",
+            max_departures_per_stop: 4,
+            max_departures_per_route: 2,
+            max_hours_in_advance: 3,
+            show_ungrouped: true,
+            custom_title: "7",
+            platform_filter_routes: ["134", "54"],
+          },
+        ],
+      };
+
+      const result = applyWizardConfig(existingConfig, wizardResult);
+
+      expect(result).toContain("platform_filter_routes");
+      expect(result).toContain('"134"');
+      expect(result).toContain('"54"');
+      expect(result).toContain("ungrouped_title");
+    });
+
     it("should add custom ungrouped title to existing config", () => {
       const existingConfig = `
 [[stops]]

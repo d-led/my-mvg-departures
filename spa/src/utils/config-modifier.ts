@@ -315,6 +315,7 @@ export type WizardStop = {
   show_ungrouped: boolean;
   custom_title?: string;
   direction_mappings?: Record<string, string[]>;
+  platform_filter_routes?: string[];
 };
 
 export type WizardTarget = "main" | "route";
@@ -362,6 +363,10 @@ function mapWizardStop(stop: WizardStop): TomlStopData {
     Object.keys(stop.direction_mappings).length > 0
   ) {
     mapped.direction_mappings = stop.direction_mappings;
+  }
+
+  if (stop.platform_filter_routes && stop.platform_filter_routes.length > 0) {
+    mapped.platform_filter_routes = stop.platform_filter_routes;
   }
 
   return mapped;

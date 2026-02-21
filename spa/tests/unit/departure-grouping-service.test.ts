@@ -82,6 +82,140 @@ describe("DepartureGroupingService", () => {
     }
   });
 
+  describe("platform_filter_routes", () => {
+    const baseDepartures = (now: Date) => [
+      createDeparture({
+        time: new Date(now.getTime() + 300000),
+        plannedTime: new Date(now.getTime() + 300000),
+        line: "54",
+        destination: "Ostbahnhof",
+        transportType: "Bus",
+      }),
+      createDeparture({
+        time: new Date(now.getTime() + 600000),
+        plannedTime: new Date(now.getTime() + 600000),
+        line: "N44",
+        destination: "Giesing",
+        transportType: "Bus",
+      }),
+      createDeparture({
+        time: new Date(now.getTime() + 900000),
+        plannedTime: new Date(now.getTime() + 900000),
+        line: "134",
+        destination: "Marienplatz",
+        transportType: "Bus",
+      }),
+    ];
+
+    it("whitelists by line when platform_filter is not set", () => {
+      const now = new Date();
+      const stopConfig = createStopConfiguration({
+        stationId: "de:09162:1129",
+        stationName: "Am Harras",
+        platformFilterRoutes: ["134", "54"],
+        showUngrouped: true,
+      });
+
+      const groups = service.groupDepartures(baseDepartures(now), stopConfig);
+
+      const allDepartures = groups.flatMap((g) => g.departures);
+      expect(allDepartures.map((d) => d.line)).toEqual(["54", "134"]);
+      expect(allDepartures.find((d) => d.line === "N44")).toBeUndefined();
+    });
+
+    it("uses exact line match: N44 is separate from 44", () => {
+      const now = new Date();
+      const departures = [
+        ...baseDepartures(now),
+        createDeparture({
+          time: new Date(now.getTime() + 1200000),
+          plannedTime: new Date(now.getTime() + 1200000),
+          line: "44",
+          destination: "Hauptbahnhof",
+          transportType: "Bus",
+        }),
+      ];
+      const stopConfig = createStopConfiguration({
+        stationId: "de:09162:1129",
+        stationName: "Am Harras",
+        platformFilterRoutes: ["44"],
+        showUngrouped: true,
+      });
+
+      const groups = service.groupDepartures(departures, stopConfig);
+
+      const allDepartures = groups.flatMap((g) => g.departures);
+      expect(allDepartures.map((d) => d.line)).toEqual(["44"]);
+      expect(allDepartures.find((d) => d.line === "N44")).toBeUndefined();
+    });
+
+    it("shows all departures when platform_filter_routes is empty", () => {
+      const now = new Date();
+      const stopConfig = createStopConfiguration({
+        stationId: "de:09162:1129",
+        stationName: "Am Harras",
+        platformFilterRoutes: [],
+        showUngrouped: true,
+      });
+
+      const groups = service.groupDepartures(baseDepartures(now), stopConfig);
+
+      const allDepartures = groups.flatMap((g) => g.departures);
+      expect(allDepartures.map((d) => d.line)).toEqual(["54", "N44", "134"]);
+    });
+
+    it("shows no departures when none match the whitelist", () => {
+      const now = new Date();
+      const stopConfig = createStopConfiguration({
+        stationId: "de:09162:1129",
+        stationName: "Am Harras",
+        platformFilterRoutes: ["U6", "S1"],
+        showUngrouped: true,
+      });
+
+      const groups = service.groupDepartures(baseDepartures(now), stopConfig);
+
+      const allDepartures = groups.flatMap((g) => g.departures);
+      expect(allDepartures).toHaveLength(0);
+    });
+
+    it("with platform_filter set: routes not in platform_filter_routes bypass platform check", () => {
+      const now = new Date();
+      const departures = [
+        createDeparture({
+          time: new Date(now.getTime() + 300000),
+          plannedTime: new Date(now.getTime() + 300000),
+          line: "54",
+          destination: "Ostbahnhof",
+          transportType: "Bus",
+          platform: "7",
+        }),
+        createDeparture({
+          time: new Date(now.getTime() + 600000),
+          plannedTime: new Date(now.getTime() + 600000),
+          line: "N44",
+          destination: "Giesing",
+          transportType: "Bus",
+          platform: "8",
+        }),
+      ];
+      const stopConfig = createStopConfiguration({
+        stationId: "de:09162:1129",
+        stationName: "Am Harras",
+        platformFilter: 7,
+        platformFilterRoutes: ["54"],
+        showUngrouped: true,
+      });
+
+      const groups = service.groupDepartures(departures, stopConfig);
+
+      const allDepartures = groups.flatMap((g) => g.departures);
+      expect(allDepartures.map((d) => d.line)).toEqual(["54", "N44"]);
+      expect(allDepartures.find((d) => d.line === "54")?.platform).toBe("7");
+      expect(allDepartures.find((d) => d.line === "N44")?.platform).toBe("8");
+    });
+  });
+
   it("should limit departures per route", () => {
     const now = new Date();
     const departures = Array.from({ length: 5 }, (_, i) =>

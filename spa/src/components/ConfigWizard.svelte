@@ -174,8 +174,15 @@
     selectedCount = selectedStops.size;
   }
 
+  /** Extract platform/stop number from ID (e.g. de:09162:1129:9:9 → "9"). */
+  function extractStopNumberFromId(stopId: string): string | null {
+    const parts = stopId.split(":");
+    const last = parts[parts.length - 1];
+    return last && /^\d+$/.test(last) ? last : null;
+  }
+
   function getDefaultSubStopTitle(
-    _subStopId: string,
+    subStopId: string,
     platformValue?: string | number | null,
     platformKind?: "platform" | "stop" | null,
   ) {
@@ -187,7 +194,9 @@
         return `Stop ${platformValue}`;
       }
     }
-    return "Stop";
+    // Fallback: extract from stop ID when API doesn't provide platform (e.g. de:09162:1129:9:9 → "Stop 9")
+    const extracted = extractStopNumberFromId(subStopId);
+    return extracted ? `Stop ${extracted}` : "Stop";
   }
 
   function getSubStopTitleForDisplay(
@@ -448,6 +457,16 @@
     }
   }
 
+  /** Unique key for a route: line|destination. Backend filters by line only. */
+  function buildRouteKey(line: string, destination: string) {
+    return `${line}|${destination}`;
+  }
+
+  /** Extract line from routeKey (handles both "62" and "62|Marienplatz" formats). */
+  function routeKeyToLine(routeKey: string): string {
+    return routeKey.includes("|") ? routeKey.split("|")[0] : routeKey;
+  }
+
   function toggleRouteFilter(subStopId: string, routeKey: string) {
     if (!filterSelectedRoutes.has(subStopId)) {
       filterSelectedRoutes.set(subStopId, new SvelteSet<string>());
@@ -632,7 +651,9 @@
           // Add platform_filter_routes if user selected specific routes to filter
           const selectedRoutes = filterSelectedRoutes.get(subStopId);
           if (selectedRoutes && selectedRoutes.size > 0) {
-            config.platform_filter_routes = Array.from(selectedRoutes);
+            config.platform_filter_routes = [
+              ...new Set(Array.from(selectedRoutes).map(routeKeyToLine)),
+            ];
           }
         }
         
@@ -1222,7 +1243,7 @@
                     </h4>
                     <div class="route-filter-options">
                       {#each routes as route (route.transportType + '-' + route.line + '-' + route.destination)}
-                        {@const routeKey = `${route.line}`}
+                        {@const routeKey = buildRouteKey(route.line, route.destination)}
                         {@const isSelected = filterSelectedRoutes.get(subStopId)?.has(routeKey) || false}
                         <button
                           class="route-filter-button"
@@ -1253,7 +1274,8 @@
             </div>
             
             <p class="info-text">
-              💡 Filtering routes helps reduce clutter when you only care about specific lines
+              💡 Filtering routes helps reduce clutter when you only care about specific lines.
+              Only line numbers are stored (e.g. 54, 134)—destinations are ignored. Night buses like N44 are separate from 44.
             </p>
           {/if}
         </div>
@@ -1353,8 +1375,7 @@
                         <span class="field-label">Filtered routes:</span>
                         <div class="route-chips">
                           {#each Array.from(filterSelectedRoutes.get(subStopId) || []) as routeKey (routeKey)}
-                            {@const routeParts = routeKey.split(' ')}
-                            {@const lineNumber = routeParts[0]}
+                            {@const lineNumber = routeKeyToLine(routeKey)}
                             <span class="route-chip-small">{lineNumber}</span>
                           {/each}
                         </div>

@@ -233,19 +233,26 @@ export class DepartureGroupingService {
     departures: Departure[],
     stopConfig: StopConfiguration,
   ): Departure[] {
+    const platformFilterRoutes = stopConfig.platformFilterRoutes ?? [];
+
+    // When only platform_filter_routes is set (no platform_filter): whitelist by line
     if (stopConfig.platformFilter === undefined) {
-      return departures;
+      if (platformFilterRoutes.length === 0) {
+        return departures;
+      }
+      return departures.filter((d) => platformFilterRoutes.includes(d.line));
     }
 
+    // When platform_filter is set: filter by platform, with platform_filter_routes
+    // narrowing which routes the platform filter applies to
     const platformFilter = stopConfig.platformFilter;
-    const platformFilterRoutes = stopConfig.platformFilterRoutes ?? [];
 
     return departures.filter((d) => {
       if (
         platformFilterRoutes.length > 0 &&
         !platformFilterRoutes.includes(d.line)
       ) {
-        return true; // Don't filter if route not in filter list
+        return true; // Don't apply platform filter to routes not in list
       }
 
       if (d.platform === null) {
