@@ -29,6 +29,7 @@
   let pasteError = $state(false);
   let showWizard = $state(false);
   let showDelete = $state(false);
+  let showDeleteRoutes = $state(false);
   let showFullscreenEditor = $state(false);
   let showTweakOverlay = $state(false);
   type TweakEntry = { key: string; value: string; lineIndex: number };
@@ -75,6 +76,103 @@
 
   function isOnTheRunRoute(path: string): boolean {
     return path === "on-the-run" || path === "/on-the-run";
+  }
+
+  type DeletableConfigItem =
+    | { kind: "route"; id: string; label: string; path: string; startLine: number; endLine: number }
+    | { kind: "inky"; id: string; label: string; startLine: number; endLine: number };
+
+  function buildDeletableConfigItems(): DeletableConfigItem[] {
+    const items: DeletableConfigItem[] = [];
+    if (!configText.trim()) return items;
+
+    const lines = configText.split("\n");
+
+    // Find [inky] section
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
+      if (trimmed === "[inky]") {
+        let end = i + 1;
+        while (end < lines.length) {
+          const next = lines[end].trim();
+          if (next.startsWith("[") && !next.startsWith("[inky.") && next !== "[inky]") {
+            break;
+          }
+          end++;
+        }
+        items.push({
+          kind: "inky",
+          id: "inky",
+          label: "Inky e-ink config",
+          startLine: i,
+          endLine: end,
+        });
+        break;
+      }
+    }
+
+    // Find [[routes]] blocks (exclude default "/" and on-the-run)
+    let i = 0;
+    while (i < lines.length) {
+      if (lines[i].trim() === "[[routes]]") {
+        const startLine = i;
+        let path = "/";
+        let title: string | undefined;
+
+        i++;
+        while (i < lines.length) {
+          const line = lines[i];
+          const trimmed = line.trim();
+          const pathMatch = trimmed.match(/path\s*=\s*"([^"]*)"/) ?? trimmed.match(/path\s*=\s*'([^']*)'/);
+          if (pathMatch) path = pathMatch[1];
+          if (trimmed === "[[routes.display]]") {
+            let j = i + 1;
+            while (j < lines.length) {
+              const t = lines[j].trim();
+              if (t.startsWith("[[") || (t.startsWith("[") && !t.startsWith("[routes"))) break;
+              const titleMatch = t.match(/title\s*=\s*"([^"]*)"/);
+              if (titleMatch) {
+                title = titleMatch[1];
+                break;
+              }
+              j++;
+            }
+          }
+          if (trimmed === "[[routes]]") break;
+          if (trimmed.startsWith("[[") && !trimmed.startsWith("[[routes")) break;
+          if (trimmed.match(/^\[[a-z_]+\]/) && !trimmed.startsWith("[routes")) break;
+          i++;
+        }
+        const endLine = i;
+
+        const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+        if (normalizedPath !== "/" && !isOnTheRunRoute(normalizedPath)) {
+          const displayLabel = title ?? normalizedPath;
+          items.push({
+            kind: "route",
+            id: `route::${normalizedPath}`,
+            label: displayLabel,
+            path: normalizedPath,
+            startLine,
+            endLine,
+          });
+        }
+        continue;
+      }
+      i++;
+    }
+
+    return items;
+  }
+
+  const deletableConfigItems = $derived(buildDeletableConfigItems());
+
+  function deleteConfigItem(item: DeletableConfigItem) {
+    const lines = configText.split("\n");
+    const before = lines.slice(0, item.startLine);
+    const after = lines.slice(item.endLine);
+    const joined = [...before, ...after].join("\n");
+    configText = joined.replace(/\n{3,}/g, "\n\n").trim();
   }
 
   function openWizard() {
@@ -854,6 +952,50 @@
       routeStopIdsByPath={wizardContext?.routeStopIdsByPath ?? {}}
       onTheRunDisabled={isOnTheRunRoute(getCurrentRoutePath())}
     />
+  {:else if showDeleteRoutes}
+    <div class="modal-content delete-routes-content">
+      <div class="modal-header">
+        <h2>Delete Routes & Config</h2>
+        <button class="close-button" onclick={() => (showDeleteRoutes = false)} aria-label="Close">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="delete-routes-hint">
+          Remove entire routes or the Inky e-ink config section from your configuration.
+        </p>
+        {#if deletableConfigItems.length === 0}
+          <p class="delete-routes-empty">Nothing to delete. Add routes (other than the main one) or an [inky] section to see them here.</p>
+        {:else}
+          <div class="delete-routes-list" role="list">
+            {#each deletableConfigItems as item (item.id)}
+              <div class="delete-routes-item" role="listitem">
+                <span class="delete-routes-label">
+                  {item.label}
+                  {#if item.kind === "route"}
+                    <span class="delete-routes-path">{item.path}</span>
+                  {/if}
+                </span>
+                <button
+                  type="button"
+                  class="delete-item-button"
+                  onclick={() => {
+                    deleteConfigItem(item);
+                    if (deletableConfigItems.length === 1) showDeleteRoutes = false;
+                  }}
+                  title="Delete {item.label}"
+                  aria-label="Delete {item.label}"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="delete-icon" aria-hidden="true">
+                    <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    <line x1="10" y1="11" x2="10" y2="17"/>
+                    <line x1="14" y1="11" x2="14" y2="17"/>
+                  </svg>
+                </button>
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+    </div>
   {:else if showDelete}
     <div class="modal-content">
       <div class="modal-header">
@@ -951,6 +1093,13 @@
             title="Delete headers from the current route"
           >
             Delete (current route)
+          </button>
+          <button
+            class="method-button"
+            onclick={() => (showDeleteRoutes = true)}
+            title="Delete routes or Inky config from the file"
+          >
+            Delete routes
           </button>
         </div>
 
@@ -1242,6 +1391,102 @@
   .delete-confirm ul {
     margin: 0;
     padding-left: 1.25rem;
+  }
+
+  .delete-routes-hint {
+    color: #6b7280;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+  }
+
+  .delete-routes-empty {
+    color: #6b7280;
+    font-style: italic;
+  }
+
+  .delete-routes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 320px;
+    overflow: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    background: #f9fafb;
+  }
+
+  :global([data-theme="dark"]) .delete-routes-list {
+    border-color: #374151;
+    background: #111827;
+  }
+
+  .delete-routes-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #e5e7eb;
+  }
+
+  :global([data-theme="dark"]) .delete-routes-item {
+    border-bottom-color: #374151;
+  }
+
+  .delete-routes-item:last-child {
+    border-bottom: none;
+  }
+
+  .delete-routes-label {
+    font-weight: 500;
+    flex: 1;
+  }
+
+  .delete-routes-path {
+    font-size: 0.8em;
+    font-weight: 400;
+    color: #6b7280;
+    margin-left: 0.35em;
+  }
+
+  :global([data-theme="dark"]) .delete-routes-path {
+    color: #9ca3af;
+  }
+
+  .delete-item-button {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: none;
+    border-radius: 0.375rem;
+    background: transparent;
+    color: #6b7280;
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .delete-item-button:hover {
+    color: #dc2626;
+    background: #fef2f2;
+  }
+
+  :global([data-theme="dark"]) .delete-item-button {
+    color: #9ca3af;
+  }
+
+  :global([data-theme="dark"]) .delete-item-button:hover {
+    color: #f87171;
+    background: #450a0a;
+  }
+
+  .delete-icon {
+    width: 1.25rem;
+    height: 1.25rem;
   }
 
   .delete-disabled {
