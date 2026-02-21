@@ -30,6 +30,8 @@
   let showWizard = $state(false);
   let showDelete = $state(false);
   let showDeleteRoutes = $state(false);
+  let deleteRoutesStep = $state<"select" | "confirm">("select");
+  let deleteRoutesSelections = $state<Set<string>>(new Set());
   let showFullscreenEditor = $state(false);
   let showTweakOverlay = $state(false);
   type TweakEntry = { key: string; value: string; lineIndex: number };
@@ -167,12 +169,44 @@
 
   const deletableConfigItems = $derived(buildDeletableConfigItems());
 
-  function deleteConfigItem(item: DeletableConfigItem) {
-    const lines = configText.split("\n");
-    const before = lines.slice(0, item.startLine);
-    const after = lines.slice(item.endLine);
-    const joined = [...before, ...after].join("\n");
-    configText = joined.replace(/\n{3,}/g, "\n\n").trim();
+  function toggleDeleteRoutesSelection(id: string) {
+    const next = new Set(deleteRoutesSelections);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    deleteRoutesSelections = next;
+  }
+
+  function applyRoutesDeletions() {
+    if (deleteRoutesSelections.size === 0) return;
+
+    const itemsToDelete = deletableConfigItems.filter((item) =>
+      deleteRoutesSelections.has(item.id),
+    );
+    if (itemsToDelete.length === 0) return;
+
+    // Delete in reverse order (end to start) so line indices stay valid
+    const sorted = [...itemsToDelete].sort((a, b) => b.startLine - a.startLine);
+    let lines = configText.split("\n");
+
+    for (const item of sorted) {
+      const before = lines.slice(0, item.startLine);
+      const after = lines.slice(item.endLine);
+      lines = [...before, ...after];
+    }
+
+    configText = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+    deleteRoutesSelections = new Set();
+    deleteRoutesStep = "select";
+    showDeleteRoutes = false;
+  }
+
+  function startDeleteRoutesFlow() {
+    deleteRoutesStep = "select";
+    deleteRoutesSelections = new Set();
+    showDeleteRoutes = true;
   }
 
   function openWizard() {
@@ -960,41 +994,63 @@
       </div>
       <div class="modal-body">
         <p class="delete-routes-hint">
-          Remove entire routes or the Inky e-ink config section from your configuration.
+          Select the routes or Inky config to remove from your configuration.
         </p>
         {#if deletableConfigItems.length === 0}
           <p class="delete-routes-empty">Nothing to delete. Add routes (other than the main one) or an [inky] section to see them here.</p>
         {:else}
-          <div class="delete-routes-list" role="list">
-            {#each deletableConfigItems as item (item.id)}
-              <div class="delete-routes-item" role="listitem">
-                <span class="delete-routes-label">
-                  {item.label}
-                  {#if item.kind === "route"}
-                    <span class="delete-routes-path">{item.path}</span>
-                  {/if}
-                </span>
-                <button
-                  type="button"
-                  class="delete-item-button"
-                  onclick={() => {
-                    deleteConfigItem(item);
-                    if (deletableConfigItems.length === 1) showDeleteRoutes = false;
-                  }}
-                  title="Delete {item.label}"
-                  aria-label="Delete {item.label}"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="delete-icon" aria-hidden="true">
-                    <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                    <line x1="10" y1="11" x2="10" y2="17"/>
-                    <line x1="14" y1="11" x2="14" y2="17"/>
-                  </svg>
-                </button>
-              </div>
-            {/each}
-          </div>
+          {#if deleteRoutesStep === "select"}
+            <div class="delete-routes-list delete-list" role="list">
+              {#each deletableConfigItems as item (item.id)}
+                <label class="delete-routes-item delete-item" role="listitem">
+                  <input
+                    type="checkbox"
+                    class="delete-checkbox"
+                    checked={deleteRoutesSelections.has(item.id)}
+                    onchange={() => toggleDeleteRoutesSelection(item.id)}
+                  />
+                  <span class="delete-routes-label delete-item-label">
+                    {item.label}
+                    {#if item.kind === "route"}
+                      <span class="delete-routes-path">{item.path}</span>
+                    {/if}
+                  </span>
+                </label>
+              {/each}
+            </div>
+          {:else if deleteRoutesStep === "confirm"}
+            <div class="delete-confirm">
+              <h3>Confirm deletion</h3>
+              <ul>
+                {#each deletableConfigItems.filter((item) => deleteRoutesSelections.has(item.id)) as item (item.id)}
+                  <li>
+                    {item.label}
+                    {#if item.kind === "route"}
+                      <span class="delete-routes-path">{item.path}</span>
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+            </div>
+          {/if}
         {/if}
       </div>
+      {#if deletableConfigItems.length > 0}
+        <div class="modal-footer">
+          {#if deleteRoutesStep === "confirm"}
+            <button class="button button-secondary" onclick={() => (deleteRoutesStep = "select")}>Back</button>
+            <button class="button button-secondary" onclick={() => (showDeleteRoutes = false)}>Cancel</button>
+            <button class="button button-primary" onclick={applyRoutesDeletions} disabled={deleteRoutesSelections.size === 0}>Confirm Delete</button>
+          {:else}
+            <button class="button button-secondary" onclick={() => (showDeleteRoutes = false)}>Cancel</button>
+            <button
+              class="button button-primary"
+              onclick={() => (deleteRoutesStep = "confirm")}
+              disabled={deleteRoutesSelections.size === 0}
+            >Review Delete</button>
+          {/if}
+        </div>
+      {/if}
     </div>
   {:else if showDelete}
     <div class="modal-content">
@@ -1096,10 +1152,10 @@
           </button>
           <button
             class="method-button"
-            onclick={() => (showDeleteRoutes = true)}
+            onclick={startDeleteRoutesFlow}
             title="Delete routes or Inky config from the file"
           >
-            Delete routes
+            Routes
           </button>
         </div>
 
@@ -1422,25 +1478,11 @@
   }
 
   .delete-routes-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.5rem 0;
-    border-bottom: 1px solid #e5e7eb;
-  }
-
-  :global([data-theme="dark"]) .delete-routes-item {
-    border-bottom-color: #374151;
-  }
-
-  .delete-routes-item:last-child {
-    border-bottom: none;
+    padding: 0.25rem 0;
   }
 
   .delete-routes-label {
     font-weight: 500;
-    flex: 1;
   }
 
   .delete-routes-path {
@@ -1454,39 +1496,8 @@
     color: #9ca3af;
   }
 
-  .delete-item-button {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 2rem;
-    height: 2rem;
-    padding: 0;
-    border: none;
-    border-radius: 0.375rem;
-    background: transparent;
-    color: #6b7280;
-    cursor: pointer;
-    transition: color 0.15s, background 0.15s;
-  }
-
-  .delete-item-button:hover {
-    color: #dc2626;
-    background: #fef2f2;
-  }
-
-  :global([data-theme="dark"]) .delete-item-button {
-    color: #9ca3af;
-  }
-
-  :global([data-theme="dark"]) .delete-item-button:hover {
-    color: #f87171;
-    background: #450a0a;
-  }
-
-  .delete-icon {
-    width: 1.25rem;
-    height: 1.25rem;
+  .delete-confirm .delete-routes-path {
+    margin-left: 0.25em;
   }
 
   .delete-disabled {
