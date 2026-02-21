@@ -333,6 +333,18 @@
 
   let lastTweakValueFocusedEl: HTMLInputElement | undefined = $state(undefined);
 
+  /** Identity of the value input that has focus (for keeping it visible while editing). */
+  const lastTweakFocusedEntry = $derived.by(() => {
+    const el = lastTweakValueFocusedEl;
+    if (!el?.id?.startsWith?.("tweak-input-")) return undefined;
+    const match = el.id.match(/^tweak-input-(\d+)-(\d+)$/);
+    if (!match) return undefined;
+    return {
+      sectionIdx: parseInt(match[1], 10),
+      lineIndex: parseInt(match[2], 10),
+    };
+  });
+
   function clearTweakFilter() {
     tweakFilterQuery = "";
     tick().then(() => {
@@ -382,19 +394,37 @@
   function tweakSectionHasVisibleEntries(
     section: TweakSection,
     parts: string[],
+    sectionIdx: number,
   ): boolean {
+    const focused = lastTweakFocusedEntry;
+    if (focused?.sectionIdx === sectionIdx) {
+      const hasFocusedEntry = section.entries.some(
+        (e) => e.lineIndex === focused.lineIndex,
+      );
+      if (hasFocusedEntry) return true;
+    }
     return (
       tweakSectionHeadingMatchesFilter(section, parts) ||
       section.entries.some((e) => tweakEntryMatchesFilter(e, parts))
     );
   }
 
-  /** Show entry if section heading matches (show whole section) or this entry's key/value matches. */
+  /** Show entry if section heading matches (show whole section) or this entry's key/value matches.
+   * Always show the entry whose value input is focused, so editing (e.g. clearing) doesn't hide it. */
   function tweakShowEntry(
     section: TweakSection,
     entry: TweakEntry,
     parts: string[],
+    sectionIdx: number,
   ): boolean {
+    const focused = lastTweakFocusedEntry;
+    if (
+      focused &&
+      focused.sectionIdx === sectionIdx &&
+      focused.lineIndex === entry.lineIndex
+    ) {
+      return true;
+    }
     return (
       tweakSectionHeadingMatchesFilter(section, parts) ||
       tweakEntryMatchesFilter(entry, parts)
@@ -1279,13 +1309,13 @@
                   <p class="tweak-empty">No sections found. Add at least one TOML section (a line starting with [).</p>
                 {:else}
                   {#each tweakSections as section, sectionIdx (sectionIdx)}
-                    {@const hasVisible = tweakSectionHasVisibleEntries(section, tweakFilterParts)}
+                    {@const hasVisible = tweakSectionHasVisibleEntries(section, tweakFilterParts, sectionIdx)}
                     {#if hasVisible}
                       <section class="tweak-section">
                         <h3 class="tweak-section-title">{section.heading}</h3>
                         <ul class="tweak-entries">
                           {#each section.entries as entry (`${sectionIdx}-${entry.lineIndex}`)}
-                            {#if tweakShowEntry(section, entry, tweakFilterParts)}
+                            {#if tweakShowEntry(section, entry, tweakFilterParts, sectionIdx)}
                               <li class="tweak-entry">
                                 <label class="tweak-key" for="tweak-input-{sectionIdx}-{entry.lineIndex}">
                                   {entry.key}
