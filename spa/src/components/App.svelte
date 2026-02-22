@@ -6,6 +6,7 @@
   import { LocalStorageCache } from "../adapters/storage/local-storage-cache.js";
   import { LocalStorageConfigStorage } from "../adapters/storage/local-storage-config-storage.js";
   import { DepartureGroupingService } from "../application/services/departure-grouping-service.js";
+  import { updateFavicon } from "../application/services/favicon-service.js";
   import { MultiStopPoller } from "../application/services/multi-stop-poller.js";
   import { OnTheRunPoller } from "../application/services/on-the-run-poller.js";
   import type {
@@ -416,9 +417,10 @@
     await configStorage.setCurrentRoutePath(route.path);
     onTheRunStatusMessages = [];
     
-    // Update browser tab title (happens on initial load and when switching routes)
+    // Update browser tab title and favicon (happens on initial load and when switching routes)
     const pageTitle = route.display?.title ?? "MVG Departures";
     document.title = pageTitle;
+    updateFavicon(pageTitle);
     console.log(`Set page title to: ${pageTitle}`);
     
     // Only update hash if explicitly requested (user navigation, not initial load)
