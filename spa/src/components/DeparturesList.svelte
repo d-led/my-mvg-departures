@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { GroupedDepartures, DisplayConfiguration } from "../domain/models/index.js";
+  import { SvelteSet } from "svelte/reactivity";
+  import { getStationCoords, getCachedCoords } from "../utils/station-coords.js";
 
   let {
     groupedDepartures = [],
@@ -118,6 +120,34 @@
     return `${group.stopName} → ${directionClean}`;
   }
 
+  /** Station coords cache (stationId -> { lat, lng }) for GPS map links. Populated by $effect. */
+  let stationCoords = $state<Record<string, { lat: number; lng: number }>>({});
+
+  $effect(() => {
+    const groups = groupedDepartures;
+    const seen = new SvelteSet<string>();
+    for (const group of groups) {
+      const id = group.stationId;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      if (stationCoords[id] ?? getCachedCoords(id)) continue;
+      getStationCoords(id, group.stopName, (c) => {
+        stationCoords = { ...stationCoords, [id]: c };
+      });
+    }
+  });
+
+  /** Google Maps search URL for stop location (GPS when available, else name). No tracking params. */
+  function getMapsUrl(group: any): string {
+    const coords = stationCoords[group.stationId] ?? getCachedCoords(group.stationId);
+    if (coords) {
+      return `https://www.google.com/maps/search/?api=1&query=${coords.lat},${coords.lng}`;
+    }
+    if (group.latitude != null && group.longitude != null) {
+      return `https://www.google.com/maps/search/?api=1&query=${group.latitude},${group.longitude}`;
+    }
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(group.stopName)}`;
+  }
 
   function getRouteIconDisplay(): "icon_with_text" | "badge" | "none" {
     // Default to "icon_with_text" (matches Python default)
@@ -181,12 +211,14 @@
         data-fill-vertical-space={display?.fillVerticalSpace && groupIndex === 0 ? "true" : undefined}
       >
         {#if groupIndex === 0}
-          <span class="direction-header-text">{getHeaderText(group)}</span>
+          <span class="direction-header-text">
+            <a href={getMapsUrl(group)} class="direction-header-link" target="_blank" rel="noopener noreferrer" aria-label="Open {group.stopName} in Google Maps">{getHeaderText(group)}</a>
+          </span>
           <div class="direction-header-time status-header-item" id="datetime-display" aria-label="Current date and time: {currentDateTime}">
             {currentDateTime}
           </div>
         {:else}
-          {getHeaderText(group)}
+          <a href={getMapsUrl(group)} class="direction-header-link" target="_blank" rel="noopener noreferrer" aria-label="Open {group.stopName} in Google Maps">{getHeaderText(group)}</a>
         {/if}
       </h2>
       {#if group.departures.length === 0}
@@ -310,6 +342,15 @@
   .direction-header-text {
     flex: 1;
     min-width: 0;
+  }
+
+  .direction-header-link {
+    color: inherit;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .direction-header-link:hover {
+    text-decoration: underline;
   }
 
   .direction-header-time {
