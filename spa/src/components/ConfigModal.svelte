@@ -1312,7 +1312,15 @@
                     {@const hasVisible = tweakSectionHasVisibleEntries(section, tweakFilterParts, sectionIdx)}
                     {#if hasVisible}
                       <section class="tweak-section">
-                        <h3 class="tweak-section-title">{section.heading}</h3>
+                        <h3 class="tweak-section-title">
+                          {section.heading}
+                          {#if section.heading === "[[routes.stops]]" || section.heading === "[[stops]]"}
+                            {@const stationNameEntry = section.entries.find((e) => e.key === "station_name")}
+                            {#if stationNameEntry?.value}
+                              <span class="tweak-section-context"> {stationNameEntry.value}</span>
+                            {/if}
+                          {/if}
+                        </h3>
                         <ul class="tweak-entries">
                           {#each section.entries as entry (`${sectionIdx}-${entry.lineIndex}`)}
                             {#if tweakShowEntry(section, entry, tweakFilterParts, sectionIdx)}
@@ -1792,6 +1800,16 @@
     margin: 0;
     font-size: 1.1rem;
     font-weight: 700;
+  }
+
+  .tweak-section-context {
+    font-weight: 400;
+    color: #6b7280;
+    font-size: 0.95rem;
+  }
+
+  :global([data-theme="dark"]) .tweak-section-context {
+    color: #9ca3af;
   }
 
   .tweak-entries {
