@@ -32,7 +32,9 @@ export async function fetchConfigTomlFromSearch(
 
   const configUrl = normalizeConfigUrl(configParam);
   if (!configUrl) {
-    throw new Error("Invalid config URL. Only absolute http(s) URLs are supported.");
+    throw new Error(
+      "Invalid config URL. Only absolute http(s) URLs are supported.",
+    );
   }
 
   const response = await fetchImpl(configUrl);
