@@ -29,9 +29,12 @@ describe("config-url", () => {
   });
 
   it("fetches config content when URL param is present", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response("[display]\ntitle = \"Test\"", { status: 200 }),
-    );
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      text: async () => "[display]\ntitle = \"Test\"",
+    }));
 
     const result = await fetchConfigTomlFromSearch(
       "?config=https%3A%2F%2Fexample.com%2Fconfig.toml",

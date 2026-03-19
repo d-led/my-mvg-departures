@@ -313,9 +313,12 @@
         console.log(
           `Loaded config from URL parameter and persisted it: ${urlConfig.configUrl}`,
         );
-        const params = new URLSearchParams(window.location.search);
-        params.delete("config");
-        const nextSearch = params.toString();
+        const nextSearch = window.location.search
+          .replace(/^\?/, "")
+          .split("&")
+          .filter((part) => part.length > 0)
+          .filter((part) => !part.startsWith("config="))
+          .join("&");
         const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
         window.history.replaceState({}, "", nextUrl);
       }

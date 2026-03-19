@@ -1,5 +1,5 @@
 export function readConfigUrlParam(search: string): string | null {
-  const params = new URLSearchParams(search);
+  const params = new globalThis.URLSearchParams(search);
   const rawValue = params.get("config");
   if (!rawValue) {
     return null;
