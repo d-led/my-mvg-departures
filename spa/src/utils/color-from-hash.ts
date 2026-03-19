@@ -42,9 +42,9 @@ export function generatePastelColorFromText(
   const x = c * (1 - Math.abs(((h * 6) % 2) - 1));
   const m = l - c / 2;
 
-  let r = 0,
-    g = 0,
-    b = 0;
+  let r: number;
+  let g: number;
+  let b: number;
   if (h < 1 / 6) {
     r = c;
     g = x;
