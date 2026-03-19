@@ -313,14 +313,6 @@
         console.log(
           `Loaded config from URL parameter and persisted it: ${urlConfig.configUrl}`,
         );
-        const nextSearch = window.location.search
-          .replace(/^\?/, "")
-          .split("&")
-          .filter((part) => part.length > 0)
-          .filter((part) => !part.startsWith("config="))
-          .join("&");
-        const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
-        window.history.replaceState({}, "", nextUrl);
       }
     } catch (error) {
       console.error("Failed to load config from URL parameter:", error);
