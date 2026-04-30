@@ -522,6 +522,7 @@ export function applyWizardConfig(
   } catch (e) {
     throw new Error(
       `Wizard produced invalid TOML: ${e instanceof Error ? e.message : String(e)}`,
+      { cause: e },
     );
   }
   return output;

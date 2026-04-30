@@ -53,6 +53,7 @@ describe("Wizard Add Route - Syntax Validation", () => {
           : String(e);
       throw new Error(
         `Wizard produced invalid TOML: ${msg}\n---\n${output}\n---`,
+        { cause: e },
       );
     }
 

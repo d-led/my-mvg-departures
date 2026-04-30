@@ -288,6 +288,14 @@ h2.direction-header {
   flex: 1;
   min-width: 0;
 }
+.direction-header-link {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+.direction-header-link:hover {
+  text-decoration: underline;
+}
 /* Scale first header text in fill_vertical_space mode - handled by JavaScript */
 /* CSS-only approach removed - JavaScript provides precise wrapping detection */
 .direction-header-status-group {

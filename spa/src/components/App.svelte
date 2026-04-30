@@ -17,6 +17,7 @@
     StopConfiguration,
   } from "../domain/models/index.js";
   import { calculateFillVerticalSpace, setFontSizesFromConfig } from "../utils/font-scaling.js";
+  import { fetchConfigTomlFromSearch } from "../utils/config-url.js";
   import {
     initDestinationScrolling,
     initRouteNumberScrolling,
@@ -303,6 +304,20 @@
   }
 
   async function loadConfig() {
+    try {
+      const urlConfig = await fetchConfigTomlFromSearch(window.location.search);
+      if (urlConfig) {
+        const parsedFromUrl = configParser.parseToml(urlConfig.toml);
+        await configStorage.saveConfig(parsedFromUrl);
+        await configStorage.saveConfigToml(urlConfig.toml);
+        console.log(
+          `Loaded config from URL parameter and persisted it: ${urlConfig.configUrl}`,
+        );
+      }
+    } catch (error) {
+      console.error("Failed to load config from URL parameter:", error);
+    }
+
     // Always prefer TOML as source of truth (ensures undefined values are preserved correctly)
     // JSON serialization can lose undefined values or preserve incorrect false values
     const tomlString = await configStorage.getConfigToml();
