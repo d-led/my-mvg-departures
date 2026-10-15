@@ -593,16 +593,16 @@ class DeparturesLiveView(LiveView[DeparturesState]):
                 exc_info=True,
             )
 
-    async def mount(self, socket: LiveViewSocket[DeparturesState], _session: dict) -> None:
+    async def mount(self, socket: LiveViewSocket[DeparturesState], session: dict) -> None:
         """Mount the LiveView and register socket for updates."""
         route_path = self.state_manager.route_path
 
-        presence_session_id = self._ensure_presence_session_id(_session)
+        presence_session_id = self._ensure_presence_session_id(session)
         if not self.state_manager.register_socket(socket, presence_session_id):
             return
 
         if is_connected(socket):
-            await self._handle_presence_tracking(route_path, socket, _session)
+            await self._handle_presence_tracking(route_path, socket, session)
         else:
             logger.debug(
                 "Socket not connected during mount - skipping presence tracking. "
@@ -612,10 +612,10 @@ class DeparturesLiveView(LiveView[DeparturesState]):
         self._set_socket_context(socket)
 
         if not hasattr(socket, "_presence_session_id"):
-            socket._presence_session_id = _session.get("_presence_session_id")
+            socket._presence_session_id = session.get("_presence_session_id")
 
         if is_connected(socket):
-            await self._subscribe_and_track_presence(route_path, socket, _session)
+            await self._subscribe_and_track_presence(route_path, socket, session)
         else:
             logger.warning("Socket not connected during mount, will receive updates when connected")
 

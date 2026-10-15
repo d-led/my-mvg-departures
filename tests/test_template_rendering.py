@@ -4,6 +4,8 @@ import os
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
+from pyview.meta import PyViewMeta
+
 from mvg_departures.adapters.config import AppConfig
 from mvg_departures.adapters.web.presence import PresenceTracker
 from mvg_departures.adapters.web.state import State
@@ -514,8 +516,8 @@ async def test_render_includes_line_and_destination() -> None:
         last_update=now,
         api_status="success",
     )
-    result = await view.render(state, {})
-    html = result.text() if hasattr(result, "text") else str(result)
+    result = await view.render(state, PyViewMeta())
+    html = result.text()
 
     assert "U3" in html
     assert "Giesing" in html
@@ -556,8 +558,8 @@ async def test_render_cancelled_applies_class() -> None:
         last_update=now,
         api_status="success",
     )
-    result = await view.render(state, {})
-    html = result.text() if hasattr(result, "text") else str(result)
+    result = await view.render(state, PyViewMeta())
+    html = result.text()
 
     assert 'class="departure-row cancelled"' in html or 'class="departure-row  cancelled"' in html
 
@@ -597,8 +599,8 @@ async def test_render_delay_applies_class() -> None:
         last_update=now,
         api_status="success",
     )
-    result = await view.render(state, {})
-    html = result.text() if hasattr(result, "text") else str(result)
+    result = await view.render(state, PyViewMeta())
+    html = result.text()
 
     assert 'class="time delay' in html
     # With default split_show_delay=false, delay is calculated into expected time
@@ -641,8 +643,8 @@ async def test_render_realtime_applies_class() -> None:
         last_update=now,
         api_status="success",
     )
-    result = await view.render(state, {})
-    html = result.text() if hasattr(result, "text") else str(result)
+    result = await view.render(state, PyViewMeta())
+    html = result.text()
 
     assert 'class="time realtime' in html or 'class="time  realtime' in html
 
@@ -682,8 +684,8 @@ async def test_render_platform_when_present() -> None:
         last_update=now,
         api_status="success",
     )
-    result = await view.render(state, {})
-    html = result.text() if hasattr(result, "text") else str(result)
+    result = await view.render(state, PyViewMeta())
+    html = result.text()
 
     assert "1" in html
     assert 'class="platform"' in html
@@ -700,8 +702,8 @@ async def test_render_empty_list() -> None:
         last_update=now,
         api_status="success",
     )
-    result = await view.render(state, {})
-    html = result.text() if hasattr(result, "text") else str(result)
+    result = await view.render(state, PyViewMeta())
+    html = result.text()
 
     # With configured stops, should show route headers even when empty (matches SPA behavior)
     assert "Universität" in html
@@ -761,8 +763,8 @@ async def test_render_stop_without_departures() -> None:
         last_update=now,
         api_status="success",
     )
-    result = await view.render(state, {})
-    html = result.text() if hasattr(result, "text") else str(result)
+    result = await view.render(state, PyViewMeta())
+    html = result.text()
 
     assert "No departures" in html
     assert "Marienplatz" in html

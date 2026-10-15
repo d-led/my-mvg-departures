@@ -5,6 +5,8 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pyview.binding import call_mount
+from pyview.live_socket import UnconnectedSocket
 
 from mvg_departures.adapters.config import AppConfig
 from mvg_departures.adapters.web.presence import PresenceTracker
@@ -204,3 +206,18 @@ async def test_disconnect_unregisters_socket_and_cleans_presence() -> None:
     assert socket not in view.state_manager.connected_sockets
     assert view.presence_tracker.get_total_count() == 0
     assert view.presence_tracker.get_dashboard_count(route_path) == 0
+
+
+@pytest.mark.asyncio
+async def test_mount_binds_session_like_pyview_does() -> None:
+    """Given pyview's bindings, when mounting, then the session gains a presence id.
+
+    ``call_mount`` is what the pyview runtime uses: it injects arguments by name, so
+    a mount hook whose session parameter is named anything else fails to bind.
+    """
+    view = _create_test_view()
+    session: dict = {}
+
+    await call_mount(view, UnconnectedSocket(), session)
+
+    assert session["_presence_session_id"]
