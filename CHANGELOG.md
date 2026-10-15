@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.1.1]
+
+### Features
+
+- **SPA (Svelte)**
+  - **Partial outages are visible**: a stop whose refresh failed keeps its place
+    and reads “No data (refresh failed)”, the status indicator turns degraded
+    with the stop names and reasons, and a notice appears when a refresh cycle
+    leaves nothing to show at all
+  - **In-cycle retries**: a failing stop is retried before the next refresh
+    interval, configurable per route with `fetch_retry_attempts` (default `3`,
+    `1` disables retrying) and `fetch_retry_delay_ms` (default `500`)
+
+### Maintenance
+
+- **SPA (Svelte)**: API errors from the MVG and VBB adapters propagate to the
+  poller instead of being rendered as “no departures”
+- **SPA (Svelte)**: Cypress specs covering departures, partial failures and
+  retries against a stubbed MVG API (`npm run e2e:spa`)
+- **CI**: new workflow that checks `spa/**` changes (type check, svelte-check,
+  lint, formatting, unit tests) on every pull request
+
 ## [0.1.0]
 
 ### Highlights
