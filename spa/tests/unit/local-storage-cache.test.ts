@@ -10,8 +10,8 @@ describe("LocalStorageCache", () => {
     storage = {};
     cache = new LocalStorageCache();
 
-    // Mock localStorage
-    global.localStorage = {
+    // Mock localStorage (jsdom exposes it as a getter-only global)
+    vi.stubGlobal("localStorage", {
       getItem: vi.fn((key: string) => storage[key] ?? null),
       setItem: vi.fn((key: string, value: string) => {
         storage[key] = value;
@@ -26,8 +26,7 @@ describe("LocalStorageCache", () => {
         return Object.keys(storage).length;
       },
       key: vi.fn((index: number) => Object.keys(storage)[index] ?? null),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } as any;
+    });
   });
 
   it("should store and retrieve departures", async () => {

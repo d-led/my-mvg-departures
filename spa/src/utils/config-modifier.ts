@@ -38,8 +38,7 @@ function stringifyToml(data: TomlData): string {
       lines.push("[[stops]]");
       const stopObj = stop as unknown as Record<string, unknown>;
       const directionMappings = stopObj.direction_mappings as
-        | Record<string, unknown>
-        | undefined;
+        Record<string, unknown> | undefined;
 
       for (const [key, value] of Object.entries(stopObj)) {
         if (key !== "direction_mappings") {
@@ -105,8 +104,7 @@ function stringifyToml(data: TomlData): string {
           lines.push("[[routes.stops]]");
           const stopObj = stop as unknown as Record<string, unknown>;
           const directionMappings = stopObj.direction_mappings as
-            | Record<string, unknown>
-            | undefined;
+            Record<string, unknown> | undefined;
 
           for (const [key, value] of Object.entries(stopObj)) {
             if (key !== "direction_mappings") {
@@ -170,8 +168,7 @@ function serializeRoute(route: TomlRouteData): string {
       lines.push("[[routes.stops]]");
       const stopObj = stop as unknown as Record<string, unknown>;
       const directionMappings = stopObj.direction_mappings as
-        | Record<string, unknown>
-        | undefined;
+        Record<string, unknown> | undefined;
 
       for (const [key, value] of Object.entries(stopObj)) {
         if (key !== "direction_mappings") {
