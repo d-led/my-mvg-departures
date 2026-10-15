@@ -167,6 +167,40 @@ Show live departures for a station. Useful for debugging when departures don't a
 - Check departure frequency for specific stop points
 - Compare departures across different physical stops
 
+### `upgrade-dependencies.sh`
+
+Upgrade every dependency of every sub-project to its latest major version using
+standard tooling: `taze` for the npm projects (root, `spa/`) and `uv` for the
+python projects (root, `inky/`).
+**Usage:**
+
+```bash
+# Upgrade everything (npm + python)
+./scripts/upgrade-dependencies.sh
+
+# See what would change, write nothing
+./scripts/upgrade-dependencies.sh --dry-run
+
+# Only one ecosystem
+./scripts/upgrade-dependencies.sh --node-only
+./scripts/upgrade-dependencies.sh --python-only
+
+# Recreate .venv when it no longer matches requires-python, then run the tests
+./scripts/upgrade-dependencies.sh --recreate-venv --verify
+```
+
+**Notes:**
+
+- Each npm step runs `taze major --write`, then `npm install`, then
+  `npm audit fix` to clear transitive advisories. Remaining advisories are
+  reported, not treated as a failure.
+- GitHub Actions pins in `.github/workflows/` are left alone - they are pinned by
+  commit SHA and upgraded separately.
+- `spa/` deliberately stays on the newest TypeScript that `typescript-eslint`
+  still supports (`--exclude typescript@7`).
+- Version ranges in `pyproject.toml` are not rewritten (uv has no `taze`
+  equivalent); raise a minimum explicitly with `uv add "<package>>=<version>"`.
+
 ## How Scripts Work
 
 All scripts use `deploy-common.sh` which provides:
