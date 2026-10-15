@@ -9,14 +9,17 @@
     "prettier": "prettier -w ."
   },
   "devDependencies": {
-    "@types/node": "^26.0.0",
-    "cypress": "^15.17.0",
+    "@types/node": "^26.6.5",
+    "cypress": "^16.2.0",
     "mocha-junit-reporter": "^2.2.1",
-    "prettier": "^3.8.4",
-    "typescript": "^6.0.3"
+    "prettier": "^3.9.10",
+    "typescript": "^7.0.2"
   },
   "overrides": {
     "diff": "8.0.3",
     "serialize-javascript": "7.0.5"
+  },
+  "allowScripts": {
+    "cypress": true
   }
 }
