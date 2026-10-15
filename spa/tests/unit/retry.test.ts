@@ -1,5 +1,42 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { withRetries, type FailedAttempt } from "../../src/utils/retry.js";
+import {
+  DEFAULT_RETRY_POLICY,
+  retryPolicyFromDisplay,
+  withRetries,
+  type FailedAttempt,
+} from "../../src/utils/retry.js";
+
+describe("retry policy from configuration", () => {
+  it("uses the defaults when the config says nothing", () => {
+    expect(retryPolicyFromDisplay(undefined)).toEqual(DEFAULT_RETRY_POLICY);
+    expect(retryPolicyFromDisplay({})).toEqual(DEFAULT_RETRY_POLICY);
+  });
+
+  it("uses the configured attempts and pause", () => {
+    expect(
+      retryPolicyFromDisplay({
+        fetchRetryAttempts: 5,
+        fetchRetryDelayMs: 2000,
+      }),
+    ).toEqual({ attempts: 5, delayMs: 2000 });
+  });
+
+  it("keeps a single attempt meaning no retry", () => {
+    expect(retryPolicyFromDisplay({ fetchRetryAttempts: 1 })).toEqual({
+      attempts: 1,
+      delayMs: DEFAULT_RETRY_POLICY.delayMs,
+    });
+  });
+
+  it("corrects settings that would break the cycle", () => {
+    expect(
+      retryPolicyFromDisplay({
+        fetchRetryAttempts: 0,
+        fetchRetryDelayMs: -100,
+      }),
+    ).toEqual({ attempts: 1, delayMs: 0 });
+  });
+});
 
 describe("withRetries", () => {
   const policy = { attempts: 3, delayMs: 1000 };

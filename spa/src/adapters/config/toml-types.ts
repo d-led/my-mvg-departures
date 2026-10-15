@@ -11,6 +11,8 @@ export interface TomlDisplayData {
   random_header_colors?: boolean;
   header_background_brightness?: number;
   refresh_interval_seconds?: number;
+  fetch_retry_attempts?: number;
+  fetch_retry_delay_ms?: number;
   banner_color?: string;
   split_show_delay?: boolean;
   font_size_route_number?: string;

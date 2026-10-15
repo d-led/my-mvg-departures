@@ -12,6 +12,10 @@ export interface DisplayConfiguration {
   randomHeaderColors?: boolean;
   headerBackgroundBrightness?: number;
   refreshIntervalSeconds?: number;
+  /** Tries per stop and refresh cycle before the stop counts as failed (default 3). */
+  fetchRetryAttempts?: number;
+  /** Pause between those tries in milliseconds (default 500). */
+  fetchRetryDelayMs?: number;
   bannerColor?: string;
   splitShowDelay?: boolean;
   fontSizeRouteNumber?: string;

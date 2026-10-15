@@ -14,6 +14,33 @@ export const DEFAULT_RETRY_POLICY: RetryPolicy = {
   delayMs: 500,
 };
 
+/** Retry settings as written in the TOML display configuration. */
+export interface DisplayRetrySettings {
+  /** `fetch_retry_attempts`: total tries per stop and cycle (1 = no retry). */
+  fetchRetryAttempts?: number;
+  /** `fetch_retry_delay_ms`: pause between those tries. */
+  fetchRetryDelayMs?: number;
+}
+
+/**
+ * The policy for one route. Unset or unusable values fall back to the defaults,
+ * so a typo can neither disable a stop forever nor hammer the API.
+ */
+export function retryPolicyFromDisplay(
+  display?: DisplayRetrySettings,
+): RetryPolicy {
+  return {
+    attempts: Math.max(
+      1,
+      display?.fetchRetryAttempts ?? DEFAULT_RETRY_POLICY.attempts,
+    ),
+    delayMs: Math.max(
+      0,
+      display?.fetchRetryDelayMs ?? DEFAULT_RETRY_POLICY.delayMs,
+    ),
+  };
+}
+
 export interface FailedAttempt {
   /** Number of the attempt that failed (1-based). */
   attempt: number;

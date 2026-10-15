@@ -70,13 +70,19 @@ function stubDepartures({ failingStops = [], attemptCounts = {} } = {}) {
   );
 }
 
-function openSpa() {
+function openSpa(configToml = CONFIG_TOML) {
   cy.visit("/", {
     onBeforeLoad(win) {
-      win.localStorage.setItem(CONFIG_TOML_KEY, CONFIG_TOML);
+      win.localStorage.setItem(CONFIG_TOML_KEY, configToml);
     },
   });
 }
+
+/** The same config, but without the in-cycle retries. */
+const CONFIG_TOML_SINGLE_ATTEMPT = CONFIG_TOML.replace(
+  "refresh_interval_seconds = 20",
+  "refresh_interval_seconds = 20\nfetch_retry_attempts = 1",
+);
 
 describe("SPA departures", () => {
   it("shows the departures of the healthy stops when one stop is down", () => {
@@ -112,6 +118,26 @@ describe("SPA departures", () => {
     cy.then(() => {
       expect(attemptCounts[STOP_THAT_FAILS]).to.equal(3);
       expect(attemptCounts[STOP_WITH_DEPARTURES]).to.equal(1);
+    });
+  });
+
+  it("follows the configured retry budget", () => {
+    const attemptCounts = {};
+
+    stubStationLookups();
+    stubDepartures({
+      failingStops: [STOP_THAT_FAILS],
+      attemptCounts,
+    });
+    openSpa(CONFIG_TOML_SINGLE_ATTEMPT);
+
+    cy.get("#departures", { timeout: 15000 }).should(
+      "contain",
+      "No data (refresh failed)",
+    );
+
+    cy.then(() => {
+      expect(attemptCounts[STOP_THAT_FAILS]).to.equal(1);
     });
   });
 

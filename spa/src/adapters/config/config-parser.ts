@@ -278,6 +278,8 @@ export class ConfigParser {
       randomHeaderColors: displayData.random_header_colors,
       headerBackgroundBrightness: displayData.header_background_brightness,
       refreshIntervalSeconds: displayData.refresh_interval_seconds,
+      fetchRetryAttempts: displayData.fetch_retry_attempts,
+      fetchRetryDelayMs: displayData.fetch_retry_delay_ms,
       bannerColor: displayData.banner_color,
       splitShowDelay: displayData.split_show_delay,
       fontSizeRouteNumber: displayData.font_size_route_number,

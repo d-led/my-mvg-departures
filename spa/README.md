@@ -79,7 +79,14 @@ npm run e2e:spa            # from the project root, runs cypress/e2e/spa/**
 ## Partial failures
 
 Every refresh cycle retries a stop that fails, up to three attempts with a short pause between
-them, so a hiccup does not blank a stop until the next interval.
+them, so a hiccup does not blank a stop until the next interval. The budget is part of the route's
+configuration:
+
+```toml
+[display]
+fetch_retry_attempts = 3   # total tries per stop and cycle (1 = no retry)
+fetch_retry_delay_ms = 500 # pause between those tries
+```
 
 Only when a cycle leaves nothing to show at all does the app announce the failing stops on top of
 the departures area. While departures are on screen the failure stays out of the way: the affected

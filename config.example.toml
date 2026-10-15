@@ -36,6 +36,14 @@ random_header_colors = false
 # Interval between departure updates in seconds
 refresh_interval_seconds = 20
 
+# In-cycle retries per stop (SPA/browser version only)
+# Tries per stop and refresh cycle before the stop is reported as failed.
+# 1 disables retrying. Default: 3
+# fetch_retry_attempts = 3
+
+# Pause between those retries, in milliseconds. Default: 500
+# fetch_retry_delay_ms = 500
+
 # Banner/header background color (hex color code, e.g., #087BC4)
 banner_color = "#087BC4"
 

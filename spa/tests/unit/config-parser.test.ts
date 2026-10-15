@@ -32,6 +32,23 @@ max_departures_per_route = 2
     expect(config.routes[0].display?.theme).toBe("dark");
   });
 
+  it("should parse the retry settings of a route", () => {
+    const toml = `
+[display]
+fetch_retry_attempts = 5
+fetch_retry_delay_ms = 1500
+
+[[stops]]
+station_id = "de:09162:1110"
+station_name = "Giesing"
+`;
+
+    const display = parser.parseToml(toml).routes[0].display;
+
+    expect(display?.fetchRetryAttempts).toBe(5);
+    expect(display?.fetchRetryDelayMs).toBe(1500);
+  });
+
   it("should parse route configurations", () => {
     const toml = `
 [[routes]]

@@ -27,6 +27,7 @@
     initRouteNumberScrolling,
   } from "../utils/destination-scrolling.js";
   import { initTimeFormatToggle, cleanupTimeFormatToggle } from "../utils/time-format-toggle.js";
+  import { retryPolicyFromDisplay } from "../utils/retry.js";
   import ConfigModal from "./ConfigModal.svelte";
   import DeparturesList from "./DeparturesList.svelte";
   import StatusBar from "./StatusBar.svelte";
@@ -513,7 +514,8 @@
             apiStatus = "error";
           },
         },
-        route.display // Pass route display config for header color inheritance
+        route.display, // Pass route display config for header color inheritance
+        retryPolicyFromDisplay(route.display),
       );
 
       // Add to active pollers set BEFORE starting
@@ -636,6 +638,7 @@
       },
       route.display,
       collectConfiguredStops(config),
+      retryPolicyFromDisplay(route.display),
     );
 
     onTheRunPoller = newPoller;

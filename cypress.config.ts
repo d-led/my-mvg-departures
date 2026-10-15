@@ -13,9 +13,8 @@ export default defineConfig({
   },
   e2e: {
     baseUrl: "http://localhost:8000",
-    // Specs directly in cypress/e2e/ target the server app.
-    // cypress/e2e/spa/ holds the specs for the static SPA: run them with `npm run e2e:spa`.
-    specPattern: "cypress/e2e/*.cy.js",
+    // The e2e specs in this folder target the server app; the SPA specs live in
+    // cypress/e2e/spa/ and are run by `npm run e2e:spa` against the static build.
     setupNodeEvents(on, config) {
       // No server startup needed - server should be running on localhost:8000
       // For CI, use: npm run e2e -- --config baseUrl=http://your-ci-server-url

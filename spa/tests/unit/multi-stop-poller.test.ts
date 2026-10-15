@@ -158,6 +158,22 @@ describe("MultiStopPoller", () => {
     ]);
   });
 
+  it("does not retry when the configured budget is a single attempt", async () => {
+    const repository: DepartureRepository = {
+      getDepartures: vi.fn(async () => {
+        throw new Error("network down");
+      }),
+    };
+
+    const result = await pollOnce([giesing], repository, {
+      attempts: 1,
+      delayMs: 0,
+    });
+
+    expect(repository.getDepartures).toHaveBeenCalledTimes(1);
+    expect(result.failures).toHaveLength(1);
+  });
+
   it("does not treat a stop without departures as a failure", async () => {
     const repository: DepartureRepository = {
       getDepartures: vi.fn(async () => []),
