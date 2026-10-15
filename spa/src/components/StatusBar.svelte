@@ -1,9 +1,12 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import type { RouteConfiguration } from "../domain/models/index.js";
+  import type { ApiStatus } from "../application/services/api-status.js";
+  import type { RouteConfiguration, StopFetchFailure } from "../domain/models/index.js";
+  import { describeStopFailures } from "../utils/failure-message.js";
 
   let {
     apiStatus,
+    stopFailures = [],
     onConfigClick,
     routes = [],
     currentRoutePath = null,
@@ -13,7 +16,8 @@
     onLocationUpdateClick = () => {},
     locationUpdateDisabled = false,
   }: {
-    apiStatus: "success" | "error" | "degraded" | "unknown";
+    apiStatus: ApiStatus;
+    stopFailures?: StopFetchFailure[];
     onConfigClick: () => void;
     routes?: RouteConfiguration[];
     currentRoutePath?: string | null;
@@ -23,6 +27,18 @@
     onLocationUpdateClick?: () => void;
     locationUpdateDisabled?: boolean;
   } = $props();
+
+  let apiStatusDetail = $derived(describeStopFailures(stopFailures));
+  let apiStatusLabel = $derived(
+    apiStatusDetail
+      ? `API status: ${apiStatus}. ${apiStatusDetail}`
+      : `API status: ${apiStatus}`,
+  );
+  let apiStatusTitle = $derived(
+    apiStatusDetail
+      ? `${apiStatusDetail}. Retrying on every refresh.`
+      : "MVG API connection status",
+  );
   
   let showRouteSelector = $state(false);
   let countdownElapsed = $state(0);
@@ -124,7 +140,7 @@
 }} />
 
 <div class="status-floating-box" role="status" aria-label="System status indicators">
-  <div class="status-floating-box-item" id="api-status-container" role="img" aria-label="API status: {apiStatus}" title="MVG API connection status">
+  <div class="status-floating-box-item" id="api-status-container" role="img" aria-label={apiStatusLabel} title={apiStatusTitle}>
     {#if apiStatus === "success"}
       <svg class="api-status-icon api-success" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true">
         <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />

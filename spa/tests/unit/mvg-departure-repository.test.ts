@@ -39,22 +39,27 @@ describe("MvgDepartureRepository", () => {
     expect(departures[0].transportType).toBe("U-Bahn");
   });
 
-  it("should handle API errors gracefully", async () => {
-    // Suppress console.error for this test since we're testing error handling
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
+  it("reports API errors so callers can retry and surface them", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 500,
       statusText: "Internal Server Error",
     });
 
-    const departures = await repository.getDepartures("de:09162:1110");
+    await expect(repository.getDepartures("de:09162:1110")).rejects.toThrow(
+      "MVG API error: 500 Internal Server Error",
+    );
+  });
 
-    expect(departures).toHaveLength(0);
-    expect(consoleSpy).toHaveBeenCalled();
+  it("reports departures it cannot parse instead of silently dropping the stop", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{ label: "U6", destination: "Garching" }],
+    });
 
-    consoleSpy.mockRestore();
+    await expect(repository.getDepartures("de:09162:1110")).rejects.toThrow(
+      "realtimeDepartureTime is required but was undefined",
+    );
   });
 
   it("should parse delay correctly", async () => {

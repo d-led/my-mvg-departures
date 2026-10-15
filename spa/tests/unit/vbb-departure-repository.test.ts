@@ -51,16 +51,16 @@ describe("VbbDepartureRepository", () => {
     expect(departures[0].platform).toBe("1");
   });
 
-  it("should handle API errors gracefully", async () => {
+  it("reports API errors so callers can retry and surface them", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 500,
       statusText: "Internal Server Error",
     });
 
-    const departures = await repository.getDepartures("900000009102");
-
-    expect(departures).toEqual([]);
+    await expect(repository.getDepartures("900000009102")).rejects.toThrow(
+      "VBB API error: 500 Internal Server Error",
+    );
   });
 
   it("should parse delay correctly", async () => {

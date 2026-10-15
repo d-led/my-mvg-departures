@@ -3,11 +3,17 @@ import type { DepartureCache } from "../../domain/ports/departure-cache.js";
 import type { StopConfiguration } from "../../domain/models/stop-configuration.js";
 import type { GroupedDepartures } from "../../domain/models/grouped-departures.js";
 import type { DisplayConfiguration } from "../../domain/models/route-configuration.js";
+import {
+  createStopFetchFailure,
+  type StopFetchFailure,
+} from "../../domain/models/stop-fetch-failure.js";
+import type { PollCycleResult } from "../../domain/models/poll-cycle-result.js";
+import { DEFAULT_RETRY_POLICY, withRetries, type RetryPolicy } from "../../utils/retry.js";
 import { DepartureGroupingService } from "./departure-grouping-service.js";
 import { generateHeaderColors } from "./header-color-service.js";
 
 export interface MultiStopPollerCallbacks {
-  onUpdate: (groups: GroupedDepartures[], pollerId: string) => void;
+  onUpdate: (result: PollCycleResult, pollerId: string) => void;
   onError: (error: Error, pollerId: string) => void;
 }
 
@@ -26,6 +32,7 @@ export class MultiStopPoller {
     private readonly refreshIntervalSeconds: number,
     private readonly callbacks: MultiStopPollerCallbacks,
     private readonly routeDisplay?: DisplayConfiguration, // Route display config for header color fallback
+    private readonly retryPolicy: RetryPolicy = DEFAULT_RETRY_POLICY,
   ) {
     // Generate unique ID for this poller instance
     this.pollerId = `poller-${Date.now()}-${Math.random().toString(36).substring(7)}`;
@@ -98,8 +105,8 @@ export class MultiStopPoller {
   private async poll(): Promise<void> {
     const allGroups: GroupedDepartures[] = [];
     const stopsWithDepartures = new Set<string>(); // Track which stops have departures
+    const failures: StopFetchFailure[] = [];
     let successCount = 0;
-    let errorCount = 0;
 
     // Process stops SEQUENTIALLY to preserve TOML order (matches Python: for stop_config in self.stop_configs)
     // This ensures stops appear in the same order as defined in the TOML configuration
@@ -108,90 +115,22 @@ export class MultiStopPoller {
     );
 
     for (const stopConfig of this.stopConfigs) {
-      console.log(
-        `Polling stop: ${stopConfig.stationName} (${stopConfig.stationId})`,
-      );
       try {
-        // On initial poll, always fetch fresh data (don't use cache)
-        // On subsequent polls, check cache first
-        if (!this.isInitialPoll) {
-          const cached = await this.cache.get(stopConfig.stationId);
-          if (cached && cached.length > 0) {
-            console.log(
-              `Using cached data for ${stopConfig.stationName} (${cached.length} departures)`,
-            );
-            const groups = this.groupingService.groupDepartures(
-              cached,
-              stopConfig,
-            );
-            // Add groups from this stop in order (preserves direction order from TOML)
-            groups.forEach((group) => {
-              allGroups.push({ ...group });
-            });
-            if (groups.length > 0) {
-              stopsWithDepartures.add(stopConfig.stationName);
-            }
-            successCount++;
-            continue;
-          }
-        } else {
-          console.log(
-            `Initial poll: fetching fresh data for ${stopConfig.stationName} (skipping cache)`,
-          );
+        const groups = await this.collectGroupsForStop(stopConfig);
+        // Add groups from this stop in order (preserves direction order from TOML)
+        groups.forEach((group) => {
+          allGroups.push({ ...group });
+        });
+        if (groups.length > 0) {
+          stopsWithDepartures.add(stopConfig.stationName);
         }
-
-        // Fetch fresh data
-        console.log(
-          `Fetching fresh data from API for ${stopConfig.stationName}...`,
-        );
-        const configuredLimit = stopConfig.maxDeparturesFetch ?? 50;
-        const minLimitForDisplay =
-          (stopConfig.maxHoursInAdvance ?? 0) >= 1
-            ? Math.ceil(stopConfig.maxHoursInAdvance! * 30)
-            : 0;
-        const fetchLimit = Math.max(configuredLimit, minLimitForDisplay);
-
-        const configuredDuration = stopConfig.fetchMaxMinutesInAdvance ?? 120;
-        const minDurationForDisplay =
-          (stopConfig.maxHoursInAdvance ?? 0) >= 1
-            ? stopConfig.maxHoursInAdvance! * 60
-            : 0;
-        const durationMinutes = Math.max(
-          configuredDuration,
-          minDurationForDisplay,
-        );
-
-        const departures = await this.departureRepository.getDepartures(
-          stopConfig.stationId,
-          {
-            limit: fetchLimit,
-            offsetMinutes: stopConfig.departureLeewayMinutes ?? 0,
-            durationMinutes,
-          },
-        );
-
-        if (departures.length > 0) {
-          // Update cache
-          await this.cache.set(stopConfig.stationId, departures, 60);
-
-          // Group departures (preserves direction order from TOML)
-          const groups = this.groupingService.groupDepartures(
-            departures,
-            stopConfig,
-          );
-          // Add groups from this stop in order
-          groups.forEach((group) => {
-            allGroups.push({ ...group });
-          });
-          if (groups.length > 0) {
-            stopsWithDepartures.add(stopConfig.stationName);
-          }
-          successCount++;
-        }
+        successCount++;
       } catch (error) {
-        errorCount++;
-        const err = error instanceof Error ? error : new Error(String(error));
-        console.error(`API poll error for ${stopConfig.stationName}:`, err);
+        const failure = createStopFetchFailure(stopConfig, error);
+        failures.push(failure);
+        console.error(
+          `[${this.pollerId}] API poll error for ${stopConfig.stationName}: ${failure.message}`,
+        );
       }
     }
 
@@ -203,6 +142,10 @@ export class MultiStopPoller {
 
     // Create empty groups for stops without departures (matches Python template lines 138-145)
     // Python template: header is just {{ stop_name }}, not "StopName → DirectionName"
+    // A stop that failed to refresh is marked, so the UI can tell the two apart
+    const failedStationIds = new Set(
+      failures.map((failure) => failure.stationId),
+    );
     for (const stopName of stopsWithoutDepartures) {
       const stopConfig = this.stopConfigs.find(
         (s) => s.stationName === stopName,
@@ -213,6 +156,7 @@ export class MultiStopPoller {
           stopName: stopConfig.stationName,
           stationId: stopConfig.stationId,
           departures: [], // Empty departures array (matches Python template line 142)
+          refreshFailed: failedStationIds.has(stopConfig.stationId),
           // Store color settings from stop config
           randomHeaderColors: stopConfig.randomHeaderColors,
           headerBackgroundBrightness: stopConfig.headerBackgroundBrightness,
@@ -237,8 +181,83 @@ export class MultiStopPoller {
     // Update state with combined groups
     this.allGroups = allGroups;
     console.log(
-      `[${this.pollerId}] Combined ${allGroups.length} direction groups from ${successCount} successful stop(s), ${errorCount} error(s), ${stopsWithoutDepartures.length} stop(s) without departures`,
+      `[${this.pollerId}] Combined ${allGroups.length} direction groups from ${successCount} successful stop(s), ${failures.length} error(s), ${stopsWithoutDepartures.length} stop(s) without departures`,
     );
-    this.callbacks.onUpdate([...allGroups], this.pollerId);
+    this.callbacks.onUpdate(
+      { groups: [...allGroups], successCount, failures },
+      this.pollerId,
+    );
+  }
+
+  /**
+   * Departures for one stop, from cache when it is still fresh, otherwise from the API.
+   * Throws when the stop cannot be refreshed, even after the in-cycle retries.
+   */
+  private async collectGroupsForStop(
+    stopConfig: StopConfiguration,
+  ): Promise<GroupedDepartures[]> {
+    console.log(
+      `Polling stop: ${stopConfig.stationName} (${stopConfig.stationId})`,
+    );
+
+    // On initial poll, always fetch fresh data (don't use cache)
+    // On subsequent polls, check cache first
+    if (!this.isInitialPoll) {
+      const cached = await this.cache.get(stopConfig.stationId);
+      if (cached && cached.length > 0) {
+        console.log(
+          `Using cached data for ${stopConfig.stationName} (${cached.length} departures)`,
+        );
+        return this.groupingService.groupDepartures(cached, stopConfig);
+      }
+    }
+
+    console.log(
+      `Fetching fresh data from API for ${stopConfig.stationName}...`,
+    );
+    const departures = await withRetries(
+      () =>
+        this.departureRepository.getDepartures(
+          stopConfig.stationId,
+          this.fetchOptionsFor(stopConfig),
+        ),
+      this.retryPolicy,
+      (failed) =>
+        console.warn(
+          `[${this.pollerId}] Retrying ${stopConfig.stationName} ` +
+            `(attempt ${failed.attempt + 1}/${this.retryPolicy.attempts}): ${failed.error.message}`,
+        ),
+    );
+
+    if (departures.length === 0) {
+      return [];
+    }
+
+    await this.cache.set(stopConfig.stationId, departures, 60);
+    return this.groupingService.groupDepartures(departures, stopConfig);
+  }
+
+  private fetchOptionsFor(stopConfig: StopConfiguration): {
+    limit: number;
+    offsetMinutes: number;
+    durationMinutes: number;
+  } {
+    const configuredLimit = stopConfig.maxDeparturesFetch ?? 50;
+    const minLimitForDisplay =
+      (stopConfig.maxHoursInAdvance ?? 0) >= 1
+        ? Math.ceil(stopConfig.maxHoursInAdvance! * 30)
+        : 0;
+
+    const configuredDuration = stopConfig.fetchMaxMinutesInAdvance ?? 120;
+    const minDurationForDisplay =
+      (stopConfig.maxHoursInAdvance ?? 0) >= 1
+        ? stopConfig.maxHoursInAdvance! * 60
+        : 0;
+
+    return {
+      limit: Math.max(configuredLimit, minLimitForDisplay),
+      offsetMinutes: stopConfig.departureLeewayMinutes ?? 0,
+      durationMinutes: Math.max(configuredDuration, minDurationForDisplay),
+    };
   }
 }

@@ -6,18 +6,22 @@
   import { LocalStorageCache } from "../adapters/storage/local-storage-cache.js";
   import { LocalStorageConfigStorage } from "../adapters/storage/local-storage-config-storage.js";
   import { DepartureGroupingService } from "../application/services/departure-grouping-service.js";
+  import { determineApiStatus, type ApiStatus } from "../application/services/api-status.js";
   import { updateFavicon } from "../application/services/favicon-service.js";
   import { MultiStopPoller } from "../application/services/multi-stop-poller.js";
   import { OnTheRunPoller } from "../application/services/on-the-run-poller.js";
   import type {
     AppConfig,
+    PollCycleResult,
     RouteConfiguration,
     GroupedDepartures,
     OnTheRunConfiguration,
     StopConfiguration,
+    StopFetchFailure,
   } from "../domain/models/index.js";
   import { calculateFillVerticalSpace, setFontSizesFromConfig } from "../utils/font-scaling.js";
   import { fetchConfigTomlFromSearch } from "../utils/config-url.js";
+  import { shouldShowFailureNotice } from "../utils/failure-message.js";
   import {
     initDestinationScrolling,
     initRouteNumberScrolling,
@@ -26,12 +30,14 @@
   import ConfigModal from "./ConfigModal.svelte";
   import DeparturesList from "./DeparturesList.svelte";
   import StatusBar from "./StatusBar.svelte";
+  import StopFailures from "./StopFailures.svelte";
 
   let config = $state<AppConfig | null>(null);
   let currentRoute = $state<RouteConfiguration | null>(null);
   let groupedDepartures = $state<GroupedDepartures[]>([]);
   let showConfigModal = $state(false);
-  let apiStatus = $state<"success" | "error" | "degraded" | "unknown">("unknown");
+  let apiStatus = $state<ApiStatus>("unknown");
+  let stopFailures = $state<StopFetchFailure[]>([]);
   let lastUpdateTime = $state<Date | null>(null);
   let refreshIntervalSeconds = $state<number>(20);
   type Poller = {
@@ -46,6 +52,9 @@
   let onTheRunConfig = $state<OnTheRunConfiguration | null>(null);
   let onTheRunPoller = $state<OnTheRunPoller | null>(null);
   let onTheRunStatusMessages = $state<string[]>([]);
+  let showFailureNotice = $derived(
+    shouldShowFailureNotice(stopFailures, groupedDepartures),
+  );
   const ON_THE_RUN_ROUTE = "on-the-run";
 
   function formatDate(date: Date): string {
@@ -428,6 +437,7 @@
     // Clear existing departures and unsupported providers when switching routes
     groupedDepartures = [];
     unsupportedProviders = [];
+    stopFailures = [];
     currentRoute = route;
     await configStorage.setCurrentRoutePath(route.path);
     onTheRunStatusMessages = [];
@@ -484,37 +494,14 @@
         route.stops,
         refreshInterval,
         {
-          onUpdate: async (groups, pollerId) => {
+          onUpdate: async (result, pollerId) => {
             // Only accept updates from pollers that are still in the active set
             if (!activePollers.has(newPoller)) {
               console.log(`[${pollerId}] Ignoring update from stopped poller (race condition prevented)`);
               return;
             }
-            
-            console.log(`[${pollerId}] Received ${groups.length} direction group(s) with ${groups.reduce((sum, g) => sum + g.departures.length, 0)} total departures`);
-            groupedDepartures = groups;
-            // Set status to degraded if unsupported providers, otherwise success
-            apiStatus = unsupportedProviders.length > 0 ? "degraded" : "success";
-            lastUpdateTime = new Date();
-            
-            // Clear stale state when new data arrives
-            // Fresh data means staleness is resolved
-            if (isPageSuspended) {
-              console.log('New data received - clearing stale state');
-              isPageSuspended = false;
-            }
-            // Wait for Svelte to update the DOM before calculating layout
-            await tick();
-            // Use multiple requestAnimationFrame calls + small delay to ensure DOM is fully laid out
-            // This is critical for column width calculations to prevent overlap on first load
-            // The delay ensures fonts are applied and layout is calculated before measuring
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                setTimeout(() => {
-                  initializeAll();
-                }, 50);
-              });
-            });
+
+            await applyCycleResult(result, pollerId);
           },
           onError: (error, pollerId) => {
             // Only accept errors from pollers that are still in the active set
@@ -547,6 +534,58 @@
     }
   }
 
+  /**
+   * Reflect one refresh cycle in the UI: the departures we got, the stops whose
+   * refresh failed, and the resulting API status.
+   * Shared by the regular and the on-the-run pollers.
+   */
+  async function applyCycleResult(result: PollCycleResult, pollerId: string): Promise<void> {
+    const departureCount = result.groups.reduce(
+      (sum, group) => sum + group.departures.length,
+      0,
+    );
+    console.log(
+      `[${pollerId}] Received ${result.groups.length} direction group(s) with ${departureCount} total departures, ${result.failures.length} failed stop(s)`,
+    );
+
+    groupedDepartures = result.groups;
+    stopFailures = result.failures;
+    apiStatus = resolveApiStatus(result);
+
+    // Clear stale state when new data arrives - fresh data means staleness is resolved
+    if (isPageSuspended) {
+      console.log("New data received - clearing stale state");
+      isPageSuspended = false;
+    }
+
+    lastUpdateTime = new Date();
+
+    // Wait for Svelte to update the DOM before calculating layout
+    await tick();
+    // Use multiple requestAnimationFrame calls + small delay to ensure DOM is fully laid out
+    // This is critical for column width calculations to prevent overlap on first load
+    // The delay ensures fonts are applied and layout is calculated before measuring
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          initializeAll();
+        }, 50);
+      });
+    });
+  }
+
+  function resolveApiStatus(result: PollCycleResult): ApiStatus {
+    const status = determineApiStatus(
+      result.successCount,
+      result.failures.length,
+    );
+    // Unsupported providers are a permanent degradation, not a transient failure
+    if (status === "success" && unsupportedProviders.length > 0) {
+      return "degraded";
+    }
+    return status;
+  }
+
   async function startOnTheRunPolling(
     route: RouteConfiguration,
     onTheRunConfig: OnTheRunConfiguration,
@@ -554,6 +593,7 @@
     console.log("Starting on-the-run polling");
     groupedDepartures = [];
     unsupportedProviders = [];
+    stopFailures = [];
     onTheRunStatusMessages = ["Fetching location..."];
     apiStatus = "unknown";
 
@@ -565,7 +605,7 @@
       cache,
       onTheRunConfig,
       {
-        onUpdate: async (groups, pollerId) => {
+        onUpdate: async (result, pollerId) => {
           if (!activePollers.has(newPoller)) {
             console.log(
               `[${pollerId}] Ignoring update from stopped poller (race condition prevented)`,
@@ -573,26 +613,7 @@
             return;
           }
 
-          console.log(
-            `[${pollerId}] Received ${groups.length} direction group(s) with ${groups.reduce((sum, group) => sum + group.departures.length, 0)} total departures`,
-          );
-          groupedDepartures = groups;
-          apiStatus = unsupportedProviders.length > 0 ? "degraded" : "success";
-          lastUpdateTime = new Date();
-
-          if (isPageSuspended) {
-            console.log("New data received - clearing stale state");
-            isPageSuspended = false;
-          }
-
-          await tick();
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              setTimeout(() => {
-                initializeAll();
-              }, 50);
-            });
-          });
+          await applyCycleResult(result, pollerId);
         },
         onError: (error, pollerId) => {
           if (!activePollers.has(newPoller)) {
@@ -688,6 +709,10 @@
     </div>
   </div>
 
+  {#if showFailureNotice}
+    <StopFailures failures={stopFailures} />
+  {/if}
+
   <div id="departures" role="region" aria-label="Departure information" aria-live="polite" aria-atomic="false">
     <DeparturesList
       {groupedDepartures}
@@ -700,6 +725,7 @@
 
   <StatusBar
     {apiStatus}
+    stopFailures={stopFailures}
     onConfigClick={openConfig}
     routes={config?.routes ?? []}
     currentRoutePath={currentRoute?.path ?? null}

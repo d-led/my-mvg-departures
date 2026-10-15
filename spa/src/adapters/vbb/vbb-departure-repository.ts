@@ -30,32 +30,27 @@ export class VbbDepartureRepository implements DepartureRepository {
     });
 
     console.log(`[VBB API] Fetching: ${url.toString()}`);
-    try {
-      const response = await fetch(url.toString(), {
-        headers: {
-          accept: "application/json",
-          "user-agent": "Mozilla/5.0",
-        },
-      });
+    const response = await fetch(url.toString(), {
+      headers: {
+        accept: "application/json",
+        "user-agent": "Mozilla/5.0",
+      },
+    });
 
-      if (!response.ok) {
-        throw new Error(
-          `VBB API error: ${response.status} ${response.statusText}`,
-        );
-      }
-
-      const data: VbbApiResponse = await response.json();
-      const departuresData = data.departures ?? [];
-
-      console.log(
-        `[VBB API] Received ${departuresData.length} departures for ${stationId}`,
+    if (!response.ok) {
+      throw new Error(
+        `VBB API error: ${response.status} ${response.statusText}`,
       );
-
-      return this.convertDeparturesList(departuresData, limit);
-    } catch (error) {
-      console.error(`Failed to fetch departures for ${stationId}:`, error);
-      return [];
     }
+
+    const data: VbbApiResponse = await response.json();
+    const departuresData = data.departures ?? [];
+
+    console.log(
+      `[VBB API] Received ${departuresData.length} departures for ${stationId}`,
+    );
+
+    return this.convertDeparturesList(departuresData, limit);
   }
 
   private buildRequestParams(

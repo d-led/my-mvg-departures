@@ -7,6 +7,9 @@ export type {
 } from "./route-configuration.js";
 export type { AppConfig } from "./app-config.js";
 export type { OnTheRunConfiguration } from "./on-the-run-configuration.js";
+export type { StopFetchFailure } from "./stop-fetch-failure.js";
+export type { PollCycleResult } from "./poll-cycle-result.js";
 
 export { createDeparture } from "./departure.js";
 export { createStopConfiguration } from "./stop-configuration.js";
+export { createStopFetchFailure } from "./stop-fetch-failure.js";

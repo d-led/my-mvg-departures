@@ -224,7 +224,7 @@
       {#if group.departures.length === 0}
         <!-- Stop without departures (matches Python template lines 141-143) -->
         <div class="departure-row" role="status" aria-live="polite">
-          <div class="no-departures">No departures</div>
+          <div class="no-departures">{group.refreshFailed ? "No data (refresh failed)" : "No departures"}</div>
         </div>
       {:else}
       <ul role="list" aria-label="Departures for {group.directionName}">

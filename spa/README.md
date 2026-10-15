@@ -67,6 +67,25 @@ Runs:
 - Prettier formatting check
 - Unit tests
 
+### End-to-end
+
+The SPA is covered by Cypress specs that stub the MVG API, so they run without network access:
+
+```bash
+cd spa && npm run dev      # serve the SPA on http://localhost:8000
+npm run e2e:spa            # from the project root, runs cypress/e2e/spa/**
+```
+
+## Partial failures
+
+Every refresh cycle retries a stop that fails, up to three attempts with a short pause between
+them, so a hiccup does not blank a stop until the next interval.
+
+Only when a cycle leaves nothing to show at all does the app announce the failing stops on top of
+the departures area. While departures are on screen the failure stays out of the way: the affected
+stop reads "No data (refresh failed)" and the status indicator turns degraded, with the stop names
+and reasons in its tooltip.
+
 ## Architecture
 
 Follows the same ports and adapters pattern as the Python version:

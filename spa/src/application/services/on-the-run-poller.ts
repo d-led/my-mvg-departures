@@ -4,6 +4,12 @@ import type { GroupedDepartures } from "../../domain/models/grouped-departures.j
 import type { DisplayConfiguration } from "../../domain/models/route-configuration.js";
 import type { OnTheRunConfiguration } from "../../domain/models/on-the-run-configuration.js";
 import type { DepartureCache } from "../../domain/ports/departure-cache.js";
+import {
+  createStopFetchFailure,
+  type StopFetchFailure,
+} from "../../domain/models/stop-fetch-failure.js";
+import type { PollCycleResult } from "../../domain/models/poll-cycle-result.js";
+import { DEFAULT_RETRY_POLICY, withRetries, type RetryPolicy } from "../../utils/retry.js";
 import { createStopConfiguration } from "../../domain/models/stop-configuration.js";
 import { CompositeDepartureRepository } from "../../adapters/composite-departure-repository.js";
 import { DepartureGroupingService } from "./departure-grouping-service.js";
@@ -14,7 +20,7 @@ import {
 } from "../../adapters/mvg/mvg-station-repository.js";
 
 export interface OnTheRunPollerCallbacks {
-  onUpdate: (groups: GroupedDepartures[], pollerId: string) => void;
+  onUpdate: (result: PollCycleResult, pollerId: string) => void;
   onError: (error: Error, pollerId: string) => void;
   onUnsupportedProviders?: (providers: string[]) => void;
   onStatusUpdate?: (messages: string[], pollerId: string) => void;
@@ -54,6 +60,7 @@ export class OnTheRunPoller {
     private readonly callbacks: OnTheRunPollerCallbacks,
     private readonly routeDisplay?: DisplayConfiguration,
     private readonly configuredStops: StopConfiguration[] = [],
+    private readonly retryPolicy: RetryPolicy = DEFAULT_RETRY_POLICY,
   ) {
     this.pollerId = `on-the-run-${Date.now()}-${Math.random().toString(36).substring(7)}`;
     console.log(`[${this.pollerId}] Created OnTheRunPoller`);
@@ -163,7 +170,10 @@ export class OnTheRunPoller {
 
     if (stationsInRange.length === 0) {
       console.warn(`[${this.pollerId}] No nearby stations found within radius`);
-      this.callbacks.onUpdate([], this.pollerId);
+      this.callbacks.onUpdate(
+        { groups: [], successCount: 0, failures: [] },
+        this.pollerId,
+      );
       return;
     }
 
@@ -182,8 +192,8 @@ export class OnTheRunPoller {
     const stopsWithDepartures = new Set<string>();
     const suppressEmptyStopHeaders = new Set<string>();
     const orderedStopConfigs: StopConfiguration[] = [];
+    const failures: StopFetchFailure[] = [];
     let successCount = 0;
-    let errorCount = 0;
 
     for (const station of stationsInRange) {
       const baseStopConfig = this.createBaseStopConfig(station);
@@ -243,15 +253,17 @@ export class OnTheRunPoller {
           successCount++;
         }
       } catch (error) {
-        errorCount++;
-        const err = error instanceof Error ? error : new Error(String(error));
+        const failure = createStopFetchFailure(baseStopConfig, error);
+        failures.push(failure);
         console.error(
-          `[${this.pollerId}] API poll error for ${station.name}:`,
-          err,
+          `[${this.pollerId}] API poll error for ${station.name}: ${failure.message}`,
         );
       }
     }
 
+    const failedStationIds = new Set(
+      failures.map((failure) => failure.stationId),
+    );
     for (const stopConfig of orderedStopConfigs) {
       if (!stopsWithDepartures.has(stopConfig.stationId)) {
         if (suppressEmptyStopHeaders.has(stopConfig.stationId)) {
@@ -262,6 +274,7 @@ export class OnTheRunPoller {
           stopName: stopConfig.stationName,
           stationId: stopConfig.stationId,
           departures: [],
+          refreshFailed: failedStationIds.has(stopConfig.stationId),
           randomHeaderColors: stopConfig.randomHeaderColors,
           headerBackgroundBrightness: stopConfig.headerBackgroundBrightness,
           randomColorSalt: stopConfig.randomColorSalt,
@@ -279,9 +292,12 @@ export class OnTheRunPoller {
     }
 
     console.log(
-      `[${this.pollerId}] Combined ${allGroups.length} direction group(s) from ${successCount} stop(s), ${errorCount} error(s)`,
+      `[${this.pollerId}] Combined ${allGroups.length} direction group(s) from ${successCount} stop(s), ${failures.length} error(s)`,
     );
-    this.callbacks.onUpdate([...allGroups], this.pollerId);
+    this.callbacks.onUpdate(
+      { groups: [...allGroups], successCount, failures },
+      this.pollerId,
+    );
   }
 
   private async getCurrentLocation(): Promise<{
@@ -598,13 +614,19 @@ export class OnTheRunPoller {
         : 0;
     const durationMinutes = Math.max(configuredDuration, minDurationForDisplay);
 
-    const departures = await departureRepository.getDepartures(
-      stopConfig.stationId,
-      {
-        limit: fetchLimit,
-        offsetMinutes: stopConfig.departureLeewayMinutes ?? 0,
-        durationMinutes,
-      },
+    const departures = await withRetries(
+      () =>
+        departureRepository.getDepartures(stopConfig.stationId, {
+          limit: fetchLimit,
+          offsetMinutes: stopConfig.departureLeewayMinutes ?? 0,
+          durationMinutes,
+        }),
+      this.retryPolicy,
+      (failed) =>
+        console.warn(
+          `[${this.pollerId}] Retrying ${stopConfig.stationName} ` +
+            `(attempt ${failed.attempt + 1}/${this.retryPolicy.attempts}): ${failed.error.message}`,
+        ),
     );
 
     if (departures.length > 0) {

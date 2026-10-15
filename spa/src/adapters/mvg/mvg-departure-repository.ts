@@ -20,34 +20,29 @@ export class MvgDepartureRepository implements DepartureRepository {
     const url = `${this.baseUrl}?globalId=${encodeURIComponent(stationId)}&limit=${limit}&transportTypes=${transportTypes}`;
 
     console.log(`[MVG API] Fetching: ${url}`);
-    try {
-      const response = await fetch(url, {
-        headers: {
-          accept: "application/json",
-          "user-agent": "Mozilla/5.0",
-        },
-      });
+    const response = await fetch(url, {
+      headers: {
+        accept: "application/json",
+        "user-agent": "Mozilla/5.0",
+      },
+    });
 
-      if (!response.ok) {
-        throw new Error(
-          `MVG API error: ${response.status} ${response.statusText}`,
-        );
-      }
-
-      const results = await response.json();
-      if (!Array.isArray(results)) {
-        console.log(`[MVG API] Response is not an array for ${stationId}`);
-        return [];
-      }
-
-      console.log(
-        `[MVG API] Received ${results.length} departures for ${stationId}`,
+    if (!response.ok) {
+      throw new Error(
+        `MVG API error: ${response.status} ${response.statusText}`,
       );
-      return results.map((result) => this.parseDeparture(result));
-    } catch (error) {
-      console.error(`Failed to fetch departures for ${stationId}:`, error);
+    }
+
+    const results = await response.json();
+    if (!Array.isArray(results)) {
+      console.log(`[MVG API] Response is not an array for ${stationId}`);
       return [];
     }
+
+    console.log(
+      `[MVG API] Received ${results.length} departures for ${stationId}`,
+    );
+    return results.map((result) => this.parseDeparture(result));
   }
 
   private parseDeparture(result: MvgApiDeparture): Departure {
