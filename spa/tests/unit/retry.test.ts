@@ -71,7 +71,9 @@ describe("withRetries", () => {
   });
 
   it("gives up after the configured number of attempts and reports why", async () => {
-    const operation = vi.fn().mockRejectedValue(new Error("MVG API error: 500"));
+    const operation = vi
+      .fn()
+      .mockRejectedValue(new Error("MVG API error: 500"));
 
     const retried = withRetries(operation, policy);
     const outcome = expect(retried).rejects.toThrow("MVG API error: 500");

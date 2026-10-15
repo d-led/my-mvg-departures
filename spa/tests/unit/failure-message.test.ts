@@ -78,7 +78,10 @@ describe("failure messages", () => {
 
     it("speaks up when the screen would otherwise be empty", () => {
       expect(
-        shouldShowFailureNotice([sendlingerTor], [emptyGroup("Sendlinger Tor")]),
+        shouldShowFailureNotice(
+          [sendlingerTor],
+          [emptyGroup("Sendlinger Tor")],
+        ),
       ).toBe(true);
     });
 

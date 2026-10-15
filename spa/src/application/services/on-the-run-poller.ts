@@ -9,7 +9,11 @@ import {
   type StopFetchFailure,
 } from "../../domain/models/stop-fetch-failure.js";
 import type { PollCycleResult } from "../../domain/models/poll-cycle-result.js";
-import { DEFAULT_RETRY_POLICY, withRetries, type RetryPolicy } from "../../utils/retry.js";
+import {
+  DEFAULT_RETRY_POLICY,
+  withRetries,
+  type RetryPolicy,
+} from "../../utils/retry.js";
 import { createStopConfiguration } from "../../domain/models/stop-configuration.js";
 import { CompositeDepartureRepository } from "../../adapters/composite-departure-repository.js";
 import { DepartureGroupingService } from "./departure-grouping-service.js";

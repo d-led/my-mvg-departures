@@ -138,11 +138,10 @@ describe("MultiStopPoller", () => {
       }),
     };
 
-    const result = await pollOnce(
-      [giesing, sendlingerTor],
-      repository,
-      { attempts: 3, delayMs: 0 },
-    );
+    const result = await pollOnce([giesing, sendlingerTor], repository, {
+      attempts: 3,
+      delayMs: 0,
+    });
 
     const attemptsFor = (stationId: string) =>
       vi

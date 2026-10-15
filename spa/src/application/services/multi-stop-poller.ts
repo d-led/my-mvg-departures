@@ -8,7 +8,11 @@ import {
   type StopFetchFailure,
 } from "../../domain/models/stop-fetch-failure.js";
 import type { PollCycleResult } from "../../domain/models/poll-cycle-result.js";
-import { DEFAULT_RETRY_POLICY, withRetries, type RetryPolicy } from "../../utils/retry.js";
+import {
+  DEFAULT_RETRY_POLICY,
+  withRetries,
+  type RetryPolicy,
+} from "../../utils/retry.js";
 import { DepartureGroupingService } from "./departure-grouping-service.js";
 import { generateHeaderColors } from "./header-color-service.js";
 

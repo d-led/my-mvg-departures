@@ -1,0 +1,55 @@
+name: SPA CI
+
+# The Python workflow (ci.yml) ignores spa/**, and this workflow only looks at
+# spa/**, so an SPA-only pull request still gets checked before it is merged.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "spa/**"
+      - ".github/workflows/spa-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "spa/**"
+      - ".github/workflows/spa-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  spa:
+    name: SPA checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: spa/package-lock.json
+
+      - name: Install SPA dependencies
+        working-directory: spa
+        run: npm ci
+
+      - name: Type check
+        working-directory: spa
+        run: npm run typecheck
+
+      - name: Svelte check
+        working-directory: spa
+        run: npm run check
+
+      - name: Lint
+        working-directory: spa
+        run: npm run lint
+
+      - name: Check formatting
+        working-directory: spa
+        run: npm run prettier:check
+
+      - name: Unit tests
+        working-directory: spa
+        run: npm test

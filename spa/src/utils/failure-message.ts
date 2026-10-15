@@ -14,8 +14,7 @@ export function shouldShowFailureNotice(
   groups: GroupedDepartures[],
 ): boolean {
   return (
-    failures.length > 0 &&
-    !groups.some((group) => group.departures.length > 0)
+    failures.length > 0 && !groups.some((group) => group.departures.length > 0)
   );
 }
 
