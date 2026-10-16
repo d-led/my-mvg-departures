@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.2]
+
+### Maintenance
+
+- **CI**: `spa/**` changes are checked on every pull request (type check,
+  svelte-check, lint, formatting, unit tests) instead of being skipped by the
+  Python workflows
+- **CI**: the SPA is now covered by Cypress specs that run against the built app
+  (`npm run e2e:spa`), with the JUnit report published to the checks tab
+- **CI**: both Cypress jobs cache npm packages, `node_modules` and the Cypress
+  binary, so a run no longer downloads them again
+
 ## [0.1.1]
 
 ### Features
