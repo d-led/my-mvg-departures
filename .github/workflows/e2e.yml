@@ -58,6 +58,16 @@ jobs:
           ref: ${{ github.event.workflow_run && github.event.workflow_run.head_sha || github.ref }}
       - name: Configure git safe directory
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Cache npm packages and Cypress binary
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.npm
+            ~/.cache/Cypress
+            node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
       - name: Install dependencies
         run: npm install --prefer-offline --no-audit --progress=false
       - name: Wait for service
