@@ -16,6 +16,7 @@
     RouteConfiguration,
     GroupedDepartures,
     OnTheRunConfiguration,
+    PollProgress,
     StopConfiguration,
     StopFetchFailure,
   } from "../domain/models/index.js";
@@ -41,6 +42,9 @@
   let stopFailures = $state<StopFetchFailure[]>([]);
   let lastUpdateTime = $state<Date | null>(null);
   let refreshIntervalSeconds = $state<number>(20);
+  /** The running cycle's progress; `null` once it is over. */
+  let pollProgress = $state<PollProgress | null>(null);
+  let isFetching = $derived(pollProgress !== null);
   type Poller = {
     start: () => Promise<void>;
     stop: () => void;
@@ -439,6 +443,7 @@
     groupedDepartures = [];
     unsupportedProviders = [];
     stopFailures = [];
+    pollProgress = null;
     currentRoute = route;
     await configStorage.setCurrentRoutePath(route.path);
     onTheRunStatusMessages = [];
@@ -511,7 +516,17 @@
               return;
             }
             console.error(`[${pollerId}] API poll error:`, error);
+            pollProgress = null;
             apiStatus = "error";
+          },
+          onProgress: (progress, pollerId) => {
+            if (!activePollers.has(newPoller)) {
+              return;
+            }
+            console.log(
+              `[${pollerId}] Progress: ${progress.stopsCompleted}/${progress.stopsTotal} stop(s) answered`,
+            );
+            pollProgress = progress;
           },
         },
         route.display, // Pass route display config for header color inheritance
@@ -553,6 +568,9 @@
     groupedDepartures = result.groups;
     stopFailures = result.failures;
     apiStatus = resolveApiStatus(result);
+    // The cycle is over: the empty screen goes back to "no departures" instead
+    // of claiming that calls are still running.
+    pollProgress = null;
 
     // Clear stale state when new data arrives - fresh data means staleness is resolved
     if (isPageSuspended) {
@@ -623,6 +641,7 @@
             return;
           }
           console.error(`[${pollerId}] On-the-run poll error:`, error);
+          pollProgress = null;
           apiStatus = "error";
         },
         onUnsupportedProviders: (providers) => {
@@ -634,6 +653,15 @@
             return;
           }
           onTheRunStatusMessages = messages;
+        },
+        onProgress: (progress, pollerId) => {
+          if (!activePollers.has(newPoller)) {
+            return;
+          }
+          console.log(
+            `[${pollerId}] Progress: ${progress.stopsCompleted}/${progress.stopsTotal} stop(s) answered`,
+          );
+          pollProgress = progress;
         },
       },
       route.display,
@@ -723,6 +751,7 @@
       display={currentRoute?.display}
       {isPageSuspended}
       statusMessages={isOnTheRunRouteActive() ? onTheRunStatusMessages : []}
+      progress={pollProgress}
     />
   </div>
 
@@ -734,6 +763,7 @@
     currentRoutePath={currentRoute?.path ?? null}
     onRouteChange={handleRouteChange}
     refreshIntervalSeconds={refreshIntervalSeconds}
+    {isFetching}
     showLocationUpdate={Boolean(onTheRunConfig)}
     onLocationUpdateClick={handleLocationUpdateClick}
     locationUpdateDisabled={!onTheRunPoller || !isOnTheRunRouteActive()}

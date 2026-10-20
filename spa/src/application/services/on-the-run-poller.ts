@@ -10,14 +10,20 @@ import {
 } from "../../domain/models/stop-fetch-failure.js";
 import type { PollCycleResult } from "../../domain/models/poll-cycle-result.js";
 import {
+  createPollProgress,
+  type PollProgress,
+} from "../../domain/models/poll-progress.js";
+import {
   DEFAULT_RETRY_POLICY,
   withRetries,
   type RetryPolicy,
+  type RetryWait,
 } from "../../utils/retry.js";
 import { createStopConfiguration } from "../../domain/models/stop-configuration.js";
 import { CompositeDepartureRepository } from "../../adapters/composite-departure-repository.js";
 import { DepartureGroupingService } from "./departure-grouping-service.js";
 import { generateHeaderColors } from "./header-color-service.js";
+import { PollLoop } from "./poll-loop.js";
 import {
   MvgStationRepository,
   type NearbyStation,
@@ -28,6 +34,8 @@ export interface OnTheRunPollerCallbacks {
   onError: (error: Error, pollerId: string) => void;
   onUnsupportedProviders?: (providers: string[]) => void;
   onStatusUpdate?: (messages: string[], pollerId: string) => void;
+  /** How far the running cycle has got, for the screen that has nothing to show yet. */
+  onProgress?: (progress: PollProgress, pollerId: string) => void;
 }
 
 interface SubStopInfo {
@@ -49,13 +57,12 @@ interface GeoPositionOptions {
 }
 
 export class OnTheRunPoller {
-  private intervalId: number | null = null;
-  private isRunning = false;
-  private isInitialPoll = true;
   private readonly pollerId: string;
+  private readonly loop: PollLoop;
   private hasWarnedIgnoredAdapters = false;
   private statusMessages: string[] = [];
   private lastLocation: { latitude: number; longitude: number } | null = null;
+  private progress: PollProgress;
 
   constructor(
     private readonly stationRepository: MvgStationRepository,
@@ -67,71 +74,42 @@ export class OnTheRunPoller {
     private readonly retryPolicy: RetryPolicy = DEFAULT_RETRY_POLICY,
   ) {
     this.pollerId = `on-the-run-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    this.progress = createPollProgress(0);
+    this.loop = new PollLoop(
+      (fresh) => this.poll(fresh),
+      () => this.getUpdateIntervalSeconds() * 1000,
+      (error) => this.callbacks.onError(error, this.pollerId),
+    );
     console.log(`[${this.pollerId}] Created OnTheRunPoller`);
   }
 
   async start(): Promise<void> {
-    if (this.isRunning) {
+    if (this.loop.isRunning) {
       console.warn(
         `[${this.pollerId}] Poller already running, ignoring start() call`,
       );
       return;
     }
 
-    this.isRunning = true;
-    this.isInitialPoll = true;
-
-    try {
-      await this.poll();
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.callbacks.onError(err, this.pollerId);
-    }
-    this.isInitialPoll = false;
-
-    const intervalSeconds = this.getUpdateIntervalSeconds();
-    this.intervalId = window.setInterval(() => {
-      this.poll().catch((error) => {
-        this.callbacks.onError(error, this.pollerId);
-      });
-    }, intervalSeconds * 1000);
+    await this.loop.start();
   }
 
   stop(): void {
     console.log(`[${this.pollerId}] Stopping poller`);
-    if (this.intervalId !== null) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
-    }
-    this.isRunning = false;
-    this.isInitialPoll = true;
+    this.loop.stop();
   }
 
   async refreshNow(): Promise<void> {
-    if (!this.isRunning) {
-      console.warn("Poller not running, cannot refresh");
-      return;
-    }
-
-    const wasInitialPoll = this.isInitialPoll;
-    this.isInitialPoll = true;
-    try {
-      await this.poll();
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.callbacks.onError(err, this.pollerId);
-    } finally {
-      this.isInitialPoll = wasInitialPoll;
-    }
+    await this.loop.refreshNow();
   }
 
-  private async poll(): Promise<void> {
+  private async poll(fresh: boolean): Promise<void> {
     if (!this.ensureAdapterSupport()) {
       return;
     }
 
     const shouldUpdateLocation =
-      this.isInitialPoll ||
+      fresh ||
       (this.config.updateLocationOnEveryPoll ?? true) ||
       !this.lastLocation;
     this.setStatus([
@@ -197,7 +175,9 @@ export class OnTheRunPoller {
     const suppressEmptyStopHeaders = new Set<string>();
     const orderedStopConfigs: StopConfiguration[] = [];
     const failures: StopFetchFailure[] = [];
-    let successCount = 0;
+
+    this.progress = createPollProgress(stationsInRange.length);
+    this.reportProgress();
 
     for (const station of stationsInRange) {
       const baseStopConfig = this.createBaseStopConfig(station);
@@ -206,6 +186,7 @@ export class OnTheRunPoller {
         const departures = await this.loadDepartures(
           baseStopConfig,
           departureRepository,
+          fresh,
         );
 
         const subStops = this.config.smartSubStops
@@ -234,7 +215,6 @@ export class OnTheRunPoller {
           suppressEmptyStopHeaders.add(baseStopConfig.stationId);
         }
 
-        let stationHasGroups = false;
         for (const stopConfig of stopConfigs) {
           const departuresForStop =
             stopConfig.stationId === baseStopConfig.stationId
@@ -249,19 +229,17 @@ export class OnTheRunPoller {
           });
           if (groups.length > 0) {
             stopsWithDepartures.add(stopConfig.stationId);
-            stationHasGroups = true;
           }
         }
 
-        if (stationHasGroups) {
-          successCount++;
-        }
+        this.recordStationResult(true);
       } catch (error) {
         const failure = createStopFetchFailure(baseStopConfig, error);
         failures.push(failure);
         console.error(
           `[${this.pollerId}] API poll error for ${station.name}: ${failure.message}`,
         );
+        this.recordStationResult(false);
       }
     }
 
@@ -288,7 +266,7 @@ export class OnTheRunPoller {
 
     generateHeaderColors(allGroups, this.routeDisplay);
 
-    if (!this.isRunning) {
+    if (!this.loop.isRunning) {
       console.log(
         `[${this.pollerId}] Poller was stopped during poll() - discarding results`,
       );
@@ -296,10 +274,14 @@ export class OnTheRunPoller {
     }
 
     console.log(
-      `[${this.pollerId}] Combined ${allGroups.length} direction group(s) from ${successCount} stop(s), ${failures.length} error(s)`,
+      `[${this.pollerId}] Combined ${allGroups.length} direction group(s) from ${this.progress.stopsOk} stop(s), ${failures.length} error(s)`,
     );
     this.callbacks.onUpdate(
-      { groups: [...allGroups], successCount, failures },
+      {
+        groups: [...allGroups],
+        successCount: this.progress.stopsOk,
+        failures,
+      },
       this.pollerId,
     );
   }
@@ -589,8 +571,9 @@ export class OnTheRunPoller {
   private async loadDepartures(
     stopConfig: StopConfiguration,
     departureRepository: CompositeDepartureRepository,
+    fresh: boolean,
   ): Promise<Departure[]> {
-    if (!this.isInitialPoll) {
+    if (!fresh) {
       const cached = await this.cache.get(stopConfig.stationId);
       if (cached && cached.length > 0) {
         console.log(
@@ -626,11 +609,15 @@ export class OnTheRunPoller {
           durationMinutes,
         }),
       this.retryPolicy,
-      (failed) =>
-        console.warn(
-          `[${this.pollerId}] Retrying ${stopConfig.stationName} ` +
-            `(attempt ${failed.attempt + 1}/${this.retryPolicy.attempts}): ${failed.error.message}`,
-        ),
+      {
+        onFailedAttempt: (failed) =>
+          console.warn(
+            `[${this.pollerId}] Retrying ${stopConfig.stationName} ` +
+              `(attempt ${failed.attempt + 1}/${this.retryPolicy.attempts}): ${failed.error.message}`,
+          ),
+        onRetryWait: (wait) =>
+          this.reportRetryWait(stopConfig, wait.attempt + 1, wait),
+      },
     );
 
     if (departures.length > 0) {
@@ -666,5 +653,37 @@ export class OnTheRunPoller {
   private setStatus(messages: string[]): void {
     this.statusMessages = messages;
     this.callbacks.onStatusUpdate?.([...messages], this.pollerId);
+  }
+
+  private recordStationResult(answered: boolean): void {
+    this.progress = {
+      ...this.progress,
+      stopsCompleted: this.progress.stopsCompleted + 1,
+      stopsOk: this.progress.stopsOk + (answered ? 1 : 0),
+      stopsFailed: this.progress.stopsFailed + (answered ? 0 : 1),
+      retryWait: null,
+    };
+    this.reportProgress();
+  }
+
+  private reportRetryWait(
+    stopConfig: StopConfiguration,
+    nextAttempt: number,
+    wait: RetryWait,
+  ): void {
+    this.progress = {
+      ...this.progress,
+      retryWait: {
+        stationName: stopConfig.stationName,
+        nextAttempt,
+        attempts: wait.attempts,
+        remainingMs: wait.remainingMs,
+      },
+    };
+    this.reportProgress();
+  }
+
+  private reportProgress(): void {
+    this.callbacks.onProgress?.({ ...this.progress }, this.pollerId);
   }
 }

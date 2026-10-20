@@ -1,6 +1,7 @@
 import type { DepartureRepository } from "../../domain/ports/departure-repository.js";
 import type { Departure } from "../../domain/models/departure.js";
 import { createDeparture } from "../../domain/models/departure.js";
+import { fetchWithTimeout } from "../../utils/http.js";
 import type { VbbApiDeparture, VbbApiResponse } from "./vbb-api-types.js";
 
 export class VbbDepartureRepository implements DepartureRepository {
@@ -30,7 +31,7 @@ export class VbbDepartureRepository implements DepartureRepository {
     });
 
     console.log(`[VBB API] Fetching: ${url.toString()}`);
-    const response = await fetch(url.toString(), {
+    const response = await fetchWithTimeout(url.toString(), {
       headers: {
         accept: "application/json",
         "user-agent": "Mozilla/5.0",

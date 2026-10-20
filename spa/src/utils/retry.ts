@@ -14,6 +14,9 @@ export const DEFAULT_RETRY_POLICY: RetryPolicy = {
   delayMs: 500,
 };
 
+/** How often a wait between two attempts reports its remaining time. */
+export const RETRY_WAIT_TICK_MS = 1000;
+
 /** Retry settings as written in the TOML display configuration. */
 export interface DisplayRetrySettings {
   /** `fetch_retry_attempts`: total tries per stop and cycle (1 = no retry). */
@@ -47,6 +50,25 @@ export interface FailedAttempt {
   error: Error;
 }
 
+/** Time left before the next attempt; `remainingMs: 0` means it runs now. */
+export interface RetryWait {
+  /** The attempt that just failed (1-based). */
+  attempt: number;
+  /** Attempts the policy allows in total. */
+  attempts: number;
+  remainingMs: number;
+}
+
+export interface RetryHooks {
+  /** Called after a failed attempt that still has attempts left. */
+  onFailedAttempt?: (failed: FailedAttempt) => void;
+  /**
+   * Called when the pause before the next attempt starts, then once per second
+   * until the attempt runs. Lets the screen count down instead of freezing.
+   */
+  onRetryWait?: (wait: RetryWait) => void;
+}
+
 /**
  * Runs the operation, repeating it after a pause when it fails.
  * Throws the last error once every attempt is used up.
@@ -54,7 +76,7 @@ export interface FailedAttempt {
 export async function withRetries<T>(
   operation: () => Promise<T>,
   policy: RetryPolicy = DEFAULT_RETRY_POLICY,
-  onFailedAttempt?: (failed: FailedAttempt) => void,
+  hooks: RetryHooks = {},
 ): Promise<T> {
   const attempts = Math.max(1, policy.attempts);
   let lastError: Error | null = null;
@@ -67,12 +89,34 @@ export async function withRetries<T>(
       if (attempt === attempts) {
         break;
       }
-      onFailedAttempt?.({ attempt, error: lastError });
-      await pause(policy.delayMs);
+      hooks.onFailedAttempt?.({ attempt, error: lastError });
+      await waitForNextAttempt(policy.delayMs, attempt, attempts, hooks);
     }
   }
 
   throw lastError;
+}
+
+async function waitForNextAttempt(
+  delayMs: number,
+  attempt: number,
+  attempts: number,
+  hooks: RetryHooks,
+): Promise<void> {
+  const reportWait = hooks.onRetryWait;
+  if (!reportWait) {
+    await pause(delayMs);
+    return;
+  }
+
+  let remainingMs = delayMs;
+  reportWait({ attempt, attempts, remainingMs });
+  while (remainingMs > 0) {
+    const step = Math.min(RETRY_WAIT_TICK_MS, remainingMs);
+    await pause(step);
+    remainingMs -= step;
+    reportWait({ attempt, attempts, remainingMs });
+  }
 }
 
 function toError(error: unknown): Error {

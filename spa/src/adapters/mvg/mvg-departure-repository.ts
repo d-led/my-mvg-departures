@@ -1,6 +1,7 @@
 import type { DepartureRepository } from "../../domain/ports/departure-repository.js";
 import type { Departure } from "../../domain/models/departure.js";
 import { createDeparture } from "../../domain/models/departure.js";
+import { fetchWithTimeout } from "../../utils/http.js";
 import type { MvgApiDeparture } from "./mvg-api-types.js";
 
 export class MvgDepartureRepository implements DepartureRepository {
@@ -20,7 +21,7 @@ export class MvgDepartureRepository implements DepartureRepository {
     const url = `${this.baseUrl}?globalId=${encodeURIComponent(stationId)}&limit=${limit}&transportTypes=${transportTypes}`;
 
     console.log(`[MVG API] Fetching: ${url}`);
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, {
       headers: {
         accept: "application/json",
         "user-agent": "Mozilla/5.0",

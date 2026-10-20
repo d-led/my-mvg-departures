@@ -97,6 +97,32 @@ describe("SPA departures", () => {
     cy.get("#departures").should("contain", "Garching-Forschungszentrum");
   });
 
+  it("says how far a slow refresh has got while the screen is empty", () => {
+    stubStationLookups();
+    cy.intercept(
+      { method: "GET", url: "**/api/bgw-pt/v3/departures*" },
+      (request) => {
+        request.reply({ delay: 1500, statusCode: 200, body: mvgDepartures() });
+      },
+    );
+    openSpa();
+
+    // Nothing to show yet: the screen names the calls that are running ...
+    cy.get("#departures", { timeout: 10000 }).should(
+      "contain",
+      "Fetching 2 stops…",
+    );
+    // ... and counts the ones already answered.
+    cy.get("#departures", { timeout: 10000 }).should(
+      "contain",
+      "1 of 2 stops ok",
+    );
+    cy.get("#departures .departure-row", { timeout: 15000 }).should(
+      "have.length.at.least",
+      1,
+    );
+  });
+
   it("retries the failing stop inside the refresh cycle", () => {
     const attemptCounts = {};
 

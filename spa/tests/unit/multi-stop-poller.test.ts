@@ -3,8 +3,10 @@ import { MultiStopPoller } from "../../src/application/services/multi-stop-polle
 import { DepartureGroupingService } from "../../src/application/services/departure-grouping-service.js";
 import { createDeparture } from "../../src/domain/models/departure.js";
 import { createStopConfiguration } from "../../src/domain/models/stop-configuration.js";
+import type { Departure } from "../../src/domain/models/departure.js";
 import type { DepartureCache } from "../../src/domain/ports/departure-cache.js";
 import type { DepartureRepository } from "../../src/domain/ports/departure-repository.js";
+import type { PollProgress } from "../../src/domain/models/poll-progress.js";
 import type { PollCycleResult } from "../../src/domain/models/index.js";
 import type { RetryPolicy } from "../../src/utils/retry.js";
 
@@ -46,6 +48,7 @@ async function pollOnce(
   stops: (typeof giesing)[],
   repository: DepartureRepository,
   retryPolicy: RetryPolicy = RETRY_POLICY_WITHOUT_WAITING,
+  onProgress: (progress: PollProgress) => void = () => {},
 ): Promise<PollCycleResult> {
   const updates: PollCycleResult[] = [];
   const poller = new MultiStopPoller(
@@ -59,6 +62,7 @@ async function pollOnce(
       onError: (error) => {
         throw error;
       },
+      onProgress: (progress) => onProgress(progress),
     },
     undefined,
     retryPolicy,
@@ -78,6 +82,7 @@ describe("MultiStopPoller", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -189,5 +194,135 @@ describe("MultiStopPoller", () => {
         refreshFailed: false,
       }),
     );
+  });
+
+  it("counts the answered calls while the cycle runs", async () => {
+    const repository: DepartureRepository = {
+      getDepartures: vi.fn(async (stationId: string) => {
+        if (stationId === sendlingerTor.stationId) {
+          throw new Error("MVG API error: 503 Service Unavailable");
+        }
+        return [departureIn(5)];
+      }),
+    };
+    const progressEvents: PollProgress[] = [];
+
+    await pollOnce(
+      [giesing, sendlingerTor],
+      repository,
+      undefined,
+      (progress) => progressEvents.push(progress),
+    );
+
+    // The retry ticks of the failing stop are covered by their own test.
+    const settled = progressEvents.filter(
+      (progress) => progress.retryWait === null,
+    );
+    expect(settled.map((progress) => progress.stopsCompleted)).toEqual([
+      0, 1, 2,
+    ]);
+    expect(settled.at(-1)).toEqual({
+      stopsTotal: 2,
+      stopsCompleted: 2,
+      stopsOk: 1,
+      stopsFailed: 1,
+      retryWait: null,
+    });
+  });
+
+  it("counts the wait before a retry, then clears it", async () => {
+    vi.useFakeTimers();
+    const repository: DepartureRepository = {
+      getDepartures: vi.fn(async () => {
+        throw new Error("network down");
+      }),
+    };
+    const progressEvents: PollProgress[] = [];
+    const poller = new MultiStopPoller(
+      repository,
+      emptyCache(),
+      new DepartureGroupingService(repository),
+      [giesing],
+      INTERVAL_SECONDS,
+      {
+        onUpdate: () => {},
+        onError: () => {},
+        onProgress: (progress) => progressEvents.push(progress),
+      },
+      undefined,
+      { attempts: 2, delayMs: 3000 },
+    );
+
+    const started = poller.start();
+    await vi.advanceTimersByTimeAsync(3000);
+    await started;
+    poller.stop();
+
+    expect(
+      progressEvents
+        .map((progress) => progress.retryWait)
+        .filter((wait) => wait !== null),
+    ).toEqual([
+      {
+        stationName: "Giesing",
+        nextAttempt: 2,
+        attempts: 2,
+        remainingMs: 3000,
+      },
+      {
+        stationName: "Giesing",
+        nextAttempt: 2,
+        attempts: 2,
+        remainingMs: 2000,
+      },
+      {
+        stationName: "Giesing",
+        nextAttempt: 2,
+        attempts: 2,
+        remainingMs: 1000,
+      },
+      { stationName: "Giesing", nextAttempt: 2, attempts: 2, remainingMs: 0 },
+    ]);
+    expect(progressEvents.at(-1)).toEqual(
+      expect.objectContaining({ stopsFailed: 1, retryWait: null }),
+    );
+  });
+
+  it("never fetches twice at once when a cycle outlasts the refresh interval", async () => {
+    vi.useFakeTimers();
+    let answerFirstFetch: ((departures: Departure[]) => void) | undefined;
+    const getDepartures = vi.fn(() => {
+      if (getDepartures.mock.calls.length === 1) {
+        return new Promise<Departure[]>((resolve) => {
+          answerFirstFetch = resolve;
+        });
+      }
+      return Promise.resolve([departureIn(5)]);
+    });
+    const repository: DepartureRepository = { getDepartures };
+    const poller = new MultiStopPoller(
+      repository,
+      emptyCache(),
+      new DepartureGroupingService(repository),
+      [giesing],
+      5,
+      { onUpdate: () => {}, onError: () => {}, onProgress: () => {} },
+    );
+
+    const started = poller.start();
+    // Far beyond the 5 s interval: the fetch is still in flight.
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(getDepartures).toHaveBeenCalledTimes(1);
+
+    answerFirstFetch?.([departureIn(5)]);
+    await started;
+
+    // The pause only starts once the first cycle is over.
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(getDepartures).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(getDepartures).toHaveBeenCalledTimes(2);
+
+    poller.stop();
   });
 });

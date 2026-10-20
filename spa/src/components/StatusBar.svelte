@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onDestroy } from "svelte";
   import type { ApiStatus } from "../application/services/api-status.js";
   import type { RouteConfiguration, StopFetchFailure } from "../domain/models/index.js";
   import { describeStopFailures } from "../utils/failure-message.js";
+  import { countdownPosition, ringDashOffset } from "../utils/countdown.js";
 
   let {
     apiStatus,
@@ -12,6 +13,7 @@
     currentRoutePath = null,
     onRouteChange = () => {},
     refreshIntervalSeconds = 20,
+    isFetching = false,
     showLocationUpdate = false,
     onLocationUpdateClick = () => {},
     locationUpdateDisabled = false,
@@ -23,6 +25,7 @@
     currentRoutePath?: string | null;
     onRouteChange?: (path: string) => void;
     refreshIntervalSeconds?: number;
+    isFetching?: boolean;
     showLocationUpdate?: boolean;
     onLocationUpdateClick?: () => void;
     locationUpdateDisabled?: boolean;
@@ -41,7 +44,8 @@
   );
   
   let showRouteSelector = $state(false);
-  let countdownElapsed = $state(0);
+  /** Wall-clock start of the current pause; the ring is derived from it, not from tick counts. */
+  let countdownStartedAt = 0;
   let countdownInterval: number | null = null;
   let countdownCircle: SVGElement | null = null;
   const radius = 5;
@@ -57,11 +61,7 @@
   }
 
   function startCountdown() {
-    // Clear any existing interval
-    if (countdownInterval !== null) {
-      clearInterval(countdownInterval);
-      countdownInterval = null;
-    }
+    stopCountdown();
 
     // Find the countdown circle
     const circleEl = document.querySelector(".refresh-countdown circle.progress") as SVGElement;
@@ -74,42 +74,61 @@
 
     // Set up the circle
     circleEl.setAttribute("stroke-dasharray", circumference.toString());
-    countdownElapsed = 0;
-    circleEl.setAttribute("stroke-dashoffset", "0");
+    countdownStartedAt = Date.now();
+    paintCountdown();
 
-    const updateInterval = 100; // Update every 100ms for smooth animation
-
-    function updateCountdown() {
-      if (!countdownCircle) return;
-
-      countdownElapsed += updateInterval;
-      const progress = countdownElapsed / (refreshIntervalSeconds * 1000);
-      const offset = circumference * (1 - progress);
-      countdownCircle.setAttribute("stroke-dashoffset", offset.toString());
-
-      // Update screen reader text with remaining time
-      const remainingSeconds = Math.ceil((refreshIntervalSeconds * 1000 - countdownElapsed) / 1000);
-      const srText = document.getElementById("refresh-countdown-sr");
-      if (srText && remainingSeconds > 0) {
-        srText.textContent = `Refresh countdown: ${remainingSeconds} seconds remaining`;
-      }
-
-      // When countdown reaches the end, reset
-      if (countdownElapsed >= refreshIntervalSeconds * 1000) {
-        countdownElapsed = 0;
-        if (srText) {
-          srText.textContent = "Refresh countdown: updating";
-        }
-      }
-    }
-
-    countdownInterval = window.setInterval(updateCountdown, updateInterval);
+    countdownInterval = window.setInterval(paintCountdown, 100);
   }
 
-  onMount(() => {
-    // Start countdown when component mounts
-    startCountdown();
-  });
+  function stopCountdown() {
+    if (countdownInterval !== null) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+    }
+  }
+
+  /**
+   * Draws the ring from the elapsed wall-clock time. Anything that throttles
+   * timers (a backgrounded tab, the embedded browser while it is not focused)
+   * then only makes the ring update less often - it never lags behind or stops.
+   * The ring starts empty and fills up as the next refresh approaches, the same
+   * direction the deployed build draws it in.
+   */
+  function paintCountdown() {
+    if (!countdownCircle) return;
+
+    const { remainingFraction, remainingSeconds } = countdownPosition(
+      countdownStartedAt,
+      Date.now(),
+      refreshIntervalSeconds * 1000,
+    );
+    countdownCircle.setAttribute(
+      "stroke-dashoffset",
+      ringDashOffset(remainingFraction, circumference).toString(),
+    );
+    announceCountdown(
+      remainingSeconds > 0
+        ? `Refresh countdown: ${remainingSeconds} seconds remaining`
+        : "Refresh countdown: updating",
+    );
+  }
+
+  /** A refresh is running: the ring shows that the pause is used up. */
+  function markRefreshDue() {
+    stopCountdown();
+    countdownCircle?.setAttribute(
+      "stroke-dashoffset",
+      ringDashOffset(0, circumference).toString(),
+    );
+    announceCountdown("Refresh countdown: updating");
+  }
+
+  function announceCountdown(text: string): void {
+    const srText = document.getElementById("refresh-countdown-sr");
+    if (srText && srText.textContent !== text) {
+      srText.textContent = text;
+    }
+  }
 
   onDestroy(() => {
     // Clean up interval on component destroy
@@ -119,16 +138,17 @@
     }
   });
 
-  // Restart countdown when refresh interval changes or when API status changes (new update)
+  // One restart per finished refresh cycle: no restart on every status change
+  // (too much), none missed while the cycles run (too little).
   $effect(() => {
-    // Access reactive values to trigger effect (intentionally unused to trigger reactivity)
     void refreshIntervalSeconds;
-    void apiStatus;
-    
-    // Restart countdown when interval changes or on successful update
-    if (apiStatus === "success") {
-      startCountdown();
+
+    if (isFetching) {
+      markRefreshDue();
+      return;
     }
+
+    startCountdown();
   });
 </script>
 
@@ -160,7 +180,7 @@
     {/if}
   </div>
 
-  <div class="status-floating-box-item refresh-countdown" role="img" aria-label="Refresh countdown timer" title="Time until next data refresh">
+  <div class="status-floating-box-item refresh-countdown" role="img" aria-label={isFetching ? "Refreshing departures now" : "Refresh countdown timer"} title={isFetching ? "Refreshing now…" : "Time until next data refresh"}>
     <svg viewBox="0 0 12 12" width="100%" height="100%" aria-hidden="true">
       <circle cx="6" cy="6" r="5" class="background"></circle>
       <circle cx="6" cy="6" r="5" class="progress" transform="rotate(-90 6 6)"></circle>

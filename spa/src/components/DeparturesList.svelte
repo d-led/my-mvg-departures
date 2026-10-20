@@ -1,8 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import type { GroupedDepartures, DisplayConfiguration } from "../domain/models/index.js";
+  import type { PollProgress } from "../domain/models/poll-progress.js";
   import { SvelteSet } from "svelte/reactivity";
   import { getStationCoords, getCachedCoords } from "../utils/station-coords.js";
+  import {
+    describeFetchProgress,
+    describeRetryWait,
+  } from "../utils/progress-message.js";
 
   let {
     groupedDepartures = [],
@@ -10,12 +15,14 @@
     display = undefined,
     isPageSuspended = false,
     statusMessages = [],
+    progress = null,
   }: {
     groupedDepartures?: GroupedDepartures[];
     unsupportedProviders?: string[];
     display?: DisplayConfiguration;
     isPageSuspended?: boolean;
     statusMessages?: string[];
+    progress?: PollProgress | null;
   } = $props();
 
   function formatTimeRelative(departure: any): string {
@@ -196,10 +203,25 @@
           <div class="status-message">{message}</div>
         {/each}
       </div>
-    {:else if unsupportedProviders.length > 0}
-      {unsupportedProviders.join(" and ")} API provider{unsupportedProviders.length > 1 ? "s are" : " is"} not yet implemented in this version.
-    {:else}
-      No departures available
+    {/if}
+
+    {#if progress}
+      <!-- A refresh that outlasts the interval says what it is doing: the
+           answered API calls, and how long until a failed one is retried. -->
+      <div class="status-messages fetch-progress" aria-live="off">
+        <div class="status-message">{describeFetchProgress(progress)}</div>
+        {#if progress.retryWait}
+          <div class="status-message">
+            {describeRetryWait(progress.retryWait)}
+          </div>
+        {/if}
+      </div>
+    {:else if statusMessages.length === 0}
+      {#if unsupportedProviders.length > 0}
+        {unsupportedProviders.join(" and ")} API provider{unsupportedProviders.length > 1 ? "s are" : " is"} not yet implemented in this version.
+      {:else}
+        No departures available
+      {/if}
     {/if}
   </div>
 {:else}
@@ -318,6 +340,11 @@
   .status-message {
     font-size: 1.25rem;
     line-height: 1.4;
+  }
+
+  .fetch-progress .status-message {
+    /* Keep the counters from jittering as they tick. */
+    font-variant-numeric: tabular-nums;
   }
 
   .direction-group {

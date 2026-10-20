@@ -1,3 +1,5 @@
+import { fetchWithTimeout } from "../../utils/http.js";
+
 export interface NearbyStation {
   id: string;
   name: string;
@@ -31,7 +33,7 @@ export class MvgStationRepository {
 
     console.log(`[MVG API] Fetching nearby stations: ${url.toString()}`);
 
-    const response = await fetch(url.toString(), {
+    const response = await fetchWithTimeout(url.toString(), {
       headers: {
         accept: "application/json",
         "user-agent": "Mozilla/5.0",
@@ -85,7 +87,7 @@ export class MvgStationRepository {
   ): Promise<StationLocation | null> {
     const url = `${this.stationsUrl}?query=${encodeURIComponent(query)}`;
     try {
-      const response = await fetch(url, {
+      const response = await fetchWithTimeout(url, {
         headers: {
           accept: "application/json",
           "user-agent": "Mozilla/5.0",

@@ -9,24 +9,30 @@ import {
 } from "../../domain/models/stop-fetch-failure.js";
 import type { PollCycleResult } from "../../domain/models/poll-cycle-result.js";
 import {
+  createPollProgress,
+  type PollProgress,
+} from "../../domain/models/poll-progress.js";
+import {
   DEFAULT_RETRY_POLICY,
   withRetries,
   type RetryPolicy,
+  type RetryWait,
 } from "../../utils/retry.js";
 import { DepartureGroupingService } from "./departure-grouping-service.js";
 import { generateHeaderColors } from "./header-color-service.js";
+import { PollLoop } from "./poll-loop.js";
 
 export interface MultiStopPollerCallbacks {
   onUpdate: (result: PollCycleResult, pollerId: string) => void;
   onError: (error: Error, pollerId: string) => void;
+  /** How far the running cycle has got, for the screen that has nothing to show yet. */
+  onProgress?: (progress: PollProgress, pollerId: string) => void;
 }
 
 export class MultiStopPoller {
-  private intervalId: number | null = null;
-  private isRunning = false;
-  private allGroups: GroupedDepartures[] = [];
-  private isInitialPoll = true;
   private readonly pollerId: string;
+  private readonly loop: PollLoop;
+  private progress: PollProgress;
 
   constructor(
     private readonly departureRepository: DepartureRepository,
@@ -40,13 +46,19 @@ export class MultiStopPoller {
   ) {
     // Generate unique ID for this poller instance
     this.pollerId = `poller-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    this.progress = createPollProgress(stopConfigs.length);
+    this.loop = new PollLoop(
+      (fresh) => this.poll(fresh),
+      () => this.refreshIntervalSeconds * 1000,
+      (error) => this.callbacks.onError(error, this.pollerId),
+    );
     console.log(
       `[${this.pollerId}] Created new MultiStopPoller for ${stopConfigs.length} stop(s)`,
     );
   }
 
   async start(): Promise<void> {
-    if (this.isRunning) {
+    if (this.loop.isRunning) {
       console.warn(
         `[${this.pollerId}] Poller already running, ignoring start() call`,
       );
@@ -54,36 +66,14 @@ export class MultiStopPoller {
     }
 
     console.log(
-      `[${this.pollerId}] MultiStopPoller.start() called - setting isInitialPoll = true`,
+      `[${this.pollerId}] MultiStopPoller.start() called - first cycle fetches fresh data`,
     );
-    this.isRunning = true;
-    this.isInitialPoll = true;
-
-    // Do initial poll immediately (always fetch fresh, don't use cache)
-    console.log(
-      `[${this.pollerId}] Starting initial poll (isInitialPoll = ${this.isInitialPoll})`,
-    );
-    await this.poll();
-
-    // Mark that initial poll is done
-    this.isInitialPoll = false;
-
-    // Then poll periodically (will use cache if available)
-    this.intervalId = window.setInterval(() => {
-      this.poll().catch((error) => {
-        this.callbacks.onError(error, this.pollerId);
-      });
-    }, this.refreshIntervalSeconds * 1000);
+    await this.loop.start();
   }
 
   stop(): void {
     console.log(`[${this.pollerId}] Stopping poller`);
-    if (this.intervalId !== null) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
-    }
-    this.isRunning = false;
-    this.isInitialPoll = true; // Reset for next start
+    this.loop.stop();
   }
 
   /**
@@ -91,36 +81,26 @@ export class MultiStopPoller {
    * Useful when page becomes visible after being hidden
    */
   async refreshNow(): Promise<void> {
-    if (!this.isRunning) {
-      console.warn("Poller not running, cannot refresh");
-      return;
-    }
-    console.log("Forcing immediate refresh (page became visible)");
-    // Temporarily set isInitialPoll to bypass cache
-    const wasInitialPoll = this.isInitialPoll;
-    this.isInitialPoll = true;
-    try {
-      await this.poll();
-    } finally {
-      this.isInitialPoll = wasInitialPoll;
-    }
+    await this.loop.refreshNow();
   }
 
-  private async poll(): Promise<void> {
+  private async poll(fresh: boolean): Promise<void> {
     const allGroups: GroupedDepartures[] = [];
     const stopsWithDepartures = new Set<string>(); // Track which stops have departures
     const failures: StopFetchFailure[] = [];
-    let successCount = 0;
 
     // Process stops SEQUENTIALLY to preserve TOML order (matches Python: for stop_config in self.stop_configs)
     // This ensures stops appear in the same order as defined in the TOML configuration
     console.log(
-      `Polling ${this.stopConfigs.length} stop(s)${this.isInitialPoll ? " (initial poll - fetching fresh)" : ""}`,
+      `Polling ${this.stopConfigs.length} stop(s)${fresh ? " (fetching fresh)" : ""}`,
     );
+
+    this.progress = createPollProgress(this.stopConfigs.length);
+    this.reportProgress();
 
     for (const stopConfig of this.stopConfigs) {
       try {
-        const groups = await this.collectGroupsForStop(stopConfig);
+        const groups = await this.collectGroupsForStop(stopConfig, fresh);
         // Add groups from this stop in order (preserves direction order from TOML)
         groups.forEach((group) => {
           allGroups.push({ ...group });
@@ -128,13 +108,14 @@ export class MultiStopPoller {
         if (groups.length > 0) {
           stopsWithDepartures.add(stopConfig.stationName);
         }
-        successCount++;
+        this.recordStopResult(true);
       } catch (error) {
         const failure = createStopFetchFailure(stopConfig, error);
         failures.push(failure);
         console.error(
           `[${this.pollerId}] API poll error for ${stopConfig.stationName}: ${failure.message}`,
         );
+        this.recordStopResult(false);
       }
     }
 
@@ -175,7 +156,7 @@ export class MultiStopPoller {
     // Check if poller is still running before updating
     // This prevents race conditions where a stopped poller's ongoing poll() completes
     // after a new poller has been started (e.g., during route switching)
-    if (!this.isRunning) {
+    if (!this.loop.isRunning) {
       console.log(
         `[${this.pollerId}] Poller was stopped during poll() - discarding results to prevent race condition`,
       );
@@ -183,12 +164,15 @@ export class MultiStopPoller {
     }
 
     // Update state with combined groups
-    this.allGroups = allGroups;
     console.log(
-      `[${this.pollerId}] Combined ${allGroups.length} direction groups from ${successCount} successful stop(s), ${failures.length} error(s), ${stopsWithoutDepartures.length} stop(s) without departures`,
+      `[${this.pollerId}] Combined ${allGroups.length} direction groups from ${this.progress.stopsOk} successful stop(s), ${failures.length} error(s), ${stopsWithoutDepartures.length} stop(s) without departures`,
     );
     this.callbacks.onUpdate(
-      { groups: [...allGroups], successCount, failures },
+      {
+        groups: [...allGroups],
+        successCount: this.progress.stopsOk,
+        failures,
+      },
       this.pollerId,
     );
   }
@@ -199,14 +183,14 @@ export class MultiStopPoller {
    */
   private async collectGroupsForStop(
     stopConfig: StopConfiguration,
+    fresh: boolean,
   ): Promise<GroupedDepartures[]> {
     console.log(
       `Polling stop: ${stopConfig.stationName} (${stopConfig.stationId})`,
     );
 
-    // On initial poll, always fetch fresh data (don't use cache)
-    // On subsequent polls, check cache first
-    if (!this.isInitialPoll) {
+    // A fresh cycle always asks the API; a later one may reuse a still-fresh cache entry
+    if (!fresh) {
       const cached = await this.cache.get(stopConfig.stationId);
       if (cached && cached.length > 0) {
         console.log(
@@ -226,11 +210,15 @@ export class MultiStopPoller {
           this.fetchOptionsFor(stopConfig),
         ),
       this.retryPolicy,
-      (failed) =>
-        console.warn(
-          `[${this.pollerId}] Retrying ${stopConfig.stationName} ` +
-            `(attempt ${failed.attempt + 1}/${this.retryPolicy.attempts}): ${failed.error.message}`,
-        ),
+      {
+        onFailedAttempt: (failed) =>
+          console.warn(
+            `[${this.pollerId}] Retrying ${stopConfig.stationName} ` +
+              `(attempt ${failed.attempt + 1}/${this.retryPolicy.attempts}): ${failed.error.message}`,
+          ),
+        onRetryWait: (wait) =>
+          this.reportRetryWait(stopConfig, wait.attempt + 1, wait),
+      },
     );
 
     if (departures.length === 0) {
@@ -263,5 +251,37 @@ export class MultiStopPoller {
       offsetMinutes: stopConfig.departureLeewayMinutes ?? 0,
       durationMinutes: Math.max(configuredDuration, minDurationForDisplay),
     };
+  }
+
+  private recordStopResult(answered: boolean): void {
+    this.progress = {
+      ...this.progress,
+      stopsCompleted: this.progress.stopsCompleted + 1,
+      stopsOk: this.progress.stopsOk + (answered ? 1 : 0),
+      stopsFailed: this.progress.stopsFailed + (answered ? 0 : 1),
+      retryWait: null,
+    };
+    this.reportProgress();
+  }
+
+  private reportRetryWait(
+    stopConfig: StopConfiguration,
+    nextAttempt: number,
+    wait: RetryWait,
+  ): void {
+    this.progress = {
+      ...this.progress,
+      retryWait: {
+        stationName: stopConfig.stationName,
+        nextAttempt,
+        attempts: wait.attempts,
+        remainingMs: wait.remainingMs,
+      },
+    };
+    this.reportProgress();
+  }
+
+  private reportProgress(): void {
+    this.callbacks.onProgress?.({ ...this.progress }, this.pollerId);
   }
 }

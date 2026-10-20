@@ -4,6 +4,7 @@ import {
   retryPolicyFromDisplay,
   withRetries,
   type FailedAttempt,
+  type RetryWait,
 } from "../../src/utils/retry.js";
 
 describe("retry policy from configuration", () => {
@@ -88,9 +89,9 @@ describe("withRetries", () => {
     const operation = vi.fn().mockRejectedValue(new Error("network down"));
     const failedAttempts: FailedAttempt[] = [];
 
-    const retried = withRetries(operation, policy, (failed) =>
-      failedAttempts.push(failed),
-    );
+    const retried = withRetries(operation, policy, {
+      onFailedAttempt: (failed) => failedAttempts.push(failed),
+    });
     const outcome = expect(retried).rejects.toThrow("network down");
 
     await vi.advanceTimersByTimeAsync(policy.delayMs * policy.attempts);
@@ -98,5 +99,44 @@ describe("withRetries", () => {
 
     expect(failedAttempts.map((failed) => failed.attempt)).toEqual([1, 2]);
     expect(failedAttempts[0].error.message).toBe("network down");
+  });
+
+  it("counts down the pause before each retry", async () => {
+    const operation = vi.fn().mockRejectedValue(new Error("network down"));
+    const waits: RetryWait[] = [];
+
+    const retried = withRetries(
+      operation,
+      { attempts: 2, delayMs: 3000 },
+      { onRetryWait: (wait) => waits.push(wait) },
+    );
+    const outcome = expect(retried).rejects.toThrow("network down");
+
+    await vi.advanceTimersByTimeAsync(3000);
+    await outcome;
+
+    expect(waits).toEqual([
+      { attempt: 1, attempts: 2, remainingMs: 3000 },
+      { attempt: 1, attempts: 2, remainingMs: 2000 },
+      { attempt: 1, attempts: 2, remainingMs: 1000 },
+      { attempt: 1, attempts: 2, remainingMs: 0 },
+    ]);
+  });
+
+  it("retries right away when the policy has no pause", async () => {
+    const operation = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("network down"))
+      .mockResolvedValue("departures");
+    const waits: RetryWait[] = [];
+
+    await withRetries(
+      operation,
+      { attempts: 2, delayMs: 0 },
+      { onRetryWait: (wait) => waits.push(wait) },
+    );
+
+    expect(waits).toEqual([{ attempt: 1, attempts: 2, remainingMs: 0 }]);
+    expect(operation).toHaveBeenCalledTimes(2);
   });
 });
