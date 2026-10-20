@@ -9,21 +9,18 @@ import {
   type StopFetchFailure,
 } from "../../domain/models/stop-fetch-failure.js";
 import type { PollCycleResult } from "../../domain/models/poll-cycle-result.js";
-import {
-  createPollProgress,
-  type PollProgress,
-} from "../../domain/models/poll-progress.js";
+import type { PollProgress } from "../../domain/models/poll-progress.js";
 import {
   DEFAULT_RETRY_POLICY,
   withRetries,
   type RetryPolicy,
-  type RetryWait,
 } from "../../utils/retry.js";
 import { createStopConfiguration } from "../../domain/models/stop-configuration.js";
 import { CompositeDepartureRepository } from "../../adapters/composite-departure-repository.js";
 import { DepartureGroupingService } from "./departure-grouping-service.js";
 import { generateHeaderColors } from "./header-color-service.js";
 import { PollLoop } from "./poll-loop.js";
+import { PollProgressReporter } from "./poll-progress-reporter.js";
 import {
   MvgStationRepository,
   type NearbyStation,
@@ -62,7 +59,7 @@ export class OnTheRunPoller {
   private hasWarnedIgnoredAdapters = false;
   private statusMessages: string[] = [];
   private lastLocation: { latitude: number; longitude: number } | null = null;
-  private progress: PollProgress;
+  private readonly progress: PollProgressReporter;
 
   constructor(
     private readonly stationRepository: MvgStationRepository,
@@ -74,7 +71,9 @@ export class OnTheRunPoller {
     private readonly retryPolicy: RetryPolicy = DEFAULT_RETRY_POLICY,
   ) {
     this.pollerId = `on-the-run-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-    this.progress = createPollProgress(0);
+    this.progress = new PollProgressReporter((progress) =>
+      this.callbacks.onProgress?.(progress, this.pollerId),
+    );
     this.loop = new PollLoop(
       (fresh) => this.poll(fresh),
       () => this.getUpdateIntervalSeconds() * 1000,
@@ -116,7 +115,7 @@ export class OnTheRunPoller {
       shouldUpdateLocation ? "Fetching location..." : "Using last location...",
     ]);
     const location = shouldUpdateLocation
-      ? await this.getCurrentLocation()
+      ? await this.fetchLocationOrExplain()
       : this.lastLocation!;
     if (shouldUpdateLocation) {
       this.lastLocation = location;
@@ -125,10 +124,7 @@ export class OnTheRunPoller {
       ? `Fetched location: ${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`
       : `Using last location: ${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`;
     this.setStatus([locationLabel, "Finding nearby stops..."]);
-    const nearbyStations = await this.stationRepository.getNearbyStations(
-      location.latitude,
-      location.longitude,
-    );
+    const nearbyStations = await this.fetchNearbyStationsOrExplain(location);
 
     const stationsInRange = this.filterStationsByRadius(
       nearbyStations,
@@ -176,8 +172,7 @@ export class OnTheRunPoller {
     const orderedStopConfigs: StopConfiguration[] = [];
     const failures: StopFetchFailure[] = [];
 
-    this.progress = createPollProgress(stationsInRange.length);
-    this.reportProgress();
+    this.progress.begin(stationsInRange.length);
 
     for (const station of stationsInRange) {
       const baseStopConfig = this.createBaseStopConfig(station);
@@ -232,14 +227,14 @@ export class OnTheRunPoller {
           }
         }
 
-        this.recordStationResult(true);
+        this.progress.settle(true);
       } catch (error) {
         const failure = createStopFetchFailure(baseStopConfig, error);
         failures.push(failure);
         console.error(
           `[${this.pollerId}] API poll error for ${station.name}: ${failure.message}`,
         );
-        this.recordStationResult(false);
+        this.progress.settle(false);
       }
     }
 
@@ -303,7 +298,9 @@ export class OnTheRunPoller {
 
     const position = await new Promise<GeoPosition>((resolve, reject) =>
       geolocation.getCurrentPosition(resolve, reject, options),
-    );
+    ).catch((error: unknown) => {
+      throw new Error(describeGeolocationError(error), { cause: error });
+    });
 
     return {
       latitude: position.coords.latitude,
@@ -603,11 +600,13 @@ export class OnTheRunPoller {
 
     const departures = await withRetries(
       () =>
-        departureRepository.getDepartures(stopConfig.stationId, {
-          limit: fetchLimit,
-          offsetMinutes: stopConfig.departureLeewayMinutes ?? 0,
-          durationMinutes,
-        }),
+        this.progress.whileAwaiting(stopConfig.stationName, () =>
+          departureRepository.getDepartures(stopConfig.stationId, {
+            limit: fetchLimit,
+            offsetMinutes: stopConfig.departureLeewayMinutes ?? 0,
+            durationMinutes,
+          }),
+        ),
       this.retryPolicy,
       {
         onFailedAttempt: (failed) =>
@@ -616,7 +615,11 @@ export class OnTheRunPoller {
               `(attempt ${failed.attempt + 1}/${this.retryPolicy.attempts}): ${failed.error.message}`,
           ),
         onRetryWait: (wait) =>
-          this.reportRetryWait(stopConfig, wait.attempt + 1, wait),
+          this.progress.retryWait(
+            stopConfig.stationName,
+            wait.attempt + 1,
+            wait,
+          ),
       },
     );
 
@@ -655,35 +658,53 @@ export class OnTheRunPoller {
     this.callbacks.onStatusUpdate?.([...messages], this.pollerId);
   }
 
-  private recordStationResult(answered: boolean): void {
-    this.progress = {
-      ...this.progress,
-      stopsCompleted: this.progress.stopsCompleted + 1,
-      stopsOk: this.progress.stopsOk + (answered ? 1 : 0),
-      stopsFailed: this.progress.stopsFailed + (answered ? 0 : 1),
-      retryWait: null,
-    };
-    this.reportProgress();
+  /** A location failure is not a stop failure, so it says so on the empty screen. */
+  private async fetchLocationOrExplain(): Promise<{
+    latitude: number;
+    longitude: number;
+  }> {
+    try {
+      return await this.getCurrentLocation();
+    } catch (error) {
+      this.setStatus([`Could not get your location: ${messageOf(error)}`]);
+      throw error;
+    }
   }
 
-  private reportRetryWait(
-    stopConfig: StopConfiguration,
-    nextAttempt: number,
-    wait: RetryWait,
-  ): void {
-    this.progress = {
-      ...this.progress,
-      retryWait: {
-        stationName: stopConfig.stationName,
-        nextAttempt,
-        attempts: wait.attempts,
-        remainingMs: wait.remainingMs,
-      },
-    };
-    this.reportProgress();
+  /** Same for the nearby-stops lookup, which runs before any stop is fetched. */
+  private async fetchNearbyStationsOrExplain(location: {
+    latitude: number;
+    longitude: number;
+  }): Promise<NearbyStation[]> {
+    try {
+      return await this.stationRepository.getNearbyStations(
+        location.latitude,
+        location.longitude,
+      );
+    } catch (error) {
+      this.setStatus([`Could not look up nearby stops: ${messageOf(error)}`]);
+      throw error;
+    }
+  }
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * The browser hands back a plain object with a code and a message, not an
+ * Error, so its reason has to be dug out before it can be shown.
+ */
+function describeGeolocationError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
   }
 
-  private reportProgress(): void {
-    this.callbacks.onProgress?.({ ...this.progress }, this.pollerId);
+  const message = (error as { message?: unknown } | null)?.message;
+  if (typeof message === "string" && message.length > 0) {
+    return message;
   }
+
+  return "the browser did not give a reason";
 }

@@ -8,19 +8,16 @@ import {
   type StopFetchFailure,
 } from "../../domain/models/stop-fetch-failure.js";
 import type { PollCycleResult } from "../../domain/models/poll-cycle-result.js";
-import {
-  createPollProgress,
-  type PollProgress,
-} from "../../domain/models/poll-progress.js";
+import type { PollProgress } from "../../domain/models/poll-progress.js";
 import {
   DEFAULT_RETRY_POLICY,
   withRetries,
   type RetryPolicy,
-  type RetryWait,
 } from "../../utils/retry.js";
 import { DepartureGroupingService } from "./departure-grouping-service.js";
 import { generateHeaderColors } from "./header-color-service.js";
 import { PollLoop } from "./poll-loop.js";
+import { PollProgressReporter } from "./poll-progress-reporter.js";
 
 export interface MultiStopPollerCallbacks {
   onUpdate: (result: PollCycleResult, pollerId: string) => void;
@@ -32,7 +29,7 @@ export interface MultiStopPollerCallbacks {
 export class MultiStopPoller {
   private readonly pollerId: string;
   private readonly loop: PollLoop;
-  private progress: PollProgress;
+  private readonly progress: PollProgressReporter;
 
   constructor(
     private readonly departureRepository: DepartureRepository,
@@ -46,7 +43,9 @@ export class MultiStopPoller {
   ) {
     // Generate unique ID for this poller instance
     this.pollerId = `poller-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-    this.progress = createPollProgress(stopConfigs.length);
+    this.progress = new PollProgressReporter((progress) =>
+      this.callbacks.onProgress?.(progress, this.pollerId),
+    );
     this.loop = new PollLoop(
       (fresh) => this.poll(fresh),
       () => this.refreshIntervalSeconds * 1000,
@@ -95,8 +94,7 @@ export class MultiStopPoller {
       `Polling ${this.stopConfigs.length} stop(s)${fresh ? " (fetching fresh)" : ""}`,
     );
 
-    this.progress = createPollProgress(this.stopConfigs.length);
-    this.reportProgress();
+    this.progress.begin(this.stopConfigs.length);
 
     for (const stopConfig of this.stopConfigs) {
       try {
@@ -108,14 +106,14 @@ export class MultiStopPoller {
         if (groups.length > 0) {
           stopsWithDepartures.add(stopConfig.stationName);
         }
-        this.recordStopResult(true);
+        this.progress.settle(true);
       } catch (error) {
         const failure = createStopFetchFailure(stopConfig, error);
         failures.push(failure);
         console.error(
           `[${this.pollerId}] API poll error for ${stopConfig.stationName}: ${failure.message}`,
         );
-        this.recordStopResult(false);
+        this.progress.settle(false);
       }
     }
 
@@ -205,9 +203,11 @@ export class MultiStopPoller {
     );
     const departures = await withRetries(
       () =>
-        this.departureRepository.getDepartures(
-          stopConfig.stationId,
-          this.fetchOptionsFor(stopConfig),
+        this.progress.whileAwaiting(stopConfig.stationName, () =>
+          this.departureRepository.getDepartures(
+            stopConfig.stationId,
+            this.fetchOptionsFor(stopConfig),
+          ),
         ),
       this.retryPolicy,
       {
@@ -217,7 +217,11 @@ export class MultiStopPoller {
               `(attempt ${failed.attempt + 1}/${this.retryPolicy.attempts}): ${failed.error.message}`,
           ),
         onRetryWait: (wait) =>
-          this.reportRetryWait(stopConfig, wait.attempt + 1, wait),
+          this.progress.retryWait(
+            stopConfig.stationName,
+            wait.attempt + 1,
+            wait,
+          ),
       },
     );
 
@@ -251,37 +255,5 @@ export class MultiStopPoller {
       offsetMinutes: stopConfig.departureLeewayMinutes ?? 0,
       durationMinutes: Math.max(configuredDuration, minDurationForDisplay),
     };
-  }
-
-  private recordStopResult(answered: boolean): void {
-    this.progress = {
-      ...this.progress,
-      stopsCompleted: this.progress.stopsCompleted + 1,
-      stopsOk: this.progress.stopsOk + (answered ? 1 : 0),
-      stopsFailed: this.progress.stopsFailed + (answered ? 0 : 1),
-      retryWait: null,
-    };
-    this.reportProgress();
-  }
-
-  private reportRetryWait(
-    stopConfig: StopConfiguration,
-    nextAttempt: number,
-    wait: RetryWait,
-  ): void {
-    this.progress = {
-      ...this.progress,
-      retryWait: {
-        stationName: stopConfig.stationName,
-        nextAttempt,
-        attempts: wait.attempts,
-        remainingMs: wait.remainingMs,
-      },
-    };
-    this.reportProgress();
-  }
-
-  private reportProgress(): void {
-    this.callbacks.onProgress?.({ ...this.progress }, this.pollerId);
   }
 }

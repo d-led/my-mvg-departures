@@ -143,6 +143,7 @@ describe("OnTheRunPoller progress", () => {
       stopsOk: 0,
       stopsFailed: 0,
       retryWait: null,
+      awaiting: null,
     });
     expect(progressEvents).toContainEqual(
       expect.objectContaining({
@@ -161,8 +162,122 @@ describe("OnTheRunPoller progress", () => {
       stopsOk: 2,
       stopsFailed: 0,
       retryWait: null,
+      awaiting: null,
     });
     expect(updates).toHaveLength(1);
     expect(updates[0].failures).toEqual([]);
+  });
+
+  it("says which nearby stop it is waiting for", async () => {
+    let answer: (() => void) | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (!new URL(url).searchParams.get("globalId")) {
+          return Promise.resolve(jsonResponse([]));
+        }
+        return new Promise<Response>((resolve) => {
+          answer = () => resolve(jsonResponse(departuresFor(CHIEMGAUSTRASSE)));
+        });
+      }),
+    );
+    const progressEvents: PollProgress[] = [];
+
+    const poller = new OnTheRunPoller(
+      nearbyStationsRepository([NEARBY_STATIONS[0]]),
+      emptyCache(),
+      { radiusMeters: 100, useAdapters: ["mvg"] },
+      {
+        onUpdate: () => {},
+        onError: () => {},
+        onProgress: (p) => progressEvents.push(p),
+      },
+      undefined,
+      [],
+      { attempts: 1, delayMs: 0 },
+    );
+
+    const started = poller.start();
+    await vi.waitFor(() =>
+      expect(progressEvents.some((event) => event.awaiting !== null)).toBe(
+        true,
+      ),
+    );
+    const awaiting = progressEvents.find((event) => event.awaiting !== null);
+    answer?.();
+    await started;
+    poller.stop();
+
+    expect(awaiting?.awaiting?.stationName).toBe("Chiemgaustr. (20 m)");
+  });
+
+  it("explains a location failure instead of showing the last status", async () => {
+    vi.stubGlobal("navigator", {
+      geolocation: {
+        getCurrentPosition: (
+          _success: PositionCallback,
+          failure: PositionErrorCallback,
+        ) =>
+          failure({
+            code: 1,
+            message: "User denied Geolocation",
+          } as GeolocationPositionError),
+      },
+    });
+    const statusUpdates: string[][] = [];
+    const errors: Error[] = [];
+
+    const poller = new OnTheRunPoller(
+      nearbyStationsRepository(NEARBY_STATIONS),
+      emptyCache(),
+      { radiusMeters: 100, useAdapters: ["mvg"] },
+      {
+        onUpdate: () => {},
+        onError: (error) => errors.push(error),
+        onStatusUpdate: (messages) => statusUpdates.push(messages),
+      },
+    );
+
+    await poller.start();
+    poller.stop();
+
+    expect(errors.map((error) => error.message)).toEqual([
+      "User denied Geolocation",
+    ]);
+    expect(statusUpdates.at(-1)).toEqual([
+      "Could not get your location: User denied Geolocation",
+    ]);
+  });
+
+  it("explains a nearby-stops failure instead of showing the last status", async () => {
+    const statusUpdates: string[][] = [];
+    const errors: Error[] = [];
+    const failingStationRepository = {
+      getNearbyStations: async () => {
+        throw new Error("Request timed out after 15 s without an answer");
+      },
+      getStationByQuery: async () => null,
+    } as unknown as MvgStationRepository;
+
+    const poller = new OnTheRunPoller(
+      failingStationRepository,
+      emptyCache(),
+      { radiusMeters: 100, useAdapters: ["mvg"] },
+      {
+        onUpdate: () => {},
+        onError: (error) => errors.push(error),
+        onStatusUpdate: (messages) => statusUpdates.push(messages),
+      },
+    );
+
+    await poller.start();
+    poller.stop();
+
+    expect(errors.map((error) => error.message)).toEqual([
+      "Request timed out after 15 s without an answer",
+    ]);
+    expect(statusUpdates.at(-1)).toEqual([
+      "Could not look up nearby stops: Request timed out after 15 s without an answer",
+    ]);
   });
 });

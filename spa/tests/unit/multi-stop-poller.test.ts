@@ -214,19 +214,19 @@ describe("MultiStopPoller", () => {
       (progress) => progressEvents.push(progress),
     );
 
-    // The retry ticks of the failing stop are covered by their own test.
-    const settled = progressEvents.filter(
-      (progress) => progress.retryWait === null,
+    // The per-second ticks of a call in flight are covered by their own test.
+    const completionStates = progressEvents.map(
+      (progress) =>
+        `${progress.stopsCompleted}/${progress.stopsOk}/${progress.stopsFailed}`,
     );
-    expect(settled.map((progress) => progress.stopsCompleted)).toEqual([
-      0, 1, 2,
-    ]);
-    expect(settled.at(-1)).toEqual({
+    expect([...new Set(completionStates)]).toEqual(["0/0/0", "1/1/0", "2/1/1"]);
+    expect(progressEvents.at(-1)).toEqual({
       stopsTotal: 2,
       stopsCompleted: 2,
       stopsOk: 1,
       stopsFailed: 1,
       retryWait: null,
+      awaiting: null,
     });
   });
 

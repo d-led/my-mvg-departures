@@ -519,13 +519,10 @@
             pollProgress = null;
             apiStatus = "error";
           },
-          onProgress: (progress, pollerId) => {
+          onProgress: (progress) => {
             if (!activePollers.has(newPoller)) {
               return;
             }
-            console.log(
-              `[${pollerId}] Progress: ${progress.stopsCompleted}/${progress.stopsTotal} stop(s) answered`,
-            );
             pollProgress = progress;
           },
         },
@@ -654,13 +651,10 @@
           }
           onTheRunStatusMessages = messages;
         },
-        onProgress: (progress, pollerId) => {
+        onProgress: (progress) => {
           if (!activePollers.has(newPoller)) {
             return;
           }
-          console.log(
-            `[${pollerId}] Progress: ${progress.stopsCompleted}/${progress.stopsTotal} stop(s) answered`,
-          );
           pollProgress = progress;
         },
       },

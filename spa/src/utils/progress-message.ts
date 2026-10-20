@@ -8,6 +8,20 @@ import type {
  * ("3 of 8 stops ok") because those are what make a large configuration slow.
  */
 export function describeFetchProgress(progress: PollProgress): string {
+  const counts = describeCounts(progress);
+  if (!counts) {
+    return "";
+  }
+
+  const awaiting = progress.awaiting;
+  if (!awaiting) {
+    return counts;
+  }
+
+  return `${counts} (${awaiting.stationName} ${awaiting.elapsedSeconds} s)`;
+}
+
+function describeCounts(progress: PollProgress): string {
   if (progress.stopsTotal === 0) {
     return "";
   }

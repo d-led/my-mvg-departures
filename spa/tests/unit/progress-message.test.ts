@@ -42,6 +42,19 @@ describe("what the empty timetable says while fetching", () => {
       "Fetching departures… 3 of 8 stops ok, 1 failed",
     );
   });
+
+  it("says which call is waiting and for how long", () => {
+    const progress = {
+      ...createPollProgress(8),
+      stopsCompleted: 3,
+      stopsOk: 3,
+      awaiting: { stationName: "Balanstr.", elapsedSeconds: 12 },
+    };
+
+    expect(describeFetchProgress(progress)).toBe(
+      "Fetching departures… 3 of 8 stops ok (Balanstr. 12 s)",
+    );
+  });
 });
 
 describe("the countdown before a retry", () => {
