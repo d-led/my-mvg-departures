@@ -100,10 +100,10 @@ describe("SPA config pages", () => {
   it("has a raw TOML view beside the pages", () => {
     openConfigDialog();
 
-    cy.get(".view-tabs").contains("button", "TOML").click();
+    cy.get(".config-method-selector").contains("button", "Manual TOML").click();
     cy.get(".config-textarea").should("contain.value", "[[routes]]");
 
-    cy.get(".view-tabs").contains("button", "Pages").click();
+    cy.get(".config-method-selector").contains("button", "Pages").click();
     cy.get(".page-card").should("have.length", 2);
   });
 

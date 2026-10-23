@@ -58,7 +58,7 @@ function openConfig(configToml = CONFIG_TOML) {
 
 /** The raw TOML is a tap away from the pages. */
 function openTomlView() {
-  cy.get(".view-tabs").contains("button", "TOML").click();
+  cy.get(".config-method-selector").contains("button", "Manual TOML").click();
   cy.get(".config-textarea").should("be.visible");
 }
 
@@ -295,6 +295,49 @@ describe("configuration dialogs on a phone", () => {
 
     cy.contains("button", "Apply changes").click();
     cy.get(".page-card").first().should("contain", "2 headings");
+  });
+
+  it("deletes a header of the current route", () => {
+    openConfig();
+
+    cy.get(".config-method-selector")
+      .contains("button", "Delete (current route)")
+      .click();
+    cy.get(".delete-list .delete-item").should("have.length.at.least", 2);
+    cy.get(".delete-list .delete-item").first().click();
+    cy.contains("button", "Review Delete").click();
+    cy.contains("button", "Confirm Delete").click();
+
+    cy.get(".delete-list").should("not.exist");
+    openTomlView();
+    cy.get(".config-textarea").should("not.contain.value", "->City");
+  });
+
+  it("deletes a route from the file", () => {
+    openConfig();
+
+    cy.get(".config-method-selector").contains("button", "Routes").click();
+    cy.get(".delete-routes-list .delete-item").should("have.length", 1);
+    cy.get(".delete-routes-list .delete-item").first().click();
+    cy.contains("button", "Review Delete").click();
+    cy.contains("button", "Confirm Delete").click();
+
+    cy.get(".delete-routes-list").should("not.exist");
+    openTomlView();
+    cy.get(".config-textarea").should("not.contain.value", 'path = "/work"');
+  });
+
+  it("opens the wizard from the mode row on a small phone", () => {
+    cy.viewport(320, 568);
+    openConfig();
+
+    cy.get(".config-method-selector")
+      .contains("button", "Wizard (experimental)")
+      .scrollIntoView()
+      .click();
+
+    cy.get(".wizard-content").should("be.visible");
+    expectNoSidewaysScroll();
   });
 
   it("adds a stop with the wizard", () => {

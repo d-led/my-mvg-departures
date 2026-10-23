@@ -72,6 +72,25 @@
   let pasteSuccess = $state(false);
   let pasteError = $state(false);
   let showWizard = $state(false);
+  let showDelete = $state(false);
+  let showDeleteRoutes = $state(false);
+  let deleteRoutesStep = $state<"select" | "confirm">("select");
+  let deleteRoutesSelections = $state<Set<string>>(new Set());
+  let deleteStep = $state<"select" | "confirm">("select");
+  let deleteCandidates = $state<
+    {
+      id: string;
+      stopId: string;
+      stopName: string;
+      kind: "direction" | "ungrouped";
+      directionName?: string;
+      label: string;
+    }[]
+  >([]);
+  let deleteSelections = $state<Set<string>>(new Set());
+  let deleteError = $state<string | null>(null);
+  let deleteRouteLabel = $state<string>("");
+  let deleteDisabled = $state(false);
   let showFullscreenEditor = $state(false);
   let showTweakOverlay = $state(false);
   type TweakEntry = { key: string; value: string; lineIndex: number };
@@ -80,6 +99,17 @@
   let wizardContext = $state<WizardConfigContext | null>(null);
   const configStorage = new LocalStorageConfigStorage();
   const configParser = new ConfigParser();
+
+  function extractStationIdFromBlock(block: string): string | null {
+    // Extract station_id from a [[stops]] block
+    const match = block.match(/station_id\s*=\s*"([^"]+)"/);
+    return match ? match[1] : null;
+  }
+
+  function extractStationNameFromBlock(block: string): string | null {
+    const match = block.match(/station_name\s*=\s*"([^"]+)"/);
+    return match ? match[1] : null;
+  }
 
   function getCurrentRoutePath(): string {
     const hash = window.location.hash.slice(1); // Remove leading #
@@ -96,6 +126,476 @@
   function openWizard() {
     wizardContext = getWizardConfigContext(configText);
     showWizard = true;
+  }
+
+  type DeletableRoute = {
+    id: string;
+    label: string;
+    path: string;
+    startLine: number;
+    endLine: number;
+  };
+
+  function buildDeletableRoutes(): DeletableRoute[] {
+    const items: DeletableRoute[] = [];
+    if (!configText.trim()) return items;
+
+    const lines = configText.split("\n");
+
+    // Find [[routes]] blocks (exclude default "/" and on-the-run)
+    let i = 0;
+    while (i < lines.length) {
+      if (lines[i].trim() === "[[routes]]") {
+        const startLine = i;
+        let path = "/";
+        let title: string | undefined;
+
+        i++;
+        while (i < lines.length) {
+          const line = lines[i];
+          const trimmed = line.trim();
+          const pathMatch = trimmed.match(/path\s*=\s*"([^"]*)"/) ?? trimmed.match(/path\s*=\s*'([^']*)'/);
+          if (pathMatch) path = pathMatch[1];
+          if (trimmed === "[[routes.display]]") {
+            let j = i + 1;
+            while (j < lines.length) {
+              const t = lines[j].trim();
+              if (t.startsWith("[[") || (t.startsWith("[") && !t.startsWith("[routes"))) break;
+              const titleMatch = t.match(/title\s*=\s*"([^"]*)"/);
+              if (titleMatch) {
+                title = titleMatch[1];
+                break;
+              }
+              j++;
+            }
+          }
+          if (trimmed === "[[routes]]") break;
+          if (trimmed.startsWith("[[") && !trimmed.startsWith("[[routes")) break;
+          if (trimmed.match(/^\[[a-z_]+\]/) && !trimmed.startsWith("[routes")) break;
+          i++;
+        }
+        const endLine = i;
+
+        const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+        if (normalizedPath !== "/" && !isOnTheRunRoute(normalizedPath)) {
+          const displayLabel = title ?? normalizedPath;
+          items.push({
+            id: `route::${normalizedPath}`,
+            label: displayLabel,
+            path: normalizedPath,
+            startLine,
+            endLine,
+          });
+        }
+        continue;
+      }
+      i++;
+    }
+
+    return items;
+  }
+
+  const deletableConfigItems = $derived(buildDeletableRoutes());
+
+  function toggleDeleteRoutesSelection(id: string) {
+    const next = new Set(deleteRoutesSelections);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    deleteRoutesSelections = next;
+  }
+
+  function applyRoutesDeletions() {
+    if (deleteRoutesSelections.size === 0) return;
+
+    const itemsToDelete = deletableConfigItems.filter((item) =>
+      deleteRoutesSelections.has(item.id),
+    );
+    if (itemsToDelete.length === 0) return;
+
+    // Delete in reverse order (end to start) so line indices stay valid
+    const sorted = [...itemsToDelete].sort((a, b) => b.startLine - a.startLine);
+    let lines = configText.split("\n");
+
+    for (const item of sorted) {
+      const before = lines.slice(0, item.startLine);
+      const after = lines.slice(item.endLine);
+      lines = [...before, ...after];
+    }
+
+    configText = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+    deleteRoutesSelections = new Set();
+    deleteRoutesStep = "select";
+    showDeleteRoutes = false;
+  }
+
+  function startDeleteRoutesFlow() {
+    deleteRoutesStep = "select";
+    deleteRoutesSelections = new Set();
+    showDeleteRoutes = true;
+  }
+
+
+  function buildDeleteCandidates(): {
+    candidates: {
+      id: string;
+      stopId: string;
+      stopName: string;
+      kind: "direction" | "ungrouped";
+      directionName?: string;
+      label: string;
+    }[];
+    routeLabel: string;
+    disabled: boolean;
+    error?: string;
+  } {
+    if (!configText.trim()) {
+      return {
+        candidates: [],
+        routeLabel: "",
+        disabled: true,
+        error: "No configuration found.",
+      };
+    }
+
+    try {
+      const parsed = configParser.parseToml(configText);
+      const currentPath = getCurrentRoutePath();
+      const route = parsed.routes.find((r) => r.path === currentPath) ??
+        (currentPath === "/" ? parsed.routes.find((r) => r.path === "/") : undefined);
+
+      if (!route) {
+        return {
+          candidates: [],
+          routeLabel: currentPath,
+          disabled: true,
+          error: "Current route not found in config.",
+        };
+      }
+
+      if (route.isOnTheRun || currentPath === "on-the-run") {
+        return {
+          candidates: [],
+          routeLabel: route.display?.title ?? currentPath,
+          disabled: true,
+          error: "Delete is disabled for Next to me.",
+        };
+      }
+
+      const candidates: {
+        id: string;
+        stopId: string;
+        stopName: string;
+        kind: "direction" | "ungrouped";
+        directionName?: string;
+        label: string;
+      }[] = [];
+
+      for (const stop of route.stops) {
+        const stopName = stop.stationName;
+        const stopId = stop.stationId;
+        const directionKeys = Object.keys(stop.directionMappings ?? {});
+
+        if (directionKeys.length > 0) {
+          for (const directionName of directionKeys) {
+            const displayDirection = directionName.replace(/^->\s*/, "");
+            const label = `${stopName} → ${displayDirection}`;
+            candidates.push({
+              id: `${stopId}::direction::${directionName}`,
+              stopId,
+              stopName,
+              kind: "direction",
+              directionName,
+              label,
+            });
+          }
+        }
+
+        if (stop.showUngrouped) {
+          const ungroupedTitle = stop.ungroupedTitle ?? "Other";
+          const label = `${stopName} → ${ungroupedTitle}`;
+          candidates.push({
+            id: `${stopId}::ungrouped`,
+            stopId,
+            stopName,
+            kind: "ungrouped",
+            label,
+          });
+        }
+
+        if (directionKeys.length === 0 && stop.showUngrouped !== true) {
+          candidates.push({
+            id: `${stopId}::ungrouped`,
+            stopId,
+            stopName,
+            kind: "ungrouped",
+            label: stopName,
+          });
+        }
+      }
+
+      return {
+        candidates,
+        routeLabel: route.display?.title ?? route.path ?? currentPath,
+        disabled: false,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        candidates: [],
+        routeLabel: "",
+        disabled: true,
+        error: `Invalid TOML: ${message}`,
+      };
+    }
+  }
+
+  function startDeleteFlow() {
+    const result = buildDeleteCandidates();
+    deleteCandidates = result.candidates;
+    deleteRouteLabel = result.routeLabel;
+    deleteDisabled = result.disabled;
+    deleteError = result.error ?? null;
+    deleteSelections = new Set();
+    deleteStep = "select";
+    showDelete = true;
+  }
+
+  function toggleDeleteSelection(id: string) {
+    const next = new Set(deleteSelections);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    deleteSelections = next;
+  }
+
+  function applyDeletions() {
+    if (deleteSelections.size === 0) {
+      return;
+    }
+
+    const currentPath = getCurrentRoutePath();
+    const deletionsByStop = new Map<
+      string,
+      { directions: Set<string>; removeUngrouped: boolean }
+    >();
+
+    for (const candidate of deleteCandidates) {
+      if (!deleteSelections.has(candidate.id)) {
+        continue;
+      }
+      const stopKey = `${candidate.stopId}::${candidate.stopName}`;
+      if (!deletionsByStop.has(stopKey)) {
+        deletionsByStop.set(stopKey, {
+          directions: new Set(),
+          removeUngrouped: false,
+        });
+      }
+      const entry = deletionsByStop.get(stopKey)!;
+      if (candidate.kind === "direction" && candidate.directionName) {
+        entry.directions.add(candidate.directionName);
+      }
+      if (candidate.kind === "ungrouped") {
+        entry.removeUngrouped = true;
+      }
+    }
+
+    const lines = configText.split("\n");
+    const output: string[] = [];
+    let currentRoutePathInBlock: string | null = null;
+    let insideRouteBlock = false;
+    let currentStopLines: string[] | null = null;
+    let currentStopIsRouteStop = false;
+
+    const flushStop = () => {
+      if (!currentStopLines) {
+        return;
+      }
+
+      const block = currentStopLines.join("\n");
+      const stopId = extractStationIdFromBlock(block);
+      const stopName = extractStationNameFromBlock(block);
+      const stopKey = stopId && stopName ? `${stopId}::${stopName}` : null;
+      const isDefaultRoute = currentPath === "/";
+      const shouldModify =
+        stopKey &&
+        deletionsByStop.has(stopKey) &&
+        ((currentStopIsRouteStop && currentRoutePathInBlock === currentPath) ||
+          (!currentStopIsRouteStop && isDefaultRoute));
+
+      if (!shouldModify) {
+        output.push(block);
+        currentStopLines = null;
+        currentStopIsRouteStop = false;
+        return;
+      }
+
+      const deletion = deletionsByStop.get(stopKey!);
+      if (!deletion) {
+        output.push(block);
+        currentStopLines = null;
+        currentStopIsRouteStop = false;
+        return;
+      }
+
+      const modified = applyStopDeletions(block, deletion);
+      if (modified.keep) {
+        output.push(modified.block);
+      }
+
+      currentStopLines = null;
+      currentStopIsRouteStop = false;
+    };
+
+    const applyStopDeletions = (
+      block: string,
+      deletion: { directions: Set<string>; removeUngrouped: boolean },
+    ): { keep: boolean; block: string } => {
+      const lines = block.split("\n");
+      const cleaned: string[] = [];
+      let directionHeader: string | null = null;
+      const directionLines: string[] = [];
+      let inDirectionMappings = false;
+      let hasMappingLines = false;
+      let skipDeletedArrayDepth = 0;
+      const countBrackets = (value: string): number => {
+        let depth = 0;
+        for (const ch of value) {
+          if (ch === "[") depth += 1;
+          if (ch === "]") depth -= 1;
+        }
+        return depth;
+      };
+
+      for (const line of lines) {
+        if (
+          line.startsWith("[stops.direction_mappings]") ||
+          line.startsWith("[routes.stops.direction_mappings]")
+        ) {
+          inDirectionMappings = true;
+          directionHeader = line;
+          continue;
+        }
+
+        if (inDirectionMappings) {
+          if (skipDeletedArrayDepth > 0) {
+            skipDeletedArrayDepth += countBrackets(line);
+            if (skipDeletedArrayDepth <= 0) {
+              skipDeletedArrayDepth = 0;
+            }
+            continue;
+          }
+
+          const trimmed = line.trim();
+          if (trimmed.startsWith("#") || trimmed === "") {
+            directionLines.push(line);
+            continue;
+          }
+          const match = line.match(/^"([^"]+)"\s*=/);
+          if (match && deletion.directions.has(match[1])) {
+            const depth = countBrackets(line);
+            if (depth > 0) {
+              skipDeletedArrayDepth = depth;
+            }
+            continue;
+          }
+          directionLines.push(line);
+          hasMappingLines = true;
+          continue;
+        }
+
+        if (deletion.removeUngrouped) {
+          if (line.startsWith("show_ungrouped")) {
+            cleaned.push("show_ungrouped = false");
+            continue;
+          }
+          if (line.startsWith("ungrouped_title")) {
+            continue;
+          }
+        }
+
+        cleaned.push(line);
+      }
+
+      if (directionHeader && directionLines.length > 0) {
+        cleaned.push(directionHeader);
+        cleaned.push(...directionLines);
+      }
+
+      const showUngroupedMatch = cleaned.find((line) =>
+        line.startsWith("show_ungrouped"),
+      );
+      const showUngrouped =
+        showUngroupedMatch?.includes("true") ?? false;
+      const hasDirections = hasMappingLines;
+
+      if (!showUngrouped && !hasDirections) {
+        return { keep: false, block: "" };
+      }
+
+      return { keep: true, block: cleaned.join("\n") };
+    };
+
+    for (const line of lines) {
+      if (line.startsWith("[[routes]]")) {
+        flushStop();
+        insideRouteBlock = true;
+        currentRoutePathInBlock = null;
+        output.push(line);
+        continue;
+      }
+
+      if (line.startsWith("path =") && insideRouteBlock) {
+        const match = line.match(/path\s*=\s*"([^"]+)"/);
+        if (match) {
+          currentRoutePathInBlock = match[1];
+        }
+        output.push(line);
+        continue;
+      }
+
+      if (line.startsWith("[[routes.stops]]") || line.startsWith("[[stops]]")) {
+        flushStop();
+        currentStopLines = [line];
+        currentStopIsRouteStop = line.startsWith("[[routes.stops]]");
+        continue;
+      }
+
+      if (
+        currentStopLines &&
+        (line.startsWith("[[") ||
+          (line.startsWith("[") &&
+            !line.startsWith("[stops.direction_mappings]") &&
+            !line.startsWith("[routes.stops.direction_mappings]")))
+      ) {
+        flushStop();
+        output.push(line);
+        continue;
+      }
+
+      if (currentStopLines) {
+        currentStopLines.push(line);
+        continue;
+      }
+
+      if (line.startsWith("[") && !line.startsWith("[routes") && !line.startsWith("[[routes")) {
+        insideRouteBlock = false;
+        currentRoutePathInBlock = null;
+      }
+
+      output.push(line);
+    }
+
+    flushStop();
+
+    configText = output.join("\n").trim();
+    showDelete = false;
+    deleteSelections = new Set();
+    deleteStep = "select";
   }
 
   /** True if the line is a TOML section header (not a comment; starts with [ and ends with ]). */
@@ -395,6 +895,12 @@
     configText = toml;
     errorMessage = null;
     showNotice(description);
+  }
+
+  /** The mode row's Clean up: prepare the rewrite, then show it where it lands. */
+  function startCleanup() {
+    view = "toml";
+    previewCleanup();
   }
 
   function cancelCleanup() {
@@ -709,16 +1215,148 @@
       routeStopIdsByPath={wizardContext?.routeStopIdsByPath ?? {}}
       onTheRunDisabled={isOnTheRunRoute(getCurrentRoutePath())}
     />
+  {:else if showDeleteRoutes}
+    <div class="modal-content delete-routes-content">
+      <div class="modal-header">
+        <h2>Delete Routes</h2>
+        <button class="close-button" onclick={() => (showDeleteRoutes = false)} aria-label="Close">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="delete-routes-hint">
+          Select the routes to remove from your configuration.
+        </p>
+        {#if deletableConfigItems.length === 0}
+          <p class="delete-routes-empty">Nothing to delete. Add a route other than the main one to see it here.</p>
+        {:else}
+          {#if deleteRoutesStep === "select"}
+            <div class="delete-routes-list delete-list" role="list">
+              {#each deletableConfigItems as item (item.id)}
+                <label class="delete-routes-item delete-item" role="listitem">
+                  <input
+                    type="checkbox"
+                    class="delete-checkbox"
+                    checked={deleteRoutesSelections.has(item.id)}
+                    onchange={() => toggleDeleteRoutesSelection(item.id)}
+                  />
+                  <span class="delete-routes-label delete-item-label">
+                    {item.label}
+                    <span class="delete-routes-path">{item.path}</span>
+                  </span>
+                </label>
+              {/each}
+            </div>
+          {:else if deleteRoutesStep === "confirm"}
+            <div class="delete-confirm">
+              <h3>Confirm deletion</h3>
+              <ul>
+                {#each deletableConfigItems.filter((item) => deleteRoutesSelections.has(item.id)) as item (item.id)}
+                  <li>
+                    {item.label}
+                    <span class="delete-routes-path">{item.path}</span>
+                  </li>
+                {/each}
+              </ul>
+            </div>
+          {/if}
+        {/if}
+      </div>
+      {#if deletableConfigItems.length > 0}
+        <div class="modal-footer">
+          {#if deleteRoutesStep === "confirm"}
+            <button class="button button-secondary" onclick={() => (deleteRoutesStep = "select")}>Back</button>
+            <button class="button button-secondary" onclick={() => (showDeleteRoutes = false)}>Cancel</button>
+            <button class="button button-primary" onclick={applyRoutesDeletions} disabled={deleteRoutesSelections.size === 0}>Confirm Delete</button>
+          {:else}
+            <button class="button button-secondary" onclick={() => (showDeleteRoutes = false)}>Cancel</button>
+            <button
+              class="button button-primary"
+              onclick={() => (deleteRoutesStep = "confirm")}
+              disabled={deleteRoutesSelections.size === 0}
+            >Review Delete</button>
+          {/if}
+        </div>
+      {/if}
+    </div>
+  {:else if showDelete}
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Delete from Current Route</h2>
+        <button
+          class="close-button"
+          onclick={() => (showDelete = false)}
+          aria-label="Close"
+        >×</button>
+      </div>
+      <div class="modal-body">
+        <p class="delete-route-label">
+          Current route: <strong>{deleteRouteLabel || "(default)"}</strong>
+        </p>
+        <p class="delete-hint">
+          Select the headers to delete (current route only). Next to me is excluded.
+        </p>
+
+        {#if deleteError}
+          <div class="error-message" role="alert">
+            {deleteError}
+          </div>
+        {/if}
+
+        {#if deleteDisabled}
+          <div class="delete-disabled">Delete is not available for this route.</div>
+        {:else if deleteCandidates.length === 0}
+          <div class="delete-disabled">No deletable headers found.</div>
+        {:else}
+          {#if deleteStep === "select"}
+            <div class="delete-list" role="list">
+              {#each deleteCandidates as item (item.id)}
+                <label class="delete-item" role="listitem">
+                  <input
+                    type="checkbox"
+                    class="delete-checkbox"
+                    checked={deleteSelections.has(item.id)}
+                    onchange={() => toggleDeleteSelection(item.id)}
+                  />
+                  <span class="delete-item-label">{item.label}</span>
+                </label>
+              {/each}
+            </div>
+          {:else if deleteStep === "confirm"}
+            <div class="delete-confirm">
+              <h3>Confirm deletion</h3>
+              <ul>
+                {#each deleteCandidates.filter((c) => deleteSelections.has(c.id)) as item (item.id)}
+                  <li>{item.label}</li>
+                {/each}
+              </ul>
+            </div>
+          {/if}
+        {/if}
+      </div>
+      <div class="modal-footer">
+        {#if deleteStep === "confirm"}
+          <button class="button button-secondary" onclick={() => (deleteStep = "select")}>Back</button>
+          <button class="button button-secondary" onclick={() => (showDelete = false)}>Cancel</button>
+          <button class="button button-primary" onclick={applyDeletions} disabled={deleteSelections.size === 0}>Confirm Delete</button>
+        {:else}
+          <button class="button button-secondary" onclick={() => (showDelete = false)}>Cancel</button>
+          <button
+            class="button button-primary"
+            onclick={() => (deleteStep = "confirm")}
+            disabled={deleteSelections.size === 0 || deleteDisabled}
+          >Review Delete</button>
+        {/if}
+      </div>
+    </div>
   {:else}
     <div class="modal-content">
       <div class="modal-header">
         <h2>Configuration</h2>
         <button class="close-button" onclick={requestCancel} aria-label="Close">×</button>
       </div>
-      <div class="view-tabs" role="tablist">
+      <div class="config-method-selector" role="tablist">
         <button
-          class="view-tab"
-          class:view-tab-active={view === "pages"}
+          class="method-button"
+          class:method-button-active={view === "pages"}
           role="tab"
           aria-selected={view === "pages"}
           onclick={() => (view = "pages")}
@@ -726,13 +1364,38 @@
           Pages
         </button>
         <button
-          class="view-tab"
-          class:view-tab-active={view === "toml"}
+          class="method-button"
+          class:method-button-active={view === "toml"}
           role="tab"
           aria-selected={view === "toml"}
           onclick={() => (view = "toml")}
         >
-          TOML
+          Manual TOML
+        </button>
+        <button class="method-button" onclick={openWizard}>
+          Wizard (experimental)
+        </button>
+        <button
+          class="method-button"
+          onclick={startDeleteFlow}
+          title="Delete headers from the current route"
+        >
+          Delete (current route)
+        </button>
+        <button
+          class="method-button"
+          onclick={startDeleteRoutesFlow}
+          title="Delete routes from the file"
+        >
+          Routes
+        </button>
+        <button
+          class="method-button"
+          onclick={startCleanup}
+          disabled={!configText.trim() || isSaving || isLoadingExample}
+          title="Remove the sections and settings the SPA never reads"
+        >
+          Clean up
         </button>
       </div>
       <div class="modal-body">
@@ -841,15 +1504,6 @@
           onAddStops={openWizard}
         />
       {:else}
-        <p>Paste a TOML configuration, or a link to one, below:</p>
-        <div class="info-links">
-          <p>
-            <a href="https://github.com/d-led/my-mvg-departures/blob/main/docs/FINDING_STOP_IDS.md" target="_blank" rel="noopener noreferrer">Find station IDs using the project tooling</a>.
-          </p>
-          <p>
-            This is the <a href="https://d-led.github.io/my-mvg-departures/" target="_blank" rel="noopener noreferrer">SPA version</a> of the MVG Departures app. More examples are in the <a href="https://github.com/d-led/my-mvg-departures/blob/main/spa/README.md" target="_blank" rel="noopener noreferrer">README</a>.
-          </p>
-        </div>
       <div class="textarea-container">
         <div class="textarea-toolbar">
           <button 
@@ -1012,7 +1666,6 @@
       {/if}
     </div>
     <div class="modal-footer">
-      <span class="build-sha">__BUILD_SHA__</span>
       <div class="modal-footer-actions">
         {#if confirmCancel}
           <span class="discard-question">Discard the changes?</span>
@@ -1056,75 +1709,190 @@
     z-index: 10000;
   }
 
-  .view-tabs {
+  .config-method-selector {
     display: flex;
     gap: 0.5rem;
-    margin-bottom: 0.75rem;
+    margin-bottom: 1rem;
     border-bottom: 2px solid #e5e7eb;
-    flex-shrink: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
   }
 
-  :global([data-theme="dark"]) .view-tabs {
+  :global([data-theme="dark"]) .config-method-selector {
     border-bottom-color: #374151;
   }
 
-  .view-tab {
-    padding: 0.5rem 0.75rem;
+  .method-button {
+    padding: 0.75rem 1rem;
     background: none;
     border: none;
     border-bottom: 2px solid transparent;
-    margin-bottom: -2px;
     cursor: pointer;
     font-weight: 500;
     color: #6b7280;
+    transition: all 0.2s;
+    margin-bottom: -2px;
+    flex-shrink: 0;
   }
 
-  .view-tab:hover {
+  .method-button:hover {
     color: #111827;
   }
 
-  :global([data-theme="dark"]) .view-tab {
-    color: #9ca3af;
-  }
-
-  :global([data-theme="dark"]) .view-tab:hover {
-    color: #f9fafb;
-  }
-
-  .view-tab-active {
-    color: #087bc4;
-    border-bottom-color: #087bc4;
-  }
-
-  :global([data-theme="dark"]) .view-tab-active {
-    color: #60a5fa;
-    border-bottom-color: #60a5fa;
-  }
-
-  .toolbar-text-button {
-    padding: 0.25rem 0.5rem;
-    border: 1px solid #d1d5db;
-    border-radius: 0.375rem;
-    background: white;
-    font-size: 0.8rem;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  .toolbar-text-button:hover:not(:disabled) {
-    background: #f3f4f6;
-  }
-
-  .toolbar-text-button:disabled {
+  .method-button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
 
-  :global([data-theme="dark"]) .toolbar-text-button {
-    background: #374151;
-    border-color: #4b5563;
-    color: #e5e7eb;
+  .delete-route-label {
+    margin-top: 0.5rem;
+    margin-bottom: 0.25rem;
   }
+
+  .delete-hint {
+    color: #6b7280;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+  }
+
+  .delete-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 320px;
+    overflow: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    background: #f9fafb;
+  }
+
+  :global([data-theme="dark"]) .delete-list {
+    border-color: #374151;
+    background: #111827;
+  }
+
+  .delete-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.95rem;
+  }
+
+  .delete-checkbox {
+    width: 1.1rem;
+    height: 1.1rem;
+  }
+
+  .delete-item-label {
+    font-weight: 500;
+  }
+
+  .delete-confirm {
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    background: #fff7ed;
+  }
+
+  :global([data-theme="dark"]) .delete-confirm {
+    border-color: #374151;
+    background: #1f2937;
+  }
+
+  .delete-confirm h3 {
+    margin-top: 0;
+  }
+
+  .delete-confirm ul {
+    margin: 0;
+    padding-left: 1.25rem;
+  }
+
+  .delete-routes-hint {
+    color: #6b7280;
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+  }
+
+  .delete-routes-empty {
+    color: #6b7280;
+    font-style: italic;
+  }
+
+  .delete-routes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 320px;
+    overflow: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    background: #f9fafb;
+  }
+
+  :global([data-theme="dark"]) .delete-routes-list {
+    border-color: #374151;
+    background: #111827;
+  }
+
+  .delete-routes-item {
+    padding: 0.25rem 0;
+  }
+
+  .delete-routes-label {
+    font-weight: 500;
+  }
+
+  .delete-routes-path {
+    font-size: 0.8em;
+    font-weight: 400;
+    color: #6b7280;
+    margin-left: 0.35em;
+  }
+
+  :global([data-theme="dark"]) .delete-routes-path {
+    color: #9ca3af;
+  }
+
+  .delete-confirm .delete-routes-path {
+    margin-left: 0.25em;
+  }
+
+  .delete-disabled {
+    color: #6b7280;
+    padding: 0.75rem;
+    border: 1px dashed #d1d5db;
+    border-radius: 0.5rem;
+    background: #f9fafb;
+  }
+
+  :global([data-theme="dark"]) .delete-disabled {
+    border-color: #4b5563;
+    background: #111827;
+  }
+
+  .method-button-active {
+    color: #087bc4;
+    border-bottom-color: #087bc4;
+  }
+
+  :global([data-theme="dark"]) .method-button {
+    color: #9ca3af;
+  }
+
+  :global([data-theme="dark"]) .method-button:hover {
+    color: #f9fafb;
+  }
+
+  :global([data-theme="dark"]) .method-button-active {
+    color: #60a5fa;
+    border-bottom-color: #60a5fa;
+  }
+
 
   /* Lock body scroll when fullscreen editor is open (prevents scroll bleed on mobile) - CSS only via :has() */
   :global(body:has(.fullscreen-editor-overlay)) {
@@ -1467,15 +2235,6 @@
       font-size: 1.25rem;
     }
 
-    .view-tabs {
-      margin-bottom: 0.5rem;
-    }
-
-    .view-tab {
-      padding: 0.4rem 0.6rem;
-      font-size: 0.9rem;
-    }
-
     .page-row {
       padding: 0.4rem 0.6rem;
       margin-bottom: 0.5rem;
@@ -1484,12 +2243,6 @@
     .modal-body > p {
       font-size: 0.85rem;
       margin-bottom: 0.4rem;
-    }
-
-    .info-links {
-      padding: 0.5rem;
-      margin-bottom: 0.5rem;
-      font-size: 0.8rem;
     }
 
     .config-textarea {
@@ -1505,9 +2258,6 @@
       padding-top: 0.25rem;
     }
 
-    .build-sha {
-      display: none;
-    }
   }
 
   :global([data-theme="dark"]) .modal-content {
@@ -1568,39 +2318,12 @@
     flex-shrink: 0; /* Don't shrink the label */
   }
 
-  .info-links {
-    margin-bottom: 0.75rem;
-    padding: 0.75rem;
-    background-color: #f3f4f6;
-    border-radius: 0.375rem;
-    font-size: 0.875rem;
-    flex-shrink: 0;
-  }
 
-  :global([data-theme="dark"]) .info-links {
-    background-color: #374151;
-  }
 
-  .info-links p {
-    margin: 0.25rem 0;
-  }
 
-  .info-links a {
-    color: #087BC4;
-    text-decoration: underline;
-  }
 
-  .info-links a:hover {
-    color: #0669a3;
-  }
 
-  :global([data-theme="dark"]) .info-links a {
-    color: #60a5fa;
-  }
 
-  :global([data-theme="dark"]) .info-links a:hover {
-    color: #93c5fd;
-  }
 
   .error-message {
     background-color: #fee2e2;
@@ -1911,12 +2634,6 @@
     margin-top: auto;
   }
 
-  .build-sha {
-    font-size: 0.75rem;
-    color: #565f89;
-    align-self: center;
-    margin-right: auto;
-  }
 
   .modal-footer-actions {
     margin-left: auto;
@@ -1931,20 +2648,12 @@
       gap: 0.5rem;
     }
 
-    .build-sha {
-      margin-right: 0;
-      order: -1;
-    }
-
     .modal-footer-actions {
       margin-left: 0;
       justify-content: flex-end;
     }
   }
 
-  :global([data-theme="dark"]) .build-sha {
-    color: #6b7280;
-  }
 
   .button-example {
     background-color: #f3f4f6;
