@@ -71,6 +71,35 @@ To get rid of them, open the config dialog and press **Clean up**: it rewrites t
 stored text into the shape above in one step, keeps your comments, and says what it
 removed. Nothing is saved until you press **Save**.
 
+The "Next to me" page is one optional `[[on_the_run]]` table, so it is easy to lose
+by accident. The dialog says whether the page is part of the config and offers
+**Restore** (with working defaults) or **Remove**; removal asks twice.
+
+### Examples, Munich and Berlin
+
+| File                                                                                 | Provider    | What it shows                 |
+| ------------------------------------------------------------------------------------ | ----------- | ----------------------------- |
+| [`config.example.toml`](config.example.toml)                                         | MVG München | the default: Giesing          |
+| [`configs/berlin-alexanderplatz.toml`](configs/berlin-alexanderplatz.toml)           | VBB Berlin  | S+U Alexanderplatz, all lines |
+| [`configs/berlin-zoologischer-garten.toml`](configs/berlin-zoologischer-garten.toml) | VBB Berlin  | one platform, 249 grouped     |
+
+Berlin stops read the VBB API, so they say `api_provider = "vbb"`; Munich stops use
+the default MVG API and need no line. The dialog offers these under **Examples**.
+
+### Sharing a config by link
+
+`?config=<url>` loads a config from any absolute http(s) link, stores it and shows
+it immediately:
+
+```
+https://d-led.github.io/my-mvg-departures/?config=https://raw.githubusercontent.com/d-led/my-mvg-departures/main/spa/configs/berlin-alexanderplatz.toml
+```
+
+Raw links are the useful ones - `raw.githubusercontent.com` serves plain text and
+allows cross-origin reads. GitHub's file pages
+(`github.com/<owner>/<repo>/blob/<ref>/<path>`) and gist pages also work: they are
+translated to their raw URLs. Pasting a link into the config dialog does the same.
+
 > **💡 Tip**: Use this SPA version to generate and test your TOML configuration, then copy the route and stop tables to the server-side or Inky versions for deployment!
 
 For configuration details and patterns, see the main [README.md](../README.md#configuration).

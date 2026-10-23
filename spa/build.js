@@ -150,6 +150,25 @@ function copyExampleConfig() {
     );
     process.exit(1); // Fail the build if config file is missing
   }
+
+  copySampleConfigs(buildScriptDir);
+}
+
+/** The extra examples the config dialog offers (Berlin today). */
+function copySampleConfigs(buildScriptDir) {
+  const samplesDir = [
+    join(process.cwd(), "configs"),
+    join(buildScriptDir, "configs"),
+  ].find((dir) => existsSync(dir));
+
+  if (!samplesDir) {
+    return; // Samples are optional; the default example is always there
+  }
+
+  const samplesDest = join(DIST_DIR, "configs");
+  mkdirSync(samplesDest, { recursive: true });
+  cpSync(samplesDir, samplesDest, { recursive: true });
+  console.log(`✓ Copied sample configs from ${samplesDir} to ${samplesDest}`);
 }
 
 function copyHtml() {
@@ -540,6 +559,10 @@ if (isWatch) {
   watch("config.example.toml", () => {
     copyExampleConfig();
     console.log("✓ Example config updated");
+  });
+  watch("configs", { recursive: true }, () => {
+    copyExampleConfig();
+    console.log("✓ Sample configs updated");
   });
 
   process.on("SIGINT", async () => {

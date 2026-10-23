@@ -1,0 +1,44 @@
+# Berlin Alexanderplatz - SPA sample configuration
+#
+# Berlin stops come from the VBB API (v6.bvg.transport.rest), so every stop
+# names its provider with `api_provider = "vbb"`. Munich stops use the default
+# MVG API and need no such line.
+#
+# Open it in the config dialog (Examples -> Berlin Alexanderplatz) or share it:
+#   https://d-led.github.io/my-mvg-departures/
+#     ?config=https://raw.githubusercontent.com/d-led/my-mvg-departures/main/spa/configs/berlin-alexanderplatz.toml
+
+[display]
+
+title = "Berlin Alexanderplatz"
+theme = "auto"
+
+# Seconds between two refresh cycles
+refresh_interval_seconds = 20
+
+# Phones and tablets scroll, so do not stretch the rows over the screen
+fill_vertical_space = false
+
+# Hash-based pastel colors for the headers
+random_header_colors = true
+
+font_size_route_number = "3.5rem"
+font_size_destination = "3rem"
+font_size_platform = "2.25rem"
+font_size_time = "3.5rem"
+font_size_stop_header = "2.5rem"
+font_size_direction_header = "2rem"
+font_size_status_header = "1.5rem"
+
+[[routes]]
+path = "/"
+
+[[routes.stops]]
+# Found with: curl "https://v6.bvg.transport.rest/locations?query=Alexanderplatz"
+station_id = "900100003" # S+U Alexanderplatz Bhf
+station_name = "Alexanderplatz"
+api_provider = "vbb"
+max_departures_per_stop = 10
+max_departures_per_route = 2
+show_ungrouped = true
+ungrouped_title = "All departures"

@@ -1,0 +1,38 @@
+# Berlin Zoologischer Garten - SPA sample configuration
+#
+# A platform-filtered Berlin stop: only platform 9 is shown, and the 249 bus is
+# called out as its own group. Berlin stops read the VBB API, hence
+# `api_provider = "vbb"`.
+#
+# Open it in the config dialog (Examples -> Berlin Zoologischer Garten) or share it:
+#   https://d-led.github.io/my-mvg-departures/
+#     ?config=https://raw.githubusercontent.com/d-led/my-mvg-departures/main/spa/configs/berlin-zoologischer-garten.toml
+
+[display]
+
+title = "Berlin Zoologischer Garten"
+theme = "auto"
+refresh_interval_seconds = 30
+fill_vertical_space = false
+random_header_colors = true
+
+[[routes]]
+path = "/"
+
+[[routes.stops]]
+# Found with: curl "https://v6.bvg.transport.rest/locations?query=Zoologischer Garten"
+station_id = "900023201" # S+U Zoologischer Garten Bhf
+station_name = "Zoologischer Garten"
+api_provider = "vbb"
+max_departures_per_stop = 15
+max_departures_per_route = 3
+max_departures_fetch = 160
+fetch_max_minutes_in_advance = 120
+departure_leeway_minutes = 15
+platform_filter = 9
+platform_filter_routes = ["249"]
+show_ungrouped = false
+
+[routes.stops.direction_mappings]
+"->Berliner Str." = ["U9 S+U Bundesplatz"]
+"->Uhlandstr." = ["249"]

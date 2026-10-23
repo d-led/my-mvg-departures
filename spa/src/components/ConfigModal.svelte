@@ -1,6 +1,6 @@
 <script lang="ts">
   /* eslint-disable svelte/prefer-svelte-reactivity */
-  /* global HTMLInputElement */
+  /* global HTMLInputElement, URL */
   import { tick } from "svelte";
   import { LocalStorageConfigStorage } from "../adapters/storage/local-storage-config-storage.js";
   import { ConfigParser } from "../adapters/config/config-parser.js";
@@ -20,6 +20,7 @@
     hasOnTheRun,
     removeOnTheRunSection,
   } from "../utils/on-the-run-section.js";
+  import { fetchToml, rawConfigUrl } from "../utils/config-url.js";
 
   let {
     onSave,
@@ -67,6 +68,19 @@
   let wizardContext = $state<WizardConfigContext | null>(null);
   const configStorage = new LocalStorageConfigStorage();
   const configParser = new ConfigParser();
+
+  /** Examples shipped with the app; the first one is what "Example" loads. */
+  const EXAMPLE_CONFIGS = [
+    { label: "Giesing", file: "./config.example.toml" },
+    {
+      label: "Berlin Alexanderplatz",
+      file: "./configs/berlin-alexanderplatz.toml",
+    },
+    {
+      label: "Berlin Zoologischer Garten",
+      file: "./configs/berlin-zoologischer-garten.toml",
+    },
+  ];
 
 
   function extractStationIdFromBlock(block: string): string | null {
@@ -867,13 +881,13 @@
     showNotice("Next to me removed. Save to keep the change.");
   }
 
-  async function loadExampleConfig() {
+  async function loadExampleConfig(file: string = EXAMPLE_CONFIGS[0].file) {
     isLoadingExample = true;
     errorMessage = null;
     
     try {
       // Use relative path to work with both root and subdirectory deployments
-      const configPath = "./config.example.toml";
+      const configPath = file;
       const response = await fetch(configPath);
       if (response.ok) {
         const exampleToml = await response.text();
@@ -949,71 +963,73 @@
   }
 
   async function handlePaste() {
+    let text: string;
     try {
-      const text = await navigator.clipboard.readText();
-      const trimmed = text.trim();
-      if (!trimmed) {
-        errorMessage = "Clipboard is empty. Please copy a valid TOML config.";
-        pasteError = true;
-        setTimeout(() => {
-          pasteError = false;
-        }, 2000);
-        return;
-      }
+      text = (await navigator.clipboard.readText()).trim();
+    } catch (error) {
+      console.error("Failed to read the clipboard:", error);
+      errorMessage = "Could not read the clipboard. Please paste manually.";
+      return;
+    }
 
-      // If the clipboard contains a gist raw URL from gist.githubusercontent.com,
-      // fetch the contents and use that as the config text. Use URL constructor
-      // to validate the URL safely.
-      let contentToUse = trimmed;
-      try {
-        const maybeUrl = new globalThis.URL(trimmed);
-        if (maybeUrl.hostname === "gist.githubusercontent.com") {
-          try {
-            const resp = await fetch(maybeUrl.href);
-            if (!resp.ok) {
-              throw new Error(`Failed to fetch gist: ${resp.status} ${resp.statusText}`);
-            }
-            const fetched = await resp.text();
-            if (fetched.trim()) {
-              contentToUse = fetched;
-            } else {
-              throw new Error("Fetched gist is empty");
-            }
-          } catch (fetchErr) {
-            // If gist fetch fails, surface a helpful error and abort paste.
-            console.error("Failed to fetch gist URL:", fetchErr);
-            const message = fetchErr instanceof Error ? fetchErr.message : String(fetchErr);
-            errorMessage = `Failed to fetch gist URL: ${message}`;
-            pasteError = true;
-            setTimeout(() => {
-              pasteError = false;
-            }, 2000);
-            return;
-          }
-        }
-      } catch {
-        // Not a valid URL — ignore and continue with clipboard text as-is.
-      }
+    if (!text) {
+      errorMessage = "Clipboard is empty. Please copy a valid TOML config.";
+      flashPaste(false);
+      return;
+    }
 
-      // Validate TOML content (either fetched content or raw clipboard text)
+    let contentToUse: string;
+    try {
+      contentToUse = await readPastedConfig(text);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errorMessage = `Could not load the pasted link: ${message}`;
+      flashPaste(false);
+      return;
+    }
+
+    try {
       configParser.parseToml(contentToUse);
       configText = contentToUse;
-      pasteError = false;
-      pasteSuccess = true;
-      setTimeout(() => {
-        pasteSuccess = false;
-      }, 2000);
+      errorMessage = null;
+      flashPaste(true);
     } catch (error) {
       console.error("Failed to paste from clipboard:", error);
-      const message = error instanceof Error ? error.message : String(error);
-      errorMessage = message.includes("Invalid TOML")
-        ? message
-        : "Clipboard does not contain valid TOML configuration.";
-      pasteError = true;
-      setTimeout(() => {
-        pasteError = false;
-      }, 2000);
+      errorMessage = "Clipboard does not contain valid TOML configuration.";
+      flashPaste(false);
     }
+  }
+
+  /**
+   * A pasted link is fetched - GitHub's file pages through their raw host, the
+   * same way `?config=` is handled. Anything that is not a link is TOML text.
+   */
+  async function readPastedConfig(text: string): Promise<string> {
+    const url = parseHttpUrl(text);
+    if (!url) {
+      return text;
+    }
+    return fetchToml(rawConfigUrl(url) ?? url.href);
+  }
+
+  function parseHttpUrl(text: string): URL | null {
+    try {
+      const url = new globalThis.URL(text);
+      return url.protocol === "http:" || url.protocol === "https:"
+        ? url
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function flashPaste(success: boolean) {
+    pasteSuccess = success;
+    pasteError = !success;
+    setTimeout(() => {
+      pasteSuccess = false;
+      pasteError = false;
+    }, 2000);
   }
 
   async function handleWizardComplete(result: WizardResult) {
@@ -1275,8 +1291,19 @@
           {/if}
         </div>
 
-        <p>Paste your TOML configuration below:</p>
+        <p>Paste a TOML configuration, or a link to one, below:</p>
         <div class="info-links">
+          <p>
+            Examples:
+            {#each EXAMPLE_CONFIGS as example, index (example.file)}
+              {#if index > 0}<span class="info-separator">·</span>{/if}
+              <button
+                class="link-button"
+                onclick={() => loadExampleConfig(example.file)}
+                disabled={isSaving || isLoadingExample}
+              >{example.label}</button>
+            {/each}
+          </p>
           <p>
             <a href="https://github.com/d-led/my-mvg-departures/blob/main/docs/FINDING_STOP_IDS.md" target="_blank" rel="noopener noreferrer">Find station IDs using the project tooling</a>.
           </p>
@@ -1451,7 +1478,7 @@
       <div class="modal-footer-actions">
         <button 
           class="button button-example" 
-          onclick={loadExampleConfig} 
+          onclick={() => loadExampleConfig()} 
           disabled={isSaving || isLoadingExample}
           title="Load example configuration"
         >
@@ -2065,6 +2092,34 @@
 
   :global([data-theme="dark"]) .info-links a {
     color: #60a5fa;
+  }
+
+  .link-button {
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    color: #087bc4;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+
+  .link-button:hover:not(:disabled) {
+    color: #0669a3;
+  }
+
+  .link-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  :global([data-theme="dark"]) .link-button {
+    color: #60a5fa;
+  }
+
+  .info-separator {
+    color: #9ca3af;
+    margin: 0 0.15rem;
   }
 
   :global([data-theme="dark"]) .info-links a:hover {
