@@ -73,6 +73,10 @@
   const EXAMPLE_CONFIGS = [
     { label: "Giesing", file: "./config.example.toml" },
     {
+      label: "München Münchner Freiheit",
+      file: "./configs/muenchen-muenchner-freiheit.toml",
+    },
+    {
       label: "Berlin Alexanderplatz",
       file: "./configs/berlin-alexanderplatz.toml",
     },

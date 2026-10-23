@@ -75,16 +75,37 @@ The "Next to me" page is one optional `[[on_the_run]]` table, so it is easy to l
 by accident. The dialog says whether the page is part of the config and offers
 **Restore** (with working defaults) or **Remove**; removal asks twice.
 
-### Examples, Munich and Berlin
+### Examples: two Munich, two Berlin
 
-| File                                                                                 | Provider    | What it shows                 |
-| ------------------------------------------------------------------------------------ | ----------- | ----------------------------- |
-| [`config.example.toml`](config.example.toml)                                         | MVG München | the default: Giesing          |
-| [`configs/berlin-alexanderplatz.toml`](configs/berlin-alexanderplatz.toml)           | VBB Berlin  | S+U Alexanderplatz, all lines |
-| [`configs/berlin-zoologischer-garten.toml`](configs/berlin-zoologischer-garten.toml) | VBB Berlin  | one platform, 249 grouped     |
+| Example                                                                                | Provider    | What it shows                 |
+| -------------------------------------------------------------------------------------- | ----------- | ----------------------------- |
+| [`config.example.toml`](config.example.toml)                                           | MVG München | the default: Giesing          |
+| [`configs/muenchen-muenchner-freiheit.toml`](configs/muenchen-muenchner-freiheit.toml) | MVG München | U3/U6, buses and tram grouped |
+| [`configs/berlin-alexanderplatz.toml`](configs/berlin-alexanderplatz.toml)             | VBB Berlin  | S+U Alexanderplatz, all lines |
+| [`configs/berlin-zoologischer-garten.toml`](configs/berlin-zoologischer-garten.toml)   | VBB Berlin  | one platform, 249 grouped     |
 
 Berlin stops read the VBB API, so they say `api_provider = "vbb"`; Munich stops use
-the default MVG API and need no line. The dialog offers these under **Examples**.
+the default MVG API and need no line. The dialog offers these under **Examples**,
+and each one is preconfigured on GitHub Pages:
+
+- **Giesing**:
+  <https://d-led.github.io/my-mvg-departures/?config=https://d-led.github.io/my-mvg-departures/config.example.toml>
+- **Münchner Freiheit**:
+  <https://d-led.github.io/my-mvg-departures/?config=https://d-led.github.io/my-mvg-departures/configs/muenchen-muenchner-freiheit.toml>
+- **Berlin Alexanderplatz**:
+  <https://d-led.github.io/my-mvg-departures/?config=https://d-led.github.io/my-mvg-departures/configs/berlin-alexanderplatz.toml>
+- **Berlin Zoologischer Garten**:
+  <https://d-led.github.io/my-mvg-departures/?config=https://d-led.github.io/my-mvg-departures/configs/berlin-zoologischer-garten.toml>
+
+### Why there is no Wuppertal example (yet)
+
+Wuppertal would read the DB API (`v6.db.transport.rest`, `api_provider = "db"`), but
+that instance answers `503` on `/locations` and `/departures` today, and its own docs
+say it must not be used for automated requests ("the underlying APIs seem to have a
+much lower rate limit than before"). The SPA therefore reports DB as an unsupported
+provider rather than showing an empty screen. When a source for NRW answers, the
+sample is a stop with `api_provider = "db"` plus groupings: buses and regional
+trains by their destination in the city, local trains by their next stop.
 
 ### Sharing a config by link
 

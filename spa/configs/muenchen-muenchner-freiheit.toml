@@ -1,0 +1,54 @@
+# München Münchner Freiheit - SPA sample configuration
+#
+# A mixed Munich stop: U3/U6 underneath, buses and a tram outside. Groups match
+# on "<line> <destination>", and anything unmatched still shows up, so a new
+# line never disappears from the screen.
+#
+# Open it in the config dialog (Examples -> München Münchner Freiheit) or share it:
+#   https://d-led.github.io/my-mvg-departures/
+#     ?config=https://raw.githubusercontent.com/d-led/my-mvg-departures/main/spa/configs/muenchen-muenchner-freiheit.toml
+
+[display]
+
+title = "Münchner Freiheit"
+theme = "auto"
+refresh_interval_seconds = 20
+fill_vertical_space = false
+random_header_colors = true
+
+font_size_route_number = "3.5rem"
+font_size_destination = "3rem"
+font_size_platform = "2.25rem"
+font_size_time = "3.5rem"
+font_size_stop_header = "2.5rem"
+font_size_direction_header = "2rem"
+font_size_status_header = "1.5rem"
+
+[[routes]]
+path = "/"
+
+[[routes.stops]]
+# Found with: https://www.mvg.de/api/bgw-pt/v3/locations?query=Münchner Freiheit
+station_id = "de:09162:500"
+station_name = "Münchner Freiheit"
+max_departures_per_stop = 12
+max_departures_per_route = 2
+show_ungrouped = true
+ungrouped_title = "Weitere Abfahrten"
+
+[routes.stops.direction_mappings]
+"->Stadtmitte" = ["U3 Sendlinger Tor", "U6 Goetheplatz"]
+"->Norden" = [
+  "U3 Moosach",
+  "U3 Olympiazentrum",
+  "U6 Fröttmaning",
+  "U6 Garching",
+  "23 Schwabing Nord",
+]
+"->Busse" = [
+  "53 Aidenbachstraße",
+  "54 Lorettoplatz",
+  "59 Giesing",
+  "59 Ackermannbogen",
+  "142 Scheidplatz",
+]

@@ -59,4 +59,18 @@ describe("SPA config links", () => {
     cy.get(".config-textarea").should("contain.value", "900100003");
     cy.get(".config-textarea").should("contain.value", 'api_provider = "vbb"');
   });
+
+  it("offers two Munich and two Berlin examples", () => {
+    stubApis();
+    cy.visit("/");
+
+    cy.get(".config-button").click();
+    cy.get(".info-links .link-button")
+      .should("have.length", 4)
+      .and("contain", "Münchner Freiheit")
+      .and("contain", "Berlin Zoologischer Garten");
+
+    cy.get(".info-links").contains("button", "Münchner Freiheit").click();
+    cy.get(".config-textarea").should("contain.value", "de:09162:500");
+  });
 });

@@ -10,6 +10,7 @@ const spaDir = join(dirname(fileURLToPath(import.meta.url)), "../..");
 /** The examples the config dialog offers, and the API each one reads. */
 const SAMPLES = [
   { file: "config.example.toml", provider: "mvg" },
+  { file: "configs/muenchen-muenchner-freiheit.toml", provider: "mvg" },
   { file: "configs/berlin-alexanderplatz.toml", provider: "vbb" },
   { file: "configs/berlin-zoologischer-garten.toml", provider: "vbb" },
 ];
