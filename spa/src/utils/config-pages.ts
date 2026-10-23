@@ -7,7 +7,10 @@ import {
   leadInStart,
   readTomlTables,
   renderToml,
+  setTomlKey as setKey,
   tableLinesEnd,
+  tomlString,
+  tomlTableHasKeys as hasKeys,
   type TomlTable,
 } from "./toml-sections.js";
 
@@ -762,68 +765,6 @@ function insertDisplayTable(
   return rerender(lines, block.startLine, block.endLine, next);
 }
 
-interface LineRange {
-  /** The table's header line. */
-  header: number;
-  /** Index just past the table's own lines. */
-  end: number;
-}
-
-/** The line of `key` inside the table, or -1. */
-function keyLine(lines: string[], range: LineRange, key: string): number {
-  const pattern = new RegExp(`^\\s*${key}\\s*=`);
-
-  for (let line = range.header + 1; line < range.end; line += 1) {
-    if (pattern.test(lines[line])) {
-      return line;
-    }
-  }
-
-  return -1;
-}
-
-/** True when the table still holds anything but comments and `exceptKey`. */
-function hasKeys(
-  lines: string[],
-  range: LineRange,
-  exceptKey?: string,
-): boolean {
-  const skip = exceptKey ? new RegExp(`^\\s*${exceptKey}\\s*=`) : null;
-
-  return lines.slice(range.header + 1, range.end).some((line) => {
-    const trimmed = line.trim();
-    return trimmed !== "" && !trimmed.startsWith("#") && !skip?.test(line);
-  });
-}
-
-/** Replaces, adds or (for `null`) removes one `key = value` line. */
-function setKey(
-  lines: string[],
-  range: LineRange,
-  key: string,
-  value: string | null,
-): string[] {
-  const line = keyLine(lines, range, key);
-  const replacement = value === null ? null : `${key} = ${value}`;
-
-  if (line === -1) {
-    return replacement === null
-      ? lines
-      : [
-          ...lines.slice(0, range.header + 1),
-          replacement,
-          ...lines.slice(range.header + 1),
-        ];
-  }
-  if (replacement === null) {
-    return [...lines.slice(0, line), ...lines.slice(line + 1)];
-  }
-
-  return lines.map((existing, index) =>
-    index === line ? replacement : existing,
-  );
-}
-
 /** The line of the first sub-table of a route block, or its end. */
 function firstSubTableLine(lines: string[]): number {
   return nextSubTableLine(lines, 0);
@@ -833,10 +774,6 @@ function firstSubTableLine(lines: string[]): number {
 function nextSubTableLine(lines: string[], from: number): number {
   const index = lines.findIndex((line, at) => at > from && /^\s*\[/.test(line));
   return index === -1 ? lines.length : index;
-}
-
-function tomlString(value: string): string {
-  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
 /** Directions without blank rows, blank patterns or surrounding spaces. */

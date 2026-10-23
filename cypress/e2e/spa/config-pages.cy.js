@@ -236,6 +236,29 @@ describe("SPA config pages", () => {
     });
   });
 
+  it("restores the Next to me page and edits what it looks for", () => {
+    openConfigDialog();
+
+    cy.get(".page-row").should("contain", "is missing from this config");
+    cy.get(".page-row").contains("button", "Restore").click();
+    cy.get(".page-row").contains("button", "Edit").click();
+
+    cy.get('.on-the-run-field input[aria-label="Radius (metres)"]')
+      .clear()
+      .type("250");
+    cy.get('.on-the-run-field input[aria-label="APIs"]').clear().type("mvg, vbb");
+    cy.get(".page-row-form").contains("button", "Apply").click();
+
+    cy.get(".page-row-form").should("not.exist");
+    cy.contains("button", "Save").click();
+
+    cy.window().its("localStorage").invoke("getItem", CONFIG_TOML_KEY).should((saved) => {
+      expect(saved).to.contain("radius_meters = 250");
+      expect(saved).to.contain('use_adapters = ["mvg", "vbb"]');
+      expect(saved).to.contain("max_departures_per_stop = 8");
+    });
+  });
+
   it("makes the departures page follow the headings it was given", () => {    openConfigDialog();
 
     // Registered after `openConfigDialog`, so it wins over that catch-all stub.

@@ -29,7 +29,13 @@
   } from "../utils/config-cleanup.js";
   import {
     addOnTheRunSection,
+    draftOfOnTheRun,
     hasOnTheRun,
+    ON_THE_RUN_FIELDS,
+    readOnTheRunSettings,
+    settingsOfOnTheRunDraft,
+    updateOnTheRunSettings,
+    type OnTheRunDraft,
   } from "../utils/on-the-run-section.js";
   import { fetchToml, rawConfigUrl } from "../utils/config-url.js";
 
@@ -390,6 +396,27 @@
 
   const hasOnTheRunPage = $derived(hasOnTheRun(configText));
 
+  /** The Next to me page's own settings, and its open form. */
+  const onTheRunSettings = $derived(readOnTheRunSettings(configText));
+  let onTheRunDraft = $state<OnTheRunDraft | null>(null);
+
+  function openOnTheRunForm() {
+    onTheRunDraft = draftOfOnTheRun(onTheRunSettings);
+  }
+
+  function applyOnTheRun() {
+    if (onTheRunDraft === null) {
+      return;
+    }
+    const values = settingsOfOnTheRunDraft(onTheRunDraft);
+    const before = configText;
+    onTheRunDraft = null;
+    configText = updateOnTheRunSettings(configText, values);
+    if (configText !== before) {
+      showNotice("Next to me updated. Save to keep the change.");
+    }
+  }
+
   /** The pages the config describes, in file order. */
   const configPages = $derived(readConfigPages(configText));
 
@@ -707,7 +734,16 @@
                 : "The nearby-departures page is missing from this config."}
             </span>
           </div>
-          {#if !hasOnTheRunPage}
+          {#if hasOnTheRunPage}
+            <button
+              class="button button-secondary"
+              onclick={openOnTheRunForm}
+              disabled={isSaving || isLoadingExample}
+              title="Change the radius, the number of departures and the API"
+            >
+              Edit
+            </button>
+          {:else}
             <button
               class="button button-primary"
               onclick={restoreOnTheRun}
@@ -718,6 +754,47 @@
             </button>
           {/if}
         </div>
+
+        {#if onTheRunDraft !== null}
+          {@const draft = onTheRunDraft}
+          <div class="page-row-form">
+            <div class="on-the-run-fields">
+              {#each ON_THE_RUN_FIELDS as field (field.key)}
+                <label class="on-the-run-field">
+                  <span class="on-the-run-label">{field.label}</span>
+                  {#if field.kind === "boolean"}
+                    <input
+                      type="checkbox"
+                      checked={draft[field.key] === "true"}
+                      aria-label={field.label}
+                      onchange={(event) =>
+                        (draft[field.key] = event.currentTarget.checked
+                          ? "true"
+                          : "false")}
+                    />
+                  {:else}
+                    <input
+                      type={field.kind === "number" ? "number" : "text"}
+                      bind:value={draft[field.key]}
+                      aria-label={field.label}
+                    />
+                  {/if}
+                  {#if field.hint}
+                    <small class="on-the-run-hint">{field.hint}</small>
+                  {/if}
+                </label>
+              {/each}
+            </div>
+            <div class="page-row-actions">
+              <button class="button button-secondary" onclick={() => (onTheRunDraft = null)}>
+                Cancel
+              </button>
+              <button class="button button-primary" onclick={applyOnTheRun}>
+                Apply
+              </button>
+            </div>
+          </div>
+        {/if}
 
         <ConfigPages
           pages={configPages}
@@ -1577,6 +1654,80 @@
 
   :global([data-theme="dark"]) .page-row-hint {
     color: #9ca3af;
+  }
+
+  .page-row-form {
+    border: 1px solid #e5e7eb;
+    border-top: none;
+    border-radius: 0 0 0.5rem 0.5rem;
+    padding: 0.5rem 0.75rem 0.75rem;
+    margin-top: -0.75rem;
+    margin-bottom: 0.75rem;
+    background: #f9fafb;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  :global([data-theme="dark"]) .page-row-form {
+    border-color: #374151;
+    background: #111827;
+  }
+
+  .on-the-run-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+    gap: 0.5rem 0.75rem;
+    min-width: 0;
+  }
+
+  .on-the-run-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    font-size: 0.8rem;
+    min-width: 0;
+  }
+
+  .on-the-run-label {
+    font-weight: 500;
+  }
+
+  .on-the-run-field input[type="number"],
+  .on-the-run-field input[type="text"] {
+    padding: 0.3rem 0.45rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    font-size: 0.85rem;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .on-the-run-field input[type="checkbox"] {
+    width: 1.1rem;
+    height: 1.1rem;
+  }
+
+  :global([data-theme="dark"]) .on-the-run-field input[type="number"],
+  :global([data-theme="dark"]) .on-the-run-field input[type="text"] {
+    background: #1f2937;
+    border-color: #4b5563;
+    color: #e5e7eb;
+  }
+
+  .on-the-run-hint {
+    color: #6b7280;
+    font-size: 0.72rem;
+  }
+
+  :global([data-theme="dark"]) .on-the-run-hint {
+    color: #9ca3af;
+  }
+
+  .page-row-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
   }
 
   .textarea-container {

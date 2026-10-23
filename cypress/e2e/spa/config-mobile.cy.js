@@ -214,6 +214,22 @@ describe("configuration dialogs on a phone", () => {
     cy.get(".page-card").first().should("contain", "Zuhause");
   });
 
+  it("edits what Next to me looks for on a phone", () => {
+    openConfig();
+
+    cy.get(".page-row").contains("button", "Restore").click();
+    cy.get(".page-row").contains("button", "Edit").click();
+
+    cy.get('.on-the-run-field input[aria-label="Radius (metres)"]')
+      .should("be.visible")
+      .clear()
+      .type("250");
+    expectNoSidewaysScroll();
+
+    cy.get(".page-row-form").contains("button", "Apply").click();
+    cy.get(".page-row-form").should("not.exist");
+  });
+
   it("edits the defaults on a phone", () => {
     openConfig();
 
