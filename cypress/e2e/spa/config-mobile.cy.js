@@ -200,6 +200,32 @@ describe("configuration dialogs on a phone", () => {
     cy.get(".page-card").first().should("not.contain", "/work");
   });
 
+  it("makes a page's controls look and size like controls", () => {
+    openConfig();
+
+    cy.get(".page-card")
+      .first()
+      .within(() => {
+        cy.contains("button", "Edit").should(($button) => {
+          const style = getComputedStyle($button[0]);
+          const box = $button[0].getBoundingClientRect();
+
+          expect(box.height, "edit height").to.be.at.least(32);
+          expect(parseFloat(style.borderTopWidth), "edit border").to.be.at.least(1);
+          expect(style.backgroundColor, "edit background").not.to.equal(
+            "rgba(0, 0, 0, 0)",
+          );
+        });
+
+        cy.get('[aria-label^="Move"]').first().should(($button) => {
+          const box = $button[0].getBoundingClientRect();
+
+          expect(box.width, "arrow width").to.be.at.least(32);
+          expect(box.height, "arrow height").to.be.at.least(32);
+        });
+      });
+  });
+
   it("edits a page in a form that fits the screen", () => {
     openConfig();
 

@@ -570,7 +570,16 @@
   .page-actions {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+  }
+
+  /* On a phone the controls get a row of their own instead of squeezing the title. */
+  @media (max-width: 640px) {
+    .page-actions {
+      flex: 1 1 100%;
+      justify-content: flex-end;
+    }
   }
 
   .page-stops {
@@ -822,13 +831,108 @@
     background: #1f2937;
   }
 
+  /**
+   * The dialog's own button styles are scoped to the dialog, so they do not reach
+   * a child component. These are this component's controls: visibly buttons, and
+   * big enough for a thumb.
+   */
+  .button,
   .icon-button {
-    min-width: 1.75rem;
-    padding: 0.125rem 0.375rem;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.25rem;
+    padding: 0.4rem 0.7rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    background: #ffffff;
+    color: #374151;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.2;
+    cursor: pointer;
+  }
+
+  .icon-button {
+    min-width: 2.25rem;
+    min-height: 2.25rem;
+    padding: 0.25rem;
+    font-size: 1rem;
+  }
+
+  .button {
+    min-height: 2.25rem;
+  }
+
+  .button:hover:not(:disabled),
+  .icon-button:hover:not(:disabled) {
+    background: #f3f4f6;
+    border-color: #9ca3af;
+  }
+
+  .button:disabled,
+  .icon-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .button:focus-visible,
+  .icon-button:focus-visible {
+    outline: 2px solid #087bc4;
+    outline-offset: 2px;
+  }
+
+  .button-primary {
+    background: #087bc4;
+    border-color: #087bc4;
+    color: #ffffff;
+  }
+
+  .button-primary:hover:not(:disabled) {
+    background: #0669a3;
+    border-color: #0669a3;
   }
 
   .button-danger {
-    background-color: #dc2626;
-    color: white;
+    background: #dc2626;
+    border-color: #dc2626;
+    color: #ffffff;
+  }
+
+  .button-danger:hover:not(:disabled) {
+    background: #b91c1c;
+    border-color: #b91c1c;
+  }
+
+  :global([data-theme="dark"]) .button,
+  :global([data-theme="dark"]) .icon-button {
+    background: #374151;
+    border-color: #4b5563;
+    color: #e5e7eb;
+  }
+
+  :global([data-theme="dark"]) .button:hover:not(:disabled),
+  :global([data-theme="dark"]) .icon-button:hover:not(:disabled) {
+    background: #4b5563;
+    border-color: #6b7280;
+  }
+
+  :global([data-theme="dark"]) .button-primary {
+    background: #087bc4;
+    border-color: #087bc4;
+    color: #ffffff;
+  }
+
+  :global([data-theme="dark"]) .button-primary:hover:not(:disabled) {
+    background: #0669a3;
+    border-color: #0669a3;
+  }
+
+  :global([data-theme="dark"]) .button-danger {
+    background: #dc2626;
+    border-color: #dc2626;
+    color: #ffffff;
   }
 </style>
+
