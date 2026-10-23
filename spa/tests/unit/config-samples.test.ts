@@ -4,6 +4,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ConfigParser } from "../../src/adapters/config/config-parser.js";
 import { cleanUpConfigToml } from "../../src/utils/config-cleanup.js";
+import {
+  readConfigPages,
+  updateConfigPage,
+} from "../../src/utils/config-pages.js";
 
 const spaDir = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -51,6 +55,39 @@ describe("the config samples the app ships", () => {
 
     it("is already in the SPA's shape", () => {
       expect(cleanUpConfigToml(toml).changed).toBe(false);
+    });
+
+    it("keeps every page intact when its form is opened and applied untouched", () => {
+      const pages = readConfigPages(toml);
+      expect(pages.length).toBeGreaterThan(0);
+
+      pages.forEach((page, pageIndex) => {
+        const untouched = {
+          path: page.path,
+          title: page.title,
+          stops: page.stops.map((stop) => ({
+            label: stop.label,
+            showUngrouped: stop.showUngrouped,
+            directions: stop.directions,
+          })),
+        };
+
+        expect(updateConfigPage(toml, pageIndex, untouched)).toBe(toml);
+      });
+    });
+
+    it("reads the direction headings the file holds", () => {
+      const headings = readConfigPages(toml).flatMap((page) =>
+        page.stops.flatMap((stop) => stop.directions),
+      );
+
+      if (toml.includes("direction_mappings")) {
+        expect(headings.length).toBeGreaterThan(0);
+      }
+      for (const heading of headings) {
+        expect(heading.direction).not.toBe("");
+        expect(heading.patterns.length).toBeGreaterThan(0);
+      }
     });
 
     it("uses the display settings the SPA renders", () => {

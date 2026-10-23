@@ -24,7 +24,18 @@
   let draggedPage = $state<number | null>(null);
   /** The page being edited, and its unsaved form. */
   let editingPage = $state<number | null>(null);
-  let draft = $state<ConfigPageEdit | null>(null);
+  let draft = $state<Draft | null>(null);
+
+  /** A stop's matches are edited as one pattern per line. */
+  type Draft = {
+    path: string;
+    title: string;
+    stops: {
+      label: string;
+      showUngrouped: boolean;
+      directions: { direction: string; patterns: string }[];
+    }[];
+  };
 
   function stopKey(pageIndex: number, stopIndex: number): string {
     return `${pageIndex}:${stopIndex}`;
@@ -47,8 +58,30 @@
       stops: page.stops.map((stop) => ({
         label: stop.label,
         showUngrouped: stop.showUngrouped,
+        directions: stop.directions.map((direction) => ({
+          direction: direction.direction,
+          patterns: direction.patterns.join("\n"),
+        })),
       })),
     };
+  }
+
+  function addDirection(stop: Draft["stops"][number]) {
+    stop.directions = [...stop.directions, { direction: "", patterns: "" }];
+  }
+
+  function removeDirection(
+    stop: Draft["stops"][number],
+    directionIndex: number,
+  ) {
+    stop.directions = stop.directions.filter((_, at) => at !== directionIndex);
+  }
+
+  function patternsOf(text: string): string[] {
+    return text
+      .split("\n")
+      .map((pattern) => pattern.trim())
+      .filter((pattern) => pattern !== "");
   }
 
   function stopEditing() {
@@ -79,7 +112,14 @@
     const edit: ConfigPageEdit = {
       path: draft.path.trim(),
       title: draft.title,
-      stops: draft.stops.map((stop) => ({ ...stop })),
+      stops: draft.stops.map((stop) => ({
+        label: stop.label,
+        showUngrouped: stop.showUngrouped,
+        directions: stop.directions.map((direction) => ({
+          direction: direction.direction,
+          patterns: patternsOf(direction.patterns),
+        })),
+      })),
     };
     stopEditing();
     onApplyPage(index, edit);
@@ -173,6 +213,42 @@
                   />
                   <span>Show the departures that match no heading</span>
                 </label>
+
+                <div class="page-form-directions">
+                  <p class="page-form-hint">
+                    Headings: one match per line, matched against the line and the
+                    destination.
+                  </p>
+                  {#each stop.directions as direction, directionIndex (directionIndex)}
+                    <div class="page-form-direction">
+                      <input
+                        class="page-form-direction-name"
+                        placeholder="->City"
+                        aria-label={`Heading ${directionIndex + 1} of ${page.stops[stopIndex].name}`}
+                        bind:value={direction.direction}
+                      />
+                      <textarea
+                        rows="2"
+                        placeholder="U2 Messestadt"
+                        aria-label={`Matches for heading ${directionIndex + 1} of ${page.stops[stopIndex].name}`}
+                        bind:value={direction.patterns}
+                      ></textarea>
+                      <button
+                        class="icon-button"
+                        aria-label={`Remove heading ${directionIndex + 1} of ${page.stops[stopIndex].name}`}
+                        onclick={() => removeDirection(stop, directionIndex)}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  {/each}
+                  <button
+                    class="button button-secondary page-form-add-heading"
+                    onclick={() => addDirection(stop)}
+                  >
+                    Add heading
+                  </button>
+                </div>
               </div>
             {/each}
           </fieldset>
@@ -195,6 +271,11 @@
               <span class="page-stop-name">{stop.name}</span>
               {#if stop.label}
                 <span class="page-stop-label">{stop.label}</span>
+              {/if}
+              {#if stop.directions.length > 0}
+                <span class="page-stop-label">
+                  {stop.directions.length} heading{stop.directions.length === 1 ? "" : "s"}
+                </span>
               {/if}
               {#if confirmingStop === stopKey(index, stopIndex)}
                 <span class="page-stop-confirm">
@@ -261,8 +342,10 @@
     flex-direction: column;
     gap: 0.5rem;
     overflow-y: auto;
+    overflow-x: hidden;
     flex: 1 1 auto;
     min-height: 0;
+    min-width: 0;
     padding-right: 0.25rem;
   }
 
@@ -362,6 +445,7 @@
     margin-top: 0.5rem;
     padding-top: 0.5rem;
     border-top: 1px solid #e5e7eb;
+    min-width: 0;
   }
 
   :global([data-theme="dark"]) .page-form {
@@ -409,6 +493,8 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
+    /* A fieldset defaults to its content's min-content width, which overflows. */
+    min-inline-size: 0;
   }
 
   .page-form-stops legend {
@@ -446,6 +532,69 @@
     display: flex;
     justify-content: flex-end;
     gap: 0.5rem;
+  }
+
+  .page-form-directions {
+    flex: 1 1 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding-left: 0.75rem;
+    border-left: 2px solid #e5e7eb;
+  }
+
+  :global([data-theme="dark"]) .page-form-directions {
+    border-left-color: #4b5563;
+  }
+
+  .page-form-hint {
+    margin: 0;
+    font-size: 0.75rem;
+    color: #6b7280;
+  }
+
+  :global([data-theme="dark"]) .page-form-hint {
+    color: #9ca3af;
+  }
+
+  .page-form-direction {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+
+  .page-form-direction input,
+  .page-form-direction textarea {
+    padding: 0.3rem 0.45rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    font-size: 0.8rem;
+    box-sizing: border-box;
+  }
+
+  .page-form-direction input {
+    flex: 1 1 7rem;
+    min-width: 5rem;
+  }
+
+  .page-form-direction textarea {
+    flex: 1 1 auto;
+    min-width: 0;
+    resize: vertical;
+    font-family: inherit;
+  }
+
+  :global([data-theme="dark"]) .page-form-direction input,
+  :global([data-theme="dark"]) .page-form-direction textarea {
+    background: #111827;
+    border-color: #4b5563;
+    color: #e5e7eb;
+  }
+
+  .page-form-add-heading {
+    align-self: flex-start;
   }
 
   .page-stop-confirm {

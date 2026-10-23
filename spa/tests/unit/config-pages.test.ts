@@ -50,12 +50,14 @@ describe("readConfigPages", () => {
             name: "Giesing",
             label: "",
             showUngrouped: false,
+            directions: [],
           },
           {
             stationId: "de:09162:1120",
             name: "Karlsplatz",
             label: "",
             showUngrouped: false,
+            directions: [],
           },
         ],
       },
@@ -68,6 +70,7 @@ describe("readConfigPages", () => {
             name: "Hauptbahnhof",
             label: "",
             showUngrouped: false,
+            directions: [],
           },
         ],
       },
@@ -124,6 +127,7 @@ describe("removeConfigStop", () => {
         name: "Karlsplatz",
         label: "",
         showUngrouped: false,
+        directions: [],
       },
     ]);
     expect(pages[1].stops).toHaveLength(1);
@@ -142,6 +146,7 @@ function editOf(pageIndex: number): ConfigPageEdit {
     stops: page.stops.map((stop) => ({
       label: stop.label,
       showUngrouped: stop.showUngrouped,
+      directions: stop.directions,
     })),
   };
 }
@@ -211,5 +216,147 @@ describe("updateConfigPage", () => {
   it("leaves the file byte for byte alone when the form changed nothing", () => {
     expect(updateConfigPage(TWO_PAGES, 0, editOf(0))).toBe(TWO_PAGES);
     expect(updateConfigPage(TWO_PAGES, 1, editOf(1))).toBe(TWO_PAGES);
+  });
+});
+
+const WITH_DIRECTIONS = `[[routes]]
+path = "/"
+
+[[routes.stops]]
+station_id = "de:09162:1110"
+station_name = "Giesing"
+show_ungrouped = true
+
+[routes.stops.direction_mappings]
+"->City" = ["U2 Messestadt", "19 Pasing"]
+"->Norden" = [
+  "U3 Moosach",
+  "U6 Fröttmaning",
+]
+
+[[routes.stops]]
+station_id = "de:09162:1120"
+station_name = "Karlsplatz"
+`;
+
+describe("direction headings", () => {
+  it("reads one-line and multi-line lists of matches", () => {
+    const [stop] = readConfigPages(WITH_DIRECTIONS)[0].stops;
+
+    expect(stop.directions).toEqual([
+      { direction: "->City", patterns: ["U2 Messestadt", "19 Pasing"] },
+      { direction: "->Norden", patterns: ["U3 Moosach", "U6 Fröttmaning"] },
+    ]);
+  });
+
+  it("keeps the headings and the stop table apart", () => {
+    const [stop, next] = readConfigPages(WITH_DIRECTIONS)[0].stops;
+
+    expect(stop).toMatchObject({
+      name: "Giesing",
+      showUngrouped: true,
+      label: "",
+    });
+    expect(next).toMatchObject({ name: "Karlsplatz", directions: [] });
+  });
+
+  it("rewrites the headings of a stop that has them", () => {
+    const edited = updateConfigPage(WITH_DIRECTIONS, 0, {
+      path: "/",
+      title: "/",
+      stops: [
+        {
+          label: "",
+          showUngrouped: true,
+          directions: [{ direction: "->City", patterns: ["U2 Messestadt"] }],
+        },
+        { label: "", showUngrouped: false, directions: [] },
+      ],
+    });
+
+    expect(readConfigPages(edited)[0].stops[0].directions).toEqual([
+      { direction: "->City", patterns: ["U2 Messestadt"] },
+    ]);
+    expect(edited).not.toContain("->Norden");
+    expect(edited).toContain('station_name = "Giesing"');
+    expect(edited).toContain('station_name = "Karlsplatz"');
+  });
+
+  it("adds a heading table to a stop that has none", () => {
+    const edited = updateConfigPage(TWO_PAGES, 0, {
+      ...editOf(0),
+      stops: [
+        {
+          label: "",
+          showUngrouped: false,
+          directions: [{ direction: "->City", patterns: ["U2 Messestadt"] }],
+        },
+        { label: "", showUngrouped: false },
+      ],
+    });
+
+    expect(readConfigPages(edited)[0].stops[0].directions).toEqual([
+      { direction: "->City", patterns: ["U2 Messestadt"] },
+    ]);
+    expect(readConfigPages(edited)[0].stops[1].directions).toEqual([]);
+  });
+
+  it("quotes a heading that is not a bare key and the matches it holds", () => {
+    const edited = updateConfigPage(TWO_PAGES, 0, {
+      ...editOf(0),
+      stops: [
+        {
+          label: "",
+          showUngrouped: false,
+          directions: [
+            { direction: "->City Centre", patterns: ['59 "Giesing" Bf'] },
+          ],
+        },
+        { label: "", showUngrouped: false },
+      ],
+    });
+
+    expect(edited).toContain('"->City Centre" = ["59 \\"Giesing\\" Bf"]');
+    expect(readConfigPages(edited)[0].stops[0].directions[0]).toEqual({
+      direction: "->City Centre",
+      patterns: ['59 "Giesing" Bf'],
+    });
+  });
+
+  it("drops the heading table when the last heading is removed", () => {
+    const edited = updateConfigPage(WITH_DIRECTIONS, 0, {
+      path: "/",
+      title: "/",
+      stops: [
+        { label: "", showUngrouped: true, directions: [] },
+        { label: "", showUngrouped: false, directions: [] },
+      ],
+    });
+
+    expect(edited).not.toContain("direction_mappings");
+    expect(edited).toContain('station_name = "Giesing"');
+    expect(edited).toContain('station_name = "Karlsplatz"');
+  });
+
+  it("leaves the headings alone when the form does not send them", () => {
+    const edited = updateConfigPage(WITH_DIRECTIONS, 0, {
+      path: "/",
+      title: "/",
+      stops: [
+        { label: "", showUngrouped: true },
+        { label: "", showUngrouped: false },
+      ],
+    });
+
+    expect(edited).toBe(WITH_DIRECTIONS);
+  });
+
+  it("takes a stop's headings with it when the stop is deleted", () => {
+    const trimmed = removeConfigStop(WITH_DIRECTIONS, 0, 0);
+    const [stop] = readConfigPages(trimmed)[0].stops;
+
+    expect(stop.name).toBe("Karlsplatz");
+    expect(trimmed).not.toContain("direction_mappings");
+    expect(trimmed).not.toContain("U3 Moosach");
   });
 });

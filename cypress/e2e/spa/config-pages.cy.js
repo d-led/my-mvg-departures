@@ -18,6 +18,9 @@ title = "Home"
 station_id = "de:09162:1110"
 station_name = "Giesing"
 
+[routes.stops.direction_mappings]
+"->City" = ["U2 Messestadt", "19 Pasing"]
+
 [[routes]]
 path = "/work"
 
@@ -41,6 +44,23 @@ function openConfigDialog() {
 
 function pageTitles() {
   return cy.get(".page-card .page-title strong");
+}
+
+/** One departure in the shape the MVG API returns. */
+function departure(label, destination, transportType) {
+  const time = Date.now() + 5 * 60 * 1000;
+  return {
+    realtimeDepartureTime: time,
+    plannedDepartureTime: time,
+    delayInMinutes: 0,
+    platform: 1,
+    realtime: true,
+    label,
+    destination,
+    transportType,
+    cancelled: false,
+    messages: [],
+  };
 }
 
 describe("SPA config pages", () => {
@@ -123,4 +143,67 @@ describe("SPA config pages", () => {
     cy.get(".page-form").should("not.exist");
     pageTitles().first().should("have.text", "Home");
   });
-});
+
+  it("shows a stop's headings and rewrites them", () => {
+    openConfigDialog();
+
+    cy.get(".page-card").first().should("contain", "1 heading");
+    cy.get(".page-card").first().contains("button", "Edit").click();
+
+    cy.get('.page-form-direction-name').should("have.value", "->City");
+    cy.get('.page-form-direction textarea')
+      .should("have.value", "U2 Messestadt\n19 Pasing")
+      .clear()
+      .type("U2 Messestadt\nU1 Sendlinger Tor");
+
+    cy.contains("button", "Apply changes").click();
+    cy.contains("button", "Save").click();
+
+    cy.window().its("localStorage").invoke("getItem", CONFIG_TOML_KEY).should((saved) => {
+      expect(saved).to.contain('[routes.stops.direction_mappings]');
+      expect(saved).to.contain('"->City" = ["U2 Messestadt", "U1 Sendlinger Tor"]');
+      expect(saved).not.to.contain("19 Pasing");
+    });
+  });
+
+  it("adds a heading to a stop", () => {
+    openConfigDialog();
+
+    cy.get(".page-card").eq(1).contains("button", "Edit").click();
+    cy.get(".page-card").eq(1).contains("button", "Add heading").click();
+
+    cy.get('.page-form-direction-name').last().type("->Norden");
+    cy.get(".page-form-direction textarea").last().type("U3 Moosach");
+    cy.contains("button", "Apply changes").click();
+    cy.contains("button", "Save").click();
+
+    cy.window().its("localStorage").invoke("getItem", CONFIG_TOML_KEY).should((saved) => {
+      expect(saved).to.contain('"->Norden" = ["U3 Moosach"]');
+    });
+  });
+  it("makes the departures page follow the headings it was given", () => {
+    openConfigDialog();
+
+    // Registered after `openConfigDialog`, so it wins over that catch-all stub.
+    cy.intercept("**/api/bgw-pt/v3/departures*", {
+      statusCode: 200,
+      body: [
+        departure("U2", "Messestadt", "UBAHN"),
+        departure("U6", "Garching-Forschungszentrum", "UBAHN"),
+      ],
+    });
+
+    cy.get(".page-card").first().contains("button", "Edit").click();
+    cy.get(".page-form-direction textarea").first().clear().type("U6 Garching");
+    cy.contains("button", "Apply changes").click();
+    cy.contains("button", "Save").click();
+
+    cy.get('[aria-label="Departures for ->City"]', { timeout: 15000 }).should(
+      "contain",
+      "Garching",
+    );
+    cy.get('[aria-label="Departures for ->City"]').should(
+      "not.contain",
+      "Messestadt",
+    );
+  });});

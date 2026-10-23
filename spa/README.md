@@ -22,11 +22,12 @@ The dialog has two views:
 
 - **Pages** - one card per screen: its title, its path and its stops. Drag a card
   (or use the arrows) to change the order the pages appear in, **Edit** opens the
-  page's form - title, path, and per stop the heading for the departures that match
-  no direction plus whether they are shown at all - and the page or a single stop
-  can be deleted, each asking first. **Add stops…** brings up the wizard.
-  Everything is an edit of the file: nothing is stored until **Save**, and
-  **Cancel** leaves the stored config untouched.
+  page's form - title, path, and per stop its direction headings (the name and the
+  one-per-line matches) plus the heading for departures that match none and whether
+  they are shown at all - and the page or a single stop can be deleted, each asking
+  first. **Add stops…** brings up the wizard. Everything is an edit of the file:
+  nothing is stored until **Save**, and **Cancel** leaves the stored config
+  untouched, while applying an unchanged form changes nothing at all.
 - **TOML** - the raw configuration, for pasting an existing config or fixing
   something by hand. The toolbar copies, pastes, tweaks single values, opens a
   full-screen editor on a phone, and offers **Clean up** for configs written for

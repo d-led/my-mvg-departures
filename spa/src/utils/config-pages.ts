@@ -11,6 +11,14 @@ import {
   type TomlTable,
 } from "./toml-sections.js";
 
+/** One heading of a page and the departures that belong under it. */
+export interface ConfigDirectionMapping {
+  /** The heading, e.g. "->City". */
+  direction: string;
+  /** Matched against `"{line} {destination}"`; one hit is enough. */
+  patterns: string[];
+}
+
 export interface ConfigPageStop {
   stationId: string;
   name: string;
@@ -18,6 +26,7 @@ export interface ConfigPageStop {
   label: string;
   /** Whether departures that match no direction are shown at all. */
   showUngrouped: boolean;
+  directions: ConfigDirectionMapping[];
 }
 
 export interface ConfigPage {
@@ -32,7 +41,12 @@ export interface ConfigPage {
 export interface ConfigPageEdit {
   path: string;
   title: string;
-  stops: { label: string; showUngrouped: boolean }[];
+  stops: {
+    label: string;
+    showUngrouped: boolean;
+    /** Omitted means: leave the stop's direction headings exactly as they are. */
+    directions?: ConfigDirectionMapping[];
+  }[];
 }
 
 interface RouteBlock {
@@ -109,6 +123,32 @@ function literalValue(
   return undefined;
 }
 
+interface StopSection {
+  stop: TomlTable;
+  /** `[routes.stops.direction_mappings]`, when the stop has headings. */
+  mappings?: TomlTable;
+}
+
+/** The stops of a route block, each with the table that heads its directions. */
+function stopSections(block: RouteBlock): StopSection[] {
+  const sections: StopSection[] = [];
+
+  for (const table of block.tables) {
+    if (table.name === "routes.stops") {
+      sections.push({ stop: table });
+      continue;
+    }
+    if (
+      table.name === "routes.stops.direction_mappings" &&
+      sections.length > 0
+    ) {
+      sections[sections.length - 1].mappings = table;
+    }
+  }
+
+  return sections;
+}
+
 function readPage(lines: string[], block: RouteBlock): ConfigPage {
   const path = stringValue(lines, block.tables[0], "path") ?? "/";
   const display = block.tables.find((table) =>
@@ -116,16 +156,115 @@ function readPage(lines: string[], block: RouteBlock): ConfigPage {
   );
   const title = (display && stringValue(lines, display, "title")) ?? path;
 
-  const stops = block.tables
-    .filter((table) => table.name === "routes.stops")
-    .map((table) => ({
-      stationId: stringValue(lines, table, "station_id") ?? "",
-      name: stringValue(lines, table, "station_name") ?? "unnamed stop",
-      label: stringValue(lines, table, "ungrouped_title") ?? "",
-      showUngrouped: literalValue(lines, table, "show_ungrouped") === "true",
-    }));
+  const stops = stopSections(block).map(({ stop, mappings }) => ({
+    stationId: stringValue(lines, stop, "station_id") ?? "",
+    name: stringValue(lines, stop, "station_name") ?? "unnamed stop",
+    label: stringValue(lines, stop, "ungrouped_title") ?? "",
+    showUngrouped: literalValue(lines, stop, "show_ungrouped") === "true",
+    directions: mappings ? readDirections(lines, mappings) : [],
+  }));
 
   return { path, title, stops };
+}
+
+/** The `direction = [patterns]` rows of a direction table, multi-line arrays included. */
+function readDirections(
+  lines: string[],
+  table: TomlTable,
+): ConfigDirectionMapping[] {
+  const directions: ConfigDirectionMapping[] = [];
+  const row = /^\s*(?:"([^"]*)"|'([^']*)'|([A-Za-z0-9_-]+))\s*=\s*(.*)$/;
+
+  let line = table.headerLine + 1;
+  while (line < table.endLine) {
+    const match = row.exec(lines[line]);
+    if (!match) {
+      line += 1;
+      continue;
+    }
+
+    const direction = match[1] ?? match[2] ?? match[3];
+    const array = collectArray(lines, line, match[4], table.endLine);
+    directions.push({ direction, patterns: parseStrings(array.text) });
+    line = array.lastLine + 1;
+  }
+
+  return directions;
+}
+
+interface CollectedArray {
+  text: string;
+  lastLine: number;
+}
+
+/** The text of an array value, joining the lines of a multi-line array. */
+function collectArray(
+  lines: string[],
+  startLine: number,
+  firstChunk: string,
+  endLine: number,
+): CollectedArray {
+  let text = firstChunk;
+  let line = startLine;
+
+  while (depth(text) > 0 && line + 1 < endLine) {
+    line += 1;
+    text += ` ${lines[line].replace(/#.*$/, "")}`;
+  }
+
+  return { text, lastLine: line };
+}
+
+function depth(text: string): number {
+  let brackets = 0;
+  let quoted = false;
+
+  for (const character of text) {
+    if (character === '"') {
+      quoted = !quoted;
+    } else if (!quoted && character === "[") {
+      brackets += 1;
+    } else if (!quoted && character === "]") {
+      brackets -= 1;
+    }
+  }
+
+  return brackets;
+}
+
+/** The strings of a TOML array, in order. */
+function parseStrings(text: string): string[] {
+  const strings: string[] = [];
+  let current = "";
+  let quoted: '"' | "'" | null = null;
+
+  for (let at = 0; at < text.length; at += 1) {
+    const character = text[at];
+
+    if (quoted === null) {
+      if (character === '"' || character === "'") {
+        quoted = character;
+        current = "";
+      }
+      continue;
+    }
+
+    if (character === "\\" && quoted === '"') {
+      current += text[at + 1] ?? "";
+      at += 1;
+      continue;
+    }
+
+    if (character === quoted) {
+      strings.push(current);
+      quoted = null;
+      continue;
+    }
+
+    current += character;
+  }
+
+  return strings;
 }
 
 /** The pages of the configuration, in the order the file lists them. */
@@ -190,7 +329,7 @@ export function removeConfigPage(toml: string, index: number): string {
   return renderToml(lines, removed, new Map());
 }
 
-/** The page without one of its stops. */
+/** The page without one of its stops, its direction headings included. */
 export function removeConfigStop(
   toml: string,
   pageIndex: number,
@@ -202,17 +341,16 @@ export function removeConfigStop(
     return toml;
   }
 
-  const stopTables = blocks[pageIndex].tables.filter(
-    (table) => table.name === "routes.stops",
-  );
-  if (stopIndex < 0 || stopIndex >= stopTables.length) {
+  const sections = stopSections(blocks[pageIndex]);
+  const section = sections[stopIndex];
+  if (!section) {
     return toml;
   }
 
-  const table = stopTables[stopIndex];
+  const last = section.mappings ?? section.stop;
   const removed = lineRange(
-    leadInStart(lines, table.headerLine),
-    tableLinesEnd(lines, table),
+    leadInStart(lines, section.stop.headerLine),
+    tableLinesEnd(lines, last),
   );
   return renderToml(lines, removed, new Map());
 }
@@ -247,16 +385,38 @@ export function updateConfigPage(
   });
 
   // Bottom-up: an insert or a removal then never moves a range still to be used.
-  const stopTables = block.tables.filter(
-    (table) => table.name === "routes.stops",
-  );
-  for (let stopIndex = stopTables.length - 1; stopIndex >= 0; stopIndex -= 1) {
+  const sections = stopSections(block);
+  for (let stopIndex = sections.length - 1; stopIndex >= 0; stopIndex -= 1) {
     const wanted = edit.stops[stopIndex];
     const known = current.stops[stopIndex];
     if (!wanted) {
       continue;
     }
-    const range = rangeOf(stopTables[stopIndex]);
+    const { stop, mappings } = sections[stopIndex];
+    const range = rangeOf(stop);
+
+    if (
+      wanted.directions !== undefined &&
+      !sameDirections(known.directions, wanted.directions)
+    ) {
+      const generated = directionTableLines(wanted.directions);
+      if (mappings) {
+        const mappingRange = rangeOf(mappings);
+        blockLines = replaceRange(
+          blockLines,
+          mappingRange.header,
+          mappingRange.end,
+          generated,
+        );
+      } else if (generated.length > 0) {
+        const at = tableLinesEnd(lines, stop) - start;
+        blockLines = [
+          ...blockLines.slice(0, at),
+          ...generated,
+          ...blockLines.slice(at),
+        ];
+      }
+    }
 
     if (wanted.label.trim() !== known.label) {
       blockLines = setKey(
@@ -276,7 +436,13 @@ export function updateConfigPage(
     }
   }
 
-  const title = edit.title.trim() === "" ? null : tomlString(edit.title.trim());
+  // A title that only repeats the path is what a page without a title shows, so
+  // applying the form must not write one.
+  const titleText = edit.title.trim();
+  const title =
+    titleText === "" || titleText === edit.path.trim()
+      ? null
+      : tomlString(titleText);
   const display = block.tables.find((table) =>
     belongsTo(table.name, "routes.display"),
   );
@@ -396,6 +562,69 @@ function nextSubTableLine(lines: string[], from: number): number {
 
 function tomlString(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+/** Directions without blank rows, blank patterns or surrounding spaces. */
+function cleanDirections(
+  directions: ConfigDirectionMapping[],
+): ConfigDirectionMapping[] {
+  return directions
+    .map(({ direction, patterns }) => ({
+      direction: direction.trim(),
+      patterns: patterns
+        .map((pattern) => pattern.trim())
+        .filter((pattern) => pattern !== ""),
+    }))
+    .filter(({ direction }) => direction !== "");
+}
+
+function sameDirections(
+  current: ConfigDirectionMapping[],
+  wanted: ConfigDirectionMapping[],
+): boolean {
+  const cleaned = cleanDirections(wanted);
+  if (cleaned.length !== current.length) {
+    return false;
+  }
+
+  return cleaned.every(
+    (mapping, at) =>
+      mapping.direction === current[at].direction &&
+      mapping.patterns.length === current[at].patterns.length &&
+      mapping.patterns.every(
+        (pattern, index) => pattern === current[at].patterns[index],
+      ),
+  );
+}
+
+/** The table that heads a stop's directions, or nothing when it has none. */
+function directionTableLines(directions: ConfigDirectionMapping[]): string[] {
+  const cleaned = cleanDirections(directions);
+  if (cleaned.length === 0) {
+    return [];
+  }
+
+  return [
+    "[routes.stops.direction_mappings]",
+    ...cleaned.map(
+      ({ direction, patterns }) =>
+        `${tomlKey(direction)} = [${patterns.map(tomlString).join(", ")}]`,
+    ),
+  ];
+}
+
+/** Bare keys stay bare, everything else is quoted the way TOML wants it. */
+function tomlKey(name: string): string {
+  return /^[A-Za-z0-9_-]+$/.test(name) ? name : tomlString(name);
+}
+
+function replaceRange(
+  lines: string[],
+  from: number,
+  to: number,
+  replacement: string[],
+): string[] {
+  return [...lines.slice(0, from), ...replacement, ...lines.slice(to)];
 }
 
 function lineRange(startLine: number, endLine: number): Set<number> {

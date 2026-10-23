@@ -214,6 +214,21 @@ describe("configuration dialogs on a phone", () => {
     cy.get(".page-card").first().should("contain", "Zuhause");
   });
 
+  it("adds a heading to a stop without leaving the screen", () => {
+    openConfig();
+
+    cy.get(".page-card").first().should("contain", "1 heading");
+    cy.get(".page-card").first().contains("button", "Edit").click();
+    cy.get(".page-card").first().contains("button", "Add heading").click();
+
+    cy.get(".page-form-direction-name").last().should("be.visible").type("->Stadtmitte");
+    cy.get(".page-form-direction textarea").last().type("U2 Messestadt");
+    expectNoSidewaysScroll();
+
+    cy.contains("button", "Apply changes").click();
+    cy.get(".page-card").first().should("contain", "2 headings");
+  });
+
   it("adds a stop with the wizard", () => {
     openConfig();
 
