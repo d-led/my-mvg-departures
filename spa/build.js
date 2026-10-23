@@ -118,13 +118,14 @@ function copyStaticFiles() {
 }
 
 function copyExampleConfig() {
-  // Copy config.example.toml from project root to dist for runtime reference
-  // Try multiple possible paths to find the config file
+  // The SPA has its own example: it only contains the tables the browser reads.
+  // Older checkouts fall back to the server's example, which still parses.
   const buildScriptDir = dirname(fileURLToPath(import.meta.url));
   const possiblePaths = [
-    join(process.cwd(), "..", "config.example.toml"), // From spa directory (most common in CI)
-    join(process.cwd(), "config.example.toml"), // If already in project root
-    join(buildScriptDir, "..", "config.example.toml"), // Relative to build.js location
+    join(process.cwd(), "config.example.toml"), // From the spa directory (most common in CI)
+    join(buildScriptDir, "config.example.toml"), // Relative to build.js location
+    join(buildScriptDir, "..", "config.example.toml"), // The server's example
+    join(process.cwd(), "..", "config.example.toml"),
   ];
 
   let exampleConfigSrc = null;
@@ -535,6 +536,10 @@ if (isWatch) {
   watch("departures.html", () => {
     copyHtml();
     console.log("✓ HTML updated");
+  });
+  watch("config.example.toml", () => {
+    copyExampleConfig();
+    console.log("✓ Example config updated");
   });
 
   process.on("SIGINT", async () => {

@@ -25,7 +25,53 @@ The SPA includes an interactive configuration wizard accessible by clicking the 
 
 Configuration is stored in browser localStorage and persists across sessions.
 
-> **💡 Tip**: Use this SPA version to generate and test your TOML configuration, then copy it to the server-side or Inky versions for deployment!
+### The SPA's TOML shape
+
+Everything is per user, so the file holds only what a browser renders:
+
+```toml
+# Settings every route inherits; a route's own [routes.display] wins
+[display]
+title = "Giesing Departures"
+refresh_interval_seconds = 20
+
+# One screen per route; `path` is the URL fragment (/#/work)
+[[routes]]
+path = "/"
+
+# Every stop is its own config; what it leaves out comes from [display]
+[[routes.stops]]
+station_id = "de:09162:1110"
+station_name = "Giesing"
+max_departures_per_stop = 6
+show_ungrouped = true
+
+[routes.stops.direction_mappings]
+"->Stadtmitte" = ["U2 Messestadt", "U2 Feldmoching"]
+
+# The "Next to me" screen, driven by the browser's location
+[[on_the_run]]
+radius_meters = 100
+```
+
+There is no default stop list beside the routes, and no `[api]`, `[inky]` or `[server]`
+table: those belong to the server versions and are ignored here. See
+[`config.example.toml`](config.example.toml) for a complete example.
+
+### Older configs
+
+A config written for the server keeps loading:
+
+- top-level `[[stops]]` are read as the route at `/`,
+- `[api]`, `[inky]`, `[server]` and other server-only tables are ignored,
+- `departures_per_page`, `page_rotation_seconds`, `pagination_enabled` and
+  `banner_color` are not rendered by the SPA.
+
+To get rid of them, open the config dialog and press **Clean up**: it rewrites the
+stored text into the shape above in one step, keeps your comments, and says what it
+removed. Nothing is saved until you press **Save**.
+
+> **💡 Tip**: Use this SPA version to generate and test your TOML configuration, then copy the route and stop tables to the server-side or Inky versions for deployment!
 
 For configuration details and patterns, see the main [README.md](../README.md#configuration).
 

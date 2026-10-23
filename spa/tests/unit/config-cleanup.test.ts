@@ -173,6 +173,33 @@ station_name = "Giesing"
     });
   });
 
+  describe("the SPA's own example config", () => {
+    const spaExamplePath = join(
+      dirname(fileURLToPath(import.meta.url)),
+      "../..",
+      "config.example.toml",
+    );
+    const spaExample = readFileSync(spaExamplePath, "utf8");
+
+    it("is already in SPA form", () => {
+      expect(cleanUpConfigToml(spaExample).changed).toBe(false);
+    });
+
+    it("gives the app a screen at /, a named screen and Next to me", () => {
+      const config = new ConfigParser().parseToml(spaExample);
+
+      expect(config.routes.map((route) => route.path)).toEqual([
+        "/",
+        "/work",
+        "on-the-run",
+      ]);
+      expect(config.routes[0].stops).toHaveLength(2);
+      expect(config.routes[0].display?.title).toBe("Giesing Departures");
+      expect(config.routes[1].display?.title).toBe("Work");
+      expect(config.onTheRun?.radiusMeters).toBe(100);
+    });
+  });
+
   describe("describeCleanup", () => {
     it("says what happened, and that saving is still up to the user", () => {
       const cleanup = cleanUpConfigToml(`

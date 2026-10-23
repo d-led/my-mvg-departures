@@ -1,0 +1,102 @@
+# MVG Departures — SPA example configuration
+#
+# The browser app reads these tables:
+#
+#   [display]        settings every route inherits
+#   [[routes]]       one screen per route; `path` becomes the URL fragment (/#/work)
+#   [routes.display] that route's own settings, overriding the global ones
+#   [[on_the_run]]   the "Next to me" screen (optional)
+#
+# Server-only tables ([api], [inky], [server], ...) mean nothing here. The config
+# dialog's "Clean up" button removes them from an older config in one step.
+
+[display]
+
+title = "Giesing Departures"
+
+# 'light', 'dark' or 'auto' (follows the system preference)
+theme = "auto"
+
+# Seconds between two refresh cycles
+refresh_interval_seconds = 20
+
+# Tries per stop and refresh cycle before the stop counts as failed (1 = no retry),
+# and the pause between those tries
+fetch_retry_attempts = 3
+fetch_retry_delay_ms = 500
+
+# Fill the screen height with departures (wall-mounted displays), or keep
+# scrolling (phones, tablets)
+fill_vertical_space = true
+font_scaling_factor_when_filling = 0.92
+
+# Pastel header colors derived from the header text
+random_header_colors = false
+header_background_brightness = 1.0
+
+# Seconds the relative time stays visible before it switches to the absolute one
+# (0 = relative time only)
+time_format_toggle_seconds = 5
+
+# 'icon_with_text', 'badge' or 'none'
+route_icon_display = "icon_with_text"
+
+# Show the planned time plus a separate delay indicator instead of the expected time
+split_show_delay = false
+
+# Font sizes in rem; the app scales them down while filling the vertical space
+font_size_route_number = "4rem"
+font_size_destination = "3.5rem"
+font_size_platform = "2.5rem"
+font_size_time = "4rem"
+font_size_stop_header = "3rem"
+font_size_direction_header = "2.5rem"
+font_size_status_header = "1.875rem"
+
+# The main screen
+[[routes]]
+path = "/"
+
+# Each stop is an independent config; the settings it leaves out come from [display]
+[[routes.stops]]
+station_id = "de:09162:1110"
+station_name = "Giesing"
+max_departures_per_stop = 6
+max_departures_per_route = 2
+show_ungrouped = true
+ungrouped_title = "Other"
+
+[routes.stops.direction_mappings]
+"->Stadtmitte" = ["U2 Messestadt", "U2 Feldmoching"]
+
+[[routes.stops]]
+station_id = "de:09162:1056"
+station_name = "Balanstr."
+max_departures_per_stop = 4
+max_departures_per_route = 2
+show_ungrouped = true
+
+# A second screen at /#/work
+[[routes]]
+path = "/work"
+
+[routes.display]
+title = "Work"
+refresh_interval_seconds = 60
+fill_vertical_space = false
+
+[[routes.stops]]
+station_id = "de:09162:1108"
+station_name = "Chiemgaustraße"
+max_departures_per_stop = 5
+max_departures_per_route = 2
+show_ungrouped = true
+
+# The "Next to me" screen, driven by the browser's location
+[[on_the_run]]
+radius_meters = 100
+max_departures_per_stop = 8
+max_departures_per_route = 2
+refresh_interval_seconds = 20
+use_adapters = ["mvg"]
+random_header_colors = true

@@ -6,7 +6,11 @@ A family of customizable dashboards for Munich public transport (MVG) departures
 2. **[SPA Version](https://d-led.github.io/my-mvg-departures/)** - Client-side Single Page Application requiring no server (see [spa/README.md](spa/README.md))
 3. **[Inky E-Paper Version](./inky/)** - Static e-ink display for Raspberry Pi with Pimoroni Inky displays
 
-All versions share the same TOML configuration format and core features. The SPA version includes a **[configuration wizard](https://d-led.github.io/my-mvg-departures/)** that runs entirely in your browser - use it to generate your TOML config for any version!
+All versions are configured in TOML. The SPA reads the `[display]`, `[[routes]]` and
+`[[on_the_run]]` tables and ignores the server-only ones (`[api]`, `[inky]`, `[server]`);
+its config dialog can rewrite an older config into that shape in one step. The SPA version
+includes a **[configuration wizard](https://d-led.github.io/my-mvg-departures/)** that runs
+entirely in your browser - use it to generate your TOML config!
 
 ![Giesing departures screenshot](./docs/img/giesing-screenshot.png)
 
@@ -137,7 +141,7 @@ pip install -e .
 
 Configuration uses a TOML file for stops and display settings.
 
-> **🎯 Easy Configuration**: Use the **[SPA Configuration Wizard](https://d-led.github.io/my-mvg-departures/)** to generate your TOML config interactively in your browser! The generated config works with all versions (server-side, SPA, and Inky).
+> **🎯 Easy Configuration**: Use the **[SPA Configuration Wizard](https://d-led.github.io/my-mvg-departures/)** to generate your TOML config interactively in your browser! The generated config works with the SPA; copy the route and stop tables into a server-side or Inky config as needed.
 
 The preferred way is to set the `CONFIG_FILE` environment variable pointing to your TOML file:
 
