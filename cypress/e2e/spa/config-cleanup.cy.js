@@ -44,8 +44,8 @@ describe("SPA config clean-up", () => {
     cy.get(".config-textarea").should("not.contain.value", "[inky]");
     cy.get(".config-textarea").should("contain.value", '[[routes]]');
     cy.get(".config-textarea").should("contain.value", "[[routes.stops]]");
-    cy.get(".cleanup-notice").should("contain", "removed [api], [inky]");
-    cy.get(".cleanup-notice").should("contain", 'moved 1 stop into the route at "/"');
+    cy.get(".config-notice").should("contain", "removed [api], [inky]");
+    cy.get(".config-notice").should("contain", 'moved 1 stop into the route at "/"');
 
     // The clean-up is only an edit: the stored config keeps working until saved.
     cy.window().its("localStorage").invoke("getItem", CONFIG_TOML_KEY).should("equal", LEGACY_CONFIG);
@@ -76,6 +76,6 @@ station_name = "Giesing"
 
     cy.contains("button", "Clean up").click();
 
-    cy.get(".cleanup-notice").should("contain", "already uses the SPA format");
+    cy.get(".config-notice").should("contain", "already uses the SPA format");
   });
 });

@@ -15,6 +15,11 @@
     cleanUpConfigToml,
     describeCleanup,
   } from "../utils/config-cleanup.js";
+  import {
+    addOnTheRunSection,
+    hasOnTheRun,
+    removeOnTheRunSection,
+  } from "../utils/on-the-run-section.js";
 
   let {
     onSave,
@@ -26,9 +31,9 @@
 
   let configText = $state("");
   let errorMessage = $state<string | null>(null);
-  let cleanupNotice = $state<string | null>(null);
-  /** The text the clean-up notice belongs to; any edit makes it stale. */
-  let cleanupNoticeFor = $state("");
+  let notice = $state<string | null>(null);
+  /** The text the notice belongs to; any edit makes it stale. */
+  let noticeFor = $state("");
   let isSaving = $state(false);
   let isLoadingExample = $state(false);
   let copySuccess = $state(false);
@@ -795,7 +800,7 @@
     const storedToml = await configStorage.getConfigToml();
     configText = storedToml || "";
     errorMessage = null; // Clear error when loading
-    cleanupNotice = null;
+    notice = null;
   }
 
   // Load raw TOML from storage when modal opens
@@ -808,17 +813,23 @@
     if (configText && errorMessage) {
       errorMessage = null;
     }
-    if (cleanupNotice && configText !== cleanupNoticeFor) {
-      cleanupNotice = null;
+    if (notice && configText !== noticeFor) {
+      notice = null;
     }
   });
+
+  /** Says what just happened to the text; the change itself is not saved yet. */
+  function showNotice(message: string) {
+    notice = message;
+    noticeFor = configText;
+  }
 
   /**
    * Rewrites the config into the SPA's shape in one step. Nothing is saved here:
    * the user reviews the result and saves it with the usual button.
    */
   function handleCleanup() {
-    cleanupNotice = null;
+    notice = null;
     try {
       const cleanup = cleanUpConfigToml(configText);
       if (cleanup.changed) {
@@ -826,12 +837,34 @@
         configText = cleanup.toml;
         errorMessage = null;
       }
-      cleanupNotice = describeCleanup(cleanup);
-      cleanupNoticeFor = configText;
+      showNotice(describeCleanup(cleanup));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       errorMessage = `Could not clean up the configuration: ${message}`;
     }
+  }
+
+  const hasOnTheRunPage = $derived(hasOnTheRun(configText));
+  let confirmRemoveOnTheRun = $state(false);
+
+  function restoreOnTheRun() {
+    configText = addOnTheRunSection(configText);
+    confirmRemoveOnTheRun = false;
+    showNotice(
+      'Next to me is back with its default settings. Adjust them in the text, then save.',
+    );
+  }
+
+  /** Removing a page is a two-step action: ask, then do it. */
+  function removeOnTheRun() {
+    if (!confirmRemoveOnTheRun) {
+      confirmRemoveOnTheRun = true;
+      return;
+    }
+
+    configText = removeOnTheRunSection(configText);
+    confirmRemoveOnTheRun = false;
+    showNotice("Next to me removed. Save to keep the change.");
   }
 
   async function loadExampleConfig() {
@@ -1204,6 +1237,44 @@
           </button>
         </div>
 
+        <div class="page-row">
+          <div class="page-row-text">
+            <strong>Next to me</strong>
+            <span class="page-row-hint">
+              {hasOnTheRunPage
+                ? "The nearby-departures page is part of this config."
+                : "The nearby-departures page is missing from this config."}
+            </span>
+          </div>
+          {#if hasOnTheRunPage}
+            <button
+              class="button button-secondary"
+              onclick={removeOnTheRun}
+              disabled={isSaving || isLoadingExample}
+              title="Remove the nearby-departures page from the config"
+            >
+              {confirmRemoveOnTheRun ? "Really remove?" : "Remove"}
+            </button>
+            {#if confirmRemoveOnTheRun}
+              <button
+                class="button button-secondary"
+                onclick={() => (confirmRemoveOnTheRun = false)}
+              >
+                Cancel
+              </button>
+            {/if}
+          {:else}
+            <button
+              class="button button-primary"
+              onclick={restoreOnTheRun}
+              disabled={isSaving || isLoadingExample}
+              title="Add the nearby-departures page back to the config"
+            >
+              Restore
+            </button>
+          {/if}
+        </div>
+
         <p>Paste your TOML configuration below:</p>
         <div class="info-links">
           <p>
@@ -1218,9 +1289,9 @@
           {errorMessage}
         </div>
       {/if}
-      {#if cleanupNotice}
-        <div class="cleanup-notice" role="status">
-          {cleanupNotice}
+      {#if notice}
+        <div class="config-notice" role="status">
+          {notice}
         </div>
       {/if}
       <div class="textarea-container">
@@ -2017,7 +2088,7 @@
     color: #fca5a5;
   }
 
-  .cleanup-notice {
+  .config-notice {
     background-color: #ecfdf5;
     border: 1px solid #6ee7b7;
     border-radius: 0.375rem;
@@ -2028,10 +2099,44 @@
     flex-shrink: 0;
   }
 
-  :global([data-theme="dark"]) .cleanup-notice {
+  :global([data-theme="dark"]) .config-notice {
     background-color: #064e3b;
     border-color: #059669;
     color: #6ee7b7;
+  }
+
+  .page-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.75rem;
+    background: #f9fafb;
+  }
+
+  :global([data-theme="dark"]) .page-row {
+    border-color: #374151;
+    background: #111827;
+  }
+
+  .page-row-text {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 12rem;
+    min-width: 0;
+    font-size: 0.875rem;
+  }
+
+  .page-row-hint {
+    color: #6b7280;
+    font-size: 0.8rem;
+  }
+
+  :global([data-theme="dark"]) .page-row-hint {
+    color: #9ca3af;
   }
 
   .textarea-container {
