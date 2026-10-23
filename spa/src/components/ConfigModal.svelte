@@ -27,6 +27,8 @@
   let configText = $state("");
   let errorMessage = $state<string | null>(null);
   let cleanupNotice = $state<string | null>(null);
+  /** The text the clean-up notice belongs to; any edit makes it stale. */
+  let cleanupNoticeFor = $state("");
   let isSaving = $state(false);
   let isLoadingExample = $state(false);
   let copySuccess = $state(false);
@@ -806,6 +808,9 @@
     if (configText && errorMessage) {
       errorMessage = null;
     }
+    if (cleanupNotice && configText !== cleanupNoticeFor) {
+      cleanupNotice = null;
+    }
   });
 
   /**
@@ -822,6 +827,7 @@
         errorMessage = null;
       }
       cleanupNotice = describeCleanup(cleanup);
+      cleanupNoticeFor = configText;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       errorMessage = `Could not clean up the configuration: ${message}`;
