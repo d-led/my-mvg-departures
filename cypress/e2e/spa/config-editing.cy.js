@@ -36,7 +36,7 @@ function openConfigDialog(configToml) {
 }
 
 function openTomlView() {
-  cy.get(".config-method-selector").contains("button", "Manual TOML").click();
+  cy.get(".config-method-selector").contains("button", "TOML Config").click();
   cy.get(".config-textarea").should("be.visible");
 }
 

@@ -1390,7 +1390,7 @@
           aria-selected={view === "toml"}
           onclick={() => (view = "toml")}
         >
-          Manual TOML
+          TOML Config
         </button>
         <button class="method-button" onclick={openWizard}>
           Wizard (experimental)
