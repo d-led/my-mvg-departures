@@ -22,6 +22,7 @@ const V3_BASE = "https://www.mvg.de/api/bgw-pt/v3";
 export class MvgStationRepository {
   private readonly baseUrl = `${V3_BASE}/stations/nearby`;
   private readonly stationsUrl = `${V3_BASE}/stations`;
+  private readonly locationsUrl = `${V3_BASE}/locations`;
 
   async getNearbyStations(
     latitude: number,
@@ -75,17 +76,53 @@ export class MvgStationRepository {
   }
 
   /**
-   * Look up station by name or id. Uses MVG v3 stations API.
-   * When matchStationId is provided (e.g. stop point de:09162:1108:2:2), returns the station
-   * with the longest globalId that is a prefix of matchStationId (e.g. de:09162:1108 = Chiemgaustraße),
-   * so we never match a shorter prefix like de:09162:1 (Stachus). Sub-stations share the parent's coordinates;
-   * the v3 API does not expose per-stop-point GPS.
+   * Coordinates of a station, by id when we have one and by name otherwise.
+   *
+   * `GET /stations?query=` ignores its query and returns the whole catalogue
+   * (44k stations, ~11 MB), so it is not used: a known id is answered by
+   * `GET /stations/{id}` (~300 bytes) and a bare name by the location search,
+   * which returns a handful of matches.
    */
   async getStationByQuery(
     query: string,
     matchStationId?: string,
   ): Promise<StationLocation | null> {
-    const url = `${this.stationsUrl}?query=${encodeURIComponent(query)}`;
+    if (matchStationId) {
+      const byId = await this.getStationById(baseStationId(matchStationId));
+      if (byId) {
+        return byId;
+      }
+    }
+
+    return this.searchStationByName(query, matchStationId);
+  }
+
+  /** Sub-stations share the parent's coordinates. */
+  private async getStationById(id: string): Promise<StationLocation | null> {
+    const station = await this.fetchJson(
+      `${this.stationsUrl}/${encodeURIComponent(id)}`,
+    );
+    return hasCoordinates(station) ? this.toStationLocation(station) : null;
+  }
+
+  private async searchStationByName(
+    query: string,
+    matchStationId?: string,
+  ): Promise<StationLocation | null> {
+    const data = await this.fetchJson(
+      `${this.locationsUrl}?query=${encodeURIComponent(query)}`,
+    );
+    if (!Array.isArray(data)) {
+      return null;
+    }
+
+    const stations = data.filter(hasCoordinates);
+    const station =
+      pickStation(stations, matchStationId) ?? stations[0] ?? null;
+    return station ? this.toStationLocation(station) : null;
+  }
+
+  private async fetchJson(url: string): Promise<unknown> {
     try {
       const response = await fetchWithTimeout(url, {
         headers: {
@@ -93,48 +130,7 @@ export class MvgStationRepository {
           "user-agent": "Mozilla/5.0",
         },
       });
-      if (!response.ok) return null;
-      const data = await response.json();
-      const list: Array<{
-        globalId?: string;
-        name?: string;
-        place?: string;
-        latitude?: number;
-        longitude?: number;
-      }> = Array.isArray(data?.stations) ? data.stations : [];
-      const withCoords = list.filter(
-        (s) =>
-          typeof s.latitude === "number" &&
-          typeof s.longitude === "number" &&
-          s.globalId,
-      );
-      if (matchStationId) {
-        const exact = withCoords.find((s) => s.globalId === matchStationId);
-        if (exact) return this.toStationLocation(exact);
-        const prefixMatches = withCoords.filter(
-          (s) => s.globalId && matchStationId.startsWith(s.globalId),
-        );
-        const longestPrefix = prefixMatches.length
-          ? prefixMatches.reduce((a, b) =>
-              (a.globalId?.length ?? 0) >= (b.globalId?.length ?? 0) ? a : b,
-            )
-          : null;
-        if (longestPrefix) return this.toStationLocation(longestPrefix);
-        return null;
-      }
-      const byName = withCoords.find(
-        (s) =>
-          s.name &&
-          query.trim().toLowerCase().split(",")[0] &&
-          s.name
-            .toLowerCase()
-            .includes(query.trim().toLowerCase().split(",")[0]),
-      );
-      return byName
-        ? this.toStationLocation(byName)
-        : withCoords[0]
-          ? this.toStationLocation(withCoords[0])
-          : null;
+      return response.ok ? await response.json() : null;
     } catch {
       return null;
     }
@@ -155,4 +151,57 @@ export class MvgStationRepository {
       longitude: Number(s.longitude),
     };
   }
+}
+
+interface LocationCandidate {
+  globalId?: string;
+  name?: string;
+  place?: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+/** `de:09162:1108:3:3` is a stop point of the station `de:09162:1108`. */
+function baseStationId(stationId: string): string {
+  return stationId.split(":").slice(0, 3).join(":");
+}
+
+function hasCoordinates(
+  candidate: unknown,
+): candidate is LocationCandidate & { latitude: number; longitude: number } {
+  const location = candidate as LocationCandidate | null;
+  return Boolean(
+    location &&
+    location.globalId &&
+    typeof location.latitude === "number" &&
+    typeof location.longitude === "number",
+  );
+}
+
+/** Prefers the station the configured id belongs to, so a name collision cannot win. */
+function pickStation<T extends { globalId?: string }>(
+  stations: T[],
+  matchStationId?: string,
+): T | null {
+  if (!matchStationId) {
+    return null;
+  }
+
+  const exact = stations.find((station) => station.globalId === matchStationId);
+  if (exact) {
+    return exact;
+  }
+
+  return (
+    stations
+      .filter((station) => matchStationId.startsWith(station.globalId ?? ""))
+      .reduce<T | null>(
+        (longest, station) =>
+          longest === null ||
+          (station.globalId?.length ?? 0) > (longest.globalId?.length ?? 0)
+            ? station
+            : longest,
+        null,
+      ) ?? null
+  );
 }

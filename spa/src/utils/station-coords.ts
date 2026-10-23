@@ -1,15 +1,42 @@
 /**
  * Fetches and caches station coordinates for map links.
- * Uses MVG location query; cache keyed by stationId.
+ * Keyed by station: stop points (`de:09162:1110:4:4`) share their station's coordinates.
  */
 
 const cache = new Map<string, { lat: number; lng: number }>();
+/** Several groups of one station ask at once; they wait for the same answer. */
+const inFlight = new Map<
+  string,
+  Promise<{ lat: number; lng: number } | null>
+>();
+
+function coordsKey(stationId: string): string {
+  return stationId.split(":").slice(0, 3).join(":");
+}
 
 async function fetchCoords(
   stationId: string,
   stopName: string,
 ): Promise<{ lat: number; lng: number } | null> {
-  if (cache.has(stationId)) return cache.get(stationId)!;
+  const key = coordsKey(stationId);
+  const cached = cache.get(key);
+  if (cached) return cached;
+
+  const pending = inFlight.get(key);
+  if (pending) return pending;
+
+  const lookup = lookUpCoords(key, stationId, stopName).finally(() =>
+    inFlight.delete(key),
+  );
+  inFlight.set(key, lookup);
+  return lookup;
+}
+
+async function lookUpCoords(
+  key: string,
+  stationId: string,
+  stopName: string,
+): Promise<{ lat: number; lng: number } | null> {
   const query = stopName.includes(",")
     ? (stopName.trim().split(",")[0] ?? stopName)
     : stopName;
@@ -20,7 +47,7 @@ async function fetchCoords(
     const station = await repo.getStationByQuery(query, stationId);
     if (station) {
       const coords = { lat: station.latitude, lng: station.longitude };
-      cache.set(stationId, coords);
+      cache.set(key, coords);
       return coords;
     }
   } catch {
@@ -37,7 +64,7 @@ export function getStationCoords(
   stopName: string,
   onCoords?: (coords: { lat: number; lng: number }) => void,
 ): Promise<{ lat: number; lng: number } | null> {
-  const cached = cache.get(stationId);
+  const cached = cache.get(coordsKey(stationId));
   if (cached) {
     onCoords?.(cached);
     return Promise.resolve(cached);
@@ -51,5 +78,5 @@ export function getStationCoords(
 export function getCachedCoords(
   stationId: string,
 ): { lat: number; lng: number } | undefined {
-  return cache.get(stationId);
+  return cache.get(coordsKey(stationId));
 }
