@@ -1,6 +1,6 @@
 <script lang="ts">
   /* eslint-disable svelte/prefer-svelte-reactivity */
-  /* global HTMLInputElement, URL */
+  /* global HTMLInputElement, HTMLTextAreaElement, URL */
   import { tick } from "svelte";
   import { LocalStorageConfigStorage } from "../adapters/storage/local-storage-config-storage.js";
   import { ConfigParser } from "../adapters/config/config-parser.js";
@@ -29,6 +29,8 @@
     cleanUpConfigToml,
     describeCleanup,
   } from "../utils/config-cleanup.js";
+  import { formatConfigToml } from "../utils/config-format.js";
+  import { highlightToml } from "../utils/toml-highlight.js";
   import {
     addOnTheRunSection,
     draftOfOnTheRun,
@@ -50,7 +52,7 @@
   } = $props();
 
   let configText = $state("");
-  let view = $state<"pages" | "toml">("pages");
+  let view = $state<"pages" | "toml">("toml");
   let errorMessage = $state<string | null>(null);
   let notice = $state<string | null>(null);
   /** The text the notice belongs to; any edit makes it stale. */
@@ -177,7 +179,9 @@
         const endLine = i;
 
         const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-        if (normalizedPath !== "/" && !isOnTheRunRoute(normalizedPath)) {
+        // Every page is deletable, "/" included; what a config cannot lose is
+        // its last page, and the footer says so.
+        if (!isOnTheRunRoute(normalizedPath)) {
           const displayLabel = title ?? normalizedPath;
           items.push({
             id: `route::${normalizedPath}`,
@@ -196,6 +200,12 @@
   }
 
   const deletableConfigItems = $derived(buildDeletableRoutes());
+
+  /** The last page is what the app opens; removing it would leave nothing to show. */
+  const deletingEveryRoute = $derived(
+    deletableConfigItems.length > 0 &&
+      deleteRoutesSelections.size >= deletableConfigItems.length,
+  );
 
   function toggleDeleteRoutesSelection(id: string) {
     const next = new Set(deleteRoutesSelections);
@@ -874,11 +884,12 @@
         showNotice(describeCleanup(cleanup));
         return;
       }
-      configParser.parseToml(cleanup.toml);
+      const formatted = formatConfigToml(cleanup.toml);
+      configParser.parseToml(formatted);
       pendingCleanup = {
         for: configText,
-        toml: cleanup.toml,
-        description: describeCleanup(cleanup),
+        toml: formatted,
+        description: `${describeCleanup(cleanup)} The result is reformatted: one block per page, keys in reading order.`,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -905,6 +916,19 @@
 
   function cancelCleanup() {
     pendingCleanup = null;
+  }
+
+  /** The TOML as highlighted HTML, painted behind the (transparent) textarea. */
+  const highlightedToml = $derived(`${highlightToml(configText)}\n`);
+  let highlightLayer = $state<HTMLElement | null>(null);
+
+  function syncEditorScroll(event: Event) {
+    const area = event.currentTarget as HTMLTextAreaElement;
+    if (highlightLayer === null) {
+      return;
+    }
+    highlightLayer.scrollTop = area.scrollTop;
+    highlightLayer.scrollLeft = area.scrollLeft;
   }
 
   const hasOnTheRunPage = $derived(hasOnTheRun(configText));
@@ -1226,8 +1250,13 @@
           Select the routes to remove from your configuration.
         </p>
         {#if deletableConfigItems.length === 0}
-          <p class="delete-routes-empty">Nothing to delete. Add a route other than the main one to see it here.</p>
+          <p class="delete-routes-empty">Nothing to delete yet: this config has no pages.</p>
         {:else}
+          {#if deletingEveryRoute}
+            <p class="delete-routes-hint" role="status">
+              A configuration needs a page: leave at least one unticked.
+            </p>
+          {/if}
           {#if deleteRoutesStep === "select"}
             <div class="delete-routes-list delete-list" role="list">
               {#each deletableConfigItems as item (item.id)}
@@ -1265,13 +1294,13 @@
           {#if deleteRoutesStep === "confirm"}
             <button class="button button-secondary" onclick={() => (deleteRoutesStep = "select")}>Back</button>
             <button class="button button-secondary" onclick={() => (showDeleteRoutes = false)}>Cancel</button>
-            <button class="button button-primary" onclick={applyRoutesDeletions} disabled={deleteRoutesSelections.size === 0}>Confirm Delete</button>
+            <button class="button button-primary" onclick={applyRoutesDeletions} disabled={deleteRoutesSelections.size === 0 || deletingEveryRoute}>Confirm Delete</button>
           {:else}
             <button class="button button-secondary" onclick={() => (showDeleteRoutes = false)}>Cancel</button>
             <button
               class="button button-primary"
               onclick={() => (deleteRoutesStep = "confirm")}
-              disabled={deleteRoutesSelections.size === 0}
+              disabled={deleteRoutesSelections.size === 0 || deletingEveryRoute}
             >Review Delete</button>
           {/if}
         </div>
@@ -1356,15 +1385,6 @@
       <div class="config-method-selector" role="tablist">
         <button
           class="method-button"
-          class:method-button-active={view === "pages"}
-          role="tab"
-          aria-selected={view === "pages"}
-          onclick={() => (view = "pages")}
-        >
-          Pages
-        </button>
-        <button
-          class="method-button"
           class:method-button-active={view === "toml"}
           role="tab"
           aria-selected={view === "toml"}
@@ -1393,9 +1413,18 @@
           class="method-button"
           onclick={startCleanup}
           disabled={!configText.trim() || isSaving || isLoadingExample}
-          title="Remove the sections and settings the SPA never reads"
+          title="Reformat the config and remove the sections the SPA never reads"
         >
           Clean up
+        </button>
+        <button
+          class="method-button"
+          class:method-button-active={view === "pages"}
+          role="tab"
+          aria-selected={view === "pages"}
+          onclick={() => (view = "pages")}
+        >
+          Configurator
         </button>
       </div>
       <div class="modal-body">
@@ -1553,22 +1582,20 @@
           >
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="icon"><path d="M4 4h7V2H2v9h2V4zm16 0v7h2V2h-9v2h7zm0 16h-7v2h9v-9h-2v7zM4 20v-7H2v9h9v-2H4z"/></svg>
           </button>
-          <button
-            class="toolbar-text-button"
-            onclick={previewCleanup}
-            disabled={!configText.trim() || isSaving || isLoadingExample}
-            title="Remove the sections and settings the SPA never reads"
-          >
-            Clean up
-          </button>
         </div>
-        <textarea
-          bind:value={configText}
-          class="config-textarea"
-          class:error={!!errorMessage}
-          placeholder="Paste TOML config here..."
-          readonly={showFullscreenEditor}
-        ></textarea>
+        <div class="editor-stack">
+          <!-- highlight.js escapes the text it wraps: this is our own TOML, not user HTML. -->
+          <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+          <pre class="editor-highlight" aria-hidden="true" bind:this={highlightLayer}><code>{@html highlightedToml}</code></pre>
+          <textarea
+            bind:value={configText}
+            class="config-textarea"
+            class:error={!!errorMessage}
+            placeholder="Paste TOML config here..."
+            readonly={showFullscreenEditor}
+            onscroll={syncEditorScroll}
+          ></textarea>
+        </div>
         {#if showFullscreenEditor}
           <div class="fullscreen-editor-overlay" role="dialog" aria-modal="true" tabindex="-1" onkeydown={e => { if (e.key === 'Escape') showFullscreenEditor = false; }}>
             <div class="fullscreen-editor-content">
@@ -2606,18 +2633,112 @@
     border-color: #f87171;
   }
 
+  .editor-stack {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  /**
+   * The highlighted layer and the textarea must sit on exactly the same grid:
+   * same font, same padding, same border, same wrapping.
+   */
+  .editor-highlight,
+  .config-textarea {
+    font-family: monospace;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    padding: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    box-sizing: border-box;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    tab-size: 2;
+  }
+
+  .editor-highlight {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    overflow: auto;
+    color: #111827;
+    border-color: transparent;
+    pointer-events: none;
+  }
+
   .config-textarea {
     width: 100%;
     flex: 1 1 auto; /* Fill available space in modal-body */
     min-height: 0; /* Critical for flexbox to work */
-    font-family: monospace;
-    font-size: 0.875rem;
-    padding: 0.75rem;
-    border: 1px solid #d1d5db;
-    border-radius: 0.375rem;
     resize: none; /* Disable manual resize, let flexbox handle it */
-    box-sizing: border-box;
     overflow-y: auto; /* Scroll inside textarea if content is too long */
+    background: transparent;
+    color: transparent;
+    caret-color: #111827;
+    position: relative;
+  }
+
+  .config-textarea::placeholder {
+    color: #9ca3af;
+  }
+
+  .config-textarea::selection {
+    background: #bfdbfe;
+  }
+
+  .editor-highlight :global(.hljs-section) {
+    color: #087bc4;
+    font-weight: 600;
+  }
+
+  .editor-highlight :global(.hljs-attr) {
+    color: #0f766e;
+  }
+
+  .editor-highlight :global(.hljs-string) {
+    color: #b45309;
+  }
+
+  .editor-highlight :global(.hljs-number),
+  .editor-highlight :global(.hljs-literal) {
+    color: #7c3aed;
+  }
+
+  .editor-highlight :global(.hljs-comment) {
+    color: #6b7280;
+    font-style: italic;
+  }
+
+  :global([data-theme="dark"]) .editor-highlight {
+    color: #e5e7eb;
+  }
+
+  :global([data-theme="dark"]) .config-textarea {
+    caret-color: #e5e7eb;
+    border-color: #4b5563;
+  }
+
+  :global([data-theme="dark"]) .editor-highlight :global(.hljs-section) {
+    color: #60a5fa;
+  }
+
+  :global([data-theme="dark"]) .editor-highlight :global(.hljs-attr) {
+    color: #5eead4;
+  }
+
+  :global([data-theme="dark"]) .editor-highlight :global(.hljs-string) {
+    color: #fcd34d;
+  }
+
+  :global([data-theme="dark"]) .editor-highlight :global(.hljs-number),
+  :global([data-theme="dark"]) .editor-highlight :global(.hljs-literal) {
+    color: #c4b5fd;
+  }
+
+  :global([data-theme="dark"]) .editor-highlight :global(.hljs-comment) {
+    color: #9ca3af;
   }
 
   :global([data-theme="dark"]) .config-textarea {

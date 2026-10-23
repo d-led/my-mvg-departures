@@ -18,6 +18,7 @@
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {
+    "highlight.js": "^11.12.0",
     "md5": "^2.3.0",
     "toml-patch": "^0.2.3"
   },

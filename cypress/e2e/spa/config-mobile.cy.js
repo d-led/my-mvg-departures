@@ -32,6 +32,18 @@ station_name = "Balanstr."
 show_ungrouped = true
 `;
 
+const ONE_PAGE_TOML = `
+[display]
+title = "Eine Seite"
+
+[[routes]]
+path = "/"
+
+[[routes.stops]]
+station_id = "de:09162:1110"
+station_name = "Giesing"
+`;
+
 const LEGACY_TOML = `[display]
 title = "Mobile e2e"
 
@@ -54,6 +66,12 @@ function openConfig(configToml = CONFIG_TOML) {
   });
   cy.get(".config-button").click();
   cy.get(".modal-content").should("be.visible");
+}
+
+/** The Configurator is the last tab; the dialog opens on the TOML editor. */
+function openConfigurator() {
+  cy.get(".config-method-selector").contains("button", "Configurator").click();
+  cy.get(".pages").should("exist");
 }
 
 /** The raw TOML is a tap away from the pages. */
@@ -97,11 +115,15 @@ describe("configuration dialogs on a phone", () => {
     cy.viewport(...IPHONE);
   });
 
-  it("shows the pages first and saves them from there", () => {
+  it("opens on the TOML editor and saves from there", () => {
     openConfig();
 
     expectNoSidewaysScroll();
     expectFitsVertically(".modal-content");
+    expectUsableEditor();
+    cy.get(".config-textarea").should("contain.value", "Giesing");
+
+    openConfigurator();
     cy.get(".page-card").should("have.length", 2);
     cy.get(".page-card").first().should("contain", "Giesing");
 
@@ -166,6 +188,7 @@ describe("configuration dialogs on a phone", () => {
 
   it("puts the Next to me page back", () => {
     openConfig();
+    openConfigurator();
 
     cy.get(".page-row").should("contain", "is missing from this config");
     cy.get(".page-row").contains("button", "Restore").click();
@@ -176,6 +199,7 @@ describe("configuration dialogs on a phone", () => {
 
   it("deletes a stop from a page", () => {
     openConfig();
+    openConfigurator();
 
     cy.get(".page-card").first().should("contain", "Giesing");
     cy.get('[aria-label="Delete Giesing"]').click();
@@ -187,6 +211,7 @@ describe("configuration dialogs on a phone", () => {
 
   it("deletes a page only after confirming it", () => {
     openConfig();
+    openConfigurator();
 
     cy.get(".page-card").should("have.length", 2);
     cy.get(".page-card").eq(1).contains("button", "Delete page").click();
@@ -202,6 +227,7 @@ describe("configuration dialogs on a phone", () => {
 
   it("makes a page's controls look and size like controls", () => {
     openConfig();
+    openConfigurator();
 
     cy.get(".page-card")
       .first()
@@ -228,6 +254,7 @@ describe("configuration dialogs on a phone", () => {
 
   it("edits a page in a form that fits the screen", () => {
     openConfig();
+    openConfigurator();
 
     cy.get(".page-card").first().contains("button", "Edit").click();
 
@@ -242,6 +269,7 @@ describe("configuration dialogs on a phone", () => {
 
   it("edits what Next to me looks for on a phone", () => {
     openConfig();
+    openConfigurator();
 
     cy.get(".page-row").contains("button", "Restore").click();
     cy.get(".page-row").contains("button", "Edit").click();
@@ -258,6 +286,7 @@ describe("configuration dialogs on a phone", () => {
 
   it("creates a page on a phone", () => {
     openConfig();
+    openConfigurator();
 
     cy.get(".pages-actions").contains("button", "New page").click();
     cy.get('.new-page-form input[aria-label="New page path"]')
@@ -272,6 +301,7 @@ describe("configuration dialogs on a phone", () => {
 
   it("edits the defaults on a phone", () => {
     openConfig();
+    openConfigurator();
 
     cy.get(".defaults-card").should("contain", "1 setting set here");
     cy.get(".defaults-card").contains("button", "Edit defaults").click();
@@ -284,6 +314,7 @@ describe("configuration dialogs on a phone", () => {
   });
 
   it("adds a heading to a stop without leaving the screen", () => {    openConfig();
+    openConfigurator();
 
     cy.get(".page-card").first().should("contain", "1 heading");
     cy.get(".page-card").first().contains("button", "Edit").click();
@@ -313,18 +344,32 @@ describe("configuration dialogs on a phone", () => {
     cy.get(".config-textarea").should("not.contain.value", "->City");
   });
 
-  it("deletes a route from the file", () => {
+  it("lists every page and deletes the one that is ticked", () => {
     openConfig();
 
     cy.get(".config-method-selector").contains("button", "Routes").click();
-    cy.get(".delete-routes-list .delete-item").should("have.length", 1);
-    cy.get(".delete-routes-list .delete-item").first().click();
+    cy.get(".delete-routes-list .delete-item").should("have.length", 2);
+
+    cy.get(".delete-routes-list .delete-item").contains("/work").click();
     cy.contains("button", "Review Delete").click();
     cy.contains("button", "Confirm Delete").click();
 
     cy.get(".delete-routes-list").should("not.exist");
-    openTomlView();
     cy.get(".config-textarea").should("not.contain.value", 'path = "/work"');
+  });
+
+  it("refuses to delete the last page of a config", () => {
+    openConfig(ONE_PAGE_TOML);
+
+    cy.get(".config-method-selector").contains("button", "Routes").click();
+    cy.get(".delete-routes-list .delete-item").should("have.length", 1);
+    cy.get(".delete-routes-list .delete-item").first().click();
+
+    cy.contains("button", "Review Delete").should("be.disabled");
+    cy.get(".delete-routes-hint").should(
+      "contain",
+      "A configuration needs a page",
+    );
   });
 
   it("opens the wizard from the mode row on a small phone", () => {
@@ -342,6 +387,7 @@ describe("configuration dialogs on a phone", () => {
 
   it("adds a stop with the wizard", () => {
     openConfig();
+    openConfigurator();
 
     // Registered after `openConfig`, so it wins over that catch-all stub.
     cy.intercept("**/api/bgw-pt/v3/locations*", {
@@ -387,10 +433,10 @@ describe("configuration dialogs on small phones", () => {
 
       expectNoSidewaysScroll();
       expectFitsVertically(".modal-content");
-      cy.get(".page-card").first().should("be.visible");
-
-      openTomlView();
       expectUsableEditor();
+
+      openConfigurator();
+      cy.get(".page-card").first().should("be.visible");
 
       // The way out has to be reachable with one thumb: tapping Save proves it.
       cy.get(".modal-footer").contains("button", "Save").click();

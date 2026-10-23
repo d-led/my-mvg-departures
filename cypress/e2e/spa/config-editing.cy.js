@@ -31,6 +31,8 @@ function openConfigDialog(configToml) {
     },
   });
   cy.get(".config-button").click();
+  cy.get(".config-method-selector").contains("button", "Configurator").click();
+  cy.get(".page-row").should("exist");
 }
 
 function openTomlView() {

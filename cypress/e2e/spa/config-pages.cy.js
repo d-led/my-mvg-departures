@@ -40,6 +40,9 @@ function openConfigDialog() {
     },
   });
   cy.get(".config-button").click();
+  cy.get(".config-textarea").should("be.visible");
+  cy.get(".config-method-selector").contains("button", "Configurator").click();
+  cy.get(".page-card, .pages-empty").should("exist");
 }
 
 function pageTitles() {
@@ -97,13 +100,34 @@ describe("SPA config pages", () => {
       });
   });
 
-  it("has a raw TOML view beside the pages", () => {
-    openConfigDialog();
+  it("opens on the TOML editor and keeps the Configurator as the last tab", () => {
+    cy.intercept("**/api/bgw-pt/v3/**", { statusCode: 200, body: [] });
+    cy.visit("/", {
+      onBeforeLoad(win) {
+        win.localStorage.setItem(CONFIG_TOML_KEY, TWO_PAGES);
+      },
+    });
+    cy.get(".config-button").click();
 
-    cy.get(".config-method-selector").contains("button", "Manual TOML").click();
-    cy.get(".config-textarea").should("contain.value", "[[routes]]");
+    // The previous view is what opens: the editor, with the file in it.
+    cy.get(".config-textarea").should("be.visible").and("contain.value", "[[routes]]");
+    cy.get(".editor-highlight .hljs-section").should("exist");
 
-    cy.get(".config-method-selector").contains("button", "Pages").click();
+    cy.get(".config-method-selector .method-button").then(($tabs) => {
+      const labels = [...$tabs].map((tab) => tab.textContent.trim());
+
+      expect(labels[labels.length - 1]).to.equal("Configurator");
+      expect(labels.slice(0, -1)).to.deep.equal([
+        "Manual TOML",
+        "Wizard (experimental)",
+        "Delete (current route)",
+        "Routes",
+        "Clean up",
+      ]);
+    });
+
+    cy.get(".page-card").should("not.exist");
+    cy.get(".config-method-selector").contains("button", "Configurator").click();
     cy.get(".page-card").should("have.length", 2);
   });
 
@@ -245,6 +269,7 @@ describe("SPA config pages", () => {
     });
 
     cy.get(".config-button").click();
+    cy.get(".config-method-selector").contains("button", "Configurator").click();
     cy.get(".page-card").eq(1).contains("button", "Delete page").click();
     cy.get(".page-card").eq(1).contains("button", "Yes, delete").click();
     cy.contains("button", "Save").click();
