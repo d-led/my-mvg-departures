@@ -1,7 +1,7 @@
 /**
  * The "Next to me" page is one optional TOML table. It is easy to lose by
  * accident (an editor that rewrote the file), so the dialog can put it back -
- * and only takes it away when asked twice.
+ * and never takes it away.
  */
 const CONFIG_TOML_KEY = "mvg_departures_config_toml";
 
@@ -33,6 +33,11 @@ function openConfigDialog(configToml) {
   cy.get(".config-button").click();
 }
 
+function openTomlView() {
+  cy.get(".view-tabs").contains("button", "TOML").click();
+  cy.get(".config-textarea").should("be.visible");
+}
+
 describe("SPA config editing", () => {
   it("puts the Next to me page back into a config that lost it", () => {
     openConfigDialog(CONFIG_WITHOUT_ON_THE_RUN);
@@ -40,29 +45,29 @@ describe("SPA config editing", () => {
     cy.get(".page-row").should("contain", "is missing from this config");
     cy.get(".page-row").contains("button", "Restore").click();
 
+    openTomlView();
     cy.get(".config-textarea").should("contain.value", "[[on_the_run]]");
     cy.get(".config-notice").should("contain", "Next to me is back");
 
     cy.contains("button", "Save").click();
 
-    cy.window().its("localStorage").invoke("getItem", CONFIG_TOML_KEY).should((saved) => {
-      expect(saved).to.contain("[[on_the_run]]");
-      expect(saved).to.contain("radius_meters = 50");
-      expect(saved).to.contain("de:09162:1110");
-    });
+    cy.window()
+      .its("localStorage")
+      .invoke("getItem", CONFIG_TOML_KEY)
+      .should((saved) => {
+        expect(saved).to.contain("[[on_the_run]]");
+        expect(saved).to.contain("radius_meters = 50");
+        expect(saved).to.contain("de:09162:1110");
+      });
   });
 
-  it("removes the page only after a second confirmation", () => {
+  it("never removes the Next to me page", () => {
     openConfigDialog(CONFIG_WITH_ON_THE_RUN);
 
     cy.get(".page-row").should("contain", "is part of this config");
-    cy.get(".page-row").contains("button", "Remove").click();
+    cy.get(".page-row").should("not.contain", "Remove");
 
-    // First click only asks.
+    openTomlView();
     cy.get(".config-textarea").should("contain.value", "[[on_the_run]]");
-    cy.get(".page-row").contains("button", "Really remove?").click();
-
-    cy.get(".config-textarea").should("not.contain.value", "[[on_the_run]]");
-    cy.get(".page-row").should("contain", "is missing from this config");
   });
 });

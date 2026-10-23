@@ -30,6 +30,8 @@ function openConfigDialog(configToml) {
     },
   });
   cy.get(".config-button").click();
+  cy.get(".view-tabs").contains("button", "TOML").click();
+  cy.get(".config-textarea").should("be.visible");
 }
 
 describe("SPA config clean-up", () => {
@@ -40,9 +42,15 @@ describe("SPA config clean-up", () => {
 
     cy.contains("button", "Clean up").click();
 
+    // The rewrite is prepared, not applied: the editor still shows the old file.
+    cy.get(".cleanup-review").should("contain", 'moved 1 stop into the route at "/"');
+    cy.get(".config-textarea").should("contain.value", "[api]");
+
+    cy.contains("button", "Apply clean-up").click();
+
     cy.get(".config-textarea").should("not.contain.value", "[api]");
     cy.get(".config-textarea").should("not.contain.value", "[inky]");
-    cy.get(".config-textarea").should("contain.value", '[[routes]]');
+    cy.get(".config-textarea").should("contain.value", "[[routes]]");
     cy.get(".config-textarea").should("contain.value", "[[routes.stops]]");
     cy.get(".config-notice").should("contain", "removed [api], [inky]");
     cy.get(".config-notice").should("contain", 'moved 1 stop into the route at "/"');
@@ -52,13 +60,27 @@ describe("SPA config clean-up", () => {
 
     cy.contains("button", "Save").click();
 
-    cy.window().its("localStorage").invoke("getItem", CONFIG_TOML_KEY).should((saved) => {
-      expect(saved).to.contain('[[routes]]');
-      expect(saved).to.contain('path = "/"');
-      expect(saved).to.contain("de:09162:1110");
-      expect(saved).not.to.contain("[api]");
-      expect(saved).not.to.contain("banner_color");
-    });
+    cy.window()
+      .its("localStorage")
+      .invoke("getItem", CONFIG_TOML_KEY)
+      .should((saved) => {
+        expect(saved).to.contain("[[routes]]");
+        expect(saved).to.contain('path = "/"');
+        expect(saved).to.contain("de:09162:1110");
+        expect(saved).not.to.contain("[api]");
+        expect(saved).not.to.contain("banner_color");
+      });
+  });
+
+  it("leaves the config alone when the clean-up is cancelled", () => {
+    openConfigDialog(LEGACY_CONFIG);
+
+    cy.contains("button", "Clean up").click();
+    cy.contains("button", "Cancel clean-up").click();
+
+    cy.get(".cleanup-review").should("not.exist");
+    cy.get(".config-textarea").should("contain.value", "[api]");
+    cy.get(".config-textarea").should("not.contain.value", "[[routes]]");
   });
 
   it("says so when there is nothing to clean up", () => {

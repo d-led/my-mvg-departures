@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   addOnTheRunSection,
   hasOnTheRun,
-  removeOnTheRunSection,
 } from "../../src/utils/on-the-run-section.js";
 import { cleanUpConfigToml } from "../../src/utils/config-cleanup.js";
 import { ConfigParser } from "../../src/adapters/config/config-parser.js";
@@ -60,26 +59,10 @@ radius_meters = 250
     expect(addOnTheRunSection(withOnTheRun)).toBe(withOnTheRun);
   });
 
-  it("can be taken away again, comments included", () => {
-    const withOnTheRun = `${CONFIG_WITH_ROUTES}
-# Nearby departures
-[[on_the_run]]
-radius_meters = 250
-`;
+  it("survives being deleted by hand and restored", () => {
+    const withoutPage = CONFIG_WITH_ROUTES;
 
-    const removed = removeOnTheRunSection(withOnTheRun);
-
-    expect(hasOnTheRun(removed)).toBe(false);
-    expect(removed).not.toContain("Nearby departures");
-    expect(removed).toContain("de:09162:1110");
-  });
-
-  it("survives being removed by hand and restored", () => {
-    const deleted = removeOnTheRunSection(
-      `${CONFIG_WITH_ROUTES}\n[[on_the_run]]\nradius_meters = 250\n`,
-    );
-
-    const restored = addOnTheRunSection(deleted);
+    const restored = addOnTheRunSection(withoutPage);
 
     expect(parser.parseToml(restored).onTheRun?.radiusMeters).toBe(50);
     expect(cleanUpConfigToml(restored).changed).toBe(false);

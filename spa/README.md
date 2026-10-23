@@ -16,12 +16,22 @@ Client-side Single Page Application for displaying MVG departures. Runs entirely
 
 ## Configuration
 
-The SPA includes an interactive configuration wizard accessible by clicking the config icon (⚙️) in the status bar at the bottom of the page.
+The SPA includes an interactive configuration UI, opened by clicking the config icon (⚙️) in the status bar at the bottom of the page.
 
-**Two ways to configure:**
+The dialog has two views:
 
-1. **Use the wizard**: Add stops, configure direction mappings, and customize display settings through the UI
-2. **Paste TOML**: If you already have a TOML config (from the server-side version), paste it directly into the modal
+- **Pages** - one card per screen: its title, its path and its stops. Drag a card
+  (or use the arrows) to change the order the pages appear in, delete a stop or a
+  whole page - each asks first - and **Add stops…** to bring up the wizard for the
+  stops you want. Everything is an edit of the file: nothing is stored until
+  **Save**, and **Cancel** leaves the stored config untouched.
+- **TOML** - the raw configuration, for pasting an existing config or fixing
+  something by hand. The toolbar copies, pastes, tweaks single values, opens a
+  full-screen editor on a phone, and offers **Clean up** for configs written for
+  the server version.
+
+**Where stops come from:** the wizard searches stops by name, lets you pick the
+direction headings you want, and writes them into the chosen page.
 
 Configuration is stored in browser localStorage and persists across sessions.
 
@@ -67,13 +77,14 @@ A config written for the server keeps loading:
 - `departures_per_page`, `page_rotation_seconds`, `pagination_enabled` and
   `banner_color` are not rendered by the SPA.
 
-To get rid of them, open the config dialog and press **Clean up**: it rewrites the
-stored text into the shape above in one step, keeps your comments, and says what it
-removed. Nothing is saved until you press **Save**.
+To get rid of them, open the config dialog and press **Clean up**: it prepares the
+rewrite, keeps your comments, and says what it would remove. Nothing changes until
+you press **Apply clean-up** — **Cancel clean-up** leaves the text as it was, and
+nothing is saved either way until you press **Save**.
 
 The "Next to me" page is one optional `[[on_the_run]]` table, so it is easy to lose
 by accident. The dialog says whether the page is part of the config and offers
-**Restore** (with working defaults) or **Remove**; removal asks twice.
+**Restore**, with working defaults; it never removes the page.
 
 ### Examples: two Munich, two Berlin
 
@@ -85,8 +96,8 @@ by accident. The dialog says whether the page is part of the config and offers
 | [`configs/berlin-zoologischer-garten.toml`](configs/berlin-zoologischer-garten.toml)   | VBB Berlin  | one platform, 249 grouped     |
 
 Berlin stops read the VBB API, so they say `api_provider = "vbb"`; Munich stops use
-the default MVG API and need no line. The dialog offers these under **Examples**,
-and each one is preconfigured on GitHub Pages:
+the default MVG API and need no line. The dialog's **Example** button loads the
+default one, and each example is preconfigured on GitHub Pages:
 
 - **Giesing**:
   <https://d-led.github.io/my-mvg-departures/?config=https://d-led.github.io/my-mvg-departures/config.example.toml>

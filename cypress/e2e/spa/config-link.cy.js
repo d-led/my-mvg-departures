@@ -16,13 +16,16 @@ station_id = "de:09162:1110"
 station_name = "Giesing"
 `.trim();
 
-const RAW_LINK =
-  "https://raw.githubusercontent.com/d-led/my-mvg-departures/main/spa/configs/berlin-alexanderplatz.toml";
-const GITHUB_PAGE =
-  "https://github.com/d-led/my-mvg-departures/blob/main/spa/configs/berlin-alexanderplatz.toml";
+const RAW_LINK = "https://raw.githubusercontent.com/d-led/my-mvg-departures/main/spa/configs/berlin-alexanderplatz.toml";
+const GITHUB_PAGE = "https://github.com/d-led/my-mvg-departures/blob/main/spa/configs/berlin-alexanderplatz.toml";
 
 function stubApis() {
   cy.intercept("**/api/bgw-pt/v3/**", { statusCode: 200, body: [] });
+}
+
+function openTomlView() {
+  cy.get(".view-tabs").contains("button", "TOML").click();
+  cy.get(".config-textarea").should("be.visible");
 }
 
 describe("SPA config links", () => {
@@ -34,6 +37,7 @@ describe("SPA config links", () => {
 
     cy.wait("@config");
     cy.get(".config-button").click();
+    openTomlView();
     cy.get(".config-textarea").should("contain.value", 'title = "Linked config"');
     cy.get(".config-textarea").should("contain.value", "Giesing");
   });
@@ -46,31 +50,18 @@ describe("SPA config links", () => {
 
     cy.wait("@config");
     cy.get(".config-button").click();
+    openTomlView();
     cy.get(".config-textarea").should("contain.value", 'title = "Linked config"');
   });
 
-  it("fills the editor from the shipped Berlin example", () => {
+  it("keeps the example list out of the dialog", () => {
     stubApis();
     cy.visit("/");
 
     cy.get(".config-button").click();
-    cy.get(".info-links").contains("button", "Berlin Alexanderplatz").click();
 
-    cy.get(".config-textarea").should("contain.value", "900100003");
-    cy.get(".config-textarea").should("contain.value", 'api_provider = "vbb"');
-  });
-
-  it("offers two Munich and two Berlin examples", () => {
-    stubApis();
-    cy.visit("/");
-
-    cy.get(".config-button").click();
-    cy.get(".info-links .link-button")
-      .should("have.length", 4)
-      .and("contain", "Münchner Freiheit")
-      .and("contain", "Berlin Zoologischer Garten");
-
-    cy.get(".info-links").contains("button", "Münchner Freiheit").click();
-    cy.get(".config-textarea").should("contain.value", "de:09162:500");
+    // The only example left is the one button that loads the default config.
+    cy.get(".modal-content").should("not.contain", "Münchner Freiheit");
+    cy.get(".modal-footer").contains("button", "Example").should("be.visible");
   });
 });

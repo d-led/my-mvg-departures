@@ -1,9 +1,9 @@
 /**
  * The configuration dialogs are the product: they have to work with a thumb on
  * a phone, not just on a laptop. These specs drive every dialog at phone sizes -
- * manual editing, the wizard, both delete flows, clean-up, the Next to me row
- * and the full-screen editor - and fail when a dialog is wider than the screen
- * or does not fit into its height.
+ * the pages, raw TOML editing, the wizard, deleting a stop or a page, clean-up,
+ * the Next to me row and the full-screen editor - and fail when a dialog is
+ * wider than the screen or does not fit into its height.
  */
 const CONFIG_TOML_KEY = "mvg_departures_config_toml";
 
@@ -56,6 +56,12 @@ function openConfig(configToml = CONFIG_TOML) {
   cy.get(".modal-content").should("be.visible");
 }
 
+/** The raw TOML is a tap away from the pages. */
+function openTomlView() {
+  cy.get(".view-tabs").contains("button", "TOML").click();
+  cy.get(".config-textarea").should("be.visible");
+}
+
 /** Nothing may scroll sideways: that is what a dialog looks like when it breaks. */
 function expectNoSidewaysScroll() {
   cy.document().then((doc) => {
@@ -74,29 +80,53 @@ function expectFitsVertically(selector) {
   });
 }
 
+/**
+ * Fitting is not enough: the dialog exists to edit TOML, so the editor has to
+ * get a useful share of the screen instead of a two-line sliver.
+ */
+function expectUsableEditor() {
+  cy.get(".config-textarea").then(($element) => {
+    const height = $element[0].getBoundingClientRect().height;
+    const viewport = cy.state("viewportHeight");
+    expect(height, "editor height").to.be.at.least(viewport * 0.3);
+  });
+}
+
 describe("configuration dialogs on a phone", () => {
   beforeEach(() => {
     cy.viewport(...IPHONE);
   });
 
-  it("edits and saves the configuration", () => {
+  it("shows the pages first and saves them from there", () => {
     openConfig();
 
     expectNoSidewaysScroll();
     expectFitsVertically(".modal-content");
-    cy.get(".config-textarea").should("be.visible").and("contain.value", "Giesing");
+    cy.get(".page-card").should("have.length", 2);
+    cy.get(".page-card").first().should("contain", "Giesing");
+
+    // A page's controls have to stay on screen, not slide out to the right.
+    cy.get(".page-card")
+      .first()
+      .then(($card) => {
+        const box = $card[0].getBoundingClientRect();
+        expect(box.right, "page card right").to.be.at.most(cy.state("viewportWidth"));
+      });
+    cy.get(".page-actions").first().should("be.visible");
+
+    openTomlView();
+    expectUsableEditor();
+    cy.get(".config-textarea").should("contain.value", "Giesing");
 
     cy.get(".modal-footer").contains("button", "Save").click();
 
     cy.get(".modal-content").should("not.exist");
-    cy.window()
-      .its("localStorage")
-      .invoke("getItem", CONFIG_TOML_KEY)
-      .should("contain", "Mobile e2e");
+    cy.window().its("localStorage").invoke("getItem", CONFIG_TOML_KEY).should("contain", "Mobile e2e");
   });
 
   it("expands the editor to the whole screen and comes back", () => {
     openConfig();
+    openTomlView();
 
     cy.get('[aria-label="Expand editor"]').click();
     cy.get(".fullscreen-textarea").should("be.visible");
@@ -111,6 +141,7 @@ describe("configuration dialogs on a phone", () => {
 
   it("tweaks a value with the filter", () => {
     openConfig();
+    openTomlView();
 
     cy.get('[aria-label="Tweak display values"]').click();
     cy.get(".tweak-filter-input").should("be.visible").type("title");
@@ -123,59 +154,50 @@ describe("configuration dialogs on a phone", () => {
 
   it("cleans up a config written for the server", () => {
     openConfig(LEGACY_TOML);
+    openTomlView();
 
     cy.contains("button", "Clean up").click();
+    cy.contains("button", "Apply clean-up").click();
 
     cy.get(".config-notice").should("be.visible").and("contain", "removed [api]");
     cy.get(".config-textarea").should("not.contain.value", "[api]");
     expectNoSidewaysScroll();
   });
 
-  it("puts the Next to me page back and removes it again", () => {
+  it("puts the Next to me page back", () => {
     openConfig();
 
     cy.get(".page-row").should("contain", "is missing from this config");
     cy.get(".page-row").contains("button", "Restore").click();
-    cy.get(".config-textarea").should("contain.value", "[[on_the_run]]");
 
-    cy.get(".page-row").contains("button", "Remove").click();
-    cy.get(".page-row").contains("button", "Really remove?").click();
-    cy.get(".config-textarea").should("not.contain.value", "[[on_the_run]]");
+    cy.get(".page-row").should("contain", "is part of this config");
+    cy.get(".page-row").should("not.contain", "Remove");
   });
 
-  it("deletes a header of the current route", () => {
+  it("deletes a stop from a page", () => {
     openConfig();
 
-    cy.contains("button", "Delete (current route)").click();
-    cy.get(".delete-list .delete-item").should("have.length.at.least", 2);
-    cy.get(".delete-list .delete-item").first().click();
-    cy.contains("button", "Review Delete").click();
-    cy.contains("button", "Confirm Delete").click();
+    cy.get(".page-card").first().should("contain", "Giesing");
+    cy.get('[aria-label="Delete Giesing"]').click();
+    cy.get(".page-stop-confirm").contains("button", "Delete").click();
 
-    cy.get(".delete-list").should("not.exist");
-    cy.get(".config-textarea").should("not.contain.value", "->City");
-  });
-
-  it("deletes a route from the file", () => {
-    openConfig();
-
-    cy.contains("button", "Routes").click();
-    cy.get(".delete-routes-list .delete-item").should("have.length", 1);
-    cy.get(".delete-routes-list .delete-item").first().click();
-    cy.contains("button", "Review Delete").click();
-    cy.contains("button", "Confirm Delete").click();
-
-    cy.get(".delete-routes-list").should("not.exist");
-    cy.get(".config-textarea").should("not.contain.value", "/work");
-  });
-
-  it("loads an example with a tap", () => {
-    openConfig();
-
-    cy.get(".info-links").contains("button", "Münchner Freiheit").click();
-
-    cy.get(".config-textarea").should("contain.value", "de:09162:500");
+    cy.get(".page-card").first().should("not.contain", "Giesing");
     expectNoSidewaysScroll();
+  });
+
+  it("deletes a page only after confirming it", () => {
+    openConfig();
+
+    cy.get(".page-card").should("have.length", 2);
+    cy.get(".page-card").eq(1).contains("button", "Delete page").click();
+    cy.get(".page-card").eq(1).contains("button", "Keep page").click();
+    cy.get(".page-card").should("have.length", 2);
+
+    cy.get(".page-card").eq(1).contains("button", "Delete page").click();
+    cy.get(".page-card").eq(1).contains("button", "Yes, delete").click();
+
+    cy.get(".page-card").should("have.length", 1);
+    cy.get(".page-card").first().should("not.contain", "/work");
   });
 
   it("adds a stop with the wizard", () => {
@@ -194,7 +216,7 @@ describe("configuration dialogs on a phone", () => {
       ],
     });
 
-    cy.contains("button", "Wizard (experimental)").click();
+    cy.get(".add-stops").click();
     cy.get(".wizard-content").should("be.visible");
     expectNoSidewaysScroll();
     expectFitsVertically(".wizard-content");
@@ -207,7 +229,7 @@ describe("configuration dialogs on a phone", () => {
     cy.contains("button", "Next (1 selected)").click();
     cy.contains("button", "Create Configuration").click();
 
-    cy.get(".config-textarea").should("contain.value", "de:09162:2000");
+    cy.get(".page-card").first().should("contain", "Marienplatz");
   });
 });
 
@@ -225,6 +247,10 @@ describe("configuration dialogs on small phones", () => {
 
       expectNoSidewaysScroll();
       expectFitsVertically(".modal-content");
+      cy.get(".page-card").first().should("be.visible");
+
+      openTomlView();
+      expectUsableEditor();
 
       // The way out has to be reachable with one thumb: tapping Save proves it.
       cy.get(".modal-footer").contains("button", "Save").click();

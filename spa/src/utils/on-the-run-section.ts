@@ -1,16 +1,10 @@
 /**
  * The "Next to me" page lives in one optional `[[on_the_run]]` table. Deleting
  * it (by hand, or by an editor that rewrote the file) used to mean losing the
- * page for good; these helpers bring it back, or take it away on purpose.
+ * page for good; this brings it back.
  */
 
-import {
-  belongsTo,
-  leadInStart,
-  readTomlTables,
-  renderToml,
-  tableLinesEnd,
-} from "./toml-sections.js";
+import { belongsTo, readTomlTables } from "./toml-sections.js";
 
 const ON_THE_RUN_TABLE = "on_the_run";
 
@@ -41,27 +35,4 @@ export function addOnTheRunSection(toml: string): string {
   }
 
   return `${toml.trimEnd()}\n\n${ON_THE_RUN_SECTION.join("\n")}\n`;
-}
-
-/** Removes the page and the comment block that documents it. */
-export function removeOnTheRunSection(toml: string): string {
-  const lines = toml.split("\n");
-  const removed = new Set<number>();
-
-  for (const table of readTomlTables(lines)) {
-    if (!belongsTo(table.name, ON_THE_RUN_TABLE)) {
-      continue;
-    }
-    const start = leadInStart(lines, table.headerLine);
-    const end = tableLinesEnd(lines, table);
-    for (let line = start; line < end; line += 1) {
-      removed.add(line);
-    }
-  }
-
-  if (removed.size === 0) {
-    return toml;
-  }
-
-  return renderToml(lines, removed, new Map());
 }
