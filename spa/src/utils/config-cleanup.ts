@@ -12,6 +12,15 @@
  * It works on the text, so comments and the author's layout survive.
  */
 
+import {
+  leadInStart,
+  readTomlTables,
+  renderToml,
+  tableLinesEnd,
+  tomlTableName,
+  type TomlTable,
+} from "./toml-sections.js";
+
 /** Tables the SPA reads; anything else is server-only. */
 const SPA_TABLES = new Set(["display", "routes", "on_the_run"]);
 
@@ -26,7 +35,6 @@ const UNUSED_DISPLAY_KEYS = [
   "banner_color",
 ];
 
-const HEADER_PATTERN = /^\s*\[\[?([^\]]+)\]\]?\s*(?:#.*)?$/;
 const KEY_VALUE_PATTERN = /^\s*([A-Za-z0-9_-]+)\s*=/;
 
 export interface ConfigCleanup {
@@ -64,14 +72,6 @@ export function describeCleanup(cleanup: ConfigCleanup): string {
   return `Cleaned up: ${changes.join("; ")}. Review the result, then save.`;
 }
 
-interface Section {
-  /** Table name without brackets, e.g. "routes.stops". */
-  name: string;
-  headerLine: number;
-  /** Index just past the last line that belongs to the table. */
-  endLine: number;
-}
-
 export function cleanUpConfigToml(toml: string): ConfigCleanup {
   if (!toml.trim()) {
     return {
@@ -84,38 +84,34 @@ export function cleanUpConfigToml(toml: string): ConfigCleanup {
   }
 
   const lines = toml.split("\n");
-  const sections = readSections(lines);
+  const tables = readTomlTables(lines);
   const deleted = new Set<number>();
   const insertions = new Map<number, string[]>();
   const removedSections: string[] = [];
   const removedDisplayKeys = new Set<string>();
 
-  for (const section of sections) {
-    const root = section.name.split(".")[0];
+  for (const table of tables) {
+    const root = table.name.split(".")[0];
 
     if (root === LEGACY_STOPS_TABLE) {
       continue; // converted as a group, see moveLegacyStops
     }
 
     if (!SPA_TABLES.has(root)) {
-      deleteSection(lines, section, deleted);
-      removedSections.push(`[${section.name}]`);
+      removeTable(lines, table, deleted);
+      removedSections.push(`[${table.name}]`);
       continue;
     }
 
-    removeUnusedDisplayKeys(lines, section, deleted, removedDisplayKeys);
+    removeUnusedDisplayKeys(lines, table, deleted, removedDisplayKeys);
   }
 
-  const movedStops = moveLegacyStops(lines, sections, deleted, insertions);
+  const movedStops = moveLegacyStops(lines, tables, deleted, insertions);
 
-  const changed =
-    deleted.size > 0 ||
-    insertions.size > 0 ||
-    removedSections.length > 0 ||
-    removedDisplayKeys.size > 0;
+  const changed = deleted.size > 0 || insertions.size > 0;
 
   return {
-    toml: changed ? assemble(lines, deleted, insertions) : toml,
+    toml: changed ? renderToml(lines, deleted, insertions) : toml,
     removedSections,
     removedDisplayKeys: [...removedDisplayKeys],
     movedStops,
@@ -123,84 +119,39 @@ export function cleanUpConfigToml(toml: string): ConfigCleanup {
   };
 }
 
-function readSections(lines: string[]): Section[] {
-  const sections: Section[] = [];
-
-  lines.forEach((line, index) => {
-    const match = HEADER_PATTERN.exec(line);
-    if (!match) {
-      return;
-    }
-    if (sections.length > 0) {
-      sections[sections.length - 1].endLine = index;
-    }
-    sections.push({
-      name: match[1].trim(),
-      headerLine: index,
-      endLine: lines.length,
-    });
-  });
-
-  return sections;
-}
-
 /**
  * Deletes a table together with the comment block that documents it, and keeps
  * the blank line and the comment block that introduce the next table.
  */
-function deleteSection(
+function removeTable(
   lines: string[],
-  section: Section,
+  table: TomlTable,
   deleted: Set<number>,
 ): void {
-  const start = commentingStart(lines, section.headerLine);
-  const end = bodyEnd(lines, section);
+  const start = leadInStart(lines, table.headerLine);
+  const end = tableLinesEnd(lines, table);
   for (let line = start; line < end; line += 1) {
     deleted.add(line);
   }
 }
 
-/** Start of the comment block that sits directly above `line`. */
-function commentingStart(lines: string[], line: number): number {
-  let start = line;
-  while (start > 0 && lines[start - 1].trim().startsWith("#")) {
-    start -= 1;
-  }
-  return start;
-}
-
-/** Index just past the table's last line of its own, without the next table's lead-in. */
-function bodyEnd(lines: string[], section: Section): number {
-  const firstBodyLine = section.headerLine + 1;
-  let end = section.endLine;
-
-  while (end > firstBodyLine && lines[end - 1].trim().startsWith("#")) {
-    end -= 1;
-  }
-  while (end > firstBodyLine && lines[end - 1].trim() === "") {
-    end -= 1;
-  }
-
-  return end;
-}
-
 function removeUnusedDisplayKeys(
   lines: string[],
-  section: Section,
+  table: TomlTable,
   deleted: Set<number>,
   removed: Set<string>,
 ): void {
   const isDisplayTable =
-    section.name === "display" || section.name === "routes.display";
+    table.name === "display" || table.name === "routes.display";
   if (!isDisplayTable) {
     return;
   }
 
-  for (let line = section.headerLine + 1; line < section.endLine; line += 1) {
+  for (let line = table.headerLine + 1; line < table.endLine; line += 1) {
     const key = KEY_VALUE_PATTERN.exec(lines[line])?.[1];
     if (key && UNUSED_DISPLAY_KEYS.includes(key)) {
       for (
-        let documented = commentingStart(lines, line);
+        let documented = leadInStart(lines, line);
         documented <= line;
         documented += 1
       ) {
@@ -217,11 +168,11 @@ function removeUnusedDisplayKeys(
  */
 function moveLegacyStops(
   lines: string[],
-  sections: Section[],
+  tables: TomlTable[],
   deleted: Set<number>,
   insertions: Map<number, string[]>,
 ): number {
-  const groups = groupLegacyStops(sections);
+  const groups = groupLegacyStops(tables);
   if (groups.length === 0) {
     return 0;
   }
@@ -229,9 +180,9 @@ function moveLegacyStops(
   const stopBlocks = groups.map((group) => convertedStopBlock(lines, group));
   const moveLines = stopBlocks.flat();
 
-  const firstLegacyLine = commentingStart(lines, groups[0][0].headerLine);
-  const defaultRoute = sections.find(
-    (section) => section.name === "routes" && isDefaultRoute(lines, section),
+  const firstLegacyLine = leadInStart(lines, groups[0][0].headerLine);
+  const defaultRoute = tables.find(
+    (table) => table.name === "routes" && isDefaultRoute(lines, table),
   );
 
   if (defaultRoute) {
@@ -246,8 +197,8 @@ function moveLegacyStops(
   }
 
   for (const group of groups) {
-    const start = commentingStart(lines, group[0].headerLine);
-    const end = bodyEnd(lines, group[group.length - 1]);
+    const start = leadInStart(lines, group[0].headerLine);
+    const end = tableLinesEnd(lines, group[group.length - 1]);
     for (let line = start; line < end; line += 1) {
       deleted.add(line);
     }
@@ -257,28 +208,28 @@ function moveLegacyStops(
 }
 
 /** Every `[[stops]]` table together with the `[stops.*]` tables that follow it. */
-function groupLegacyStops(sections: Section[]): Section[][] {
-  const groups: Section[][] = [];
+function groupLegacyStops(tables: TomlTable[]): TomlTable[][] {
+  const groups: TomlTable[][] = [];
 
-  for (const section of sections) {
-    if (section.name.split(".")[0] !== LEGACY_STOPS_TABLE) {
+  for (const table of tables) {
+    if (table.name.split(".")[0] !== LEGACY_STOPS_TABLE) {
       continue;
     }
-    if (section.name === LEGACY_STOPS_TABLE) {
-      groups.push([section]);
+    if (table.name === LEGACY_STOPS_TABLE) {
+      groups.push([table]);
       continue;
     }
-    groups[groups.length - 1]?.push(section);
+    groups[groups.length - 1]?.push(table);
   }
 
   return groups;
 }
 
 /** One `[[stops]]` table and its nested tables, spelled as `[[routes.stops]]`. */
-function convertedStopBlock(lines: string[], group: Section[]): string[] {
-  const start = commentingStart(lines, group[0].headerLine);
-  const end = bodyEnd(lines, group[group.length - 1]);
-  const headers = new Set(group.map((section) => section.headerLine));
+function convertedStopBlock(lines: string[], group: TomlTable[]): string[] {
+  const start = leadInStart(lines, group[0].headerLine);
+  const end = tableLinesEnd(lines, group[group.length - 1]);
+  const headers = new Set(group.map((table) => table.headerLine));
 
   const block: string[] = [];
   for (let line = start; line < end; line += 1) {
@@ -295,16 +246,16 @@ function renamedHeader(line: string): string {
   );
 }
 
-function isDefaultRoute(lines: string[], section: Section): boolean {
-  const body = lines.slice(section.headerLine + 1, section.endLine);
+function isDefaultRoute(lines: string[], table: TomlTable): boolean {
+  const body = lines.slice(table.headerLine + 1, table.endLine);
   const pathLine = body.find((line) => /^\s*path\s*=/.test(line));
   return pathLine === undefined || /^\s*path\s*=\s*["']\/["']/.test(pathLine);
 }
 
 /** Where the default route's stops end: before the next table of the route. */
-function routeBodyEnd(lines: string[], route: Section): number {
+function routeBodyEnd(lines: string[], route: TomlTable): number {
   for (let line = route.headerLine + 1; line < route.endLine; line += 1) {
-    if (!HEADER_PATTERN.test(lines[line])) {
+    if (tomlTableName(lines[line]) === undefined) {
       continue;
     }
     let insertAt = line;
@@ -316,7 +267,7 @@ function routeBodyEnd(lines: string[], route: Section): number {
     }
     return insertAt;
   }
-  return bodyEnd(lines, route);
+  return tableLinesEnd(lines, route);
 }
 
 function addInsertion(
@@ -325,44 +276,4 @@ function addInsertion(
   lines: string[],
 ): void {
   insertions.set(line, [...(insertions.get(line) ?? []), ...lines]);
-}
-
-function assemble(
-  lines: string[],
-  deleted: Set<number>,
-  insertions: Map<number, string[]>,
-): string {
-  const output: string[] = [];
-
-  for (let line = 0; line < lines.length; line += 1) {
-    output.push(...(insertions.get(line) ?? []));
-    if (!deleted.has(line)) {
-      output.push(lines[line]);
-    }
-  }
-  output.push(...(insertions.get(lines.length) ?? []));
-
-  return withSingleBlankLines(output).join("\n");
-}
-
-function withSingleBlankLines(lines: string[]): string[] {
-  const result: string[] = [];
-
-  for (const line of lines) {
-    const blank = line.trim() === "";
-    if (!blank) {
-      result.push(line);
-      continue;
-    }
-    if (result.length === 0 || result[result.length - 1].trim() === "") {
-      continue;
-    }
-    result.push("");
-  }
-
-  while (result.length > 0 && result[result.length - 1].trim() === "") {
-    result.pop();
-  }
-
-  return result;
 }
