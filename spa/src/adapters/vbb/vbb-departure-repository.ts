@@ -2,6 +2,7 @@ import type { DepartureRepository } from "../../domain/ports/departure-repositor
 import type { Departure } from "../../domain/models/departure.js";
 import { createDeparture } from "../../domain/models/departure.js";
 import { fetchWithTimeout } from "../../utils/http.js";
+import { splitPlatform } from "../../utils/platform-split.js";
 import type { VbbApiDeparture, VbbApiResponse } from "./vbb-api-types.js";
 
 export class VbbDepartureRepository implements DepartureRepository {
@@ -178,7 +179,10 @@ export class VbbDepartureRepository implements DepartureRepository {
     const destination = this.extractDestination(depData);
     const messages = this.extractMessages(depData);
 
-    const platform = depData.platform != null ? String(depData.platform) : null;
+    const { platform, stopPosition } = splitPlatform(
+      depData.platform ?? depData.plannedPlatform,
+      transportType,
+    );
     const isCancelled = depData.cancelled ?? false;
     // Match Python: is_realtime = delay_seconds is not None or dep_data.get("realtime", False)
     const isRealtime = delaySeconds !== null || (depData.realtime ?? false);
@@ -188,6 +192,7 @@ export class VbbDepartureRepository implements DepartureRepository {
       plannedTime: plannedWhen,
       delaySeconds,
       platform,
+      stopPosition,
       isRealtime,
       line: lineName,
       destination,

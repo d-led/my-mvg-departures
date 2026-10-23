@@ -21,6 +21,7 @@ export interface VbbApiDeparture {
   direction?: string;
   destination?: VbbApiDestination;
   platform?: string | number;
+  plannedPlatform?: string | number;
   cancelled?: boolean;
   realtime?: boolean;
   remarks?: (VbbApiRemark | string)[];

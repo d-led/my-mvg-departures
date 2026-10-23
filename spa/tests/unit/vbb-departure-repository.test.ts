@@ -96,4 +96,31 @@ describe("VbbDepartureRepository", () => {
     expect(departures[0].delaySeconds).toBe(300); // 5 minutes = 300 seconds
     expect(departures[0].transportType).toBe("S-Bahn");
   });
+
+  it("reads a Berlin bus stand as the stand number, not as a platform", async () => {
+    const mockResponse = {
+      departures: [
+        {
+          when: new Date().toISOString(),
+          plannedWhen: new Date().toISOString(),
+          line: { name: "M49", product: "bus" },
+          direction: "Staaken, Reimerweg",
+          platform: "Pos. 5",
+          plannedPlatform: "Pos. 5",
+          cancelled: false,
+          remarks: [],
+        },
+      ],
+    };
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => mockResponse,
+    });
+
+    const [departure] = await repository.getDepartures("900023201");
+
+    expect(departure.platform).toBeNull();
+    expect(departure.stopPosition).toBe("5");
+  });
 });
