@@ -1519,7 +1519,9 @@
     .wizard-content {
       max-width: 100vw;
       max-height: 100vh;
+      max-height: 100dvh;
       min-height: 100vh;
+      min-height: 100dvh;
       width: 100vw;
       border-radius: 0;
       padding: 1rem;

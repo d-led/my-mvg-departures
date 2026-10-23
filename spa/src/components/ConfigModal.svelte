@@ -1715,6 +1715,8 @@
     justify-content: stretch;
     width: 100vw;
     height: 100vh;
+    /* iOS counts the address bar into 100vh; dvh is the visible height. */
+    height: 100dvh;
     overflow: hidden;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
@@ -1726,6 +1728,7 @@
     padding: 8px;
     width: 100vw;
     height: 100vh;
+    height: 100dvh;
     display: flex;
     flex-direction: column;
     box-shadow: none;
@@ -1791,6 +1794,7 @@
     justify-content: stretch;
     width: 100vw;
     height: 100vh;
+    height: 100dvh;
   }
 
   .tweak-overlay-content {
