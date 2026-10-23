@@ -200,6 +200,20 @@ describe("configuration dialogs on a phone", () => {
     cy.get(".page-card").first().should("not.contain", "/work");
   });
 
+  it("edits a page in a form that fits the screen", () => {
+    openConfig();
+
+    cy.get(".page-card").first().contains("button", "Edit").click();
+
+    cy.get(".page-form input").first().should("be.visible").clear().type("Zuhause");
+    expectNoSidewaysScroll();
+
+    cy.contains("button", "Apply changes").click();
+
+    cy.get(".page-form").should("not.exist");
+    cy.get(".page-card").first().should("contain", "Zuhause");
+  });
+
   it("adds a stop with the wizard", () => {
     openConfig();
 

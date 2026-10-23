@@ -11,6 +11,8 @@
     readConfigPages,
     removeConfigPage,
     removeConfigStop,
+    updateConfigPage,
+    type ConfigPageEdit,
   } from "../utils/config-pages.js";
   import {
     applyWizardConfig,
@@ -402,6 +404,15 @@
     showNotice(`Deleted the page “${page.title}”. Save to keep the change.`);
   }
 
+  /** Applies one page's form; the file only moves when a value really differs. */
+  function applyPageEdit(index: number, edit: ConfigPageEdit) {
+    const before = configText;
+    configText = updateConfigPage(configText, index, edit);
+    if (configText !== before) {
+      showNotice("Page settings updated. Save to keep the change.");
+    }
+  }
+
   function deleteStop(pageIndex: number, stopIndex: number) {
     const page = configPages[pageIndex];
     const stop = page?.stops[stopIndex];
@@ -689,6 +700,7 @@
           onReorder={reorderPage}
           onRemovePage={deletePage}
           onRemoveStop={deleteStop}
+          onApplyPage={applyPageEdit}
           onAddStops={openWizard}
         />
       {:else}

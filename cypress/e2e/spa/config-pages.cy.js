@@ -86,4 +86,41 @@ describe("SPA config pages", () => {
     cy.get(".view-tabs").contains("button", "Pages").click();
     cy.get(".page-card").should("have.length", 2);
   });
+
+  it("renames a page and says what a stop shows when nothing matches", () => {
+    openConfigDialog();
+
+    cy.get(".page-card").first().contains("button", "Edit").click();
+
+    cy.get(".page-form input").first().clear().type("Zuhause");
+    cy.get('.page-form input[aria-label="Heading for Giesing"]').type("Andere");
+    cy.get('.page-form input[aria-label="Show unmatched departures of Giesing"]').check();
+    cy.contains("button", "Apply changes").click();
+
+    cy.get(".page-form").should("not.exist");
+    pageTitles().first().should("have.text", "Zuhause");
+    cy.get(".page-card").first().should("contain", "Andere");
+
+    cy.contains("button", "Save").click();
+
+    cy.window().its("localStorage").invoke("getItem", CONFIG_TOML_KEY).should((saved) => {
+      expect(saved).to.contain('title = "Zuhause"');
+      expect(saved).to.contain('ungrouped_title = "Andere"');
+      expect(saved).to.contain("show_ungrouped = true");
+    });
+  });
+
+  it("refuses a path another page already uses", () => {
+    openConfigDialog();
+
+    cy.get(".page-card").first().contains("button", "Edit").click();
+    cy.contains("label", "Path").find("input").clear().type("/work");
+
+    cy.get(".page-form-problem").should("contain", "already uses this path");
+    cy.contains("button", "Apply changes").should("be.disabled");
+
+    cy.get(".page-form").contains("button", "Cancel").click();
+    cy.get(".page-form").should("not.exist");
+    pageTitles().first().should("have.text", "Home");
+  });
 });

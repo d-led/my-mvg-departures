@@ -4,6 +4,8 @@ import {
   readConfigPages,
   removeConfigPage,
   removeConfigStop,
+  updateConfigPage,
+  type ConfigPageEdit,
 } from "../../src/utils/config-pages.js";
 
 const TWO_PAGES = `# The pages of the phone
@@ -43,14 +45,31 @@ describe("readConfigPages", () => {
         path: "/",
         title: "Home",
         stops: [
-          { stationId: "de:09162:1110", name: "Giesing" },
-          { stationId: "de:09162:1120", name: "Karlsplatz" },
+          {
+            stationId: "de:09162:1110",
+            name: "Giesing",
+            label: "",
+            showUngrouped: false,
+          },
+          {
+            stationId: "de:09162:1120",
+            name: "Karlsplatz",
+            label: "",
+            showUngrouped: false,
+          },
         ],
       },
       {
         path: "/work",
         title: "Work",
-        stops: [{ stationId: "de:09162:1000", name: "Hauptbahnhof" }],
+        stops: [
+          {
+            stationId: "de:09162:1000",
+            name: "Hauptbahnhof",
+            label: "",
+            showUngrouped: false,
+          },
+        ],
       },
     ]);
   });
@@ -100,12 +119,97 @@ describe("removeConfigStop", () => {
     const pages = readConfigPages(trimmed);
 
     expect(pages[0].stops).toEqual([
-      { stationId: "de:09162:1120", name: "Karlsplatz" },
+      {
+        stationId: "de:09162:1120",
+        name: "Karlsplatz",
+        label: "",
+        showUngrouped: false,
+      },
     ]);
     expect(pages[1].stops).toHaveLength(1);
   });
 
   it("leaves the config alone for a stop that is not there", () => {
     expect(removeConfigStop(TWO_PAGES, 0, 7)).toBe(TWO_PAGES);
+  });
+});
+
+function editOf(pageIndex: number): ConfigPageEdit {
+  const page = readConfigPages(TWO_PAGES)[pageIndex];
+  return {
+    path: page.path,
+    title: page.title,
+    stops: page.stops.map((stop) => ({
+      label: stop.label,
+      showUngrouped: stop.showUngrouped,
+    })),
+  };
+}
+
+describe("updateConfigPage", () => {
+  it("renames a page without touching the rest of the file", () => {
+    const edited = updateConfigPage(TWO_PAGES, 0, {
+      ...editOf(0),
+      title: "Wohnung",
+    });
+
+    expect(readConfigPages(edited)[0].title).toBe("Wohnung");
+    expect(edited).toContain("# The pages of the phone");
+    expect(edited).toContain("[[on_the_run]]");
+    expect(edited).toContain('title = "Work"');
+  });
+
+  it("changes a page's path", () => {
+    const edited = updateConfigPage(TWO_PAGES, 1, {
+      ...editOf(1),
+      path: "/office",
+    });
+
+    expect(readConfigPages(edited).map((page) => page.path)).toEqual([
+      "/",
+      "/office",
+    ]);
+  });
+
+  it("changes what a stop shows when nothing matches a direction", () => {
+    const edited = updateConfigPage(TWO_PAGES, 0, {
+      ...editOf(0),
+      stops: [
+        { label: "Andere", showUngrouped: true },
+        { label: "", showUngrouped: false },
+      ],
+    });
+    const stops = readConfigPages(edited)[0].stops;
+
+    expect(stops[0]).toMatchObject({ label: "Andere", showUngrouped: true });
+    expect(stops[1]).toMatchObject({ label: "", showUngrouped: false });
+    expect(edited).not.toContain("show_ungrouped = false");
+  });
+
+  it("adds a title table to a page that has none", () => {
+    const withoutTitle = `[[routes]]\npath = "/work"\n\n[[routes.stops]]\nstation_id = "de:09162:1000"\nstation_name = "Hauptbahnhof"\n`;
+
+    const edited = updateConfigPage(withoutTitle, 0, {
+      path: "/work",
+      title: "Arbeit",
+      stops: [{ label: "", showUngrouped: false }],
+    });
+
+    expect(readConfigPages(edited)[0].title).toBe("Arbeit");
+    expect(edited).toContain("[routes.display]");
+  });
+
+  it("drops the title table of the page whose title was cleared", () => {
+    const edited = updateConfigPage(TWO_PAGES, 0, { ...editOf(0), title: "" });
+
+    expect(readConfigPages(edited)[0].title).toBe("/");
+    expect(edited).not.toContain('title = "Home"');
+    expect(edited).toContain('title = "Work"');
+    expect(edited).toContain("de:09162:1110");
+  });
+
+  it("leaves the file byte for byte alone when the form changed nothing", () => {
+    expect(updateConfigPage(TWO_PAGES, 0, editOf(0))).toBe(TWO_PAGES);
+    expect(updateConfigPage(TWO_PAGES, 1, editOf(1))).toBe(TWO_PAGES);
   });
 });

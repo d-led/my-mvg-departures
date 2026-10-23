@@ -1,17 +1,19 @@
 <script lang="ts">
-  import type { ConfigPage } from "../utils/config-pages.js";
+  import type { ConfigPage, ConfigPageEdit } from "../utils/config-pages.js";
 
   let {
     pages,
     onReorder,
     onRemovePage,
     onRemoveStop,
+    onApplyPage,
     onAddStops,
   }: {
     pages: ConfigPage[];
     onReorder: (from: number, to: number) => void;
     onRemovePage: (index: number) => void;
     onRemoveStop: (pageIndex: number, stopIndex: number) => void;
+    onApplyPage: (index: number, edit: ConfigPageEdit) => void;
     onAddStops: () => void;
   } = $props();
 
@@ -20,6 +22,9 @@
   /** "pageIndex:stopIndex" of the stop whose deletion is being confirmed. */
   let confirmingStop = $state<string | null>(null);
   let draggedPage = $state<number | null>(null);
+  /** The page being edited, and its unsaved form. */
+  let editingPage = $state<number | null>(null);
+  let draft = $state<ConfigPageEdit | null>(null);
 
   function stopKey(pageIndex: number, stopIndex: number): string {
     return `${pageIndex}:${stopIndex}`;
@@ -31,6 +36,54 @@
     }
     draggedPage = null;
   }
+
+  function startEditing(index: number, page: ConfigPage) {
+    confirmingPage = null;
+    confirmingStop = null;
+    editingPage = index;
+    draft = {
+      path: page.path,
+      title: page.title,
+      stops: page.stops.map((stop) => ({
+        label: stop.label,
+        showUngrouped: stop.showUngrouped,
+      })),
+    };
+  }
+
+  function stopEditing() {
+    editingPage = null;
+    draft = null;
+  }
+
+  /** Why the draft cannot be applied, or "" while it can. */
+  const pathProblem = $derived.by(() => {
+    if (draft === null) {
+      return "";
+    }
+    const path = draft.path.trim();
+    if (!path.startsWith("/")) {
+      return "A path starts with a slash, like /work.";
+    }
+    const taken = pages.some(
+      (page, at) => at !== editingPage && page.path === path,
+    );
+    return taken ? "Another page already uses this path." : "";
+  });
+
+  function applyDraft() {
+    if (editingPage === null || draft === null || pathProblem !== "") {
+      return;
+    }
+    const index = editingPage;
+    const edit: ConfigPageEdit = {
+      path: draft.path.trim(),
+      title: draft.title,
+      stops: draft.stops.map((stop) => ({ ...stop })),
+    };
+    stopEditing();
+    onApplyPage(index, edit);
+  }
 </script>
 
 <div class="pages">
@@ -38,7 +91,7 @@
     <article
       class="page-card"
       class:is-dragged={draggedPage === index}
-      draggable="true"
+      draggable={editingPage !== index}
       data-page-path={page.path}
       ondragstart={() => (draggedPage = index)}
       ondragover={(event) => event.preventDefault()}
@@ -72,6 +125,12 @@
           </button>
           <button
             class="button button-secondary"
+            onclick={() => startEditing(index, page)}
+          >
+            Edit
+          </button>
+          <button
+            class="button button-secondary"
             onclick={() => (confirmingPage = index)}
           >
             Delete page
@@ -79,37 +138,92 @@
         </div>
       </header>
 
-      <ul class="page-stops">
-        {#each page.stops as stop, stopIndex (stop.stationId)}
-          <li class="page-stop">
-            <span class="page-stop-name">{stop.name}</span>
-            {#if confirmingStop === stopKey(index, stopIndex)}
-              <span class="page-stop-confirm">
-                <button class="button button-secondary" onclick={() => (confirmingStop = null)}>
-                  Keep
-                </button>
+      {#if editingPage === index && draft}
+        <div class="page-form">
+          <label class="page-form-field">
+            <span>Title</span>
+            <input bind:value={draft.title} placeholder={page.path} />
+          </label>
+          <label class="page-form-field">
+            <span>Path</span>
+            <input bind:value={draft.path} aria-invalid={pathProblem !== ""} />
+          </label>
+          {#if pathProblem}
+            <p class="page-form-problem" role="alert">{pathProblem}</p>
+          {/if}
+
+          <fieldset class="page-form-stops">
+            <legend>Stops</legend>
+            {#each draft.stops as stop, stopIndex (page.stops[stopIndex].stationId)}
+              <div class="page-form-stop">
+                <span class="page-form-stop-name">{page.stops[stopIndex].name}</span>
+                <label class="page-form-field">
+                  <span>Heading for everything else</span>
+                  <input
+                    bind:value={stop.label}
+                    placeholder="Other"
+                    aria-label={`Heading for ${page.stops[stopIndex].name}`}
+                  />
+                </label>
+                <label class="page-form-check">
+                  <input
+                    type="checkbox"
+                    bind:checked={stop.showUngrouped}
+                    aria-label={`Show unmatched departures of ${page.stops[stopIndex].name}`}
+                  />
+                  <span>Show the departures that match no heading</span>
+                </label>
+              </div>
+            {/each}
+          </fieldset>
+
+          <div class="page-form-actions">
+            <button class="button button-secondary" onclick={stopEditing}>Cancel</button>
+            <button
+              class="button button-primary"
+              disabled={pathProblem !== ""}
+              onclick={applyDraft}
+            >
+              Apply changes
+            </button>
+          </div>
+        </div>
+      {:else}
+        <ul class="page-stops">
+          {#each page.stops as stop, stopIndex (stop.stationId)}
+            <li class="page-stop">
+              <span class="page-stop-name">{stop.name}</span>
+              {#if stop.label}
+                <span class="page-stop-label">{stop.label}</span>
+              {/if}
+              {#if confirmingStop === stopKey(index, stopIndex)}
+                <span class="page-stop-confirm">
+                  <button class="button button-secondary" onclick={() => (confirmingStop = null)}>
+                    Keep
+                  </button>
+                  <button
+                    class="button button-danger"
+                    onclick={() => {
+                      confirmingStop = null;
+                      onRemoveStop(index, stopIndex);
+                    }}
+                  >
+                    Delete
+                  </button>
+                </span>
+              {:else}
                 <button
-                  class="button button-danger"
-                  onclick={() => {
-                    confirmingStop = null;
-                    onRemoveStop(index, stopIndex);
-                  }}
+                  class="icon-button"
+                  aria-label={`Delete ${stop.name}`}
+                  onclick={() => (confirmingStop = stopKey(index, stopIndex))}
                 >
-                  Delete
+                  ×
                 </button>
-              </span>
-            {:else}
-              <button
-                class="icon-button"
-                aria-label={`Delete ${stop.name}`}
-                onclick={() => (confirmingStop = stopKey(index, stopIndex))}
-              >
-                ×
-              </button>
-            {/if}
-          </li>
-        {/each}
-      </ul>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      {/if}
 
       {#if confirmingPage === index}
         <div class="page-confirm" role="status">
@@ -226,6 +340,112 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .page-stop-label {
+    font-size: 0.75rem;
+    color: #6b7280;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 8rem;
+  }
+
+  :global([data-theme="dark"]) .page-stop-label {
+    color: #9ca3af;
+  }
+
+  .page-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #e5e7eb;
+  }
+
+  :global([data-theme="dark"]) .page-form {
+    border-top-color: #4b5563;
+  }
+
+  .page-form-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    font-size: 0.8rem;
+    flex: 1 1 8rem;
+    min-width: 0;
+  }
+
+  .page-form-field input {
+    padding: 0.35rem 0.5rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    font-size: 0.85rem;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  :global([data-theme="dark"]) .page-form-field input {
+    background: #111827;
+    border-color: #4b5563;
+    color: #e5e7eb;
+  }
+
+  .page-form-problem {
+    margin: 0;
+    font-size: 0.8rem;
+    color: #b91c1c;
+  }
+
+  :global([data-theme="dark"]) .page-form-problem {
+    color: #fca5a5;
+  }
+
+  .page-form-stops {
+    border: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .page-form-stops legend {
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0;
+  }
+
+  .page-form-stop {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.5rem;
+  }
+
+  .page-form-stop-name {
+    flex: 1 1 6rem;
+    font-size: 0.85rem;
+    font-weight: 500;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .page-form-check {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8rem;
+    flex: 1 1 12rem;
+  }
+
+  .page-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
   }
 
   .page-stop-confirm {
