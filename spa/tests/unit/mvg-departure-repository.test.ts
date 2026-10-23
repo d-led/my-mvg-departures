@@ -87,4 +87,54 @@ describe("MvgDepartureRepository", () => {
 
     expect(departures[0].delaySeconds).toBe(300); // 5 minutes * 60
   });
+
+  it("keeps the stand number of a bus departure that has no platform", async () => {
+    const time = Date.now() + 300000;
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [
+        {
+          realtimeDepartureTime: time,
+          plannedDepartureTime: time,
+          stopPositionNumber: 10,
+          realtime: true,
+          label: "220",
+          destination: "Winning, Riegerweg/Altersheim",
+          transportType: "REGIONAL_BUS",
+          cancelled: false,
+          messages: [],
+        },
+      ],
+    });
+
+    const [departure] = await repository.getDepartures("de:09162:1110");
+
+    expect(departure.platform).toBeNull();
+    expect(departure.stopPosition).toBe("10");
+  });
+
+  it("keeps the platform of a rail departure, which has no stand number", async () => {
+    const time = Date.now() + 300000;
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [
+        {
+          realtimeDepartureTime: time,
+          plannedDepartureTime: time,
+          platform: 2,
+          realtime: true,
+          label: "U2",
+          destination: "Messestadt Ost",
+          transportType: "UBAHN",
+          cancelled: false,
+          messages: [],
+        },
+      ],
+    });
+
+    const [departure] = await repository.getDepartures("de:09162:1110");
+
+    expect(departure.platform).toBe("2");
+    expect(departure.stopPosition).toBeNull();
+  });
 });

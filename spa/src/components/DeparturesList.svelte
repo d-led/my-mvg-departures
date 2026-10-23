@@ -294,7 +294,10 @@
               data-time-relative={display?.splitShowDelay ? formatPlannedTimeRelative(departure) : formatTimeRelative(departure)}
               data-time-absolute={display?.splitShowDelay ? formatPlannedTimeAbsolute(departure) : formatTimeAbsolute(departure)}
             >
-              <span class="platform">{departure.platform || ""}</span>
+              <span
+                class="platform"
+                class:stand={!departure.platform && Boolean(departure.stopPosition)}
+              >{departure.platform || departure.stopPosition || ""}</span>
               <span class="time {hasDelay(departure) ? 'delay' : ''} {departure.isRealtime ? 'realtime' : ''}">
                 {#if display?.splitShowDelay}
                   <!-- splitShowDelay=true: show planned time + separate delay indicator -->
@@ -531,6 +534,11 @@
     white-space: nowrap;
     min-width: fit-content;
     color: #6b7280;
+  }
+
+  /* A bus or tram stand instead of a rail platform: same column, dark yellow. */
+  .platform.stand {
+    color: #a16207;
   }
 
   .time {

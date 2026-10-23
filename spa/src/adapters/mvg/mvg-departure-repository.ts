@@ -100,12 +100,19 @@ export class MvgDepartureRepository implements DepartureRepository {
     // Match Python: platform = result.get("platform")
     // Python model is int | None, but we store as string for display (Python converts to str when rendering)
     const platform = result.platform != null ? String(result.platform) : null;
+    // Bus and tram departures have no platform: the station numbers their stands
+    // instead, which is what the MVG app prints as "Bus stand N".
+    const stopPosition =
+      result.stopPositionNumber != null
+        ? String(result.stopPositionNumber)
+        : null;
 
     return createDeparture({
       time,
       plannedTime,
       delaySeconds,
       platform,
+      stopPosition,
       isRealtime: result.realtime ?? false,
       line: result.label ?? "",
       destination: result.destination ?? "",

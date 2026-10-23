@@ -6,6 +6,8 @@ export interface MvgApiDeparture {
   plannedDepartureTime: number;
   delayInMinutes?: number;
   platform?: string;
+  /** Bus stand / stop position at a station; rail departures carry `platform` instead. */
+  stopPositionNumber?: number;
   realtime?: boolean;
   label: string;
   destination: string;

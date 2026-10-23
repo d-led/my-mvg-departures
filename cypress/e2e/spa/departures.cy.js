@@ -97,6 +97,39 @@ describe("SPA departures", () => {
     cy.get("#departures").should("contain", "Garching-Forschungszentrum");
   });
 
+  it("shows a bus stand number where a rail departure shows its platform", () => {
+    stubStationLookups();
+    cy.intercept(
+      { method: "GET", url: "**/api/bgw-pt/v3/departures*" },
+      (request) => {
+        const time = Date.now() + 5 * 60 * 1000;
+        request.reply({
+          statusCode: 200,
+          body: [
+            {
+              realtimeDepartureTime: time,
+              plannedDepartureTime: time,
+              delayInMinutes: 0,
+              stopPositionNumber: 10,
+              realtime: true,
+              label: "220",
+              destination: "Winning, Riegerweg/Altersheim",
+              transportType: "REGIONAL_BUS",
+              cancelled: false,
+              messages: [],
+            },
+          ],
+        });
+      },
+    );
+    openSpa();
+
+    cy.get("#departures .platform", { timeout: 15000 })
+      .first()
+      .should("have.text", "10")
+      .and("have.class", "stand");
+  });
+
   it("says how far a slow refresh has got while the screen is empty", () => {
     stubStationLookups();
     cy.intercept(

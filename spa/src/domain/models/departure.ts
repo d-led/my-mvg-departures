@@ -3,6 +3,8 @@ export interface Departure {
   plannedTime: Date;
   delaySeconds: number | null; // Match Python: delay_seconds: int | None
   platform: string | null;
+  /** Bus stand / stop position, where the station has one (rail uses `platform`). */
+  stopPosition: string | null;
   isRealtime: boolean;
   line: string;
   destination: string;
@@ -18,6 +20,7 @@ export function createDeparture(data: {
   plannedTime: Date | number;
   delaySeconds?: number | null;
   platform?: string | null;
+  stopPosition?: string | null;
   isRealtime?: boolean;
   line: string;
   destination: string;
@@ -35,6 +38,7 @@ export function createDeparture(data: {
         : new Date(data.plannedTime),
     delaySeconds: data.delaySeconds ?? null, // Match Python: defaults to None, not 0
     platform: data.platform ?? null,
+    stopPosition: data.stopPosition ?? null,
     isRealtime: data.isRealtime ?? false,
     line: data.line,
     destination: data.destination,
