@@ -294,13 +294,16 @@
       if (allSubStops.size > 0) {
         return;
       }
-      
-      // If no substops were found, skip to configuration
-      console.log('No substops found, skipping to configure');
+
+      // No platforms to choose between: the stops are configured whole. Without
+      // this the wizard would finish and add nothing.
+      console.log('No substops found, configuring the stops whole');
+      selectFullStop = true;
       currentStep = "configure";
       
     } catch (error) {
       console.error("Error loading substop routes:", error);
+      selectFullStop = true; // A failed lookup must not swallow the stops
       currentStep = "configure"; // Fallback to configure on error
     } finally {
       isLoadingSubStops = false;
