@@ -28,7 +28,9 @@ describe("MvgStationRepository coordinates", () => {
   });
 
   it("reads a station's coordinates from the single-station endpoint", async () => {
-    const fetchMock = vi.fn(async (_url: string) => jsonResponse(station));
+    const fetchMock = vi.fn<(url: string) => Promise<Response>>(async () =>
+      jsonResponse(station),
+    );
     vi.stubGlobal("fetch", fetchMock);
 
     const location = await new MvgStationRepository().getStationByQuery(
