@@ -2,7 +2,7 @@
   import { onMount, tick } from "svelte";
   import { ConfigParser } from "../adapters/config/config-parser.js";
   import { CompositeDepartureRepository } from "../adapters/composite-departure-repository.js";
-  import { MvgStationRepository } from "../adapters/mvg/mvg-station-repository.js";
+  import { nearbySourceFor } from "../adapters/on-the-run-nearby-source.js";
   import { LocalStorageCache } from "../adapters/storage/local-storage-cache.js";
   import { LocalStorageConfigStorage } from "../adapters/storage/local-storage-config-storage.js";
   import { DepartureGroupingService } from "../application/services/departure-grouping-service.js";
@@ -85,7 +85,6 @@
   const configStorage = new LocalStorageConfigStorage();
   const configParser = new ConfigParser();
   const cache = new LocalStorageCache();
-  const mvgStationRepository = new MvgStationRepository();
   // departureRepository will be created per route based on stop configs
   let departureRepository: CompositeDepartureRepository | null = null;
   let groupingService: DepartureGroupingService | null = null;
@@ -623,7 +622,7 @@
     refreshIntervalSeconds = refreshInterval;
 
     const newPoller = new OnTheRunPoller(
-      mvgStationRepository,
+      nearbySourceFor(onTheRunConfig.useAdapters),
       cache,
       onTheRunConfig,
       {

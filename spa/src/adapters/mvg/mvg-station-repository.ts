@@ -1,13 +1,8 @@
+import type {
+  NearbyStation,
+  NearbyStationRepository,
+} from "../../domain/ports/nearby-station-repository.js";
 import { fetchWithTimeout } from "../../utils/http.js";
-
-export interface NearbyStation {
-  id: string;
-  name: string;
-  place: string;
-  latitude: number;
-  longitude: number;
-  distanceMeters?: number;
-}
 
 export interface StationLocation {
   id: string;
@@ -19,7 +14,7 @@ export interface StationLocation {
 
 const V3_BASE = "https://www.mvg.de/api/bgw-pt/v3";
 
-export class MvgStationRepository {
+export class MvgStationRepository implements NearbyStationRepository {
   private readonly baseUrl = `${V3_BASE}/stations/nearby`;
   private readonly stationsUrl = `${V3_BASE}/stations`;
   private readonly locationsUrl = `${V3_BASE}/locations`;
@@ -56,7 +51,6 @@ export class MvgStationRepository {
       .map((location) => ({
         id: location.globalId as string,
         name: location.name as string,
-        place: location.place as string,
         latitude: location.latitude as number,
         longitude: location.longitude as number,
         distanceMeters:

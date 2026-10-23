@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { OnTheRunPoller } from "../../src/application/services/on-the-run-poller.js";
-import type {
-  MvgStationRepository,
-  NearbyStation,
-} from "../../src/adapters/mvg/mvg-station-repository.js";
+import type { NearbySource } from "../../src/adapters/on-the-run-nearby-source.js";
+import type { NearbyStation } from "../../src/domain/ports/nearby-station-repository.js";
 import type { DepartureCache } from "../../src/domain/ports/departure-cache.js";
 import type { PollProgress } from "../../src/domain/models/poll-progress.js";
 import type { PollCycleResult } from "../../src/domain/models/index.js";
@@ -15,7 +13,6 @@ const NEARBY_STATIONS: NearbyStation[] = [
   {
     id: CHIEMGAUSTRASSE,
     name: "Chiemgaustr.",
-    place: "München",
     latitude: 48.106_7,
     longitude: 11.596_3,
     distanceMeters: 20,
@@ -23,7 +20,6 @@ const NEARBY_STATIONS: NearbyStation[] = [
   {
     id: GIESING,
     name: "Giesing",
-    place: "München",
     latitude: 48.110_4,
     longitude: 11.596_1,
     distanceMeters: 40,
@@ -34,13 +30,14 @@ function emptyCache(): DepartureCache {
   return { get: async () => null, set: async () => {}, clear: async () => {} };
 }
 
-function nearbyStationsRepository(
+function nearbySourceForStations(
   stations: NearbyStation[],
-): MvgStationRepository {
+  adapter = "mvg",
+): NearbySource {
   return {
-    getNearbyStations: async () => stations,
-    getStationByQuery: async () => null,
-  } as unknown as MvgStationRepository;
+    adapter,
+    repository: { getNearbyStations: async () => stations },
+  };
 }
 
 function departuresFor(globalId: string) {
@@ -120,7 +117,7 @@ describe("OnTheRunPoller progress", () => {
     const errors: Error[] = [];
 
     const poller = new OnTheRunPoller(
-      nearbyStationsRepository(NEARBY_STATIONS),
+      nearbySourceForStations(NEARBY_STATIONS),
       emptyCache(),
       { radiusMeters: 100, useAdapters: ["mvg"] },
       {
@@ -184,7 +181,7 @@ describe("OnTheRunPoller progress", () => {
     const progressEvents: PollProgress[] = [];
 
     const poller = new OnTheRunPoller(
-      nearbyStationsRepository([NEARBY_STATIONS[0]]),
+      nearbySourceForStations([NEARBY_STATIONS[0]]),
       emptyCache(),
       { radiusMeters: 100, useAdapters: ["mvg"] },
       {
@@ -228,7 +225,7 @@ describe("OnTheRunPoller progress", () => {
     const errors: Error[] = [];
 
     const poller = new OnTheRunPoller(
-      nearbyStationsRepository(NEARBY_STATIONS),
+      nearbySourceForStations(NEARBY_STATIONS),
       emptyCache(),
       { radiusMeters: 100, useAdapters: ["mvg"] },
       {
@@ -252,15 +249,17 @@ describe("OnTheRunPoller progress", () => {
   it("explains a nearby-stops failure instead of showing the last status", async () => {
     const statusUpdates: string[][] = [];
     const errors: Error[] = [];
-    const failingStationRepository = {
-      getNearbyStations: async () => {
-        throw new Error("Request timed out after 15 s without an answer");
+    const failingNearbySource: NearbySource = {
+      adapter: "mvg",
+      repository: {
+        getNearbyStations: async () => {
+          throw new Error("Request timed out after 15 s without an answer");
+        },
       },
-      getStationByQuery: async () => null,
-    } as unknown as MvgStationRepository;
+    };
 
     const poller = new OnTheRunPoller(
-      failingStationRepository,
+      failingNearbySource,
       emptyCache(),
       { radiusMeters: 100, useAdapters: ["mvg"] },
       {
@@ -280,4 +279,53 @@ describe("OnTheRunPoller progress", () => {
       "Could not look up nearby stops: Request timed out after 15 s without an answer",
     ]);
   });
+
+  it("asks the adapter that found the stops for their departures", async () => {
+    const fetchMock = vi.fn<(url: string) => Promise<Response>>(async () =>
+      jsonResponse({ departures: [vbbDeparture()] }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const updates: PollCycleResult[] = [];
+    const berlinStop: NearbyStation = {
+      id: "900100014",
+      name: "U Märkisches Museum (Berlin)",
+      latitude: 52.512_007,
+      longitude: 13.408_768,
+      distanceMeters: 25,
+    };
+
+    const poller = new OnTheRunPoller(
+      nearbySourceForStations([berlinStop], "vbb"),
+      emptyCache(),
+      { radiusMeters: 100 },
+      { onUpdate: (result) => updates.push(result), onError: () => {} },
+      undefined,
+      [],
+      { attempts: 1, delayMs: 0 },
+    );
+
+    await poller.start();
+    poller.stop();
+
+    expect(fetchMock.mock.calls[0]?.[0]).toContain(
+      "https://v6.bvg.transport.rest/stops/900100014/departures",
+    );
+    expect(
+      updates[0]?.groups.flatMap((group) => group.departures),
+    ).toHaveLength(1);
+  });
 });
+
+/** A departure as the VBB API answers it, so the VBB adapter is the one used. */
+function vbbDeparture() {
+  const time = new Date(Date.now() + 5 * 60_000).toISOString();
+  return {
+    when: time,
+    plannedWhen: time,
+    direction: "Hermannstr.",
+    platform: "2",
+    cancelled: false,
+    realtime: true,
+    line: { name: "U8", product: "subway" },
+  };
+}

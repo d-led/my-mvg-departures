@@ -98,5 +98,7 @@ radius_meters = 100
 max_departures_per_stop = 8
 max_departures_per_route = 2
 refresh_interval_seconds = 20
+# Which API finds the stops around you, and therefore answers for their
+# departures: "mvg" in Munich, "vbb" in Berlin/Brandenburg.
 use_adapters = ["mvg"]
 random_header_colors = true

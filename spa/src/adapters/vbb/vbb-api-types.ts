@@ -30,3 +30,16 @@ export interface VbbApiDeparture {
 export interface VbbApiResponse {
   departures?: VbbApiDeparture[];
 }
+
+export interface VbbApiLocation {
+  /** `stop` for a platform or station, `location` for an address, `poi` for a place. */
+  type?: string;
+  id?: string;
+  name?: string;
+  location?: {
+    latitude?: number;
+    longitude?: number;
+  };
+  /** Metres from the searched coordinate. */
+  distance?: number;
+}

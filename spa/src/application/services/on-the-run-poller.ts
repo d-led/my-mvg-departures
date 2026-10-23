@@ -15,16 +15,15 @@ import {
   withRetries,
   type RetryPolicy,
 } from "../../utils/retry.js";
+import { rememberStationCoords } from "../../utils/station-coords.js";
 import { createStopConfiguration } from "../../domain/models/stop-configuration.js";
 import { CompositeDepartureRepository } from "../../adapters/composite-departure-repository.js";
+import type { NearbySource } from "../../adapters/on-the-run-nearby-source.js";
+import type { NearbyStation } from "../../domain/ports/nearby-station-repository.js";
 import { DepartureGroupingService } from "./departure-grouping-service.js";
 import { generateHeaderColors } from "./header-color-service.js";
 import { PollLoop } from "./poll-loop.js";
 import { PollProgressReporter } from "./poll-progress-reporter.js";
-import {
-  MvgStationRepository,
-  type NearbyStation,
-} from "../../adapters/mvg/mvg-station-repository.js";
 
 export interface OnTheRunPollerCallbacks {
   onUpdate: (result: PollCycleResult, pollerId: string) => void;
@@ -56,13 +55,12 @@ interface GeoPositionOptions {
 export class OnTheRunPoller {
   private readonly pollerId: string;
   private readonly loop: PollLoop;
-  private hasWarnedIgnoredAdapters = false;
   private statusMessages: string[] = [];
   private lastLocation: { latitude: number; longitude: number } | null = null;
   private readonly progress: PollProgressReporter;
 
   constructor(
-    private readonly stationRepository: MvgStationRepository,
+    private readonly nearby: NearbySource,
     private readonly cache: DepartureCache,
     private readonly config: OnTheRunConfiguration,
     private readonly callbacks: OnTheRunPollerCallbacks,
@@ -103,10 +101,6 @@ export class OnTheRunPoller {
   }
 
   private async poll(fresh: boolean): Promise<void> {
-    if (!this.ensureAdapterSupport()) {
-      return;
-    }
-
     const shouldUpdateLocation =
       fresh ||
       (this.config.updateLocationOnEveryPoll ?? true) ||
@@ -130,6 +124,7 @@ export class OnTheRunPoller {
       nearbyStations,
       location,
     );
+    this.rememberStopPositions(stationsInRange);
     const radius = this.config.radiusMeters ?? 50;
     const stopLabel = stationsInRange.length === 1 ? "stop" : "stops";
     if (stationsInRange.length === 0) {
@@ -338,7 +333,7 @@ export class OnTheRunPoller {
       maxDeparturesPerRoute: this.config.maxDeparturesPerRoute,
       showUngrouped: true,
       ungroupedTitle: "",
-      apiProvider: "mvg",
+      apiProvider: this.nearby.adapter,
     });
   }
 
@@ -381,7 +376,7 @@ export class OnTheRunPoller {
           maxDeparturesPerRoute: this.config.maxDeparturesPerRoute,
           showUngrouped: true,
           ungroupedTitle: configuredUngroupedTitle ?? "",
-          apiProvider: "mvg",
+          apiProvider: this.nearby.adapter,
         }),
       );
     }
@@ -542,6 +537,13 @@ export class OnTheRunPoller {
       .sort((a, b) => (a.distanceMeters ?? 0) - (b.distanceMeters ?? 0));
   }
 
+  /** The map links ask for these stops later; this lookup already knows where they are. */
+  private rememberStopPositions(stations: NearbyStation[]): void {
+    for (const station of stations) {
+      rememberStationCoords(station.id, station.latitude, station.longitude);
+    }
+  }
+
   private calculateDistanceMeters(
     latitude: number,
     longitude: number,
@@ -630,29 +632,6 @@ export class OnTheRunPoller {
     return departures;
   }
 
-  private ensureAdapterSupport(): boolean {
-    const adapters = (this.config.useAdapters ?? ["mvg"]).map((adapter) =>
-      adapter.toLowerCase(),
-    );
-    if (!adapters.includes("mvg")) {
-      this.callbacks.onError(
-        new Error(
-          "on_the_run requires the mvg adapter to fetch nearby stations",
-        ),
-        this.pollerId,
-      );
-      return false;
-    }
-    const ignoredAdapters = adapters.filter((adapter) => adapter !== "mvg");
-    if (ignoredAdapters.length > 0 && !this.hasWarnedIgnoredAdapters) {
-      console.warn(
-        `[${this.pollerId}] Ignoring unsupported on_the_run adapters: ${ignoredAdapters.join(", ")}`,
-      );
-      this.hasWarnedIgnoredAdapters = true;
-    }
-    return true;
-  }
-
   private setStatus(messages: string[]): void {
     this.statusMessages = messages;
     this.callbacks.onStatusUpdate?.([...messages], this.pollerId);
@@ -677,7 +656,7 @@ export class OnTheRunPoller {
     longitude: number;
   }): Promise<NearbyStation[]> {
     try {
-      return await this.stationRepository.getNearbyStations(
+      return await this.nearby.repository.getNearbyStations(
         location.latitude,
         location.longitude,
       );
