@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  draftOfSettings,
   moveConfigPage,
   readConfigPages,
+  readDisplaySettings,
   removeConfigPage,
   removeConfigStop,
+  settingsOfDraft,
   updateConfigPage,
+  updateDisplaySettings,
   type ConfigPageEdit,
 } from "../../src/utils/config-pages.js";
 
@@ -44,6 +48,7 @@ describe("readConfigPages", () => {
       {
         path: "/",
         title: "Home",
+        display: {},
         stops: [
           {
             stationId: "de:09162:1110",
@@ -64,6 +69,7 @@ describe("readConfigPages", () => {
       {
         path: "/work",
         title: "Work",
+        display: {},
         stops: [
           {
             stationId: "de:09162:1000",
@@ -358,5 +364,150 @@ describe("direction headings", () => {
     expect(stop.name).toBe("Karlsplatz");
     expect(trimmed).not.toContain("direction_mappings");
     expect(trimmed).not.toContain("U3 Moosach");
+  });
+});
+
+const WITH_SETTINGS = `[display]
+title = "Zuhause"
+refresh_interval_seconds = 20
+theme = "dark"
+fill_vertical_space = true
+font_size_time = "2rem"
+
+[[routes]]
+path = "/"
+
+[routes.display]
+refresh_interval_seconds = 5
+
+[[routes.stops]]
+station_id = "de:09162:1110"
+station_name = "Giesing"
+`;
+
+describe("display settings", () => {
+  it("reads the file's defaults, and only the ones it knows", () => {
+    expect(readDisplaySettings(WITH_SETTINGS, "global")).toEqual({
+      refresh_interval_seconds: 20,
+      theme: "dark",
+      fill_vertical_space: true,
+    });
+  });
+
+  it("reads a page's own settings without mixing in the defaults", () => {
+    expect(readDisplaySettings(WITH_SETTINGS, 0)).toEqual({
+      refresh_interval_seconds: 5,
+    });
+    expect(readConfigPages(WITH_SETTINGS)[0].display).toEqual({
+      refresh_interval_seconds: 5,
+    });
+  });
+
+  it("changes one default and leaves the rest of the file alone", () => {
+    const edited = updateDisplaySettings(WITH_SETTINGS, "global", {
+      refresh_interval_seconds: 30,
+    });
+
+    expect(readDisplaySettings(edited, "global")).toEqual({
+      refresh_interval_seconds: 30,
+      theme: "dark",
+      fill_vertical_space: true,
+    });
+    expect(edited).toContain('font_size_time = "2rem"');
+    expect(edited).toContain("refresh_interval_seconds = 5");
+  });
+
+  it("adds a setting to a table that does not have it yet", () => {
+    const edited = updateDisplaySettings(WITH_SETTINGS, "global", {
+      random_header_colors: true,
+      theme: "light",
+    });
+
+    expect(readDisplaySettings(edited, "global")).toMatchObject({
+      random_header_colors: true,
+      theme: "light",
+    });
+    expect(edited).toContain('title = "Zuhause"');
+  });
+
+  it("creates the defaults table in a file that has none", () => {
+    const withoutDefaults = `[[routes]]\npath = "/"\n`;
+
+    const edited = updateDisplaySettings(withoutDefaults, "global", {
+      refresh_interval_seconds: 15,
+    });
+
+    expect(readDisplaySettings(edited, "global")).toEqual({
+      refresh_interval_seconds: 15,
+    });
+    expect(readConfigPages(edited)[0].path).toBe("/");
+  });
+
+  it("creates a page's display table in front of its stops", () => {
+    const edited = updateDisplaySettings(WITH_SETTINGS, 0, {
+      theme: "light",
+    });
+    const page = readConfigPages(edited)[0];
+
+    expect(page.display).toEqual({
+      refresh_interval_seconds: 5,
+      theme: "light",
+    });
+    expect(page.stops).toHaveLength(1);
+    expect(edited.indexOf("[routes.display]")).toBeLessThan(
+      edited.indexOf("[[routes.stops]]"),
+    );
+  });
+
+  it("removes a setting and drops the table when it was the last one", () => {
+    const withoutPageTable = updateDisplaySettings(WITH_SETTINGS, 0, {
+      refresh_interval_seconds: undefined,
+    });
+
+    expect(withoutPageTable).not.toContain("[routes.display]");
+    expect(readDisplaySettings(withoutPageTable, "global")).toMatchObject({
+      refresh_interval_seconds: 20,
+    });
+  });
+
+  it("leaves the file alone when nothing really changed", () => {
+    expect(
+      updateDisplaySettings(WITH_SETTINGS, "global", {
+        refresh_interval_seconds: 20,
+        theme: "dark",
+      }),
+    ).toBe(WITH_SETTINGS);
+  });
+});
+
+describe("the display form's draft", () => {
+  it("shows a setting as text and reads the text back as a setting", () => {
+    const draft = draftOfSettings({
+      refresh_interval_seconds: 20,
+      theme: "dark",
+      fill_vertical_space: true,
+    });
+
+    expect(draft.refresh_interval_seconds).toBe("20");
+    expect(draft.theme).toBe("dark");
+    expect(draft.fill_vertical_space).toBe("true");
+    expect(draft.split_show_delay).toBe("");
+
+    expect(settingsOfDraft(draft)).toMatchObject({
+      refresh_interval_seconds: 20,
+      theme: "dark",
+      fill_vertical_space: true,
+      split_show_delay: undefined,
+    });
+  });
+
+  it("treats an emptied field as 'this file no longer sets it'", () => {
+    const draft = draftOfSettings({ refresh_interval_seconds: 20 });
+
+    expect(
+      settingsOfDraft({ ...draft, refresh_interval_seconds: "" }),
+    ).toMatchObject({
+      refresh_interval_seconds: undefined,
+    });
   });
 });

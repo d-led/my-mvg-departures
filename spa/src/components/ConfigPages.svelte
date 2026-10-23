@@ -1,19 +1,34 @@
 <script lang="ts">
-  import type { ConfigPage, ConfigPageEdit } from "../utils/config-pages.js";
+  import DisplayFields from "./DisplayFields.svelte";
+  import {
+    draftOfSettings,
+    settingsOfDraft,
+    type ConfigPage,
+    type ConfigPageEdit,
+    type DisplayDraft,
+    type DisplaySettings,
+  } from "../utils/config-pages.js";
 
   let {
     pages,
+    defaults,
     onReorder,
     onRemovePage,
     onRemoveStop,
     onApplyPage,
+    onApplyPageDisplay,
+    onApplyDefaults,
     onAddStops,
   }: {
     pages: ConfigPage[];
+    /** The file's own display settings, which every page inherits. */
+    defaults: DisplaySettings;
     onReorder: (from: number, to: number) => void;
     onRemovePage: (index: number) => void;
     onRemoveStop: (pageIndex: number, stopIndex: number) => void;
     onApplyPage: (index: number, edit: ConfigPageEdit) => void;
+    onApplyPageDisplay: (index: number, values: DisplaySettings) => void;
+    onApplyDefaults: (values: DisplaySettings) => void;
     onAddStops: () => void;
   } = $props();
 
@@ -25,11 +40,14 @@
   /** The page being edited, and its unsaved form. */
   let editingPage = $state<number | null>(null);
   let draft = $state<Draft | null>(null);
+  /** The open defaults form, if any. */
+  let defaultsDraft = $state<DisplayDraft | null>(null);
 
   /** A stop's matches are edited as one pattern per line. */
   type Draft = {
     path: string;
     title: string;
+    settings: DisplayDraft;
     stops: {
       label: string;
       showUngrouped: boolean;
@@ -55,6 +73,7 @@
     draft = {
       path: page.path,
       title: page.title,
+      settings: draftOfSettings(page.display),
       stops: page.stops.map((stop) => ({
         label: stop.label,
         showUngrouped: stop.showUngrouped,
@@ -121,12 +140,63 @@
         })),
       })),
     };
+    const settings = settingsOfDraft(draft.settings);
     stopEditing();
     onApplyPage(index, edit);
+    onApplyPageDisplay(index, settings);
   }
+
+  function openDefaults() {
+    defaultsDraft = draftOfSettings(defaults);
+  }
+
+  function applyDefaults() {
+    if (defaultsDraft === null) {
+      return;
+    }
+    const values = settingsOfDraft(defaultsDraft);
+    defaultsDraft = null;
+    onApplyDefaults(values);
+  }
+
+  /** What the defaults card says at a glance. */
+  const defaultsSummary = $derived.by(() => {
+    const count = Object.keys(defaults).length;
+    if (count === 0) {
+      return "Nothing set here: the app's own defaults apply.";
+    }
+    return `${count} setting${count === 1 ? "" : "s"} set here, inherited by every page.`;
+  });
 </script>
 
 <div class="pages">
+  <section class="defaults-card" aria-label="Defaults for every page">
+    <header class="page-head">
+      <div class="page-title">
+        <strong>Defaults for every page</strong>
+        <span class="page-path">{defaultsSummary}</span>
+      </div>
+      {#if defaultsDraft === null}
+        <button class="button button-secondary" onclick={openDefaults}>
+          Edit defaults
+        </button>
+      {/if}
+    </header>
+    {#if defaultsDraft !== null}
+      <div class="page-form">
+        <DisplayFields draft={defaultsDraft} />
+        <div class="page-form-actions">
+          <button class="button button-secondary" onclick={() => (defaultsDraft = null)}>
+            Cancel
+          </button>
+          <button class="button button-primary" onclick={applyDefaults}>
+            Apply defaults
+          </button>
+        </div>
+      </div>
+    {/if}
+  </section>
+
   {#each pages as page, index (index)}
     <article
       class="page-card"
@@ -253,6 +323,14 @@
             {/each}
           </fieldset>
 
+          <fieldset class="page-form-stops">
+            <legend>This page's own settings</legend>
+            <p class="page-form-hint">
+              A field left empty uses the defaults above.
+            </p>
+            <DisplayFields draft={draft.settings} />
+          </fieldset>
+
           <div class="page-form-actions">
             <button class="button button-secondary" onclick={stopEditing}>Cancel</button>
             <button
@@ -354,6 +432,18 @@
     border-radius: 0.5rem;
     padding: 0.5rem 0.75rem;
     background: #f9fafb;
+  }
+
+  .defaults-card {
+    border: 1px solid #dbeafe;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: #eff6ff;
+  }
+
+  :global([data-theme="dark"]) .defaults-card {
+    border-color: #1e40af;
+    background: #1e293b;
   }
 
   :global([data-theme="dark"]) .page-card {

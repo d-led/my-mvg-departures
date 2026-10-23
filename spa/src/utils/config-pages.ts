@@ -34,6 +34,8 @@ export interface ConfigPage {
   path: string;
   /** The route's display title, or the path when it has none. */
   title: string;
+  /** The display settings this page sets for itself. */
+  display: DisplaySettings;
   stops: ConfigPageStop[];
 }
 
@@ -164,7 +166,27 @@ function readPage(lines: string[], block: RouteBlock): ConfigPage {
     directions: mappings ? readDirections(lines, mappings) : [],
   }));
 
-  return { path, title, stops };
+  return { path, title, display: displaySettings(lines, display), stops };
+}
+
+/** The display settings a table sets, without touching anything else. */
+function displaySettings(
+  lines: string[],
+  table: TomlTable | undefined,
+): DisplaySettings {
+  if (!table) {
+    return {};
+  }
+
+  const settings: DisplaySettings = {};
+  for (const field of DISPLAY_FIELDS) {
+    const value = settingValue(lines, table, field);
+    if (value !== undefined) {
+      settings[field.key] = value;
+    }
+  }
+
+  return settings;
 }
 
 /** The `direction = [patterns]` rows of a direction table, multi-line arrays included. */
@@ -487,6 +509,259 @@ export function updateConfigPage(
   return unchanged ? toml : rerender(lines, start, block.endLine, blockLines);
 }
 
+/** A display setting a form may edit, and how the form presents it. */
+export interface DisplayField {
+  key: string;
+  label: string;
+  kind: "number" | "boolean" | "select";
+  options?: readonly string[];
+  hint?: string;
+}
+
+/** The settings the SPA renders and the dialog offers, in reading order. */
+export const DISPLAY_FIELDS: readonly DisplayField[] = [
+  {
+    key: "refresh_interval_seconds",
+    label: "Refresh every (seconds)",
+    kind: "number",
+    hint: "How often the departures are fetched again.",
+  },
+  {
+    key: "time_format_toggle_seconds",
+    label: "Relative time switches after (seconds)",
+    kind: "number",
+  },
+  {
+    key: "theme",
+    label: "Theme",
+    kind: "select",
+    options: ["light", "dark", "auto"],
+  },
+  {
+    key: "fill_vertical_space",
+    label: "Fill the screen height",
+    kind: "boolean",
+  },
+  {
+    key: "font_scaling_factor_when_filling",
+    label: "Font scale when filling",
+    kind: "number",
+  },
+  {
+    key: "random_header_colors",
+    label: "Random header colours",
+    kind: "boolean",
+  },
+  {
+    key: "header_background_brightness",
+    label: "Header brightness",
+    kind: "number",
+  },
+  {
+    key: "fetch_retry_attempts",
+    label: "Tries per stop and cycle",
+    kind: "number",
+  },
+  {
+    key: "fetch_retry_delay_ms",
+    label: "Pause between tries (ms)",
+    kind: "number",
+  },
+  { key: "split_show_delay", label: "Show the split later", kind: "boolean" },
+  {
+    key: "route_icon_display",
+    label: "Route icon",
+    kind: "select",
+    options: ["icon_with_text", "badge", "none"],
+  },
+];
+
+export type DisplayValue = string | number | boolean;
+
+/** The settings that are written; a missing key means "leave it as it is". */
+export type DisplaySettings = Record<string, DisplayValue | undefined>;
+
+/** Where display settings live: the file's defaults, or one page's own. */
+export type DisplayScope = "global" | number;
+
+/** The display table of the whole file, or of one page. */
+function displayTable(
+  lines: string[],
+  scope: DisplayScope,
+): TomlTable | undefined {
+  const tables = readTomlTables(lines);
+
+  if (scope === "global") {
+    return tables.find((table) => table.name === "display");
+  }
+
+  const block = routeBlocks(lines)[scope];
+  return block?.tables.find((table) => belongsTo(table.name, "routes.display"));
+}
+
+/** The text after `key =`, comments stripped. */
+function rawValue(
+  lines: string[],
+  table: TomlTable,
+  key: string,
+): string | undefined {
+  const pattern = new RegExp(`^\\s*${key}\\s*=\\s*([^#]*)`);
+
+  for (let line = table.headerLine + 1; line < table.endLine; line += 1) {
+    const match = pattern.exec(lines[line]);
+    if (match) {
+      return match[1].trim();
+    }
+  }
+
+  return undefined;
+}
+
+function settingValue(
+  lines: string[],
+  table: TomlTable,
+  field: DisplayField,
+): DisplayValue | undefined {
+  const raw = rawValue(lines, table, field.key);
+  if (raw === undefined) {
+    return undefined;
+  }
+
+  if (field.kind === "boolean") {
+    return raw === "true";
+  }
+  if (field.kind === "number") {
+    const number = Number(raw);
+    return Number.isFinite(number) ? number : undefined;
+  }
+
+  return raw.startsWith('"') ? raw.slice(1, raw.lastIndexOf('"')) : raw;
+}
+
+function settingLiteral(value: DisplayValue): string {
+  if (typeof value === "string") {
+    return tomlString(value);
+  }
+  return String(value);
+}
+
+/** The display settings a scope sets; settings it does not set are absent. */
+export function readDisplaySettings(
+  toml: string,
+  scope: DisplayScope,
+): DisplaySettings {
+  const lines = toml.split("\n");
+  return displaySettings(lines, displayTable(lines, scope));
+}
+
+/**
+ * The file with the scope's display settings replaced by `values`. A `undefined`
+ * value removes the setting, a setting that already says what `values` says is
+ * left alone, and a scope that had no display table gets one only if needed.
+ */
+export function updateDisplaySettings(
+  toml: string,
+  scope: DisplayScope,
+  values: DisplaySettings,
+): string {
+  const current = readDisplaySettings(toml, scope);
+  const edits = new Map<string, string | null>();
+
+  for (const field of DISPLAY_FIELDS) {
+    if (!(field.key in values)) {
+      continue;
+    }
+    const wanted = values[field.key];
+    if (wanted === undefined) {
+      if (field.key in current) {
+        edits.set(field.key, null);
+      }
+      continue;
+    }
+    if (current[field.key] !== wanted) {
+      edits.set(field.key, settingLiteral(wanted));
+    }
+  }
+
+  if (edits.size === 0) {
+    return toml;
+  }
+
+  const withoutTable = displayTable(toml.split("\n"), scope) === undefined;
+  if (withoutTable) {
+    return insertDisplayTable(toml, scope, edits);
+  }
+
+  let result = toml;
+  for (const [key, value] of edits) {
+    const lines = result.split("\n");
+    const table = displayTable(lines, scope);
+    if (!table) {
+      return result;
+    }
+    result = setKey(
+      lines,
+      { header: table.headerLine, end: table.endLine },
+      key,
+      value,
+    ).join("\n");
+  }
+
+  return dropEmptyDisplayTable(result, scope);
+}
+
+/** A display table with every setting removed is not worth keeping. */
+function dropEmptyDisplayTable(toml: string, scope: DisplayScope): string {
+  const lines = toml.split("\n");
+  const table = displayTable(lines, scope);
+  if (
+    !table ||
+    hasKeys(lines, { header: table.headerLine, end: table.endLine })
+  ) {
+    return toml;
+  }
+
+  const from =
+    scope === "global"
+      ? table.headerLine
+      : leadInStart(lines, table.headerLine);
+  return renderToml(lines, lineRange(from, table.endLine), new Map());
+}
+
+function insertDisplayTable(
+  toml: string,
+  scope: DisplayScope,
+  edits: Map<string, string | null>,
+): string {
+  const entries = [...edits].filter(([, value]) => value !== null);
+  if (entries.length === 0) {
+    return toml;
+  }
+
+  const body = entries.map(([key, value]) => `${key} = ${value}`);
+  if (scope === "global") {
+    return `${toml.trimEnd()}\n\n[display]\n${body.join("\n")}\n`;
+  }
+
+  const lines = toml.split("\n");
+  const block = routeBlocks(lines)[scope];
+  if (!block) {
+    return toml;
+  }
+
+  const blockLines = lines.slice(block.startLine, block.endLine);
+  const at = firstSubTableLine(blockLines);
+  const next = [
+    ...blockLines.slice(0, at),
+    "[routes.display]",
+    ...body,
+    "",
+    ...blockLines.slice(at),
+  ];
+
+  return rerender(lines, block.startLine, block.endLine, next);
+}
+
 interface LineRange {
   /** The table's header line. */
   header: number;
@@ -644,4 +919,40 @@ function rerender(
 ): string {
   const removed = lineRange(startLine, endLine);
   return renderToml(lines, removed, new Map([[startLine, replacement]]));
+}
+
+/** What a display form holds: text, plus the numbers a number input yields. */
+export type DisplayDraft = Record<string, string | number | boolean>;
+
+/** A set of settings as a form shows it. */
+export function draftOfSettings(settings: DisplaySettings): DisplayDraft {
+  const draft: DisplayDraft = {};
+
+  for (const field of DISPLAY_FIELDS) {
+    const value = settings[field.key];
+    draft[field.key] = value === undefined ? "" : String(value);
+  }
+
+  return draft;
+}
+
+/** The settings a form holds; an emptied field means "no longer set". */
+export function settingsOfDraft(draft: DisplayDraft): DisplaySettings {
+  const settings: DisplaySettings = {};
+
+  for (const field of DISPLAY_FIELDS) {
+    const held = draft[field.key];
+    const text = held === undefined ? "" : String(held).trim();
+    if (text === "") {
+      settings[field.key] = undefined;
+      continue;
+    }
+    if (field.kind === "boolean") {
+      settings[field.key] = held === true || text === "true";
+      continue;
+    }
+    settings[field.key] = field.kind === "number" ? Number(text) : text;
+  }
+
+  return settings;
 }

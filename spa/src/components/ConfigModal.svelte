@@ -9,10 +9,13 @@
   import {
     moveConfigPage,
     readConfigPages,
+    readDisplaySettings,
     removeConfigPage,
     removeConfigStop,
     updateConfigPage,
+    updateDisplaySettings,
     type ConfigPageEdit,
+    type DisplaySettings,
   } from "../utils/config-pages.js";
   import {
     applyWizardConfig,
@@ -390,6 +393,9 @@
   /** The pages the config describes, in file order. */
   const configPages = $derived(readConfigPages(configText));
 
+  /** The settings every page inherits. */
+  const globalDisplay = $derived(readDisplaySettings(configText, "global"));
+
   function reorderPage(from: number, to: number) {
     configText = moveConfigPage(configText, from, to);
     showNotice("Pages reordered. Save to keep the new order.");
@@ -410,6 +416,24 @@
     configText = updateConfigPage(configText, index, edit);
     if (configText !== before) {
       showNotice("Page settings updated. Save to keep the change.");
+    }
+  }
+
+  /** The display settings of one page, which win over the file's defaults. */
+  function applyPageDisplay(index: number, values: DisplaySettings) {
+    const before = configText;
+    configText = updateDisplaySettings(configText, index, values);
+    if (configText !== before) {
+      showNotice("Page settings updated. Save to keep the change.");
+    }
+  }
+
+  /** The settings every page inherits. */
+  function applyDefaults(values: DisplaySettings) {
+    const before = configText;
+    configText = updateDisplaySettings(configText, "global", values);
+    if (configText !== before) {
+      showNotice("Defaults updated. Save to keep the change.");
     }
   }
 
@@ -697,10 +721,13 @@
 
         <ConfigPages
           pages={configPages}
+          defaults={globalDisplay}
           onReorder={reorderPage}
           onRemovePage={deletePage}
           onRemoveStop={deleteStop}
           onApplyPage={applyPageEdit}
+          onApplyPageDisplay={applyPageDisplay}
+          onApplyDefaults={applyDefaults}
           onAddStops={openWizard}
         />
       {:else}

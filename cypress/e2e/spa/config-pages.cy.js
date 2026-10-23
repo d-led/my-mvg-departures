@@ -181,8 +181,62 @@ describe("SPA config pages", () => {
       expect(saved).to.contain('"->Norden" = ["U3 Moosach"]');
     });
   });
-  it("makes the departures page follow the headings it was given", () => {
+  it("edits the defaults every page inherits", () => {
     openConfigDialog();
+
+    cy.get(".defaults-card").should("contain", "Nothing set here");
+    cy.get(".defaults-card").contains("button", "Edit defaults").click();
+
+    cy.get('.defaults-card input[aria-label="Refresh every (seconds)"]')
+      .clear()
+      .type("30");
+    cy.get('.defaults-card select[aria-label="Theme"]').select("dark");
+    cy.contains("button", "Apply defaults").click();
+
+    cy.get(".defaults-card").should("contain", "2 settings set here");
+    cy.contains("button", "Save").click();
+
+    cy.window().its("localStorage").invoke("getItem", CONFIG_TOML_KEY).should((saved) => {
+      expect(saved).to.contain("[display]");
+      expect(saved).to.contain("refresh_interval_seconds = 30");
+      expect(saved).to.contain('theme = "dark"');
+    });
+  });
+
+  it("gives one page settings of its own", () => {
+    openConfigDialog();
+
+    cy.get(".page-card").first().contains("button", "Edit").click();
+    cy.get('.page-form input[aria-label="Refresh every (seconds)"]').clear().type("5");
+    cy.contains("button", "Apply changes").click();
+    cy.contains("button", "Save").click();
+
+    cy.window().its("localStorage").invoke("getItem", CONFIG_TOML_KEY).should((saved) => {
+      const pageTable = saved.slice(saved.indexOf("[routes.display]"));
+
+      expect(pageTable).to.contain("refresh_interval_seconds = 5");
+      expect(saved).to.contain('title = "Work"');
+    });
+  });
+
+  it("empties a setting by clearing the field", () => {
+    openConfigDialog();
+
+    cy.get(".page-card").first().contains("button", "Edit").click();
+    cy.get('.page-form input[aria-label="Refresh every (seconds)"]').clear().type("5");
+    cy.contains("button", "Apply changes").click();
+    cy.get(".page-card").first().contains("button", "Edit").click();
+    cy.get('.page-form input[aria-label="Refresh every (seconds)"]').clear();
+    cy.contains("button", "Apply changes").click();
+    cy.contains("button", "Save").click();
+
+    cy.window().its("localStorage").invoke("getItem", CONFIG_TOML_KEY).should((saved) => {
+      expect(saved).not.to.contain("refresh_interval_seconds");
+      expect(saved).to.contain('title = "Home"');
+    });
+  });
+
+  it("makes the departures page follow the headings it was given", () => {    openConfigDialog();
 
     // Registered after `openConfigDialog`, so it wins over that catch-all stub.
     cy.intercept("**/api/bgw-pt/v3/departures*", {

@@ -214,8 +214,20 @@ describe("configuration dialogs on a phone", () => {
     cy.get(".page-card").first().should("contain", "Zuhause");
   });
 
-  it("adds a heading to a stop without leaving the screen", () => {
+  it("edits the defaults on a phone", () => {
     openConfig();
+
+    cy.get(".defaults-card").should("contain", "1 setting set here");
+    cy.get(".defaults-card").contains("button", "Edit defaults").click();
+
+    cy.get('.defaults-card select[aria-label="Theme"]').select("dark");
+    expectNoSidewaysScroll();
+    cy.contains("button", "Apply defaults").click();
+
+    cy.get(".defaults-card").should("contain", "2 settings set here");
+  });
+
+  it("adds a heading to a stop without leaving the screen", () => {    openConfig();
 
     cy.get(".page-card").first().should("contain", "1 heading");
     cy.get(".page-card").first().contains("button", "Edit").click();
