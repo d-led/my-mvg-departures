@@ -424,20 +424,25 @@ export function updateConfigPage(
       wanted.directions !== undefined &&
       !sameDirections(known.directions, wanted.directions)
     ) {
-      const generated = directionTableLines(wanted.directions);
+      const asked = cleanDirections(wanted.directions);
       if (mappings) {
         const mappingRange = rangeOf(mappings);
         blockLines = replaceRange(
           blockLines,
           mappingRange.header,
           mappingRange.end,
-          generated,
+          asked.length === 0
+            ? []
+            : patchDirectionTable(
+                blockLines.slice(mappingRange.header, mappingRange.end),
+                asked,
+              ),
         );
-      } else if (generated.length > 0) {
+      } else if (asked.length > 0) {
         const at = tableLinesEnd(lines, stop) - start;
         blockLines = [
           ...blockLines.slice(0, at),
-          ...generated,
+          ...directionTableLines(asked),
           ...blockLines.slice(at),
         ];
       }
@@ -802,10 +807,14 @@ function sameDirections(
   return cleaned.every(
     (mapping, at) =>
       mapping.direction === current[at].direction &&
-      mapping.patterns.length === current[at].patterns.length &&
-      mapping.patterns.every(
-        (pattern, index) => pattern === current[at].patterns[index],
-      ),
+      samePatterns(mapping.patterns, current[at].patterns),
+  );
+}
+
+function samePatterns(current: string[], wanted: string[]): boolean {
+  return (
+    current.length === wanted.length &&
+    current.every((pattern, at) => pattern === wanted[at])
   );
 }
 
@@ -823,6 +832,133 @@ function directionTableLines(directions: ConfigDirectionMapping[]): string[] {
         `${tomlKey(direction)} = [${patterns.map(tomlString).join(", ")}]`,
     ),
   ];
+}
+
+interface DirectionRow {
+  key: string;
+  /** The line holding `key = [...`. */
+  keyLine: number;
+  /** The line holding the closing bracket. */
+  endLine: number;
+  patterns: string[];
+}
+
+/** The headings a table holds, and the lines each one occupies. */
+function directionRows(lines: string[]): DirectionRow[] {
+  const rows: DirectionRow[] = [];
+  const row = /^\s*(?:"([^"]*)"|'([^']*)'|([A-Za-z0-9_-]+))\s*=\s*(.*)$/;
+
+  let line = 1;
+  while (line < lines.length) {
+    const match = row.exec(lines[line]);
+    if (!match) {
+      line += 1;
+      continue;
+    }
+
+    const array = collectArray(lines, line, match[4], lines.length);
+    rows.push({
+      key: match[1] ?? match[2] ?? match[3],
+      keyLine: line,
+      endLine: array.lastLine,
+      patterns: parseStrings(array.text),
+    });
+    line = array.lastLine + 1;
+  }
+
+  return rows;
+}
+
+/**
+ * The heading table with the rows the form asks for, line by line: a heading the
+ * form did not touch keeps its comments, its layout and its multi-line array; a
+ * changed one keeps its key and its trailing comment; a removed one goes; a new
+ * one is appended.
+ */
+function patchDirectionTable(
+  tableLines: string[],
+  wanted: ConfigDirectionMapping[],
+): string[] {
+  const rows = directionRows(tableLines);
+  const pending = new Map(
+    wanted.map((direction) => [direction.direction, direction]),
+  );
+  let lines = [...tableLines];
+
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const row = rows[index];
+    const target = pending.get(row.key);
+    const from = row.keyLine;
+    const to = row.endLine + 1;
+
+    if (!target) {
+      // The note directly above a heading is the heading's own: it goes with it.
+      const start = leadInStart(lines, from);
+      lines = [...lines.slice(0, start), ...lines.slice(to)];
+      continue;
+    }
+
+    pending.delete(row.key);
+    if (samePatterns(row.patterns, target.patterns)) {
+      continue;
+    }
+
+    const value = target.patterns.map(tomlString).join(", ");
+    lines = [
+      ...lines.slice(0, from),
+      `${keyLiteral(tableLines[row.keyLine])} = [${value}]${trailingComment(tableLines[row.keyLine])}`,
+      ...lines.slice(to),
+    ];
+  }
+
+  if (pending.size === 0) {
+    return lines;
+  }
+
+  const added = [...pending.values()].map(
+    (direction) =>
+      `${tomlKey(direction.direction)} = [${direction.patterns.map(tomlString).join(", ")}]`,
+  );
+  const at = lastContentLine(lines) + 1;
+
+  return [...lines.slice(0, at), ...added, ...lines.slice(at)];
+}
+
+/** Everything before the `=` of a key line, spacing and quotes as written. */
+function keyLiteral(line: string): string {
+  return line.slice(0, line.indexOf("=")).trim();
+}
+
+/** The `# ...` at the end of a line, if it is really a comment. */
+function trailingComment(line: string): string {
+  let quoted: '"' | "'" | null = null;
+
+  for (let at = 0; at < line.length; at += 1) {
+    const character = line[at];
+    if (quoted === null) {
+      if (character === '"' || character === "'") {
+        quoted = character;
+        continue;
+      }
+      if (character === "#") {
+        return ` ${line.slice(at)}`;
+      }
+    } else if (character === quoted) {
+      quoted = null;
+    }
+  }
+
+  return "";
+}
+
+function lastContentLine(lines: string[]): number {
+  for (let line = lines.length - 1; line >= 0; line -= 1) {
+    if (lines[line].trim() !== "") {
+      return line;
+    }
+  }
+
+  return -1;
 }
 
 /** Bare keys stay bare, everything else is quoted the way TOML wants it. */

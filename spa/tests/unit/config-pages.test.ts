@@ -549,3 +549,99 @@ describe("addConfigPage", () => {
     expect(addConfigPage(TWO_PAGES, { path: "  ", title: "" })).toBe(TWO_PAGES);
   });
 });
+
+const WITH_HEADING_NOTES = `[[routes]]
+path = "/"
+
+[[routes.stops]]
+station_id = "de:09162:1110"
+station_name = "Giesing"
+
+[routes.stops.direction_mappings]
+# The city trains, keep this note
+"->City" = ["U2 Messestadt", "19 Pasing"]
+
+# North bound
+"->Norden" = [
+  "U3 Moosach", # this one goes north too
+  "U6 Fröttmaning",
+]
+`;
+
+function headingsOf(toml: string) {
+  return readConfigPages(toml)[0].stops[0].directions;
+}
+
+function editWithHeadings(
+  headings: { direction: string; patterns: string[] }[],
+) {
+  return updateConfigPage(WITH_HEADING_NOTES, 0, {
+    path: "/",
+    title: "/",
+    stops: [{ label: "", showUngrouped: false, directions: headings }],
+  });
+}
+
+describe("rewriting one heading", () => {
+  it("leaves the other headings, their comments and their layout alone", () => {
+    const edited = editWithHeadings([
+      { direction: "->City", patterns: ["U2 Messestadt"] },
+      { direction: "->Norden", patterns: ["U3 Moosach", "U6 Fröttmaning"] },
+    ]);
+
+    expect(edited).toContain("# The city trains, keep this note");
+    expect(edited).toContain("# North bound");
+    expect(edited).toContain("# this one goes north too");
+    expect(edited).toContain(
+      [
+        '"->Norden" = [',
+        '  "U3 Moosach", # this one goes north too',
+        '  "U6 Fröttmaning",',
+        "]",
+      ].join("\n"),
+    );
+    expect(edited).toContain('"->City" = ["U2 Messestadt"]');
+  });
+
+  it("keeps the comment at the end of a heading it changes", () => {
+    const withTrailingNote = WITH_HEADING_NOTES.replace(
+      '"->City" = ["U2 Messestadt", "19 Pasing"]',
+      '"->City" = ["U2 Messestadt", "19 Pasing"] # city, both directions',
+    );
+
+    const edited = updateConfigPage(withTrailingNote, 0, {
+      path: "/",
+      title: "/",
+      stops: [
+        {
+          label: "",
+          showUngrouped: false,
+          directions: [
+            { direction: "->City", patterns: ["U5 Messestadt"] },
+            {
+              direction: "->Norden",
+              patterns: ["U3 Moosach", "U6 Fröttmaning"],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(edited).toContain(
+      '"->City" = ["U5 Messestadt"] # city, both directions',
+    );
+  });
+
+  it("takes a removed heading's own note with it and keeps the rest", () => {
+    const edited = editWithHeadings([
+      { direction: "->City", patterns: ["U2 Messestadt", "19 Pasing"] },
+    ]);
+
+    expect(headingsOf(edited).map((heading) => heading.direction)).toEqual([
+      "->City",
+    ]);
+    expect(edited).toContain("# The city trains, keep this note");
+    expect(edited).not.toContain("# North bound");
+    expect(edited).not.toContain("U3 Moosach");
+  });
+});

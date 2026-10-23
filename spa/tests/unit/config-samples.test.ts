@@ -76,6 +76,58 @@ describe("the config samples the app ships", () => {
       });
     });
 
+    it("rewrites one heading without disturbing the others", () => {
+      const pages = readConfigPages(toml);
+      const pageIndex = pages.findIndex((page) =>
+        page.stops.some((stop) => stop.directions.length > 1),
+      );
+      if (pageIndex < 0) {
+        return;
+      }
+
+      const page = pages[pageIndex];
+      const stopIndex = page.stops.findIndex(
+        (stop) => stop.directions.length > 1,
+      );
+      const before = page.stops[stopIndex].directions;
+      const stops = page.stops.map((stop, at) =>
+        at === stopIndex
+          ? {
+              label: stop.label,
+              showUngrouped: stop.showUngrouped,
+              directions: before.map((direction, index) =>
+                index === 0
+                  ? { ...direction, patterns: ["U9 Nichts"] }
+                  : direction,
+              ),
+            }
+          : {
+              label: stop.label,
+              showUngrouped: stop.showUngrouped,
+              directions: stop.directions,
+            },
+      );
+
+      const edited = updateConfigPage(toml, pageIndex, {
+        path: page.path,
+        title: page.title,
+        stops,
+      });
+      const after =
+        readConfigPages(edited)[pageIndex].stops[stopIndex].directions;
+
+      expect(after[0].patterns).toEqual(["U9 Nichts"]);
+      expect(after.slice(1)).toEqual(before.slice(1));
+
+      // The heading the test left alone keeps the layout it had.
+      const untouchedMultiLine = before
+        .slice(1)
+        .find((direction) => direction.patterns.length > 1);
+      if (untouchedMultiLine) {
+        expect(edited).toContain(`"${untouchedMultiLine.direction}" = [\n`);
+      }
+    });
+
     it("reads the direction headings the file holds", () => {
       const headings = readConfigPages(toml).flatMap((page) =>
         page.stops.flatMap((stop) => stop.directions),
