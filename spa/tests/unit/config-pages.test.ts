@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  addConfigPage,
   draftOfSettings,
   moveConfigPage,
   readConfigPages,
@@ -509,5 +510,42 @@ describe("the display form's draft", () => {
     ).toMatchObject({
       refresh_interval_seconds: undefined,
     });
+  });
+});
+
+describe("addConfigPage", () => {
+  it("adds an empty page with a title after the last one", () => {
+    const edited = addConfigPage(TWO_PAGES, { path: "/office", title: "Büro" });
+    const pages = readConfigPages(edited);
+
+    expect(pages.map((page) => page.title)).toEqual(["Home", "Work", "Büro"]);
+    expect(pages[2].stops).toEqual([]);
+    expect(edited).toContain("[[on_the_run]]");
+  });
+
+  it("keeps the Next to me table last", () => {
+    const edited = addConfigPage(TWO_PAGES, { path: "/office", title: "" });
+
+    expect(
+      edited.indexOf("[[routes]]", edited.indexOf("/work")),
+    ).toBeGreaterThan(-1);
+    expect(edited.trimEnd().endsWith("radius_meters = 500")).toBe(true);
+  });
+
+  it("writes the first page into a file that has none", () => {
+    const edited = addConfigPage(`[display]\ntitle = "Leer"\n`, {
+      path: "/",
+      title: "",
+    });
+
+    expect(readConfigPages(edited)).toHaveLength(1);
+    expect(readConfigPages(edited)[0].path).toBe("/");
+  });
+
+  it("refuses a path that is already taken", () => {
+    expect(addConfigPage(TWO_PAGES, { path: "/work", title: "" })).toBe(
+      TWO_PAGES,
+    );
+    expect(addConfigPage(TWO_PAGES, { path: "  ", title: "" })).toBe(TWO_PAGES);
   });
 });

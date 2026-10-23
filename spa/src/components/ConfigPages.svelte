@@ -7,6 +7,7 @@
     type ConfigPageEdit,
     type DisplayDraft,
     type DisplaySettings,
+    type NewConfigPage,
   } from "../utils/config-pages.js";
 
   let {
@@ -18,6 +19,7 @@
     onApplyPage,
     onApplyPageDisplay,
     onApplyDefaults,
+    onAddPage,
     onAddStops,
   }: {
     pages: ConfigPage[];
@@ -29,6 +31,7 @@
     onApplyPage: (index: number, edit: ConfigPageEdit) => void;
     onApplyPageDisplay: (index: number, values: DisplaySettings) => void;
     onApplyDefaults: (values: DisplaySettings) => void;
+    onAddPage: (page: NewConfigPage) => void;
     onAddStops: () => void;
   } = $props();
 
@@ -157,6 +160,46 @@
     const values = settingsOfDraft(defaultsDraft);
     defaultsDraft = null;
     onApplyDefaults(values);
+  }
+
+  /** The new page's form, if it is open. */
+  let newPageDraft = $state<{ path: string; title: string } | null>(null);
+
+  /** Why the new page cannot be created yet, or "" while it can. */
+  const newPageProblem = $derived.by(() => {
+    if (newPageDraft === null) {
+      return "";
+    }
+    const path = newPageDraft.path.trim();
+    if (!path.startsWith("/")) {
+      return "A path starts with a slash, like /work.";
+    }
+    return pages.some((page) => page.path === path)
+      ? "A page already uses this path."
+      : "";
+  });
+
+  const canCreatePage = $derived(
+    newPageDraft !== null &&
+      newPageDraft.path.trim() !== "" &&
+      newPageProblem === "",
+  );
+
+  function openNewPage() {
+    stopEditing();
+    newPageDraft = { path: "", title: "" };
+  }
+
+  function applyNewPage() {
+    if (newPageDraft === null || !canCreatePage) {
+      return;
+    }
+    const page: NewConfigPage = {
+      path: newPageDraft.path.trim(),
+      title: newPageDraft.title.trim(),
+    };
+    newPageDraft = null;
+    onAddPage(page);
   }
 
   /** What the defaults card says at a glance. */
@@ -411,7 +454,46 @@
     </p>
   {/if}
 
-  <button class="button button-secondary add-stops" onclick={onAddStops}>Add stops…</button>
+  {#if newPageDraft === null}
+    <div class="pages-actions">
+      <button class="button button-secondary" onclick={openNewPage}>
+        New page
+      </button>
+      <button class="button button-secondary add-stops" onclick={onAddStops}>
+        Add stops…
+      </button>
+    </div>
+  {:else}
+    <div class="new-page-form">
+      <label class="page-form-field">
+        <span>Path</span>
+        <input
+          bind:value={newPageDraft.path}
+          placeholder="/work"
+          aria-label="New page path"
+        />
+      </label>
+      <label class="page-form-field">
+        <span>Title</span>
+        <input
+          bind:value={newPageDraft.title}
+          placeholder="The path, unless you name it"
+          aria-label="New page title"
+        />
+      </label>
+      {#if newPageProblem}
+        <p class="page-form-problem" role="alert">{newPageProblem}</p>
+      {/if}
+      <div class="page-form-actions">
+        <button class="button button-secondary" onclick={() => (newPageDraft = null)}>
+          Cancel
+        </button>
+        <button class="button button-primary" disabled={!canCreatePage} onclick={applyNewPage}>
+          Create page
+        </button>
+      </div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -715,6 +797,29 @@
 
   .add-stops {
     align-self: flex-start;
+  }
+
+  .pages-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-self: flex-start;
+  }
+
+  .new-page-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: #f9fafb;
+    min-width: 0;
+  }
+
+  :global([data-theme="dark"]) .new-page-form {
+    border-color: #4b5563;
+    background: #1f2937;
   }
 
   .icon-button {

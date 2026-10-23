@@ -893,3 +893,39 @@ export function settingsOfDraft(draft: DisplayDraft): DisplaySettings {
 
   return settings;
 }
+
+/** A page the user asks for: its path, and a title if they want one. */
+export interface NewConfigPage {
+  path: string;
+  title: string;
+}
+
+/**
+ * The file with a new, empty page after the last one. A path that is already
+ * taken, or none at all, leaves the file exactly as it is.
+ */
+export function addConfigPage(toml: string, page: NewConfigPage): string {
+  const path = page.path.trim();
+  if (path === "") {
+    return toml;
+  }
+
+  const lines = toml.split("\n");
+  const blocks = routeBlocks(lines);
+  const taken = blocks.some(
+    (block) => (stringValue(lines, block.tables[0], "path") ?? "/") === path,
+  );
+  if (taken) {
+    return toml;
+  }
+
+  const snippet = ["", "[[routes]]", `path = ${tomlString(path)}`];
+  const title = page.title.trim();
+  if (title !== "" && title !== path) {
+    snippet.push("", "[routes.display]", `title = ${tomlString(title)}`);
+  }
+
+  const at =
+    blocks.length > 0 ? blocks[blocks.length - 1].endLine : lines.length;
+  return rerender(lines, at, at, snippet);
+}

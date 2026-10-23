@@ -230,6 +230,20 @@ describe("configuration dialogs on a phone", () => {
     cy.get(".page-row-form").should("not.exist");
   });
 
+  it("creates a page on a phone", () => {
+    openConfig();
+
+    cy.get(".pages-actions").contains("button", "New page").click();
+    cy.get('.new-page-form input[aria-label="New page path"]')
+      .should("be.visible")
+      .type("/home");
+    expectNoSidewaysScroll();
+
+    cy.contains("button", "Create page").click();
+
+    cy.get(".page-card").should("have.length", 3);
+  });
+
   it("edits the defaults on a phone", () => {
     openConfig();
 

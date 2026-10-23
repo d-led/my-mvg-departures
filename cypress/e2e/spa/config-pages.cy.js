@@ -236,6 +236,32 @@ describe("SPA config pages", () => {
     });
   });
 
+  it("creates a new page and refuses a path that is taken", () => {
+    openConfigDialog();
+
+    cy.get(".pages-actions").contains("button", "New page").click();
+    cy.get('.new-page-form input[aria-label="New page path"]').type("/work");
+    cy.get(".new-page-form .page-form-problem").should("contain", "already uses this path");
+    cy.contains("button", "Create page").should("be.disabled");
+
+    cy.get('.new-page-form input[aria-label="New page path"]').clear().type("/office");
+    cy.get('.new-page-form input[aria-label="New page title"]').type("Büro");
+    cy.contains("button", "Create page").click();
+
+    cy.get(".page-card").should("have.length", 3);
+    pageTitles().eq(2).should("have.text", "Büro");
+
+    cy.contains("button", "Save").click();
+
+    cy.window().its("localStorage").invoke("getItem", CONFIG_TOML_KEY).should((saved) => {
+      expect(saved).to.contain('path = "/office"');
+      expect(saved).to.contain('title = "Büro"');
+      expect(saved.indexOf('path = "/office"')).to.be.greaterThan(
+        saved.indexOf('path = "/work"'),
+      );
+    });
+  });
+
   it("restores the Next to me page and edits what it looks for", () => {
     openConfigDialog();
 

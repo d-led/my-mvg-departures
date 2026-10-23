@@ -13,9 +13,11 @@
     removeConfigPage,
     removeConfigStop,
     updateConfigPage,
+    addConfigPage,
     updateDisplaySettings,
     type ConfigPageEdit,
     type DisplaySettings,
+    type NewConfigPage,
   } from "../utils/config-pages.js";
   import {
     applyWizardConfig,
@@ -455,6 +457,19 @@
     }
   }
 
+  /** Adds an empty page after the last one; the card says what to do next. */
+  function addPage(page: NewConfigPage) {
+    const before = configText;
+    configText = addConfigPage(configText, page);
+    if (configText === before) {
+      showNotice(`A page already uses the path ${page.path}.`);
+      return;
+    }
+    showNotice(
+      `Added the page “${page.title || page.path}”. Add stops to it, then save.`,
+    );
+  }
+
   /** The settings every page inherits. */
   function applyDefaults(values: DisplaySettings) {
     const before = configText;
@@ -805,6 +820,7 @@
           onApplyPage={applyPageEdit}
           onApplyPageDisplay={applyPageDisplay}
           onApplyDefaults={applyDefaults}
+          onAddPage={addPage}
           onAddStops={openWizard}
         />
       {:else}

@@ -27,7 +27,8 @@ The dialog has two views:
   settings, and per stop its direction headings (the name and the one-per-line
   matches) plus the heading for departures that match none and whether they are
   shown at all - and the page or a single stop can be deleted, each asking first.
-  **Add stops…** brings up the wizard. Everything is an edit of the file: nothing
+  **New page** adds an empty one and **Add stops…** brings up the wizard for it.
+  Everything is an edit of the file: nothing
   is stored until **Save**, and **Cancel** leaves the stored config untouched,
   while applying an unchanged form changes nothing at all.
 - **TOML** - the raw configuration, for pasting an existing config or fixing
