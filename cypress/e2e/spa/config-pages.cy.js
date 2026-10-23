@@ -236,6 +236,27 @@ describe("SPA config pages", () => {
     });
   });
 
+  it("keeps the app usable when the page you are on is deleted", () => {
+    cy.intercept("**/api/bgw-pt/v3/**", { statusCode: 200, body: [] });
+    cy.visit("/#/work", {
+      onBeforeLoad(win) {
+        win.localStorage.setItem(CONFIG_TOML_KEY, TWO_PAGES);
+      },
+    });
+
+    cy.get(".config-button").click();
+    cy.get(".page-card").eq(1).contains("button", "Delete page").click();
+    cy.get(".page-card").eq(1).contains("button", "Yes, delete").click();
+    cy.contains("button", "Save").click();
+
+    // The route in the address bar is gone: the app falls back to the first page
+    // and takes the address bar with it.
+    cy.get(".modal-content").should("not.exist");
+    cy.get("h1").should("contain", "Home");
+    cy.location("hash").should("not.contain", "/work");
+    cy.get("body").should("not.contain", "undefined");
+  });
+
   it("creates a new page and refuses a path that is taken", () => {
     openConfigDialog();
 
