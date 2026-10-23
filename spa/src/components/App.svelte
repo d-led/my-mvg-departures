@@ -77,6 +77,11 @@
     return appConfig.routes.flatMap((route) => route.stops ?? []);
   }
 
+  /** The route the app opens with: the one at "/", or the first configured. */
+  function defaultRoute(routes: RouteConfiguration[]): RouteConfiguration | undefined {
+    return routes.find((route) => route.path === "/") ?? routes[0];
+  }
+
   const configStorage = new LocalStorageConfigStorage();
   const configParser = new ConfigParser();
   const cache = new LocalStorageCache();
@@ -397,10 +402,10 @@
     // Get current route from hash (hash-based routing for SPA)
     const hash = window.location.hash.slice(1); // Remove leading #
     
-    // If hash is empty or just "/", use the first route (default) but don't change the URL
+    // If hash is empty or just "/", use the route at "/" (or the first one) but don't change the URL
     let route: RouteConfiguration | undefined;
     if (hash === "" || hash === "/") {
-      route = config.routes[0];
+      route = defaultRoute(config.routes);
       // Use the route but don't set the hash - keep URL at root
       if (route) {
         await switchRoute(route, false); // false = don't update hash

@@ -4,6 +4,7 @@ import {
   getWizardConfigContext,
   type WizardResult,
 } from "../../src/utils/config-modifier.js";
+import { ConfigParser } from "../../src/adapters/config/config-parser.js";
 
 describe("config-modifier", () => {
   describe("applyWizardConfig - main stops with existing config", () => {
@@ -134,6 +135,43 @@ max_departures_per_stop = 6
   });
 
   describe("applyWizardConfig - route stops with existing config", () => {
+    it("keeps a route's own display settings when adding a stop", () => {
+      const existingConfig = `
+[[routes]]
+path = "/work"
+
+[routes.display]
+title = "Work"
+refresh_interval_seconds = 60
+
+[[routes.stops]]
+station_id = "de:09162:1110"
+station_name = "Giesing"
+`;
+
+      const result = applyWizardConfig(existingConfig, {
+        target: "route",
+        route: { path: "/work" },
+        stops: [
+          {
+            station_id: "de:09162:2000",
+            station_name: "Marienplatz",
+            max_departures_per_stop: 6,
+            max_departures_per_route: 3,
+            max_hours_in_advance: 2,
+            show_ungrouped: true,
+          },
+        ],
+      });
+
+      const workRoute = new ConfigParser()
+        .parseToml(result)
+        .routes.find((route) => route.path === "/work");
+
+      expect(workRoute?.display?.title).toBe("Work");
+      expect(workRoute?.refreshIntervalSeconds).toBe(60);
+    });
+
     it("should merge stops into existing route with multiple stops", () => {
       const existingConfig = `
 [[routes]]
@@ -330,7 +368,7 @@ max_departures_per_stop = 5
   });
 
   describe("getWizardConfigContext", () => {
-    it("should extract main stop IDs from config", () => {
+    it("reads the legacy top-level stops as the route at /", () => {
       const config = `
 [[stops]]
 station_id = "de:09162:1110"
@@ -343,7 +381,10 @@ station_name = "Marienplatz"
 
       const context = getWizardConfigContext(config);
 
-      expect(context.mainStopIds).toEqual(["de:09162:1110", "de:09162:2000"]);
+      expect(context.routeStopIdsByPath["/"]).toEqual([
+        "de:09162:1110",
+        "de:09162:2000",
+      ]);
     });
 
     it("should extract route stop IDs indexed by path", () => {
@@ -401,7 +442,6 @@ station_id = "de:09162:1110"
     it("should return empty context for empty config", () => {
       const context = getWizardConfigContext("");
 
-      expect(context.mainStopIds).toEqual([]);
       expect(context.routeStopIdsByPath).toEqual({});
       expect(context.hasOnTheRun).toBe(false);
     });
@@ -422,7 +462,7 @@ station_name = "Marienplatz"
 
       const context = getWizardConfigContext(config);
 
-      expect(context.mainStopIds).toEqual(["de:09162:1110"]);
+      expect(context.routeStopIdsByPath["/"]).toEqual(["de:09162:1110"]);
       expect(context.routeStopIdsByPath["/custom"]).toEqual(["de:09162:2000"]);
     });
   });
@@ -456,6 +496,40 @@ max_departures_per_stop = 6
       expect(result).toContain("de:09162:1110");
       expect(result).toContain("de:09162:2000");
       expect(result).not.toContain("ungrouped_title");
+    });
+
+    it("adds a stop to the route at / without keeping a top-level stop list", () => {
+      const existingConfig = `
+[[stops]]
+station_id = "de:09162:1110"
+station_name = "Giesing"
+`;
+
+      const result = applyWizardConfig(existingConfig, {
+        target: "main",
+        stops: [
+          {
+            station_id: "de:09162:2000",
+            station_name: "Marienplatz",
+            max_departures_per_stop: 6,
+            max_departures_per_route: 3,
+            max_hours_in_advance: 2,
+            show_ungrouped: true,
+          },
+        ],
+      });
+
+      expect(result).not.toMatch(/^\[\[stops\]\]/m);
+      expect(result).toContain('path = "/"');
+
+      const defaultRoute = new ConfigParser()
+        .parseToml(result)
+        .routes.find((route) => route.path === "/");
+
+      expect(defaultRoute?.stops.map((stop) => stop.stationId)).toEqual([
+        "de:09162:1110",
+        "de:09162:2000",
+      ]);
     });
 
     it("should handle stops with empty direction mappings in existing config", () => {

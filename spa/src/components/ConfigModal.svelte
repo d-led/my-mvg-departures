@@ -11,6 +11,10 @@
     type WizardConfigContext,
     type WizardResult,
   } from "../utils/config-modifier.js";
+  import {
+    cleanUpConfigToml,
+    describeCleanup,
+  } from "../utils/config-cleanup.js";
 
   let {
     onSave,
@@ -22,6 +26,7 @@
 
   let configText = $state("");
   let errorMessage = $state<string | null>(null);
+  let cleanupNotice = $state<string | null>(null);
   let isSaving = $state(false);
   let isLoadingExample = $state(false);
   let copySuccess = $state(false);
@@ -80,38 +85,19 @@
     return path === "on-the-run" || path === "/on-the-run";
   }
 
-  type DeletableConfigItem =
-    | { kind: "route"; id: string; label: string; path: string; startLine: number; endLine: number }
-    | { kind: "inky"; id: string; label: string; startLine: number; endLine: number };
+  type DeletableRoute = {
+    id: string;
+    label: string;
+    path: string;
+    startLine: number;
+    endLine: number;
+  };
 
-  function buildDeletableConfigItems(): DeletableConfigItem[] {
-    const items: DeletableConfigItem[] = [];
+  function buildDeletableRoutes(): DeletableRoute[] {
+    const items: DeletableRoute[] = [];
     if (!configText.trim()) return items;
 
     const lines = configText.split("\n");
-
-    // Find [inky] section
-    for (let i = 0; i < lines.length; i++) {
-      const trimmed = lines[i].trim();
-      if (trimmed === "[inky]") {
-        let end = i + 1;
-        while (end < lines.length) {
-          const next = lines[end].trim();
-          if (next.startsWith("[") && !next.startsWith("[inky.") && next !== "[inky]") {
-            break;
-          }
-          end++;
-        }
-        items.push({
-          kind: "inky",
-          id: "inky",
-          label: "Inky e-ink config",
-          startLine: i,
-          endLine: end,
-        });
-        break;
-      }
-    }
 
     // Find [[routes]] blocks (exclude default "/" and on-the-run)
     let i = 0;
@@ -151,7 +137,6 @@
         if (normalizedPath !== "/" && !isOnTheRunRoute(normalizedPath)) {
           const displayLabel = title ?? normalizedPath;
           items.push({
-            kind: "route",
             id: `route::${normalizedPath}`,
             label: displayLabel,
             path: normalizedPath,
@@ -167,7 +152,7 @@
     return items;
   }
 
-  const deletableConfigItems = $derived(buildDeletableConfigItems());
+  const deletableConfigItems = $derived(buildDeletableRoutes());
 
   function toggleDeleteRoutesSelection(id: string) {
     const next = new Set(deleteRoutesSelections);
@@ -808,6 +793,7 @@
     const storedToml = await configStorage.getConfigToml();
     configText = storedToml || "";
     errorMessage = null; // Clear error when loading
+    cleanupNotice = null;
   }
 
   // Load raw TOML from storage when modal opens
@@ -821,6 +807,26 @@
       errorMessage = null;
     }
   });
+
+  /**
+   * Rewrites the config into the SPA's shape in one step. Nothing is saved here:
+   * the user reviews the result and saves it with the usual button.
+   */
+  function handleCleanup() {
+    cleanupNotice = null;
+    try {
+      const cleanup = cleanUpConfigToml(configText);
+      if (cleanup.changed) {
+        configParser.parseToml(cleanup.toml);
+        configText = cleanup.toml;
+        errorMessage = null;
+      }
+      cleanupNotice = describeCleanup(cleanup);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errorMessage = `Could not clean up the configuration: ${message}`;
+    }
+  }
 
   async function loadExampleConfig() {
     isLoadingExample = true;
@@ -1012,22 +1018,21 @@
     <ConfigWizard
       onComplete={handleWizardComplete}
       onCancel={() => (showWizard = false)}
-      existingMainStopIds={wizardContext?.mainStopIds ?? []}
       routeStopIdsByPath={wizardContext?.routeStopIdsByPath ?? {}}
       onTheRunDisabled={isOnTheRunRoute(getCurrentRoutePath())}
     />
   {:else if showDeleteRoutes}
     <div class="modal-content delete-routes-content">
       <div class="modal-header">
-        <h2>Delete Routes & Config</h2>
+        <h2>Delete Routes</h2>
         <button class="close-button" onclick={() => (showDeleteRoutes = false)} aria-label="Close">×</button>
       </div>
       <div class="modal-body">
         <p class="delete-routes-hint">
-          Select the routes or Inky config to remove from your configuration.
+          Select the routes to remove from your configuration.
         </p>
         {#if deletableConfigItems.length === 0}
-          <p class="delete-routes-empty">Nothing to delete. Add routes (other than the main one) or an [inky] section to see them here.</p>
+          <p class="delete-routes-empty">Nothing to delete. Add a route other than the main one to see it here.</p>
         {:else}
           {#if deleteRoutesStep === "select"}
             <div class="delete-routes-list delete-list" role="list">
@@ -1041,9 +1046,7 @@
                   />
                   <span class="delete-routes-label delete-item-label">
                     {item.label}
-                    {#if item.kind === "route"}
-                      <span class="delete-routes-path">{item.path}</span>
-                    {/if}
+                    <span class="delete-routes-path">{item.path}</span>
                   </span>
                 </label>
               {/each}
@@ -1055,9 +1058,7 @@
                 {#each deletableConfigItems.filter((item) => deleteRoutesSelections.has(item.id)) as item (item.id)}
                   <li>
                     {item.label}
-                    {#if item.kind === "route"}
-                      <span class="delete-routes-path">{item.path}</span>
-                    {/if}
+                    <span class="delete-routes-path">{item.path}</span>
                   </li>
                 {/each}
               </ul>
@@ -1183,9 +1184,17 @@
           <button
             class="method-button"
             onclick={startDeleteRoutesFlow}
-            title="Delete routes or Inky config from the file"
+            title="Delete routes from the file"
           >
             Routes
+          </button>
+          <button
+            class="method-button"
+            onclick={handleCleanup}
+            disabled={!configText.trim() || isSaving || isLoadingExample}
+            title="Remove the sections and settings the SPA never reads"
+          >
+            Clean up
           </button>
         </div>
 
@@ -1201,6 +1210,11 @@
       {#if errorMessage}
         <div class="error-message" role="alert">
           {errorMessage}
+        </div>
+      {/if}
+      {#if cleanupNotice}
+        <div class="cleanup-notice" role="status">
+          {cleanupNotice}
         </div>
       {/if}
       <div class="textarea-container">
@@ -1420,6 +1434,11 @@
 
   .method-button:hover {
     color: #111827;
+  }
+
+  .method-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .delete-route-label {
@@ -1990,6 +2009,23 @@
     background-color: #7f1d1d;
     border-color: #dc2626;
     color: #fca5a5;
+  }
+
+  .cleanup-notice {
+    background-color: #ecfdf5;
+    border: 1px solid #6ee7b7;
+    border-radius: 0.375rem;
+    padding: 0.75rem;
+    margin-bottom: 0.75rem;
+    color: #065f46;
+    font-size: 0.875rem;
+    flex-shrink: 0;
+  }
+
+  :global([data-theme="dark"]) .cleanup-notice {
+    background-color: #064e3b;
+    border-color: #059669;
+    color: #6ee7b7;
   }
 
   .textarea-container {

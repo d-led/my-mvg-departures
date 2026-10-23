@@ -7,6 +7,7 @@ import {
   getWizardConfigContext,
 } from "../../src/utils/config-modifier";
 import type { WizardResult } from "../../src/utils/config-modifier";
+import { ConfigParser } from "../../src/adapters/config/config-parser.js";
 
 /**
  * Integration tests: Verify wizard output maintains valid TOML schema
@@ -25,7 +26,7 @@ describe("Wizard TOML Schema Integrity", () => {
   });
 
   describe("Main route additions", () => {
-    it("should add stop to main config preserving schema", () => {
+    it("writes the stop into the route at / instead of a top-level table", () => {
       const result: WizardResult = {
         target: "main",
         stops: [
@@ -42,24 +43,20 @@ describe("Wizard TOML Schema Integrity", () => {
 
       const output = applyWizardConfig(exampleConfig, result);
 
-      // Schema validation: stops should be array of tables [[stops]]
-      const lines = output.split("\n");
+      // The SPA has no top-level [[stops]]: the route at "/" owns them.
+      expect(output).not.toMatch(/^\[\[stops\]\]/m);
+      expect(output).toMatch(/^\[\[routes\.stops\]\]/m);
 
-      // Count [[stops]] occurrences - should have multiple
-      const stopsTableCount = lines.filter((l) =>
-        l.match(/^\[\[stops\]\]/),
-      ).length;
-      expect(stopsTableCount).toBeGreaterThanOrEqual(2); // At least original + new
+      const defaultRoute = new ConfigParser()
+        .parseToml(output)
+        .routes.find((route) => route.path === "/");
 
-      // No inline stops = [...] array property
-      const hasInlineStopsArray = lines.some(
-        (l) => l.match(/^\s*stops\s*=\s*\[/) && !l.includes("routes.stops"),
+      expect(defaultRoute?.stops.map((stop) => stop.stationId)).toContain(
+        "de:test:9999",
       );
-      expect(hasInlineStopsArray).toBe(false);
-
-      // Must contain new stop
-      expect(output).toContain("de:test:9999");
-      expect(output).toContain("New Test Stop");
+      expect(defaultRoute?.stops.map((stop) => stop.stationName)).toContain(
+        "New Test Stop",
+      );
     });
 
     it("should preserve display section when adding main stop", () => {
@@ -162,9 +159,11 @@ describe("Wizard TOML Schema Integrity", () => {
     });
 
     it("should update existing route preserving schema", () => {
-      // Get a route path from the example config
+      // Get a route path from the example config, other than the default route
       const context = getWizardConfigContext(exampleConfig);
-      const existingRoutePath = Object.keys(context.routeStopIdsByPath)[0];
+      const existingRoutePath = Object.keys(context.routeStopIdsByPath).find(
+        (path) => path !== "/" && path !== "on-the-run",
+      );
 
       if (!existingRoutePath) {
         // Skip if no existing routes

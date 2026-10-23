@@ -112,9 +112,10 @@ describe("config-modifier with real config.example.toml", () => {
     expect(output).toContain("de:09162:999");
     expect(output).toContain("Test Stop");
 
-    // Should still have valid structure
-    expect(output).toContain("[[stops]]");
+    // Should still have valid structure, with the stop in the route at "/"
+    expect(output).not.toMatch(/^\[\[stops\]\]/m);
     expect(output).toContain("[display]");
     expect(output).toContain("[[routes]]");
+    expect(output).toMatch(/^\[\[routes\.stops\]\]/m);
   });
 });

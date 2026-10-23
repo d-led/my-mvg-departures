@@ -7,7 +7,6 @@
   const {
     onComplete,
     onCancel,
-    existingMainStopIds,
     routeStopIdsByPath,
     onTheRunDisabled,
   } = $props();
@@ -63,7 +62,7 @@
     // In the substops step, disable sub-stops that are already configured
     // in the CURRENT target route to prevent duplicates
     if (configTarget === "main") {
-      return existingMainStopIds.includes(subStopId);
+      return (routeStopIdsByPath["/"] ?? []).includes(subStopId);
     }
 
     const routePath = getTargetRoutePath();
