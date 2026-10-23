@@ -3,10 +3,8 @@ import type { StopConfiguration } from "./stop-configuration.js";
 export interface DisplayConfiguration {
   title?: string;
   theme?: "light" | "dark" | "auto";
-  departuresPerPage?: number;
-  pageRotationSeconds?: number;
+  /** Seconds the relative time stays on screen before switching to absolute and back. */
   timeFormatToggleSeconds?: number;
-  paginationEnabled?: boolean;
   fillVerticalSpace?: boolean;
   fontScalingFactorWhenFilling?: number;
   randomHeaderColors?: boolean;
@@ -16,7 +14,6 @@ export interface DisplayConfiguration {
   fetchRetryAttempts?: number;
   /** Pause between those tries in milliseconds (default 500). */
   fetchRetryDelayMs?: number;
-  bannerColor?: string;
   splitShowDelay?: boolean;
   fontSizeRouteNumber?: string;
   fontSizeDestination?: string;

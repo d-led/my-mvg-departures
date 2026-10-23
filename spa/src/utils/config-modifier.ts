@@ -22,16 +22,6 @@ function stringifyToml(data: TomlData): string {
     lines.push("");
   }
 
-  // Serialize api section if present
-  if (data.api && typeof data.api === "object") {
-    lines.push("[api]");
-    const apiObj = data.api as Record<string, unknown>;
-    for (const [key, value] of Object.entries(apiObj)) {
-      lines.push(serializeKeyValue(key, value));
-    }
-    lines.push("");
-  }
-
   // Serialize main stops
   if (data.stops && Array.isArray(data.stops)) {
     for (const stop of data.stops) {

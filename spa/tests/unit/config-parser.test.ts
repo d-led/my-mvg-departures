@@ -4,8 +4,9 @@ import { ConfigParser } from "../../src/adapters/config/config-parser.js";
 describe("ConfigParser", () => {
   const parser = new ConfigParser();
 
-  it("should parse basic TOML config", () => {
-    const toml = `
+  describe("the route at /", () => {
+    it("takes the top-level stops of a legacy config", () => {
+      const toml = `
 [display]
 title = "Test Departures"
 theme = "dark"
@@ -21,36 +22,151 @@ max_departures_per_route = 2
 "->Garching" = ["U6 Garching-Forschungszentrum"]
 `;
 
-    const config = parser.parseToml(toml);
+      const config = parser.parseToml(toml);
 
-    expect(config.routes).toHaveLength(1);
-    expect(config.routes[0].path).toBe("/");
-    expect(config.routes[0].stops).toHaveLength(1);
-    expect(config.routes[0].stops[0].stationId).toBe("de:09162:1110");
-    expect(config.routes[0].stops[0].stationName).toBe("Giesing");
-    expect(config.routes[0].display?.title).toBe("Test Departures");
-    expect(config.routes[0].display?.theme).toBe("dark");
+      expect(config.routes).toHaveLength(1);
+      expect(config.routes[0].path).toBe("/");
+      expect(config.routes[0].stops).toHaveLength(1);
+      expect(config.routes[0].stops[0].stationId).toBe("de:09162:1110");
+      expect(config.routes[0].stops[0].stationName).toBe("Giesing");
+      expect(config.routes[0].stops[0].directionMappings).toEqual({
+        "->Garching": ["U6 Garching-Forschungszentrum"],
+      });
+    });
+
+    it("keeps the legacy stops ahead of an explicit route at /", () => {
+      const toml = `
+[[stops]]
+station_id = "de:09162:1110"
+station_name = "Giesing"
+
+[[routes]]
+path = "/"
+
+[[routes.stops]]
+station_id = "de:09162:1056"
+station_name = "Balanstr."
+`;
+
+      const config = parser.parseToml(toml);
+
+      expect(config.routes).toHaveLength(1);
+      expect(config.routes[0].stops.map((stop) => stop.stationName)).toEqual([
+        "Giesing",
+        "Balanstr.",
+      ]);
+    });
   });
 
-  it("should parse the retry settings of a route", () => {
-    const toml = `
+  describe("display settings", () => {
+    it("are inherited by every route from the global table", () => {
+      const toml = `
 [display]
+title = "Home"
+theme = "dark"
 fetch_retry_attempts = 5
 fetch_retry_delay_ms = 1500
 
-[[stops]]
+[[routes]]
+path = "/work"
+
+[[routes.stops]]
 station_id = "de:09162:1110"
 station_name = "Giesing"
 `;
 
-    const display = parser.parseToml(toml).routes[0].display;
+      const config = parser.parseToml(toml);
+      const workRoute = config.routes.find((route) => route.path === "/work");
 
-    expect(display?.fetchRetryAttempts).toBe(5);
-    expect(display?.fetchRetryDelayMs).toBe(1500);
+      expect(workRoute?.display).toMatchObject({
+        title: "Home",
+        theme: "dark",
+        fetchRetryAttempts: 5,
+        fetchRetryDelayMs: 1500,
+      });
+    });
+
+    it("let a route override the global values", () => {
+      const toml = `
+[display]
+title = "Home"
+theme = "dark"
+refresh_interval_seconds = 20
+
+[[routes]]
+path = "/work"
+
+[routes.display]
+title = "Work"
+
+[[routes.stops]]
+station_id = "de:09162:1110"
+station_name = "Giesing"
+`;
+
+      const workRoute = parser
+        .parseToml(toml)
+        .routes.find((route) => route.path === "/work");
+
+      expect(workRoute?.display?.title).toBe("Work");
+      expect(workRoute?.display?.theme).toBe("dark");
+      expect(workRoute?.refreshIntervalSeconds).toBe(20);
+    });
+
+    it("are absent when nothing is configured, so nothing is inherited", () => {
+      const toml = `
+[[routes]]
+path = "/work"
+
+[[routes.stops]]
+station_id = "de:09162:1110"
+station_name = "Giesing"
+`;
+
+      const config = parser.parseToml(toml);
+
+      expect(config.display).toBeUndefined();
+      expect(config.routes[0].display).toBeUndefined();
+    });
   });
 
-  it("should parse route configurations", () => {
-    const toml = `
+  describe("server-only configuration", () => {
+    it("is ignored, leaving only what the SPA renders", () => {
+      const toml = `
+[display]
+title = "Home"
+banner_color = "#087BC4"
+pagination_enabled = true
+departures_per_page = 5
+page_rotation_seconds = 8
+
+[api]
+sleep_ms_between_calls = 500
+
+[inky]
+font_family = "hk_grotesk"
+
+[server]
+host = "0.0.0.0"
+
+[[routes]]
+path = "/"
+
+[[routes.stops]]
+station_id = "de:09162:1110"
+station_name = "Giesing"
+`;
+
+      const config = parser.parseToml(toml);
+
+      expect(config.routes[0].display).toEqual({ title: "Home" });
+      expect(Object.keys(config)).toEqual(["display", "routes", "onTheRun"]);
+    });
+  });
+
+  describe("routes", () => {
+    it("are parsed from their path and stops", () => {
+      const toml = `
 [[routes]]
 path = "/test"
 
@@ -59,10 +175,20 @@ station_id = "de:09162:1110"
 station_name = "Giesing"
 `;
 
-    const config = parser.parseToml(toml);
+      const config = parser.parseToml(toml);
 
-    expect(config.routes).toHaveLength(1);
-    expect(config.routes[0].path).toBe("/test");
+      expect(config.routes).toHaveLength(1);
+      expect(config.routes[0].path).toBe("/test");
+    });
+
+    it("are dropped when they carry no stops", () => {
+      const toml = `
+[[routes]]
+path = "/empty"
+`;
+
+      expect(parser.parseToml(toml).routes).toEqual([]);
+    });
   });
 
   it("should handle multiple stops", () => {

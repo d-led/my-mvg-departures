@@ -1,11 +1,13 @@
 // Types for TOML parsing
+//
+// Only the keys the SPA reads are declared. Server-only tables (`[api]`, `[inky]`,
+// `[server]`) and kiosk settings the SPA never renders (`departures_per_page`,
+// `page_rotation_seconds`, `pagination_enabled`, `banner_color`) are ignored on
+// purpose; `ConfigModal`'s clean-up action removes them from stored configs.
 export interface TomlDisplayData {
   title?: string;
   theme?: string;
-  departures_per_page?: number;
-  page_rotation_seconds?: number;
   time_format_toggle_seconds?: number;
-  pagination_enabled?: boolean;
   fill_vertical_space?: boolean;
   font_scaling_factor_when_filling?: number;
   random_header_colors?: boolean;
@@ -13,7 +15,6 @@ export interface TomlDisplayData {
   refresh_interval_seconds?: number;
   fetch_retry_attempts?: number;
   fetch_retry_delay_ms?: number;
-  banner_color?: string;
   split_show_delay?: boolean;
   font_size_route_number?: string;
   font_size_destination?: string;
@@ -27,11 +28,6 @@ export interface TomlDisplayData {
   font_size_no_departures?: string;
   font_size_status_header?: string;
   route_icon_display?: "icon_with_text" | "badge" | "none";
-}
-
-export interface TomlApiData {
-  sleep_ms_between_calls?: number;
-  api_provider?: string;
 }
 
 export interface TomlStopData {
@@ -77,8 +73,12 @@ export interface TomlOnTheRunData {
 
 export interface TomlData {
   display?: TomlDisplayData;
-  api?: TomlApiData;
   routes?: TomlRouteData[];
+  /**
+   * Legacy layout: stops outside of a route, rendered as the route at "/".
+   * Kept readable so existing configs keep working; the clean-up action moves
+   * them into an explicit `[[routes]]` block.
+   */
   stops?: TomlStopData[];
   on_the_run?: TomlOnTheRunData[] | TomlOnTheRunData;
 }
