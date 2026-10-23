@@ -132,7 +132,10 @@
   {/each}
 
   {#if pages.length === 0}
-    <p class="pages-empty">This config has no pages yet.</p>
+    <p class="pages-empty">
+      No pages yet. A config written for the server version has its stops outside the
+      pages - switch to TOML and press Clean up to convert it.
+    </p>
   {/if}
 
   <button class="button button-secondary add-stops" onclick={onAddStops}>Add stops…</button>
