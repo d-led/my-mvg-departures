@@ -3,7 +3,10 @@ import type { Departure } from "./departure.js";
 export interface GroupedDepartures {
   directionName: string;
   stopName: string; // Station/stop name (e.g., "Chiemgaustr", "Ungsteiner Str.")
-  stationId: string; // Station ID (e.g., "de:09162:1108:2:2") - needed to match stop config when multiple stops have same name
+  /** Station ID (e.g. "de:09162:1108:2:2") - needed to match stop config when multiple stops have same name. */
+  stationId: string;
+  /** The API this stop belongs to; its coordinates and departures come from there. */
+  apiProvider?: string;
   departures: Departure[];
   /** True when this stop's data is missing because its refresh failed. */
   refreshFailed?: boolean;

@@ -36,9 +36,9 @@ describe("station coordinates", () => {
     const { getStationCoords } = await loadStationCoords();
 
     const results = await Promise.all([
-      getStationCoords(STATION_ID, "Chiemgaustr."),
-      getStationCoords(STATION_ID, "Chiemgaustr."),
-      getStationCoords(STATION_ID, "Chiemgaustr."),
+      getStationCoords(STATION_ID, "Chiemgaustr.", "mvg"),
+      getStationCoords(STATION_ID, "Chiemgaustr.", "mvg"),
+      getStationCoords(STATION_ID, "Chiemgaustr.", "mvg"),
     ]);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -53,8 +53,8 @@ describe("station coordinates", () => {
     const fetchMock = stubStationApi();
     const { getStationCoords } = await loadStationCoords();
 
-    await getStationCoords(STATION_ID, "Chiemgaustr.");
-    await getStationCoords(STATION_ID, "Chiemgaustr.");
+    await getStationCoords(STATION_ID, "Chiemgaustr.", "mvg");
+    await getStationCoords(STATION_ID, "Chiemgaustr.", "mvg");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -63,13 +63,29 @@ describe("station coordinates", () => {
     const fetchMock = stubStationApi();
     const { getStationCoords, getCachedCoords } = await loadStationCoords();
 
-    await getStationCoords(`${STATION_ID}:4:4`, "Chiemgaustr.");
-    await getStationCoords(`${STATION_ID}:5:5`, "Chiemgaustr.");
+    await getStationCoords(`${STATION_ID}:4:4`, "Chiemgaustr.", "mvg");
+    await getStationCoords(`${STATION_ID}:5:5`, "Chiemgaustr.", "mvg");
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(getCachedCoords(`${STATION_ID}:5:5`)).toEqual({
       lat: station.latitude,
       lng: station.longitude,
     });
+  });
+
+  it("takes the coordinates the caller already knows instead of asking again", async () => {
+    const fetchMock = stubStationApi();
+    const { getStationCoords, rememberStationCoords } =
+      await loadStationCoords();
+
+    rememberStationCoords("900100014", 52.512_007, 13.408_768);
+    const coords = await getStationCoords(
+      "900100014",
+      "U Märkisches Museum (Berlin)",
+      "vbb",
+    );
+
+    expect(coords).toEqual({ lat: 52.512_007, lng: 13.408_768 });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

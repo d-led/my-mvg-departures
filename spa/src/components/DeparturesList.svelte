@@ -138,7 +138,7 @@
       if (!id || seen.has(id)) continue;
       seen.add(id);
       if (stationCoords[id] ?? getCachedCoords(id)) continue;
-      getStationCoords(id, group.stopName, (c) => {
+      getStationCoords(id, group.stopName, group.apiProvider ?? "mvg", (c) => {
         stationCoords = { ...stationCoords, [id]: c };
       });
     }

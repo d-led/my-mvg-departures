@@ -45,6 +45,31 @@ describe("DepartureGroupingService", () => {
     expect(groups[0].departures).toHaveLength(2);
   });
 
+  it("remembers which API a group's stop belongs to", () => {
+    const now = new Date();
+    const departures = [
+      createDeparture({
+        time: new Date(now.getTime() + 300000),
+        plannedTime: new Date(now.getTime() + 300000),
+        line: "U2",
+        destination: "Pankow",
+        transportType: "U-Bahn",
+      }),
+    ];
+
+    const groups = service.groupDepartures(
+      departures,
+      createStopConfiguration({
+        stationId: "900100003",
+        stationName: "Alexanderplatz",
+        apiProvider: "vbb",
+        showUngrouped: true,
+      }),
+    );
+
+    expect(groups[0].apiProvider).toBe("vbb");
+  });
+
   it("should filter excluded destinations", () => {
     const now = new Date();
     const departures = [

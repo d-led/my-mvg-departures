@@ -14,9 +14,22 @@ function coordsKey(stationId: string): string {
   return stationId.split(":").slice(0, 3).join(":");
 }
 
+/**
+ * Coordinates the caller already knows - a nearby lookup answered them - so the
+ * map link needs no lookup through an API that may not know this stop at all.
+ */
+export function rememberStationCoords(
+  stationId: string,
+  latitude: number,
+  longitude: number,
+): void {
+  cache.set(coordsKey(stationId), { lat: latitude, lng: longitude });
+}
+
 async function fetchCoords(
   stationId: string,
   stopName: string,
+  provider: string,
 ): Promise<{ lat: number; lng: number } | null> {
   const key = coordsKey(stationId);
   const cached = cache.get(key);
@@ -25,7 +38,7 @@ async function fetchCoords(
   const pending = inFlight.get(key);
   if (pending) return pending;
 
-  const lookup = lookUpCoords(key, stationId, stopName).finally(() =>
+  const lookup = lookUpCoords(key, stationId, stopName, provider).finally(() =>
     inFlight.delete(key),
   );
   inFlight.set(key, lookup);
@@ -36,32 +49,56 @@ async function lookUpCoords(
   key: string,
   stationId: string,
   stopName: string,
+  provider: string,
+): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const coords =
+      provider === "vbb"
+        ? await vbbCoords(stationId)
+        : await mvgCoords(stationId, stopName);
+    if (coords) {
+      cache.set(key, coords);
+    }
+    return coords;
+  } catch {
+    // A map link is a nicety: an unknown stop or a failing API is not an error.
+    return null;
+  }
+}
+
+async function mvgCoords(
+  stationId: string,
+  stopName: string,
 ): Promise<{ lat: number; lng: number } | null> {
   const query = stopName.includes(",")
     ? (stopName.trim().split(",")[0] ?? stopName)
     : stopName;
-  try {
-    const { MvgStationRepository } =
-      await import("../adapters/mvg/mvg-station-repository.js");
-    const repo = new MvgStationRepository();
-    const station = await repo.getStationByQuery(query, stationId);
-    if (station) {
-      const coords = { lat: station.latitude, lng: station.longitude };
-      cache.set(key, coords);
-      return coords;
-    }
-  } catch {
-    // ignore
-  }
-  return null;
+  const { MvgStationRepository } =
+    await import("../adapters/mvg/mvg-station-repository.js");
+  const station = await new MvgStationRepository().getStationByQuery(
+    query,
+    stationId,
+  );
+  return station ? { lat: station.latitude, lng: station.longitude } : null;
+}
+
+async function vbbCoords(
+  stationId: string,
+): Promise<{ lat: number; lng: number } | null> {
+  const { fetchVbbStationPosition } =
+    await import("../adapters/vbb/vbb-station-coordinates.js");
+  const position = await fetchVbbStationPosition(stationId);
+  return position ? { lat: position.latitude, lng: position.longitude } : null;
 }
 
 /**
- * Get coordinates for a station (from cache or fetch). Calls onCoords when coords are available.
+ * Get coordinates for a station (from cache or the stop's own API). Calls
+ * onCoords when coords are available.
  */
 export function getStationCoords(
   stationId: string,
   stopName: string,
+  provider: string,
   onCoords?: (coords: { lat: number; lng: number }) => void,
 ): Promise<{ lat: number; lng: number } | null> {
   const cached = cache.get(coordsKey(stationId));
@@ -69,7 +106,7 @@ export function getStationCoords(
     onCoords?.(cached);
     return Promise.resolve(cached);
   }
-  return fetchCoords(stationId, stopName).then((c) => {
+  return fetchCoords(stationId, stopName, provider).then((c) => {
     if (c) onCoords?.(c);
     return c;
   });

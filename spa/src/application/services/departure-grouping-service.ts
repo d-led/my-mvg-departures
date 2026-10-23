@@ -85,6 +85,7 @@ export class DepartureGroupingService {
           directionName,
           stopName: stopConfig.stationName,
           stationId: stopConfig.stationId, // Store stationId to match stop config correctly
+          apiProvider: stopConfig.apiProvider,
           departures: groupDepartures,
           // Store color settings from stop config (matches Python's DirectionGroupWithMetadata)
           // This ensures each group knows its own settings even when multiple stops share stationId
@@ -102,6 +103,7 @@ export class DepartureGroupingService {
         directionName: ungroupedTitle,
         stopName: stopConfig.stationName,
         stationId: stopConfig.stationId, // Store stationId to match stop config correctly
+        apiProvider: stopConfig.apiProvider,
         departures: processedUngrouped,
         // Store color settings from stop config (matches Python's DirectionGroupWithMetadata)
         randomHeaderColors: stopConfig.randomHeaderColors,
