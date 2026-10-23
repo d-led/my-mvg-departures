@@ -52,3 +52,12 @@ ungrouped_title = "Weitere Abfahrten"
   "59 Ackermannbogen",
   "142 Scheidplatz",
 ]
+
+# The "Next to me" page: the stops around you, read from the MVG API
+[[on_the_run]]
+radius_meters = 300
+max_departures_per_stop = 8
+max_departures_per_route = 2
+refresh_interval_seconds = 20
+use_adapters = ["mvg"]
+random_header_colors = true

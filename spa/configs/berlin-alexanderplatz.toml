@@ -42,3 +42,12 @@ max_departures_per_stop = 10
 max_departures_per_route = 2
 show_ungrouped = true
 ungrouped_title = "All departures"
+
+# The "Next to me" page: the stops around you, read from the VBB API
+[[on_the_run]]
+radius_meters = 500
+max_departures_per_stop = 8
+max_departures_per_route = 2
+refresh_interval_seconds = 20
+use_adapters = ["vbb"]
+random_header_colors = true

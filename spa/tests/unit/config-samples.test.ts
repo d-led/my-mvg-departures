@@ -59,5 +59,11 @@ describe("the config samples the app ships", () => {
       expect(display?.title).toBeTruthy();
       expect(display?.refreshIntervalSeconds).toBeGreaterThan(0);
     });
+
+    it("finds the stops around you in the sample's own API", () => {
+      const config = new ConfigParser().parseToml(toml);
+
+      expect(config.onTheRun?.useAdapters).toEqual([provider]);
+    });
   });
 });
