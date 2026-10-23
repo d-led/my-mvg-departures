@@ -63,6 +63,10 @@
     description: string;
   } | null>(null);
   let isSaving = $state(false);
+  /** The text as it was loaded; anything else is an unsaved edit. */
+  let savedText = $state("");
+  /** Set when leaving would throw edits away. */
+  let confirmCancel = $state(false);
   let isLoadingExample = $state(false);
   let copySuccess = $state(false);
   let pasteSuccess = $state(false);
@@ -327,6 +331,7 @@
   async function loadStoredConfig(): Promise<void> {
     const storedToml = await configStorage.getConfigToml();
     configText = storedToml || "";
+    savedText = configText;
     errorMessage = null; // Clear error when loading
     notice = null;
   }
@@ -549,9 +554,21 @@
     }
   }
 
+  /**
+   * Leaving with unsaved edits asks once: a mis-tap next to Save should not
+   * throw away a reordered page or a new heading.
+   */
+  function requestCancel() {
+    if (configText !== savedText) {
+      confirmCancel = true;
+      return;
+    }
+    onCancel();
+  }
+
   function handleKeydown(event: KeyboardEvent) {
     if (event.key === "Escape") {
-      onCancel();
+      requestCancel();
       return;
     }
 
@@ -561,7 +578,7 @@
 
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      onCancel();
+      requestCancel();
     }
   }
 
@@ -696,7 +713,7 @@
     <div class="modal-content">
       <div class="modal-header">
         <h2>Configuration</h2>
-        <button class="close-button" onclick={onCancel} aria-label="Close">×</button>
+        <button class="close-button" onclick={requestCancel} aria-label="Close">×</button>
       </div>
       <div class="view-tabs" role="tablist">
         <button
@@ -997,18 +1014,28 @@
     <div class="modal-footer">
       <span class="build-sha">__BUILD_SHA__</span>
       <div class="modal-footer-actions">
-        <button 
-          class="button button-example" 
-          onclick={() => loadExampleConfig()} 
-          disabled={isSaving || isLoadingExample}
-          title="Load example configuration"
-        >
-          {isLoadingExample ? "Loading..." : "Example"}
-        </button>
-        <button class="button button-secondary" onclick={onCancel} disabled={isSaving || isLoadingExample}>Cancel</button>
-        <button class="button button-primary" onclick={handleSave} disabled={!configText.trim() || isSaving || isLoadingExample}>
-          {isSaving ? "Saving..." : "Save"}
-        </button>
+        {#if confirmCancel}
+          <span class="discard-question">Discard the changes?</span>
+          <button class="button button-secondary" onclick={() => (confirmCancel = false)}>
+            Keep editing
+          </button>
+          <button class="button button-danger" onclick={onCancel}>
+            Discard changes
+          </button>
+        {:else}
+          <button 
+            class="button button-example" 
+            onclick={() => loadExampleConfig()} 
+            disabled={isSaving || isLoadingExample}
+            title="Load example configuration"
+          >
+            {isLoadingExample ? "Loading..." : "Example"}
+          </button>
+          <button class="button button-secondary" onclick={requestCancel} disabled={isSaving || isLoadingExample}>Cancel</button>
+          <button class="button button-primary" onclick={handleSave} disabled={!configText.trim() || isSaving || isLoadingExample}>
+            {isSaving ? "Saving..." : "Save"}
+          </button>
+        {/if}
       </div>
     </div>
   </div>
@@ -1744,6 +1771,21 @@
     display: flex;
     justify-content: flex-end;
     gap: 0.5rem;
+  }
+
+  .discard-question {
+    align-self: center;
+    font-size: 0.85rem;
+    color: #6b7280;
+  }
+
+  :global([data-theme="dark"]) .discard-question {
+    color: #9ca3af;
+  }
+
+  .button-danger {
+    background-color: #dc2626;
+    color: white;
   }
 
   .textarea-container {

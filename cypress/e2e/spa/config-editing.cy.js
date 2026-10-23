@@ -61,6 +61,30 @@ describe("SPA config editing", () => {
       });
   });
 
+  it("asks before throwing unsaved edits away", () => {
+    openConfigDialog(CONFIG_WITHOUT_ON_THE_RUN);
+
+    // Nothing edited yet: Cancel just closes.
+    cy.get(".modal-footer").contains("button", "Cancel").click();
+    cy.get(".modal-content").should("not.exist");
+
+    openConfigDialog(CONFIG_WITHOUT_ON_THE_RUN);
+    cy.get(".page-row").contains("button", "Restore").click();
+
+    cy.get(".modal-footer").contains("button", "Cancel").click();
+    cy.contains("button", "Keep editing").click();
+    cy.get(".page-row").should("contain", "is part of this config");
+
+    cy.get(".modal-footer").contains("button", "Cancel").click();
+    cy.contains("button", "Discard changes").click();
+
+    cy.get(".modal-content").should("not.exist");
+    cy.window()
+      .its("localStorage")
+      .invoke("getItem", CONFIG_TOML_KEY)
+      .should("not.contain", "[[on_the_run]]");
+  });
+
   it("never removes the Next to me page", () => {
     openConfigDialog(CONFIG_WITH_ON_THE_RUN);
 
