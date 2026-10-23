@@ -5,37 +5,10 @@ import type {
   TomlStopData,
 } from "../adapters/config/toml-types.js";
 import { cleanUpConfigToml } from "./config-cleanup.js";
+import { belongsTo, tomlTableName } from "./toml-sections.js";
 
 /** The route the app opens by default. */
 const DEFAULT_ROUTE_PATH = "/";
-
-/**
- * The whole config as TOML. `toml-patch` has no stringify, and the tables need
- * `direction_mappings` spelled as their own sections, so the file is written
- * here by hand.
- */
-function stringifyToml(data: TomlData): string {
-  const lines: string[] = [];
-
-  if (data.display && typeof data.display === "object") {
-    lines.push("[display]");
-    for (const [key, value] of Object.entries(data.display)) {
-      lines.push(serializeKeyValue(key, value));
-    }
-    lines.push("");
-  }
-
-  for (const route of data.routes ?? []) {
-    lines.push(...serializeRouteLines(route), "");
-  }
-
-  // Remove trailing empty lines
-  while (lines.length > 0 && lines[lines.length - 1] === "") {
-    lines.pop();
-  }
-
-  return lines.join("\n");
-}
 
 /** The lines of one `[[routes]]` block, stops and direction mappings included. */
 function serializeRouteLines(route: TomlRouteData): string[] {
@@ -108,24 +81,16 @@ function replaceRouteSnippet(
   updatedRoute: TomlRouteData,
 ): string {
   const lines = existingToml.split("\n");
-  const routeStarts: number[] = [];
-
-  // Find all [[routes]] markers
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trim() === "[[routes]]") {
-      routeStarts.push(i);
-    }
-  }
+  const routeStarts = lines
+    .map((line, index) => (isRouteHeader(line) ? index : -1))
+    .filter((index) => index >= 0);
 
   if (routeIndex >= routeStarts.length) {
     throw new Error(`Route index ${routeIndex} not found`);
   }
 
   const startLine = routeStarts[routeIndex];
-  const endLine =
-    routeIndex + 1 < routeStarts.length
-      ? routeStarts[routeIndex + 1]
-      : lines.length;
+  const endLine = routeBlockEnd(lines, startLine);
 
   // Generate the new route snippet
   const snippet = serializeRouteLines(updatedRoute).join("\n");
@@ -135,6 +100,25 @@ function replaceRouteSnippet(
   const after = lines.slice(endLine).join("\n");
 
   return `${before}\n${snippet}\n${after}`;
+}
+
+/** `[[routes]]` - the header that opens a route block. */
+function isRouteHeader(line: string): boolean {
+  return tomlTableName(line) === "routes";
+}
+
+/**
+ * The line after the route's own tables. Whatever follows - another route, the
+ * Next to me table, anything else - belongs to another table and is kept.
+ */
+function routeBlockEnd(lines: string[], startLine: number): number {
+  for (let line = startLine + 1; line < lines.length; line += 1) {
+    const name = tomlTableName(lines[line]);
+    if (name !== undefined && !belongsTo(name, "routes")) {
+      return line;
+    }
+  }
+  return lines.length;
 }
 
 function needsQuoting(key: string): boolean {
@@ -371,58 +355,25 @@ export function applyWizardConfig(
   // The wizard only speaks the SPA's shape: legacy top-level stops become the
   // route at "/" before anything is merged.
   const source = cleanUpConfigToml(existingToml).toml;
+  const path = targetRoutePath(result);
   const parsed = source.trim()
     ? (tomlParse(source) as TomlData)
     : ({} as TomlData);
 
-  let output: string;
-  if (result.target === "main") {
-    output = withRouteStops(parsed, DEFAULT_ROUTE_PATH, result.stops);
-  } else {
-    const routeDetails = result.route;
-    if (!routeDetails?.path) {
-      throw new Error("Route target requires a path.");
-    }
+  const routes = parsed.routes ?? [];
+  const routeIndex = routes.findIndex(
+    (route) => (route.path ?? DEFAULT_ROUTE_PATH) === path,
+  );
+  const updatedRoute = withWizardStops(routes[routeIndex], path, result);
 
-    const normalizedPath = normalizeRoutePath(routeDetails.path);
-    if (
-      normalizedPath === DEFAULT_ROUTE_PATH ||
-      isOnTheRunPath(normalizedPath)
-    ) {
-      throw new Error("Wizard route updates are not allowed for this target.");
-    }
+  // Only the target route is rewritten; every other table of the file - the
+  // Next to me settings among them - is left exactly as it is.
+  const output =
+    routeIndex === -1
+      ? insertRouteSnippet(source, updatedRoute)
+      : replaceRouteSnippet(source, routeIndex, updatedRoute);
 
-    const routes = parsed.routes ?? [];
-    const routeIndex = routes.findIndex(
-      (route) => route.path === normalizedPath,
-    );
-
-    if (routeIndex === -1) {
-      // Adding a new route - generate snippet and insert at end
-      const newRoute: TomlRouteData = ensureRouteDisplay(
-        {
-          path: normalizedPath,
-          stops: upsertStops([], result.stops),
-        },
-        routeDetails.title,
-      );
-      output = insertRouteSnippet(source, newRoute);
-    } else {
-      // Updating existing route - generate snippet and replace
-      const existingRoute = routes[routeIndex];
-      const existingStops = existingRoute.stops ?? [];
-      const updatedRoute: TomlRouteData = ensureRouteDisplay(
-        {
-          ...existingRoute,
-          stops: upsertStops(existingStops, result.stops),
-        },
-        routeDetails.title,
-      );
-      output = replaceRouteSnippet(source, routeIndex, updatedRoute);
-    }
-  }
-
-  // Validate TOML syntax after patching/stringifying
+  // Validate TOML syntax after patching
   try {
     tomlParse(output);
   } catch (e) {
@@ -434,23 +385,39 @@ export function applyWizardConfig(
   return output;
 }
 
-/** Merges the wizard's stops into the route at `path`, creating the route if needed. */
-function withRouteStops(
-  parsed: TomlData,
-  path: string,
-  stops: WizardStop[],
-): string {
-  const routes = parsed.routes ?? [];
-  const route = routes.find((candidate) => (candidate.path ?? path) === path);
-
-  if (route) {
-    route.stops = upsertStops(route.stops ?? [], stops);
-  } else {
-    routes.push({ path, stops: upsertStops([], stops) });
+/** The route the wizard writes to: the route at "/" for the main target. */
+function targetRoutePath(result: WizardResult): string {
+  if (result.target === "main") {
+    return DEFAULT_ROUTE_PATH;
   }
-  parsed.routes = routes;
 
-  return stringifyToml(parsed);
+  const path = result.route?.path;
+  if (!path) {
+    throw new Error("Route target requires a path.");
+  }
+
+  const normalizedPath = normalizeRoutePath(path);
+  if (normalizedPath === DEFAULT_ROUTE_PATH || isOnTheRunPath(normalizedPath)) {
+    throw new Error("Wizard route updates are not allowed for this target.");
+  }
+
+  return normalizedPath;
+}
+
+/** The route with the wizard's stops merged in, keeping what it already had. */
+function withWizardStops(
+  existing: TomlRouteData | undefined,
+  path: string,
+  result: WizardResult,
+): TomlRouteData {
+  return ensureRouteDisplay(
+    {
+      ...existing,
+      path,
+      stops: upsertStops(existing?.stops ?? [], result.stops),
+    },
+    result.route?.title,
+  );
 }
 
 export function getWizardConfigContext(

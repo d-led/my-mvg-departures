@@ -258,6 +258,70 @@ show_ungrouped = true
     });
   });
 
+  describe("tables the wizard does not own", () => {
+    const newStop = {
+      station_id: "de:09162:2000",
+      station_name: "Marienplatz",
+      max_departures_per_stop: 6,
+      max_departures_per_route: 3,
+      max_hours_in_advance: 2,
+      show_ungrouped: true,
+    };
+
+    it("keeps the Next to me settings when adding a stop to the route at /", () => {
+      const existingConfig = `
+[[routes]]
+path = "/"
+
+[[routes.stops]]
+station_id = "de:09162:1110"
+station_name = "Giesing"
+
+[[on_the_run]]
+radius_meters = 100
+refresh_interval_seconds = 30
+`;
+
+      const result = applyWizardConfig(existingConfig, {
+        target: "main",
+        stops: [newStop],
+      });
+
+      expect(result).toContain("[[on_the_run]]");
+      expect(new ConfigParser().parseToml(result).onTheRun).toMatchObject({
+        radiusMeters: 100,
+        updateLocationIntervalSeconds: 30,
+      });
+    });
+
+    it("keeps the tables that follow the last route when that route is updated", () => {
+      const existingConfig = `
+[[routes]]
+path = "/work"
+
+[[routes.stops]]
+station_id = "de:09162:1110"
+station_name = "Giesing"
+
+[[on_the_run]]
+radius_meters = 75
+`;
+
+      const result = applyWizardConfig(existingConfig, {
+        target: "route",
+        route: { path: "/work" },
+        stops: [newStop],
+      });
+
+      const parsed = new ConfigParser().parseToml(result);
+
+      expect(parsed.onTheRun?.radiusMeters).toBe(75);
+      expect(
+        parsed.routes.find((route) => route.path === "/work")?.stops,
+      ).toHaveLength(2);
+    });
+  });
+
   describe("applyWizardConfig - validation", () => {
     it("should reject update to main route (/)", () => {
       const existingConfig = `
