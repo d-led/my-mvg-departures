@@ -16,6 +16,7 @@ import {
 } from "../../utils/retry.js";
 import { DepartureGroupingService } from "./departure-grouping-service.js";
 import { generateHeaderColors } from "./header-color-service.js";
+import { LastKnownGroups } from "./last-known-groups.js";
 import { PollLoop } from "./poll-loop.js";
 import { PollProgressReporter } from "./poll-progress-reporter.js";
 
@@ -30,6 +31,7 @@ export class MultiStopPoller {
   private readonly pollerId: string;
   private readonly loop: PollLoop;
   private readonly progress: PollProgressReporter;
+  private readonly lastKnown = new LastKnownGroups();
 
   constructor(
     private readonly departureRepository: DepartureRepository,
@@ -99,19 +101,27 @@ export class MultiStopPoller {
     for (const stopConfig of this.stopConfigs) {
       try {
         const groups = await this.collectGroupsForStop(stopConfig, fresh);
-        // Add groups from this stop in order (preserves direction order from TOML)
-        groups.forEach((group) => {
-          allGroups.push({ ...group });
-        });
-        if (groups.length > 0) {
-          stopsWithDepartures.add(stopConfig.stationName);
-        }
+        this.lastKnown.remember(stopConfig.stationId, groups);
+        this.appendStopGroups(
+          allGroups,
+          stopsWithDepartures,
+          stopConfig.stationName,
+          groups,
+        );
         this.progress.settle(true);
       } catch (error) {
         const failure = createStopFetchFailure(stopConfig, error);
         failures.push(failure);
         console.error(
           `[${this.pollerId}] API poll error for ${stopConfig.stationName}: ${failure.message}`,
+        );
+        // The stop keeps what it last delivered, marked as not refreshed, so a
+        // hiccup does not blank a stop that is already on the screen.
+        this.appendStopGroups(
+          allGroups,
+          stopsWithDepartures,
+          stopConfig.stationName,
+          this.lastKnown.stale(stopConfig.stationId),
         );
         this.progress.settle(false);
       }
@@ -173,6 +183,21 @@ export class MultiStopPoller {
       },
       this.pollerId,
     );
+  }
+
+  /** Adds one stop's groups in TOML order and records that the stop has rows. */
+  private appendStopGroups(
+    allGroups: GroupedDepartures[],
+    stopsWithDepartures: Set<string>,
+    stationName: string,
+    groups: GroupedDepartures[],
+  ): void {
+    groups.forEach((group) => {
+      allGroups.push({ ...group });
+    });
+    if (groups.length > 0) {
+      stopsWithDepartures.add(stationName);
+    }
   }
 
   /**

@@ -118,7 +118,7 @@ describe("SPA config pages", () => {
 
       expect(labels[labels.length - 1]).to.equal("Configurator");
       expect(labels.slice(0, -1)).to.deep.equal([
-        "Manual TOML",
+        "TOML Config",
         "Wizard (experimental)",
         "Delete (current route)",
         "Routes",

@@ -50,12 +50,12 @@ describe("failure messages", () => {
   });
 
   it("names the single stop that failed", () => {
-    expect(describeStopFailures([giesing])).toBe("No data from Giesing");
+    expect(describeStopFailures([giesing])).toBe("No answer from Giesing");
   });
 
   it("counts and names all stops that failed", () => {
     expect(describeStopFailures([giesing, sendlingerTor])).toBe(
-      "No data from 2 stops: Giesing, Sendlinger Tor",
+      "No answer from 2 stops: Giesing, Sendlinger Tor",
     );
   });
 

@@ -210,9 +210,11 @@ fetch_retry_delay_ms = 500 # pause between those tries
 ```
 
 Only when a cycle leaves nothing to show at all does the app announce the failing stops on top of
-the departures area. While departures are on screen the failure stays out of the way: the affected
-stop reads "No data (refresh failed)" and the status indicator turns degraded, with the stop names
-and reasons in its tooltip.
+the departures area. While departures are on screen the failure stays out of the way: a stop whose
+refresh failed keeps the departures it last had, greyed out rather than struck through (a
+strikethrough means the departure was cancelled), and drops the ones that have already left. When
+nothing is left to show, the stop reads "No data (refresh failed)". The status indicator turns
+degraded, with the stop names and reasons in its tooltip.
 
 ## Architecture
 

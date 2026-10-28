@@ -8,7 +8,11 @@ export interface GroupedDepartures {
   /** The API this stop belongs to; its coordinates and departures come from there. */
   apiProvider?: string;
   departures: Departure[];
-  /** True when this stop's data is missing because its refresh failed. */
+  /**
+   * True when this stop could not be refreshed in the latest cycle. Its
+   * departures, if any, are the ones that last arrived and are shown greyed
+   * out; a stop with nothing left to show reads "No data (refresh failed)".
+   */
   refreshFailed?: boolean;
   headerColor?: string; // Generated header color for non-first headers (matches Python)
   // Color settings from stop config (matches Python's DirectionGroupWithMetadata)

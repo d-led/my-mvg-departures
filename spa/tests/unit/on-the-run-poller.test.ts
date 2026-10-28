@@ -314,7 +314,59 @@ describe("OnTheRunPoller progress", () => {
       updates[0]?.groups.flatMap((group) => group.departures),
     ).toHaveLength(1);
   });
+
+  it("keeps showing the departures of a nearby stop that stops answering", async () => {
+    const answering = new Set([CHIEMGAUSTRASSE, GIESING]);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const globalId = new URL(url).searchParams.get("globalId") ?? "";
+        if (!answering.has(globalId)) {
+          return jsonResponse("Service Unavailable", false, 503);
+        }
+        return jsonResponse(departuresFor(globalId));
+      }),
+    );
+    const updates: PollCycleResult[] = [];
+
+    const poller = new OnTheRunPoller(
+      nearbySourceForStations(NEARBY_STATIONS),
+      emptyCache(),
+      { radiusMeters: 100, useAdapters: ["mvg"] },
+      { onUpdate: (result) => updates.push(result), onError: () => {} },
+      undefined,
+      [],
+      { attempts: 1, delayMs: 0 },
+    );
+
+    await poller.start();
+    answering.delete(GIESING);
+    await poller.refreshNow();
+    poller.stop();
+
+    const secondCycle = updates[1];
+    expect(secondCycle.failures.map((failure) => failure.stationName)).toEqual([
+      "Giesing (40 m)",
+    ]);
+    expect(groupsOf(secondCycle, GIESING)).toEqual([
+      expect.objectContaining({ refreshFailed: true }),
+    ]);
+    expect(
+      groupsOf(secondCycle, GIESING).flatMap((group) => group.departures),
+    ).toHaveLength(1);
+    // The nearby stop that answered is left alone by its neighbour's failure.
+    expect(
+      groupsOf(secondCycle, CHIEMGAUSTRASSE).some(
+        (group) => group.refreshFailed,
+      ),
+    ).toBe(false);
+  });
 });
+
+/** What one cycle rendered for a stop. */
+function groupsOf(result: PollCycleResult, stationId: string) {
+  return result.groups.filter((group) => group.stationId === stationId);
+}
 
 /** A departure as the VBB API answers it, so the VBB adapter is the one used. */
 function vbbDeparture() {

@@ -7,7 +7,10 @@ import type { Departure } from "../../src/domain/models/departure.js";
 import type { DepartureCache } from "../../src/domain/ports/departure-cache.js";
 import type { DepartureRepository } from "../../src/domain/ports/departure-repository.js";
 import type { PollProgress } from "../../src/domain/models/poll-progress.js";
-import type { PollCycleResult } from "../../src/domain/models/index.js";
+import type {
+  GroupedDepartures,
+  PollCycleResult,
+} from "../../src/domain/models/index.js";
 import type { RetryPolicy } from "../../src/utils/retry.js";
 
 /** Short interval keeps the periodic polling out of the way of the assertions. */
@@ -44,12 +47,40 @@ function emptyCache(): DepartureCache {
   };
 }
 
+/** What one cycle rendered for a stop, in the order the stop's TOML put it. */
+function groupsOf(
+  result: PollCycleResult,
+  stop: typeof giesing,
+): GroupedDepartures[] {
+  return result.groups.filter((group) => group.stationId === stop.stationId);
+}
+
 async function pollOnce(
   stops: (typeof giesing)[],
   repository: DepartureRepository,
   retryPolicy: RetryPolicy = RETRY_POLICY_WITHOUT_WAITING,
   onProgress: (progress: PollProgress) => void = () => {},
 ): Promise<PollCycleResult> {
+  const { poller, updates } = pollerFor(
+    stops,
+    repository,
+    retryPolicy,
+    onProgress,
+  );
+
+  await poller.start();
+  poller.stop();
+
+  return updates[0];
+}
+
+/** A poller that keeps every cycle it reported, so a test can watch two. */
+function pollerFor(
+  stops: (typeof giesing)[],
+  repository: DepartureRepository,
+  retryPolicy: RetryPolicy = RETRY_POLICY_WITHOUT_WAITING,
+  onProgress: (progress: PollProgress) => void = () => {},
+) {
   const updates: PollCycleResult[] = [];
   const poller = new MultiStopPoller(
     repository,
@@ -68,10 +99,7 @@ async function pollOnce(
     retryPolicy,
   );
 
-  await poller.start();
-  poller.stop();
-
-  return updates[0];
+  return { poller, updates };
 }
 
 describe("MultiStopPoller", () => {
@@ -134,6 +162,70 @@ describe("MultiStopPoller", () => {
     expect(result.failures).toEqual([]);
     expect(result.successCount).toBe(1);
     expect(repository.getDepartures).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps showing the departures of a stop that stops answering", async () => {
+    const departure = departureIn(5);
+    let answering = true;
+    const repository: DepartureRepository = {
+      getDepartures: vi.fn(async (stationId: string) => {
+        if (!answering && stationId === sendlingerTor.stationId) {
+          throw new Error("MVG API error: 503 Service Unavailable");
+        }
+        return [departure];
+      }),
+    };
+    const { poller, updates } = pollerFor([giesing, sendlingerTor], repository);
+
+    await poller.start();
+    answering = false;
+    await poller.refreshNow();
+    poller.stop();
+
+    const secondCycle = updates[1];
+    expect(secondCycle.failures.map((failure) => failure.stationId)).toEqual([
+      sendlingerTor.stationId,
+    ]);
+    expect(groupsOf(secondCycle, sendlingerTor)).toEqual([
+      expect.objectContaining({
+        departures: [departure],
+        refreshFailed: true,
+      }),
+    ]);
+    // The stop that answered is left alone by its neighbour's failure.
+    expect(groupsOf(secondCycle, giesing)).toEqual([
+      expect.objectContaining({ departures: [departure] }),
+    ]);
+    expect(
+      groupsOf(secondCycle, giesing).map((group) => group.refreshFailed),
+    ).toEqual([undefined]);
+  });
+
+  it("does not bring back departures a stop no longer has", async () => {
+    // Sendlinger Tor has one departure, then none, then the API fails.
+    const answers: (Departure[] | "fail")[] = [[departureIn(5)], [], "fail"];
+    const repository: DepartureRepository = {
+      getDepartures: vi.fn(async () => {
+        const answer = answers.shift()!;
+        if (answer === "fail") {
+          throw new Error("MVG API error: 503 Service Unavailable");
+        }
+        return answer;
+      }),
+    };
+    const { poller, updates } = pollerFor([sendlingerTor], repository, {
+      attempts: 1,
+      delayMs: 0,
+    });
+
+    await poller.start();
+    await poller.refreshNow();
+    await poller.refreshNow();
+    poller.stop();
+
+    expect(groupsOf(updates[2], sendlingerTor)).toEqual([
+      expect.objectContaining({ departures: [], refreshFailed: true }),
+    ]);
   });
 
   it("tries every attempt of the retry policy before reporting a stop as failed", async () => {

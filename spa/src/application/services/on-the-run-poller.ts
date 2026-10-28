@@ -22,6 +22,7 @@ import type { NearbySource } from "../../adapters/on-the-run-nearby-source.js";
 import type { NearbyStation } from "../../domain/ports/nearby-station-repository.js";
 import { DepartureGroupingService } from "./departure-grouping-service.js";
 import { generateHeaderColors } from "./header-color-service.js";
+import { LastKnownGroups } from "./last-known-groups.js";
 import { PollLoop } from "./poll-loop.js";
 import { PollProgressReporter } from "./poll-progress-reporter.js";
 
@@ -58,6 +59,7 @@ export class OnTheRunPoller {
   private statusMessages: string[] = [];
   private lastLocation: { latitude: number; longitude: number } | null = null;
   private readonly progress: PollProgressReporter;
+  private readonly lastKnown = new LastKnownGroups();
 
   constructor(
     private readonly nearby: NearbySource,
@@ -205,22 +207,18 @@ export class OnTheRunPoller {
           suppressEmptyStopHeaders.add(baseStopConfig.stationId);
         }
 
+        const stationGroups: GroupedDepartures[] = [];
         for (const stopConfig of stopConfigs) {
           const departuresForStop =
             stopConfig.stationId === baseStopConfig.stationId
               ? baseDepartures
               : departures;
-          const groups = groupingService.groupDepartures(
-            departuresForStop,
-            stopConfig,
+          stationGroups.push(
+            ...groupingService.groupDepartures(departuresForStop, stopConfig),
           );
-          groups.forEach((group) => {
-            allGroups.push({ ...group });
-          });
-          if (groups.length > 0) {
-            stopsWithDepartures.add(stopConfig.stationId);
-          }
         }
+        this.lastKnown.remember(station.id, stationGroups);
+        this.appendGroups(allGroups, stopsWithDepartures, stationGroups);
 
         this.progress.settle(true);
       } catch (error) {
@@ -228,6 +226,13 @@ export class OnTheRunPoller {
         failures.push(failure);
         console.error(
           `[${this.pollerId}] API poll error for ${station.name}: ${failure.message}`,
+        );
+        // The station keeps what it last delivered, marked as not refreshed,
+        // so a hiccup does not blank a stop that is already on the screen.
+        this.appendGroups(
+          allGroups,
+          stopsWithDepartures,
+          this.lastKnown.stale(station.id),
         );
         this.progress.settle(false);
       }
@@ -274,6 +279,18 @@ export class OnTheRunPoller {
       },
       this.pollerId,
     );
+  }
+
+  /** Adds groups to the board and records which stops now have departures. */
+  private appendGroups(
+    allGroups: GroupedDepartures[],
+    stopsWithDepartures: Set<string>,
+    groups: GroupedDepartures[],
+  ): void {
+    groups.forEach((group) => {
+      allGroups.push({ ...group });
+      stopsWithDepartures.add(group.stationId);
+    });
   }
 
   private async getCurrentLocation(): Promise<{

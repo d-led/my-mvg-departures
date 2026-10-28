@@ -26,9 +26,9 @@ export function describeStopFailures(failures: StopFetchFailure[]): string {
 
   const names = failures.map((failure) => failure.stationName).join(", ");
   if (failures.length === 1) {
-    return `No data from ${names}`;
+    return `No answer from ${names}`;
   }
-  return `No data from ${failures.length} stops: ${names}`;
+  return `No answer from ${failures.length} stops: ${names}`;
 }
 
 /** Per-stop reasons, one per line, for the failure notice's tooltip. */

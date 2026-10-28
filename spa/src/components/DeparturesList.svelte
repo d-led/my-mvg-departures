@@ -127,6 +127,21 @@
     return `${group.stopName} → ${directionClean}`;
   }
 
+  /**
+   * Rows whose times may be out of date: the page was suspended, or the stop
+   * behind them could not be refreshed, so they keep the departures they last
+   * had. Greyed out, never struck through - only a cancelled departure is.
+   */
+  function showsStaleTimes(group: GroupedDepartures): boolean {
+    return isPageSuspended || group.refreshFailed === true;
+  }
+
+  /** What a screen reader hears before a group's rows: grey is invisible to it. */
+  function rowListLabel(group: GroupedDepartures): string {
+    const label = `Departures for ${group.directionName}`;
+    return group.refreshFailed ? `${label}, not refreshed` : label;
+  }
+
   /** Station coords cache (stationId -> { lat, lng }) for GPS map links. Populated by $effect. */
   let stationCoords = $state<Record<string, { lat: number; lng: number }>>({});
 
@@ -249,10 +264,10 @@
           <div class="no-departures">{group.refreshFailed ? "No data (refresh failed)" : "No departures"}</div>
         </div>
       {:else}
-      <ul role="list" aria-label="Departures for {group.directionName}">
+      <ul role="list" aria-label={rowListLabel(group)}>
         {#each group.departures as departure (departure.line + departure.destination + departure.time.getTime())}
           <li
-            class="departure-row {departure.isCancelled ? 'cancelled' : ''} {isPageSuspended ? 'stale' : ''}"
+            class="departure-row {departure.isCancelled ? 'cancelled' : ''} {showsStaleTimes(group) ? 'stale' : ''}"
             role="listitem"
             aria-label="{departure.transportType} {departure.line} to {departure.destination}, {formatTimeRelative(departure)}"
           >

@@ -78,6 +78,32 @@ function openSpa(configToml = CONFIG_TOML) {
   });
 }
 
+/** The rows one stop shows, wherever the other stops put theirs. */
+function rowsOf(stopName) {
+  return cy
+    .contains(".direction-header", stopName)
+    .parent()
+    .find(".departure-row");
+}
+
+/**
+ * Tabs away and back: the app then refreshes at once, which is the only way to
+ * watch a second cycle without waiting out the refresh interval.
+ */
+function refreshAtOnce() {
+  cy.document().then((document) => {
+    const pretendHidden = (hidden) => {
+      Object.defineProperty(document, "hidden", {
+        configurable: true,
+        value: hidden,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+    };
+    pretendHidden(true);
+    pretendHidden(false);
+  });
+}
+
 /** The same config, but without the in-cycle retries. */
 const CONFIG_TOML_SINGLE_ATTEMPT = CONFIG_TOML.replace(
   "refresh_interval_seconds = 20",
@@ -220,7 +246,44 @@ describe("SPA departures", () => {
       .and("contain", "degraded");
     cy.get("#api-status-container")
       .invoke("attr", "title")
-      .should("contain", "No data from Balanstr.");
+      .should("contain", "No answer from Balanstr.");
+  });
+
+  it("keeps the last departures of a stop that stops answering, greyed out", () => {
+    stubStationLookups();
+    const answers = {};
+    cy.intercept(
+      { method: "GET", url: "**/api/bgw-pt/v3/departures*" },
+      (request) => {
+        const globalId = new URL(request.url).searchParams.get("globalId");
+        answers[globalId] = (answers[globalId] ?? 0) + 1;
+
+        // The first cycle answers; from then on the stop is down.
+        if (answers[globalId] > 1) {
+          request.reply({ statusCode: 503, body: "Service Unavailable" });
+          return;
+        }
+        request.reply({ statusCode: 200, body: mvgDepartures() });
+      },
+    );
+    openSpa(CONFIG_TOML_SINGLE_ATTEMPT);
+
+    rowsOf("Balanstr.")
+      .should("have.length.at.least", 1)
+      .and("not.have.class", "stale");
+
+    refreshAtOnce();
+
+    // The stop that answered is fresh ...
+    rowsOf("Giesing").first().should("not.have.class", "stale");
+    // ... the one that stopped answering keeps its rows, greyed out ...
+    rowsOf("Balanstr.")
+      .first()
+      .should("have.class", "stale")
+      // ... and greyed out only: a strikethrough means cancelled.
+      .and("not.have.class", "cancelled");
+    // It does not claim to have nothing to show.
+    cy.get("#departures").should("not.contain", "No data (refresh failed)");
   });
 
   it("announces the failures when there is nothing else to show", () => {
@@ -230,7 +293,7 @@ describe("SPA departures", () => {
 
     cy.get(".stop-failures", { timeout: 15000 })
       .should("be.visible")
-      .and("contain", "No data from 2 stops");
+      .and("contain", "No answer from 2 stops");
     cy.get("#api-status-container")
       .should("have.attr", "aria-label")
       .and("contain", "API status: error");
