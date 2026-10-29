@@ -1,15 +1,15 @@
 name: E2E Pipeline
 
+# The application under test is the published image (ghcr.io/<repo>:main). On a
+# pull request that is still main's image, not the PR's code, so a green PR run
+# said nothing about the PR. The pipeline therefore runs after the main build
+# and on demand only; a PR is covered by ci.yml and the build-only docker job.
 on:
   workflow_run:
     workflows: ["Build and Publish Docker Image"]
     branches: [main]
     types:
       - completed
-  pull_request:
-    branches: [main]
-    paths-ignore:
-      - "spa/**"
   workflow_dispatch:
     inputs:
       deploy_pages:
@@ -30,7 +30,7 @@ permissions:
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    if: github.event.workflow_run.conclusion == 'success' || github.event_name != 'workflow_run'
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     permissions:
       contents: read
       packages: read
