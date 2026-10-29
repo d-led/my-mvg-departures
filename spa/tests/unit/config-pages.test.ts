@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   addConfigPage,
+  addConfigStop,
+  DISPLAY_FIELDS,
+  displayFieldGroups,
   draftOfSettings,
   moveConfigPage,
   readConfigPages,
@@ -9,6 +12,7 @@ import {
   removeConfigStop,
   settingsOfDraft,
   updateConfigPage,
+  updateConfigStop,
   updateDisplaySettings,
   type ConfigPageEdit,
 } from "../../src/utils/config-pages.js";
@@ -392,6 +396,7 @@ describe("display settings", () => {
       refresh_interval_seconds: 20,
       theme: "dark",
       fill_vertical_space: true,
+      font_size_time: "2rem",
     });
   });
 
@@ -413,6 +418,7 @@ describe("display settings", () => {
       refresh_interval_seconds: 30,
       theme: "dark",
       fill_vertical_space: true,
+      font_size_time: "2rem",
     });
     expect(edited).toContain('font_size_time = "2rem"');
     expect(edited).toContain("refresh_interval_seconds = 5");
@@ -510,6 +516,42 @@ describe("the display form's draft", () => {
     ).toMatchObject({
       refresh_interval_seconds: undefined,
     });
+  });
+
+  it("gives a file back byte for byte when nothing was edited", () => {
+    const applied = updateDisplaySettings(
+      WITH_SETTINGS,
+      "global",
+      settingsOfDraft(
+        draftOfSettings(readDisplaySettings(WITH_SETTINGS, "global")),
+      ),
+    );
+
+    expect(applied).toBe(WITH_SETTINGS);
+  });
+});
+
+describe("the display form's sections", () => {
+  it("puts every setting in exactly one section", () => {
+    const groups = displayFieldGroups();
+
+    expect(groups.map((group) => group.name)).toEqual([
+      "Timing",
+      "Look",
+      "Fonts",
+    ]);
+    expect(
+      groups.flatMap((group) => group.fields.map((field) => field.key)).sort(),
+    ).toEqual(DISPLAY_FIELDS.map((field) => field.key).sort());
+  });
+
+  it("tells a font size what the app uses while the file says nothing", () => {
+    const fonts = DISPLAY_FIELDS.filter((field) => field.group === "Fonts");
+
+    expect(fonts).toHaveLength(11);
+    expect(
+      fonts.every((field) => /^[\d.]+rem$/.test(field.fallback ?? "")),
+    ).toBe(true);
   });
 });
 
@@ -643,5 +685,191 @@ describe("rewriting one heading", () => {
     expect(edited).toContain("# The city trains, keep this note");
     expect(edited).not.toContain("# North bound");
     expect(edited).not.toContain("U3 Moosach");
+  });
+});
+
+const WITH_COUNTS = `[[routes]]
+path = "/"
+
+[[routes.stops]]
+station_id = "de:09162:1110"
+station_name = "Giesing"
+max_departures_per_stop = 6
+max_departures_per_route = 2
+max_hours_in_advance = 3
+show_ungrouped = true
+`;
+
+/** The stop as the configurator's form sends it back, unchanged otherwise. */
+function stopEditOf(toml: string, stopIndex = 0) {
+  const stop = readConfigPages(toml)[0].stops[stopIndex];
+
+  return {
+    label: stop.label,
+    showUngrouped: stop.showUngrouped,
+    maxDepartures: stop.maxDepartures,
+    perLineDepartures: stop.perLineDepartures,
+    hoursInAdvance: stop.hoursInAdvance,
+  };
+}
+
+describe("a stop's numbers", () => {
+  it("reads the rows the stop is allowed to show", () => {
+    const [stop] = readConfigPages(WITH_COUNTS)[0].stops;
+
+    expect(stop).toMatchObject({
+      maxDepartures: 6,
+      perLineDepartures: 2,
+      hoursInAdvance: 3,
+    });
+  });
+
+  it("writes the numbers the stop's form asks for", () => {
+    const edited = updateConfigStop(WITH_COUNTS, 0, 0, {
+      ...stopEditOf(WITH_COUNTS),
+      maxDepartures: 8,
+      perLineDepartures: 1,
+      hoursInAdvance: 2,
+    });
+
+    expect(readConfigPages(edited)[0].stops[0]).toMatchObject({
+      maxDepartures: 8,
+      perLineDepartures: 1,
+      hoursInAdvance: 2,
+    });
+    expect(edited).toContain('station_name = "Giesing"');
+  });
+
+  it("adds a number the stop did not have", () => {
+    const edited = updateConfigStop(TWO_PAGES, 0, 0, {
+      ...stopEditOf(TWO_PAGES),
+      hoursInAdvance: 2,
+    });
+
+    expect(readConfigPages(edited)[0].stops[0].hoursInAdvance).toBe(2);
+    expect(readConfigPages(edited)[0].stops[1].hoursInAdvance).toBeUndefined();
+  });
+
+  it("removes a number the form cleared, keeping the others", () => {
+    const edited = updateConfigStop(WITH_COUNTS, 0, 0, {
+      ...stopEditOf(WITH_COUNTS),
+      maxDepartures: null,
+    });
+
+    expect(edited).not.toContain("max_departures_per_stop");
+    expect(edited).toContain("max_departures_per_route = 2");
+  });
+
+  it("keeps a stop's headings when only its numbers change", () => {
+    const edited = updateConfigStop(WITH_DIRECTIONS, 0, 0, {
+      ...stopEditOf(WITH_DIRECTIONS),
+      maxDepartures: 4,
+    });
+
+    expect(headingsOf(edited)).toEqual(
+      readConfigPages(WITH_DIRECTIONS)[0].stops[0].directions,
+    );
+  });
+
+  it("renames a stop without touching its id, its headings or its numbers", () => {
+    const edited = updateConfigStop(WITH_COUNTS, 0, 0, {
+      ...stopEditOf(WITH_COUNTS),
+      name: "Giesing (Steig 4)",
+    });
+    const [stop] = readConfigPages(edited)[0].stops;
+
+    expect(stop.name).toBe("Giesing (Steig 4)");
+    expect(stop.stationId).toBe("de:09162:1110");
+    expect(stop).toMatchObject({
+      maxDepartures: 6,
+      perLineDepartures: 2,
+      hoursInAdvance: 3,
+      showUngrouped: true,
+    });
+  });
+
+  it("keeps the name the file has when the form names nothing", () => {
+    const edited = updateConfigStop(WITH_COUNTS, 0, 0, {
+      ...stopEditOf(WITH_COUNTS),
+      name: "   ",
+    });
+
+    expect(edited).toBe(WITH_COUNTS);
+  });
+
+  it("leaves the file alone when the form says what the file says", () => {
+    expect(updateConfigStop(WITH_COUNTS, 0, 0, stopEditOf(WITH_COUNTS))).toBe(
+      WITH_COUNTS,
+    );
+  });
+
+  it("ignores a stop that the page does not have", () => {
+    expect(
+      updateConfigStop(WITH_COUNTS, 0, 7, { label: "", showUngrouped: true }),
+    ).toBe(WITH_COUNTS);
+  });
+});
+
+describe("addConfigStop", () => {
+  it("appends the stop after the page's last one", () => {
+    const edited = addConfigStop(TWO_PAGES, 0, {
+      stationId: "de:09162:1130",
+      stationName: "Tegernseer Platz",
+    });
+    const [page] = readConfigPages(edited);
+
+    expect(page.stops.map((stop) => stop.name)).toEqual([
+      "Giesing",
+      "Karlsplatz",
+      "Tegernseer Platz",
+    ]);
+  });
+
+  it("leaves the next page's stops to the next page", () => {
+    const edited = addConfigStop(TWO_PAGES, 0, {
+      stationId: "de:09162:1130",
+      stationName: "Tegernseer Platz",
+    });
+
+    expect(edited.indexOf("Tegernseer Platz")).toBeLessThan(
+      edited.indexOf('path = "/work"'),
+    );
+    expect(readConfigPages(edited)[1].stops.map((stop) => stop.name)).toEqual([
+      "Hauptbahnhof",
+    ]);
+  });
+
+  it("adds the first stop to an empty page", () => {
+    const emptyPage = `[[routes]]\npath = "/"\n\n[[on_the_run]]\nradius_meters = 100\n`;
+    const edited = addConfigStop(emptyPage, 0, {
+      stationId: "de:09162:1110",
+      stationName: "Giesing",
+    });
+    const [page] = readConfigPages(edited);
+
+    expect(page.stops.map((stop) => stop.stationId)).toEqual(["de:09162:1110"]);
+    expect(edited).toContain("[[on_the_run]]");
+  });
+
+  it("adds the same station twice when the name tells the entries apart", () => {
+    const edited = addConfigStop(TWO_PAGES, 0, {
+      stationId: "de:09162:1110",
+      stationName: "Giesing S5",
+    });
+
+    expect(readConfigPages(edited)[0].stops.map((stop) => stop.name)).toEqual([
+      "Giesing",
+      "Karlsplatz",
+      "Giesing S5",
+    ]);
+  });
+
+  it("does not add a stop the page already has", () => {
+    const edited = addConfigStop(TWO_PAGES, 0, {
+      stationId: "de:09162:1110",
+      stationName: "Giesing",
+    });
+
+    expect(edited).toBe(TWO_PAGES);
   });
 });

@@ -23,11 +23,6 @@ function stubApis() {
   cy.intercept("**/api/bgw-pt/v3/**", { statusCode: 200, body: [] });
 }
 
-function openTomlView() {
-  cy.get(".config-method-selector").contains("button", "TOML Config").click();
-  cy.get(".config-textarea").should("be.visible");
-}
-
 describe("SPA config links", () => {
   it("loads a config from a raw GitHub link", () => {
     stubApis();
@@ -36,10 +31,10 @@ describe("SPA config links", () => {
     cy.visit(`/?config=${encodeURIComponent(RAW_LINK)}`);
 
     cy.wait("@config");
-    cy.get(".config-button").click();
-    openTomlView();
-    cy.get(".config-textarea").should("contain.value", 'title = "Linked config"');
-    cy.get(".config-textarea").should("contain.value", "Giesing");
+    cy.openConfigButton();
+    cy.openTomlView();
+    cy.tomlEditor().should("contain.value", 'title = "Linked config"');
+    cy.tomlEditor().should("contain.value", "Giesing");
   });
 
   it("reads a GitHub file page through its raw host", () => {
@@ -49,19 +44,20 @@ describe("SPA config links", () => {
     cy.visit(`/?config=${encodeURIComponent(GITHUB_PAGE)}`);
 
     cy.wait("@config");
-    cy.get(".config-button").click();
-    openTomlView();
-    cy.get(".config-textarea").should("contain.value", 'title = "Linked config"');
+    cy.openConfigButton();
+    cy.openTomlView();
+    cy.tomlEditor().should("contain.value", 'title = "Linked config"');
   });
 
-  it("keeps the example list out of the dialog", () => {
+  it("offers the shipped example as one button, not a list", () => {
     stubApis();
     cy.visit("/");
 
-    cy.get(".config-button").click();
+    cy.openConfigButton();
 
-    // The only example left is the one button that loads the default config.
-    cy.get(".modal-content").should("not.contain", "Münchner Freiheit");
-    cy.get(".modal-footer").contains("button", "Example").should("be.visible");
+    // One way to load it, and it is the example the app ships.
+    cy.footerButton("Example").click();
+    cy.tomlEditor().should("contain.value", 'title = "Giesing Departures"');
+    cy.dialogContent().should("not.contain", "muenchen-muenchner-freiheit");
   });
 });

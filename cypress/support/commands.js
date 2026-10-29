@@ -145,3 +145,391 @@ Cypress.Commands.add("shouldDisplayStatusFloatingBox", (minItems = 3) => {
   cy.get(".status-floating-box").should("be.visible");
   cy.get(".status-floating-box-item").should("have.length.at.least", minItems);
 });
+
+// *****************************************************************************
+// The config dialog's Configurator: no spec selects into the dialog, everything
+// it needs lives here.
+// *****************************************************************************
+
+const CONFIG_TOML_KEY = "mvg_departures_config_toml";
+
+/** Opens the config dialog straight on the Configurator screen. */
+Cypress.Commands.add("openConfigurator", () => {
+  cy.get("body").then(($body) => {
+    if ($body.find(".modal-content").length === 0) {
+      cy.get(".config-button").click();
+    }
+  });
+  cy.get(".config-method-selector").contains("button", "Configurator").click();
+  cy.get(".cfg").should("exist");
+});
+
+/** Leaves the configurator; the file is untouched until Save. */
+Cypress.Commands.add("closeConfigurator", () => {
+  cy.get(".configurator-panel .modal-footer").contains("button", "Done").click();
+  cy.get(".cfg").should("not.exist");
+});
+
+/** The configurator's Done and the dialog's Save, in one go. */
+Cypress.Commands.add("saveConfigDialog", () => {
+  cy.closeConfigurator();
+  cy.saveConfig();
+});
+
+/** The TOML the dialog has stored, as the app will read it next time. */
+Cypress.Commands.add("storedConfig", () => cy.window().its("localStorage").invoke("getItem", CONFIG_TOML_KEY));
+
+/** The names of the routes, in the order they are listed. */
+Cypress.Commands.add("configRouteNames", () =>
+  cy.get(".cfg .page-row").then(($rows) => [...$rows].map((row) => (row.querySelector(".name")?.textContent ?? row.querySelector(".row-input")?.value ?? "").trim())),
+);
+
+/** The names of the stops of the open route; none is a valid answer. */
+Cypress.Commands.add("configStopNames", () =>
+  cy.get(".cfg").then(($cfg) => [...$cfg[0].querySelectorAll(".row.sub")].map((row) => (row.querySelector(".name")?.textContent ?? row.querySelector(".row-input")?.value ?? "").trim())),
+);
+
+/** Opens the route with that name; opening another closes the first. */
+Cypress.Commands.add("openConfigRoute", (name) => {
+  cy.get(".cfg .page-row").contains(".name", name).closest(".page-row").find('[data-role="page"]').click();
+});
+
+Cypress.Commands.add("openConfigStop", (name) => {
+  cy.get(".cfg .row.sub").contains(".name", name).closest(".row").find('[data-role="stop"]').click();
+});
+
+/** A route opens by tapping its name, not only by its tiny triangle. */
+Cypress.Commands.add("tapConfigRouteName", (name) => {
+  cy.get(".cfg .page-row").contains(".name", name).click();
+});
+
+Cypress.Commands.add("tapConfigStopName", (name) => {
+  cy.get(".cfg .row.sub").contains(".name", name).click();
+});
+
+Cypress.Commands.add("openConfigDirection", (index = 0) => {
+  cy.get('.cfg [data-role="direction"]').eq(index).click();
+});
+
+Cypress.Commands.add("openConfigRouteSettings", () => {
+  cy.get('.cfg [data-role="page-settings"]').click();
+});
+
+Cypress.Commands.add("openConfigDefaults", () => {
+  cy.get('.cfg [data-role="defaults"]').click();
+});
+
+Cypress.Commands.add("addConfigRoute", () => {
+  cy.get('.cfg [data-role="add-page"]').click();
+});
+
+Cypress.Commands.add("addConfigStop", () => {
+  cy.get('.cfg [data-role="add-stop"]').click();
+});
+
+Cypress.Commands.add("addConfigDirection", () => {
+  cy.get('.cfg [data-role="add-direction"]').click();
+});
+
+Cypress.Commands.add("deleteConfigRoute", (name) => {
+  cy.get(`.cfg [aria-label="Delete the route ${name}"]`).click();
+});
+
+Cypress.Commands.add("confirmConfigRouteDeletion", (name) => {
+  cy.get(".cfg").contains("button", `⨯ “${name}”`).click();
+});
+
+Cypress.Commands.add("deleteConfigStop", (name) => {
+  cy.get(`.cfg [aria-label="Delete ${name}"]`).click();
+});
+
+Cypress.Commands.add("confirmConfigStopDeletion", (name) => {
+  cy.get(".cfg").contains("button", `⨯ ${name}`).click();
+});
+
+/** A labelled field of the configurator, by its visible label. */
+Cypress.Commands.add("configField", (label) => cy.get(".cfg .field").contains("span", label).parent().find("input"));
+
+/** A select of the configurator by the label a screen reader hears. */
+Cypress.Commands.add("configSelect", (ariaLabel) => cy.get(`.cfg select[aria-label="${ariaLabel}"]`));
+
+/** A field of the configurator by the label a screen reader hears. */
+Cypress.Commands.add("configInput", (ariaLabel) => cy.get(`.cfg input[aria-label="${ariaLabel}"]`));
+
+/** The sections the open display form is read in. */
+Cypress.Commands.add("configFieldSections", () => cy.get(".cfg .display-group h4"));
+
+Cypress.Commands.add("configButton", (text) => cy.get(".cfg .button").contains(text));
+
+Cypress.Commands.add("configProblem", () => cy.get(".cfg .problem"));
+
+/** Replaces the whole content of a labelled field, without a separate clear. */
+Cypress.Commands.add("retypeConfigInput", (ariaLabel, text) => {
+  cy.get(`.cfg input[aria-label="${ariaLabel}"]`).clear().type(`${text}{enter}`);
+});
+
+Cypress.Commands.add("retypeConfigMatch", (index, text) => {
+  cy.get('.cfg [data-role="match"] input').eq(index).clear().type(`${text}{enter}`);
+});
+
+Cypress.Commands.add("removeConfigMatch", (index = 0) => {
+  cy.get('.cfg [data-role="match"] .icon-button').eq(index).click();
+});
+
+/** Reorders a route with the keyboard: Alt+Arrow on its grip. */
+Cypress.Commands.add("moveConfigRouteWithKeyboard", (name, to) => {
+  cy.get(".cfg .page-row")
+    .contains(".name", name)
+    .closest(".page-row")
+    .find(".grip")
+    .focus()
+    .trigger("keydown", { key: to === "up" ? "ArrowUp" : "ArrowDown", altKey: true });
+});
+
+/** The editable matches of the open direction. */
+Cypress.Commands.add("configMatches", () => cy.get('.cfg [data-role="match"] input'));
+
+/** Drags one route onto another by its grip; Escape cancels the drag. */
+Cypress.Commands.add("dragConfigRoute", (fromIndex, toIndex, options = {}) => {
+  cy.get('.cfg [data-role="page"]').then(($rows) => {
+    const from = $rows[fromIndex].getBoundingClientRect();
+    const to = $rows[toIndex].getBoundingClientRect();
+    const at = { clientX: to.left + 5, clientY: to.top + to.height / 2 };
+
+    cy.wrap($rows[fromIndex])
+      .parent()
+      .find(".grip")
+      .trigger("pointerdown", {
+        which: 1,
+        clientX: from.left + 5,
+        clientY: from.top + 5,
+      });
+    cy.window().trigger("pointermove", at);
+    if (options.cancel) {
+      cy.window().trigger("keydown", { key: "Escape" });
+    }
+    cy.window().trigger("pointerup", at);
+  });
+});
+
+Cypress.Commands.add("searchConfigStop", (name) => {
+  cy.get('.cfg input[aria-label="Search a stop to add"]').type(name);
+  cy.get(".cfg").contains("button", "Search").click();
+});
+
+Cypress.Commands.add("pickConfigStop", (name) => {
+  cy.get(".cfg .form .row.sub").contains(name).click();
+});
+
+/** Declines the delete the configurator asked about. */
+Cypress.Commands.add("cancelConfigRouteDeletion", () => {
+  cy.get(".cfg .actions").contains("button", "Keep").click();
+});
+
+// *****************************************************************************
+// The config dialog's other screens, and the way a phone sees them.
+// *****************************************************************************
+
+/** Opens the config dialog on the page it is already showing. */
+Cypress.Commands.add("openConfigButton", () => {
+  cy.get(".config-button").click();
+  cy.get(".modal-content").should("be.visible");
+});
+
+/** The dialog as a whole, whatever screen it is showing. */
+Cypress.Commands.add("dialogContent", () => cy.get(".modal-content"));
+
+Cypress.Commands.add("dialogClosed", () => cy.get(".modal-content").should("not.exist"));
+
+/** The dialog's mode row. */
+Cypress.Commands.add("configTabs", () => cy.get(".config-method-selector .method-button"));
+
+/** A button in the dialog's own footer, not the configurator's. */
+Cypress.Commands.add("footerButton", (text) => cy.get(".modal-footer").contains("button", text));
+
+/** The configurator's rows. */
+Cypress.Commands.add("configPanel", () => cy.get(".cfg"));
+
+Cypress.Commands.add("mainHeadline", () => cy.get("h1"));
+
+Cypress.Commands.add("appBody", () => cy.get("body"));
+
+/** Opens the config dialog on a stored TOML, as the app would find it. */
+Cypress.Commands.add("openConfigDialog", (toml, hash = "/") => {
+  cy.intercept("**/api/bgw-pt/v3/**", { statusCode: 200, body: [] });
+  cy.visit(hash, {
+    onBeforeLoad(win) {
+      win.localStorage.setItem(CONFIG_TOML_KEY, toml);
+    },
+  });
+  cy.get(".config-button").click();
+  cy.get(".modal-content").should("be.visible");
+});
+
+/** The file as text. */
+Cypress.Commands.add("tomlEditor", () => cy.get(".config-textarea"));
+
+/** The TOML Config tab: the file is edited where it is. */
+Cypress.Commands.add("openTomlView", () => {
+  cy.get(".config-method-selector").contains("button", "TOML Config").click();
+  cy.get(".config-textarea").should("be.visible");
+});
+
+/** Saves the dialog; the file is stored and the dialog closes. */
+Cypress.Commands.add("saveConfig", () => {
+  cy.get(".modal-footer").contains("button", "Save").click();
+  cy.get(".modal-content").should("not.exist");
+});
+
+/** Asks the dialog to close, without saying what to do with unsaved edits. */
+Cypress.Commands.add("cancelConfigDialog", () => {
+  cy.get(".modal-footer").contains("button", "Cancel").click();
+});
+
+Cypress.Commands.add("keepEditing", () => {
+  cy.get(".discard-question").parent().contains("button", "Keep editing").click();
+});
+
+Cypress.Commands.add("discardChanges", () => {
+  cy.get(".discard-question").parent().contains("button", "Discard changes").click();
+  cy.get(".modal-content").should("not.exist");
+});
+
+/** The editor blown up to the whole screen, for a phone keyboard. */
+Cypress.Commands.add("expandTomlEditor", () => {
+  cy.get('[aria-label="Expand editor"]').click();
+  cy.get(".fullscreen-textarea").should("be.visible");
+});
+
+Cypress.Commands.add("fullscreenEditor", () => cy.get(".fullscreen-textarea"));
+
+Cypress.Commands.add("closeFullscreenEditor", () => {
+  cy.get(".fullscreen-editor-content").contains("button", "Done").click();
+  cy.get(".fullscreen-textarea").should("not.exist");
+});
+
+/** The numeric values, one overlay over the file. */
+Cypress.Commands.add("openTweaks", () => {
+  cy.get('[aria-label="Tweak display values"]').click();
+  cy.get(".tweak-filter-input").should("be.visible");
+});
+
+Cypress.Commands.add("filterTweaks", (text) => cy.get(".tweak-filter-input").type(text));
+
+Cypress.Commands.add("tweakSections", () => cy.get(".tweak-section"));
+
+Cypress.Commands.add("closeTweaks", () => {
+  cy.get(".tweak-overlay").contains("button", "Ok").click();
+  cy.get(".tweak-overlay").should("not.exist");
+});
+
+/** The clean-up: a command, never a side effect of looking at a screen. */
+Cypress.Commands.add("cleanUpConfig", () => {
+  cy.get(".config-method-selector").contains("button", "Clean up").click();
+});
+
+Cypress.Commands.add("cleanUpReview", () => cy.get(".cleanup-review"));
+
+Cypress.Commands.add("applyCleanUp", () => cy.get(".cleanup-review").contains("button", "Apply clean-up").click());
+
+Cypress.Commands.add("cancelCleanUp", () => cy.get(".cleanup-review").contains("button", "Cancel clean-up").click());
+
+Cypress.Commands.add("configNotice", () => cy.get(".config-notice"));
+
+/** The Next to me page: the row above the routes, and its form. */
+Cypress.Commands.add("nextToMeRow", () => cy.contains(".page-row", "Next to me"));
+
+Cypress.Commands.add("restoreNextToMePage", () => cy.nextToMeRow().contains("button", "Restore").click());
+
+Cypress.Commands.add("editNextToMePage", () => cy.nextToMeRow().contains("button", "Edit").click());
+
+Cypress.Commands.add("nextToMeField", (label) => cy.get(`.on-the-run-field input[aria-label="${label}"]`));
+
+Cypress.Commands.add("applyNextToMeForm", () => cy.contains(".page-row-form button", "Apply").click());
+
+Cypress.Commands.add("nextToMeForm", () => cy.get(".page-row-form"));
+
+/** The dialog's other screens: the wizard and the two ways of deleting. */
+Cypress.Commands.add("openWizard", () => {
+  cy.get(".config-method-selector").contains("button", "Wizard").click();
+  cy.get(".wizard-content").should("be.visible");
+});
+
+Cypress.Commands.add("openHeaderDeletion", () => {
+  cy.get(".config-method-selector").contains("button", "Delete (current route)").click();
+});
+
+Cypress.Commands.add("openRouteDeletion", () => {
+  cy.get(".config-method-selector").contains("button", "Routes").click();
+});
+
+Cypress.Commands.add("headerDeletionItems", () => cy.get(".delete-list .delete-item"));
+
+Cypress.Commands.add("routeDeletionItems", () => cy.get(".delete-routes-list .delete-item"));
+
+Cypress.Commands.add("routeDeletionHint", () => cy.get(".delete-routes-hint"));
+
+Cypress.Commands.add("reviewDeletion", () => cy.get(".modal-footer").contains("button", "Review Delete").click());
+
+Cypress.Commands.add("reviewDeletionButton", () => cy.get(".modal-footer").contains("button", "Review Delete"));
+
+Cypress.Commands.add("confirmDeletion", () => cy.get(".modal-footer").contains("button", "Confirm Delete").click());
+
+/** The wizard, opened from the configurator to add stops to a route. */
+Cypress.Commands.add("openStopWizard", () => {
+  cy.configButton("Wizard").click();
+  cy.get(".wizard-content").should("be.visible");
+});
+
+Cypress.Commands.add("wizardPickMain", () => cy.get(".target-button").contains("Main").click());
+
+Cypress.Commands.add("wizardSearchStop", (name) => {
+  cy.get(".search-input").type(name);
+  cy.get(".search-button").click();
+});
+
+Cypress.Commands.add("wizardPickFirstStop", () => cy.get(".stops-checklist .checkbox-item").first().click());
+
+Cypress.Commands.add("wizardNext", () => cy.contains("button", /^Next \(/).click());
+
+Cypress.Commands.add("wizardCreate", () => cy.contains("button", "Create Configuration").click());
+
+/**
+ * A phone shows one screen at a time: nothing may hang over an edge, and a
+ * control has to be big enough for a thumb.
+ */
+Cypress.Commands.add("expectNoSidewaysScroll", () => {
+  cy.document().then((doc) => {
+    const page = doc.documentElement;
+    expect(page.scrollWidth, "page width").to.be.at.most(page.clientWidth + 1);
+  });
+});
+
+Cypress.Commands.add("expectInsideViewport", (selector) => {
+  cy.get(selector)
+    .first()
+    .then(($element) => {
+      const box = $element[0].getBoundingClientRect();
+      expect(box.top, `${selector} top`).to.be.at.least(-1);
+      expect(box.right, `${selector} right`).to.be.at.most(cy.state("viewportWidth") + 1);
+      expect(box.bottom, `${selector} bottom`).to.be.at.most(cy.state("viewportHeight") + 1);
+    });
+});
+
+/** Fitting is not enough: the file has to get a usable share of the screen. */
+Cypress.Commands.add("expectTomlEditorUsable", () => {
+  cy.get(".config-textarea").then(($element) => {
+    const height = $element[0].getBoundingClientRect().height;
+    expect(height, "editor height").to.be.at.least(cy.state("viewportHeight") * 0.3);
+  });
+});
+
+Cypress.Commands.add("expectTapTarget", (selector, minSize = 32) => {
+  cy.get(selector)
+    .first()
+    .should(($element) => {
+      const box = $element[0].getBoundingClientRect();
+      expect(box.width, `${selector} width`).to.be.at.least(minSize);
+      expect(box.height, `${selector} height`).to.be.at.least(minSize);
+    });
+});

@@ -53,28 +53,84 @@ font_size_stop_header = "3rem"
 font_size_direction_header = "2.5rem"
 font_size_status_header = "1.875rem"
 
-# The main screen
+# The main screen: Giesing, the way this board has always been set up - the bus
+# and tram side with its direction filters, the two S-Bahn platforms, and the two
+# physical stops across the crossing.
 [[routes]]
 path = "/"
 
-# Each stop is an independent config; the settings it leaves out come from [display]
 [[routes.stops]]
 station_id = "de:09162:1110"
 station_name = "Giesing"
-max_departures_per_stop = 6
-max_departures_per_route = 2
+max_departures_per_stop = 4
+max_departures_per_route = 1
 show_ungrouped = true
-ungrouped_title = "Other"
+ungrouped_title = "Other/U-/S-Bahn"
+
+# The S-Bahn destinations below are handled by their own stops
+exclude_destinations = [
+    "54",
+    "S3 Deisenhofen",
+    "S3 Holzkirchen",
+    "S5 Aying",
+    "S5 Höhenkirchen-Siegertsbrunn",
+    "S5 Kreuzstraße",
+]
 
 [routes.stops.direction_mappings]
-"->Stadtmitte" = ["U2 Messestadt", "U2 Feldmoching"]
+"->Balanstr." = ["139 Messestadt West", "139 Neuperlach Zentrum", "59 Ackermannbogen"]
+"->Klinikum" = ["139 Klinikum Harlaching"]
+"->Schwanseestr." = ["18 Schwanseestraße"]
+"->St.-Quirin-Pl." = ["220"]
+"->Ostbahnhof" = ["54 Münchner Freiheit"]
+"->Stadt" = ["18 Gondrellplatz"]
 
+# S-Bahn, platform 3, towards Neuperlach
 [[routes.stops]]
-station_id = "de:09162:1056"
-station_name = "Balanstr."
+station_id = "de:09162:1110"
+station_name = "Giesing S5"
 max_departures_per_stop = 4
 max_departures_per_route = 2
+show_ungrouped = false
+random_header_colors = true
+random_color_salt = 7
+
+[routes.stops.direction_mappings]
+"->Neuperlach" = ["S5 Aying", "S5 Höhenkirchen-Siegertsbrunn", "S5 Kreuzstraße"]
+
+# S-Bahn, platform 3, towards Fasangarten
+[[routes.stops]]
+station_id = "de:09162:1110"
+station_name = "Giesing S3"
+max_departures_per_stop = 4
+max_departures_per_route = 2
+show_ungrouped = false
+random_header_colors = true
+
+[routes.stops.direction_mappings]
+"->Fasangarten" = ["S3 Deisenhofen", "S3 Holzkirchen"]
+
+# The bus stop on Tegernseer Straße, a physical stop of the same station
+[[routes.stops]]
+station_id = "de:09162:1110:4:4"
+station_name = "Tegernseer Str."
+ungrouped_title = "Tegernseer Str."
+max_departures_per_stop = 2
+max_departures_per_route = 1
 show_ungrouped = true
+max_hours_in_advance = 3
+random_header_colors = true
+random_color_salt = 1
+
+# Balanstraße, the other side of the crossing
+[[routes.stops]]
+station_id = "de:09162:1056:1:1"
+station_name = "Balanstr."
+ungrouped_title = "Giesing"
+max_departures_per_stop = 2
+max_departures_per_route = 1
+show_ungrouped = true
+random_header_colors = true
 
 # A second screen at /#/work
 [[routes]]

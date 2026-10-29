@@ -13,11 +13,15 @@
     removeConfigPage,
     removeConfigStop,
     updateConfigPage,
+    updateConfigStop,
     addConfigPage,
+    addConfigStop,
     updateDisplaySettings,
     type ConfigPageEdit,
+    type ConfigPageStopEdit,
     type DisplaySettings,
     type NewConfigPage,
+    type NewConfigStop,
   } from "../utils/config-pages.js";
   import {
     applyWizardConfig,
@@ -29,7 +33,6 @@
     cleanUpConfigToml,
     describeCleanup,
   } from "../utils/config-cleanup.js";
-  import { formatConfigToml } from "../utils/config-format.js";
   import { highlightToml } from "../utils/toml-highlight.js";
   import {
     addOnTheRunSection,
@@ -130,6 +133,11 @@
     showWizard = true;
   }
 
+  /** Leaving the configurator returns to the file; nothing is saved from here. */
+  function closeConfigurator() {
+    view = "toml";
+  }
+
   type DeletableRoute = {
     id: string;
     label: string;
@@ -156,13 +164,19 @@
         while (i < lines.length) {
           const line = lines[i];
           const trimmed = line.trim();
-          const pathMatch = trimmed.match(/path\s*=\s*"([^"]*)"/) ?? trimmed.match(/path\s*=\s*'([^']*)'/);
+          const pathMatch =
+            trimmed.match(/path\s*=\s*"([^"]*)"/) ??
+            trimmed.match(/path\s*=\s*'([^']*)'/);
           if (pathMatch) path = pathMatch[1];
           if (trimmed === "[[routes.display]]") {
             let j = i + 1;
             while (j < lines.length) {
               const t = lines[j].trim();
-              if (t.startsWith("[[") || (t.startsWith("[") && !t.startsWith("[routes"))) break;
+              if (
+                t.startsWith("[[") ||
+                (t.startsWith("[") && !t.startsWith("[routes"))
+              )
+                break;
               const titleMatch = t.match(/title\s*=\s*"([^"]*)"/);
               if (titleMatch) {
                 title = titleMatch[1];
@@ -172,8 +186,10 @@
             }
           }
           if (trimmed === "[[routes]]") break;
-          if (trimmed.startsWith("[[") && !trimmed.startsWith("[[routes")) break;
-          if (trimmed.match(/^\[[a-z_]+\]/) && !trimmed.startsWith("[routes")) break;
+          if (trimmed.startsWith("[[") && !trimmed.startsWith("[[routes"))
+            break;
+          if (trimmed.match(/^\[[a-z_]+\]/) && !trimmed.startsWith("[routes"))
+            break;
           i++;
         }
         const endLine = i;
@@ -235,7 +251,10 @@
       lines = [...before, ...after];
     }
 
-    configText = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+    configText = lines
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
     deleteRoutesSelections = new Set();
     deleteRoutesStep = "select";
     showDeleteRoutes = false;
@@ -246,7 +265,6 @@
     deleteRoutesSelections = new Set();
     showDeleteRoutes = true;
   }
-
 
   function buildDeleteCandidates(): {
     candidates: {
@@ -273,8 +291,11 @@
     try {
       const parsed = configParser.parseToml(configText);
       const currentPath = getCurrentRoutePath();
-      const route = parsed.routes.find((r) => r.path === currentPath) ??
-        (currentPath === "/" ? parsed.routes.find((r) => r.path === "/") : undefined);
+      const route =
+        parsed.routes.find((r) => r.path === currentPath) ??
+        (currentPath === "/"
+          ? parsed.routes.find((r) => r.path === "/")
+          : undefined);
 
       if (!route) {
         return {
@@ -539,8 +560,7 @@
       const showUngroupedMatch = cleaned.find((line) =>
         line.startsWith("show_ungrouped"),
       );
-      const showUngrouped =
-        showUngroupedMatch?.includes("true") ?? false;
+      const showUngrouped = showUngroupedMatch?.includes("true") ?? false;
       const hasDirections = hasMappingLines;
 
       if (!showUngrouped && !hasDirections) {
@@ -592,7 +612,11 @@
         continue;
       }
 
-      if (line.startsWith("[") && !line.startsWith("[routes") && !line.startsWith("[[routes")) {
+      if (
+        line.startsWith("[") &&
+        !line.startsWith("[routes") &&
+        !line.startsWith("[[routes")
+      ) {
         insideRouteBlock = false;
         currentRoutePathInBlock = null;
       }
@@ -611,12 +635,17 @@
   /** True if the line is a TOML section header (not a comment; starts with [ and ends with ]). */
   function isSectionHeader(line: string): boolean {
     const t = line.trim();
-    return t.length > 0 && !t.startsWith("#") && t.startsWith("[") && t.endsWith("]");
+    return (
+      t.length > 0 && !t.startsWith("#") && t.startsWith("[") && t.endsWith("]")
+    );
   }
 
   /** Section heading text for display (trimmed, trailing # comment removed). */
   function sectionHeadingText(line: string): string {
-    return line.trim().replace(/\s*#.*$/, "").trim();
+    return line
+      .trim()
+      .replace(/\s*#.*$/, "")
+      .trim();
   }
 
   /** Parse all TOML sections: every non-comment line starting with [ is a heading; collect key=value lines until the next heading. */
@@ -641,7 +670,8 @@
           if (kv) {
             const [, key, raw] = kv;
             const rawTrimmed = raw.trim();
-            const isNonScalar = rawTrimmed.startsWith("[") || rawTrimmed.startsWith("{");
+            const isNonScalar =
+              rawTrimmed.startsWith("[") || rawTrimmed.startsWith("{");
             if (!isNonScalar) {
               let value = rawTrimmed;
               if (value.startsWith('"')) {
@@ -657,7 +687,11 @@
                   }
                   end += 1;
                 }
-              } else if (value.startsWith("'") && value.endsWith("'") && value.length >= 2) {
+              } else if (
+                value.startsWith("'") &&
+                value.endsWith("'") &&
+                value.length >= 2
+              ) {
                 value = value.slice(1, -1);
               } else {
                 const hashIdx = value.indexOf("#");
@@ -687,7 +721,10 @@
   }
 
   /** Apply modified tweak sections back to TOML text (updates config text only, does not save). */
-  function applyTweakDisplay(tomlText: string, sections: TweakSection[]): string {
+  function applyTweakDisplay(
+    tomlText: string,
+    sections: TweakSection[],
+  ): string {
     const lines = tomlText.split("\n");
     const lineUpdates = new Map<number, string>();
     for (const section of sections) {
@@ -696,7 +733,10 @@
         if (!line) continue;
         const keyValueRe = /^\s*([a-z][a-z0-9_]*)\s*=\s*(.*)$/;
         if (keyValueRe.test(line)) {
-          lineUpdates.set(entry.lineIndex, `${entry.key} = ${tomlValue(entry.value)}`);
+          lineUpdates.set(
+            entry.lineIndex,
+            `${entry.key} = ${tomlValue(entry.value)}`,
+          );
         }
       }
     }
@@ -875,6 +915,9 @@
    * Rewrites the config into the SPA's shape - but only as a proposal: the
    * rewrite lands in the editor when the user applies it, and Cancel leaves the
    * text exactly as it was. Nothing is saved either way until Save.
+   *
+   * The rewrite removes lines and moves the legacy stops; everything else -
+   * comments, blank lines, the author's order - stays as it was written.
    */
   function previewCleanup() {
     notice = null;
@@ -884,12 +927,11 @@
         showNotice(describeCleanup(cleanup));
         return;
       }
-      const formatted = formatConfigToml(cleanup.toml);
-      configParser.parseToml(formatted);
+      configParser.parseToml(cleanup.toml);
       pendingCleanup = {
         for: configText,
-        toml: formatted,
-        description: `${describeCleanup(cleanup)} The result is reformatted: one block per page, keys in reading order.`,
+        toml: cleanup.toml,
+        description: describeCleanup(cleanup),
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1021,21 +1063,46 @@
       return;
     }
     configText = removeConfigStop(configText, pageIndex, stopIndex);
-    showNotice(`Deleted “${stop.name}” from “${page.title}”. Save to keep the change.`);
+    showNotice(
+      `Deleted “${stop.name}” from “${page.title}”. Save to keep the change.`,
+    );
+  }
+
+  /** One stop's settings; the page's other stops stay as they are. */
+  function applyStopEdit(
+    pageIndex: number,
+    stopIndex: number,
+    edit: ConfigPageStopEdit,
+  ) {
+    const before = configText;
+    configText = updateConfigStop(configText, pageIndex, stopIndex, edit);
+    if (configText !== before) {
+      showNotice("Stop settings updated. Save to keep the change.");
+    }
+  }
+
+  function addStop(pageIndex: number, stop: NewConfigStop) {
+    const before = configText;
+    configText = addConfigStop(configText, pageIndex, stop);
+    if (configText === before) {
+      showNotice(`${stop.stationName} is already on this page.`);
+      return;
+    }
+    showNotice(`Added “${stop.stationName}”. Save to keep the change.`);
   }
 
   /** Puts the page back when it went missing; it is never removed from here. */
   function restoreOnTheRun() {
     configText = addOnTheRunSection(configText);
     showNotice(
-      'Next to me is back with its default settings. Adjust them in the text, then save.',
+      "Next to me is back with its default settings. Adjust them in the text, then save.",
     );
   }
 
   async function loadExampleConfig() {
     isLoadingExample = true;
     errorMessage = null;
-    
+
     try {
       // Use relative path to work with both root and subdirectory deployments
       const configPath = "./config.example.toml";
@@ -1046,7 +1113,11 @@
         console.log(`Loaded example config from ${configPath}`);
       } else {
         errorMessage = `Failed to load example config: ${response.status} ${response.statusText}`;
-        console.error("Failed to fetch example config:", response.status, response.statusText);
+        console.error(
+          "Failed to fetch example config:",
+          response.status,
+          response.statusText,
+        );
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1069,7 +1140,7 @@
     try {
       // Try to parse the TOML to validate it
       configParser.parseToml(configText);
-      
+
       // If parsing succeeds, call onSave
       await onSave(configText);
       // onSave will close the modal on success
@@ -1121,7 +1192,8 @@
       }, 2000);
     } catch (error) {
       console.error("Failed to copy to clipboard:", error);
-      errorMessage = "Failed to copy to clipboard. Please try manually selecting and copying.";
+      errorMessage =
+        "Failed to copy to clipboard. Please try manually selecting and copying.";
     }
   }
 
@@ -1178,9 +1250,7 @@
   function parseHttpUrl(text: string): URL | null {
     try {
       const url = new globalThis.URL(text);
-      return url.protocol === "http:" || url.protocol === "https:"
-        ? url
-        : null;
+      return url.protocol === "http:" || url.protocol === "https:" ? url : null;
     } catch {
       return null;
     }
@@ -1243,14 +1313,20 @@
     <div class="modal-content delete-routes-content">
       <div class="modal-header">
         <h2>Delete Routes</h2>
-        <button class="close-button" onclick={() => (showDeleteRoutes = false)} aria-label="Close">×</button>
+        <button
+          class="close-button"
+          onclick={() => (showDeleteRoutes = false)}
+          aria-label="Close">×</button
+        >
       </div>
       <div class="modal-body">
         <p class="delete-routes-hint">
           Select the routes to remove from your configuration.
         </p>
         {#if deletableConfigItems.length === 0}
-          <p class="delete-routes-empty">Nothing to delete yet: this config has no pages.</p>
+          <p class="delete-routes-empty">
+            Nothing to delete yet: this config has no pages.
+          </p>
         {:else}
           {#if deletingEveryRoute}
             <p class="delete-routes-hint" role="status">
@@ -1278,7 +1354,7 @@
             <div class="delete-confirm">
               <h3>Confirm deletion</h3>
               <ul>
-                {#each deletableConfigItems.filter((item) => deleteRoutesSelections.has(item.id)) as item (item.id)}
+                {#each deletableConfigItems.filter( (item) => deleteRoutesSelections.has(item.id) ) as item (item.id)}
                   <li>
                     {item.label}
                     <span class="delete-routes-path">{item.path}</span>
@@ -1292,16 +1368,31 @@
       {#if deletableConfigItems.length > 0}
         <div class="modal-footer">
           {#if deleteRoutesStep === "confirm"}
-            <button class="button button-secondary" onclick={() => (deleteRoutesStep = "select")}>Back</button>
-            <button class="button button-secondary" onclick={() => (showDeleteRoutes = false)}>Cancel</button>
-            <button class="button button-primary" onclick={applyRoutesDeletions} disabled={deleteRoutesSelections.size === 0 || deletingEveryRoute}>Confirm Delete</button>
+            <button
+              class="button button-secondary"
+              onclick={() => (deleteRoutesStep = "select")}>Back</button
+            >
+            <button
+              class="button button-secondary"
+              onclick={() => (showDeleteRoutes = false)}>Cancel</button
+            >
+            <button
+              class="button button-primary"
+              onclick={applyRoutesDeletions}
+              disabled={deleteRoutesSelections.size === 0 || deletingEveryRoute}
+              >Confirm Delete</button
+            >
           {:else}
-            <button class="button button-secondary" onclick={() => (showDeleteRoutes = false)}>Cancel</button>
+            <button
+              class="button button-secondary"
+              onclick={() => (showDeleteRoutes = false)}>Cancel</button
+            >
             <button
               class="button button-primary"
               onclick={() => (deleteRoutesStep = "confirm")}
               disabled={deleteRoutesSelections.size === 0 || deletingEveryRoute}
-            >Review Delete</button>
+              >Review Delete</button
+            >
           {/if}
         </div>
       {/if}
@@ -1313,15 +1404,16 @@
         <button
           class="close-button"
           onclick={() => (showDelete = false)}
-          aria-label="Close"
-        >×</button>
+          aria-label="Close">×</button
+        >
       </div>
       <div class="modal-body">
         <p class="delete-route-label">
           Current route: <strong>{deleteRouteLabel || "(default)"}</strong>
         </p>
         <p class="delete-hint">
-          Select the headers to delete (current route only). Next to me is excluded.
+          Select the headers to delete (current route only). Next to me is
+          excluded.
         </p>
 
         {#if deleteError}
@@ -1331,7 +1423,9 @@
         {/if}
 
         {#if deleteDisabled}
-          <div class="delete-disabled">Delete is not available for this route.</div>
+          <div class="delete-disabled">
+            Delete is not available for this route.
+          </div>
         {:else if deleteCandidates.length === 0}
           <div class="delete-disabled">No deletable headers found.</div>
         {:else}
@@ -1353,7 +1447,7 @@
             <div class="delete-confirm">
               <h3>Confirm deletion</h3>
               <ul>
-                {#each deleteCandidates.filter((c) => deleteSelections.has(c.id)) as item (item.id)}
+                {#each deleteCandidates.filter( (c) => deleteSelections.has(c.id) ) as item (item.id)}
                   <li>{item.label}</li>
                 {/each}
               </ul>
@@ -1363,16 +1457,30 @@
       </div>
       <div class="modal-footer">
         {#if deleteStep === "confirm"}
-          <button class="button button-secondary" onclick={() => (deleteStep = "select")}>Back</button>
-          <button class="button button-secondary" onclick={() => (showDelete = false)}>Cancel</button>
-          <button class="button button-primary" onclick={applyDeletions} disabled={deleteSelections.size === 0}>Confirm Delete</button>
+          <button
+            class="button button-secondary"
+            onclick={() => (deleteStep = "select")}>Back</button
+          >
+          <button
+            class="button button-secondary"
+            onclick={() => (showDelete = false)}>Cancel</button
+          >
+          <button
+            class="button button-primary"
+            onclick={applyDeletions}
+            disabled={deleteSelections.size === 0}>Confirm Delete</button
+          >
         {:else}
-          <button class="button button-secondary" onclick={() => (showDelete = false)}>Cancel</button>
+          <button
+            class="button button-secondary"
+            onclick={() => (showDelete = false)}>Cancel</button
+          >
           <button
             class="button button-primary"
             onclick={() => (deleteStep = "confirm")}
             disabled={deleteSelections.size === 0 || deleteDisabled}
-          >Review Delete</button>
+            >Review Delete</button
+          >
         {/if}
       </div>
     </div>
@@ -1380,7 +1488,9 @@
     <div class="modal-content">
       <div class="modal-header">
         <h2>Configuration</h2>
-        <button class="close-button" onclick={requestCancel} aria-label="Close">×</button>
+        <button class="close-button" onclick={requestCancel} aria-label="Close"
+          >×</button
+        >
       </div>
       <div class="config-method-selector" role="tablist">
         <button
@@ -1428,297 +1538,428 @@
         </button>
       </div>
       <div class="modal-body">
-      {#if errorMessage}
-        <div class="error-message" role="alert">
-          {errorMessage}
-        </div>
-      {/if}
-      {#if pendingCleanup}
-        <div class="cleanup-review" role="status">
-          <p class="cleanup-review-title">Review the clean-up before applying it</p>
-          <p>{pendingCleanup.description}</p>
-          <div class="cleanup-review-actions">
-            <button class="button button-secondary" onclick={cancelCleanup}>Cancel clean-up</button>
-            <button class="button button-primary" onclick={applyCleanup}>Apply clean-up</button>
+        {#if errorMessage}
+          <div class="error-message" role="alert">
+            {errorMessage}
           </div>
-        </div>
-      {/if}
-      {#if notice}
-        <div class="config-notice" role="status">
-          {notice}
-        </div>
-      {/if}
-      {#if view === "pages"}
-        <div class="page-row">
-          <div class="page-row-text">
-            <strong>Next to me</strong>
-            <span class="page-row-hint">
-              {hasOnTheRunPage
-                ? "The nearby-departures page is part of this config."
-                : "The nearby-departures page is missing from this config."}
-            </span>
-          </div>
-          {#if hasOnTheRunPage}
-            <button
-              class="button button-secondary"
-              onclick={openOnTheRunForm}
-              disabled={isSaving || isLoadingExample}
-              title="Change the radius, the number of departures and the API"
-            >
-              Edit
-            </button>
-          {:else}
-            <button
-              class="button button-primary"
-              onclick={restoreOnTheRun}
-              disabled={isSaving || isLoadingExample}
-              title="Add the nearby-departures page back to the config"
-            >
-              Restore
-            </button>
-          {/if}
-        </div>
-
-        {#if onTheRunDraft !== null}
-          {@const draft = onTheRunDraft}
-          <div class="page-row-form">
-            <div class="on-the-run-fields">
-              {#each ON_THE_RUN_FIELDS as field (field.key)}
-                <label class="on-the-run-field">
-                  <span class="on-the-run-label">{field.label}</span>
-                  {#if field.kind === "boolean"}
-                    <input
-                      type="checkbox"
-                      checked={draft[field.key] === "true"}
-                      aria-label={field.label}
-                      onchange={(event) =>
-                        (draft[field.key] = event.currentTarget.checked
-                          ? "true"
-                          : "false")}
-                    />
-                  {:else}
-                    <input
-                      type={field.kind === "number" ? "number" : "text"}
-                      bind:value={draft[field.key]}
-                      aria-label={field.label}
-                    />
-                  {/if}
-                  {#if field.hint}
-                    <small class="on-the-run-hint">{field.hint}</small>
-                  {/if}
-                </label>
-              {/each}
-            </div>
-            <div class="page-row-actions">
-              <button class="button button-secondary" onclick={() => (onTheRunDraft = null)}>
-                Cancel
-              </button>
-              <button class="button button-primary" onclick={applyOnTheRun}>
-                Apply
-              </button>
+        {/if}
+        {#if pendingCleanup}
+          <div class="cleanup-review" role="status">
+            <p class="cleanup-review-title">
+              Review the clean-up before applying it
+            </p>
+            <p>{pendingCleanup.description}</p>
+            <div class="cleanup-review-actions">
+              <button class="button button-secondary" onclick={cancelCleanup}
+                >Cancel clean-up</button
+              >
+              <button class="button button-primary" onclick={applyCleanup}
+                >Apply clean-up</button
+              >
             </div>
           </div>
         {/if}
-
-        <ConfigPages
-          pages={configPages}
-          defaults={globalDisplay}
-          onReorder={reorderPage}
-          onRemovePage={deletePage}
-          onRemoveStop={deleteStop}
-          onApplyPage={applyPageEdit}
-          onApplyPageDisplay={applyPageDisplay}
-          onApplyDefaults={applyDefaults}
-          onAddPage={addPage}
-          onAddStops={openWizard}
-        />
-      {:else}
-      <div class="textarea-container">
-        <div class="textarea-toolbar">
-          <button 
-            class="icon-button" 
-            onclick={handleCopy}
-            title={copySuccess ? "Copied!" : "Copy configuration to clipboard"}
-            disabled={!configText.trim() || isSaving || isLoadingExample}
-            aria-label="Copy configuration"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 115.77 122.88" class="icon">
-              <path d="M89.62,13.96v7.73h12.19h0.01v0.02c3.85,0.01,7.34,1.57,9.86,4.1c2.5,2.51,4.06,5.98,4.07,9.82h0.02v0.02 v73.27v0.01h-0.02c-0.01,3.84-1.57,7.33-4.1,9.86c-2.51,2.5-5.98,4.06-9.82,4.07v0.02h-0.02h-61.7H40.1v-0.02 c-3.84-0.01-7.34-1.57-9.86-4.1c-2.5-2.51-4.06-5.98-4.07-9.82h-0.02v-0.02V92.51H13.96h-0.01v-0.02c-3.84-0.01-7.34-1.57-9.86-4.1 c-2.5-2.51-4.06-5.98-4.07-9.82H0v-0.02V13.96v-0.01h0.02c0.01-3.85,1.58-7.34,4.1-9.86c2.51-2.5,5.98-4.06,9.82-4.07V0h0.02h61.7 h0.01v0.02c3.85,0.01,7.34,1.57,9.86,4.1c2.5,2.51,4.06,5.98,4.07,9.82h0.02V13.96L89.62,13.96z M79.04,21.69v-7.73v-0.02h0.02 c0-0.91-0.39-1.75-1.01-2.37c-0.61-0.61-1.46-1-2.37-1v0.02h-0.01h-61.7h-0.02v-0.02c-0.91,0-1.75,0.39-2.37,1.01 c-0.61,0.61-1,1.46-1,2.37h0.02v0.01v64.59v0.02h-0.02c0,0.91,0.39,1.75,1.01,2.37c0.61,0.61,1.46,1,2.37,1v-0.02h0.01h12.19V35.65 v-0.01h0.02c0.01-3.85,1.58-7.34,4.1-9.86c2.51-2.5,5.98-4.06,9.82-4.07v-0.02h0.02H79.04L79.04,21.69z M105.18,108.92V35.65v-0.02 h0.02c0-0.91-0.39-1.75-1.01-2.37c-0.61-0.61-1.46-1-2.37-1v0.02h-0.01h-61.7h-0.02v-0.02c-0.91,0-1.75,0.39-2.37,1.01 c-0.61,0.61-1,1.46-1,2.37h0.02v0.01v73.27v0.02h-0.02c0,0.91,0.39,1.75,1.01,2.37c0.61,0.61,1.46,1,2.37,1v-0.02h0.01h61.7h0.02 v0.02c0.91,0,1.75-0.39,2.37-1.01c0.61-0.61,1-1.46,1-2.37h-0.02V108.92L105.18,108.92z"/>
-            </svg>
-            {#if copySuccess}
-              <span class="success-indicator">✓</span>
-            {/if}
-          </button>
-          <button 
-            class="icon-button" 
-            onclick={handlePaste}
-            title={pasteSuccess ? "Pasted!" : "Paste configuration from clipboard"}
-            disabled={isSaving || isLoadingExample}
-            aria-label="Paste configuration"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 399 512.02" class="icon">
-              <path d="M96.59 35.73h34.9C133.94 15.58 150.2 0 169.92 0c19.6 0 35.77 15.37 38.39 35.31l35.47.42c2.37 0 4.26 1.89 4.26 4.26V87c0 2.36-1.89 4.26-4.26 4.26H96.63c-2.31 0-4.26-1.9-4.26-4.26V39.99c-.04-2.37 1.86-4.26 4.22-4.26zm108.07 301.63c-5.44 0-9.86-4.42-9.86-9.87 0-5.44 4.42-9.86 9.86-9.86h124.93c5.45 0 9.86 4.42 9.86 9.86 0 5.45-4.41 9.87-9.86 9.87H204.66zm103.16-170.67h.88c3.12 0 5.9 1.44 7.7 3.7l80.02 87.86a9.845 9.845 0 0 1 2.56 6.62l.02 2.66v223.28c0 5.81-2.41 11.13-6.25 14.97s-9.15 6.24-14.96 6.24H156.47c-5.77 0-11.08-2.39-14.94-6.24l-.04-.04c-3.84-3.87-6.23-9.14-6.23-14.93V187.7c0-5.83 2.38-11.14 6.22-14.98s9.15-6.23 14.99-6.23h149.37c.68 0 1.34.07 1.98.2zm71.46 110.8c-43.74-1.7-65.42-3.27-77.68-16.13-12.27-12.88-11.51-32.56-10.03-70.26l.19-4.88H156.47c-.41 0-.78.17-1.05.44-.27.26-.44.64-.44 1.04v303.11c0 .41.16.78.41 1.03l.04.04c.26.26.63.42 1.04.42h221.32c.37 0 .74-.18 1.02-.46s.47-.65.47-1.03V277.49zm-68.25-80.91c-1.13 29.16-1.41 44.68 4.82 51.22 6.15 6.45 21.33 8.17 50.65 9.5l-55.47-60.72zM204.66 447.87c-5.44 0-9.86-4.41-9.86-9.86 0-5.44 4.42-9.86 9.86-9.86h124.93c5.45 0 9.86 4.42 9.86 9.86 0 5.45-4.41 9.86-9.86 9.86H204.66zm0-55.26c-5.44 0-9.86-4.41-9.86-9.86 0-5.44 4.42-9.86 9.86-9.86h124.93c5.45 0 9.86 4.42 9.86 9.86 0 5.45-4.41 9.86-9.86 9.86H204.66zm-104.29 7.49c6.93 0 12.55 5.62 12.55 12.55 0 6.92-5.62 12.55-12.55 12.55H39.33c-10.72 0-20.58-4.45-27.75-11.61C4.45 406.51 0 396.69 0 385.86V91.56C0 80.73 4.42 70.9 11.54 63.78l.84-.77c7.05-6.66 16.55-10.77 26.95-10.77h32.46v25.11H39.33c-3.68 0-7.05 1.4-9.57 3.69l-.47.49c-2.58 2.58-4.19 6.14-4.19 10.03v294.3c0 3.87 1.63 7.42 4.21 10.01v.05c2.58 2.58 6.14 4.18 10.02 4.18h61.04zM268.61 52.24h32.44c10.79 0 20.6 4.45 27.72 11.56 7.17 7.16 11.62 17.02 11.62 27.76v29.91c0 6.93-5.62 12.55-12.55 12.55-6.93 0-12.55-5.62-12.55-12.55V91.56c0-3.88-1.6-7.44-4.17-10.01-2.58-2.58-6.15-4.2-10.07-4.2h-32.44V52.24zm-99.13-33.96c11.15 0 20.18 9.03 20.18 20.18s-9.03 20.19-20.18 20.19-20.19-9.04-20.19-20.19c0-11.15 9.04-20.18 20.19-20.18z"/>
-            </svg>
-            {#if pasteSuccess}
-              <span class="success-indicator">✓</span>
-            {:else if pasteError}
-              <span class="error-indicator">✗</span>
-            {/if}
-          </button>
-          <button
-            class="icon-button"
-            onclick={openTweak}
-            disabled={!configText.trim() || isSaving || isLoadingExample}
-            title="Tweak numeric and display values"
-            aria-label="Tweak display values"
-          >
-            <img src="assets/settings-line-icon.svg" alt="" class="icon" />
-          </button>
-          <button
-            class="icon-button"
-            onclick={() => (showFullscreenEditor = true)}
-            title="Expand editor for mobile editing"
-            aria-label="Expand editor"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="icon"><path d="M4 4h7V2H2v9h2V4zm16 0v7h2V2h-9v2h7zm0 16h-7v2h9v-9h-2v7zM4 20v-7H2v9h9v-2H4z"/></svg>
-          </button>
-        </div>
-        <div class="editor-stack">
-          <!-- highlight.js escapes the text it wraps: this is our own TOML, not user HTML. -->
-          <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-          <pre class="editor-highlight" aria-hidden="true" bind:this={highlightLayer}><code>{@html highlightedToml}</code></pre>
-          <textarea
-            bind:value={configText}
-            class="config-textarea"
-            class:error={!!errorMessage}
-            placeholder="Paste TOML config here..."
-            readonly={showFullscreenEditor}
-            onscroll={syncEditorScroll}
-          ></textarea>
-        </div>
-        {#if showFullscreenEditor}
-          <div class="fullscreen-editor-overlay" role="dialog" aria-modal="true" tabindex="-1" onkeydown={e => { if (e.key === 'Escape') showFullscreenEditor = false; }}>
-            <div class="fullscreen-editor-content">
-              <button class="button button-primary fullscreen-close" onclick={() => (showFullscreenEditor = false)}>
-                Done
-              </button>
-              <textarea
-                bind:value={configText}
-                class="fullscreen-textarea"
-                spellcheck="false"
-              ></textarea>
-            </div>
+        {#if notice}
+          <div class="config-notice" role="status">
+            {notice}
           </div>
         {/if}
-        {#if showTweakOverlay}
-          <div class="tweak-overlay" role="dialog" aria-modal="true" aria-label="Tweak display values" tabindex="-1" onkeydown={e => { if (e.key === 'Escape') closeTweakAndApply(); else if (e.key === 'Enter') { e.preventDefault(); closeTweakAndApply(); } }}>
-            <div class="tweak-overlay-content">
-              <div class="tweak-close-bar">
-                <div class="tweak-filter-wrap">
-                  <input
-                    type="text"
-                    class="tweak-filter-input"
-                    placeholder="Filter (space-separated, all must match)"
-                    bind:value={tweakFilterQuery}
-                    bind:this={tweakFilterInputEl}
-                    aria-label="Filter entries"
-                  />
-                  {#if tweakFilterQuery.trim()}
-                    <button
-                      type="button"
-                      class="tweak-filter-clear"
-                      onmousedown={(e) => e.preventDefault()}
-                      onclick={clearTweakFilter}
-                      aria-label="Clear filter"
-                      title="Clear filter"
+        {#if view === "pages"}
+          <div
+            class="modal-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Configurator"
+          >
+            <div class="modal-content configurator-panel">
+              <div class="modal-header">
+                <h2>Configurator</h2>
+                <button
+                  class="close-button"
+                  onclick={closeConfigurator}
+                  aria-label="Close the configurator">×</button
+                >
+              </div>
+
+              <div class="modal-body">
+                <div class="page-row">
+                  <div class="page-row-text">
+                    <strong>Next to me</strong>
+                    <span class="page-row-hint"
+                      >{hasOnTheRunPage ? "in this config" : "missing"}</span
                     >
-                      ×
+                  </div>
+                  {#if hasOnTheRunPage}
+                    <button
+                      class="button button-secondary"
+                      onclick={openOnTheRunForm}
+                      disabled={isSaving || isLoadingExample}
+                      title="Change the radius, the number of departures and the API"
+                    >
+                      Edit
+                    </button>
+                  {:else}
+                    <button
+                      class="button button-primary"
+                      onclick={restoreOnTheRun}
+                      disabled={isSaving || isLoadingExample}
+                      title="Add the nearby-departures page back to the config"
+                    >
+                      Restore
                     </button>
                   {/if}
                 </div>
-                <button class="button button-primary tweak-close" onclick={closeTweakAndApply}>
-                  Ok
-                </button>
-              </div>
-              <div class="tweak-list">
-                {#if tweakSections.length === 0}
-                  <p class="tweak-empty">No sections found. Add at least one TOML section (a line starting with [).</p>
-                {:else}
-                  {#each tweakSections as section, sectionIdx (sectionIdx)}
-                    {@const hasVisible = tweakSectionHasVisibleEntries(section, tweakFilterParts, sectionIdx)}
-                    {#if hasVisible}
-                      <section class="tweak-section">
-                        <h3 class="tweak-section-title">
-                          {section.heading}
-                          {#if section.heading === "[[routes.stops]]" || section.heading === "[[stops]]"}
-                            {@const stationNameEntry = section.entries.find((e) => e.key === "station_name")}
-                            {#if stationNameEntry?.value}
-                              <span class="tweak-section-context"> {stationNameEntry.value}</span>
-                            {/if}
+
+                {#if onTheRunDraft !== null}
+                  {@const draft = onTheRunDraft}
+                  <div class="page-row-form">
+                    <div class="on-the-run-fields">
+                      {#each ON_THE_RUN_FIELDS as field (field.key)}
+                        <label class="on-the-run-field">
+                          <span class="on-the-run-label">{field.label}</span>
+                          {#if field.kind === "boolean"}
+                            <input
+                              type="checkbox"
+                              checked={draft[field.key] === "true"}
+                              aria-label={field.label}
+                              onchange={(event) =>
+                                (draft[field.key] = event.currentTarget.checked
+                                  ? "true"
+                                  : "false")}
+                            />
+                          {:else}
+                            <input
+                              type={field.kind === "number" ? "number" : "text"}
+                              bind:value={draft[field.key]}
+                              aria-label={field.label}
+                            />
                           {/if}
-                        </h3>
-                        <ul class="tweak-entries">
-                          {#each section.entries as entry (`${sectionIdx}-${entry.lineIndex}`)}
-                            {#if tweakShowEntry(section, entry, tweakFilterParts, sectionIdx)}
-                              <li class="tweak-entry">
-                                <label class="tweak-key" for="tweak-input-{sectionIdx}-{entry.lineIndex}">
-                                  {entry.key}
-                                  {#if tweakDuplicateKeys.has(entry.key)}
-                                    <span class="tweak-key-context"> [{section.heading}]</span>
-                                  {/if}
-                                </label>
-                                <input
-                                  id="tweak-input-{sectionIdx}-{entry.lineIndex}"
-                                  type="text"
-                                  class="tweak-value"
-                                  bind:value={entry.value}
-                                  onfocus={(e) => {
-                                    lastTweakValueFocusedEl = e.currentTarget;
-                                  }}
-                                  aria-label={tweakDuplicateKeys.has(entry.key) ? `${entry.key} in ${section.heading}` : entry.key}
-                                />
-                              </li>
-                            {/if}
-                          {/each}
-                        </ul>
-                      </section>
-                    {/if}
-                  {/each}
+                          {#if field.hint}
+                            <small class="on-the-run-hint">{field.hint}</small>
+                          {/if}
+                        </label>
+                      {/each}
+                    </div>
+                    <div class="page-row-actions">
+                      <button
+                        class="button button-secondary"
+                        onclick={() => (onTheRunDraft = null)}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        class="button button-primary"
+                        onclick={applyOnTheRun}
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  </div>
                 {/if}
+
+                <ConfigPages
+                  pages={configPages}
+                  defaults={globalDisplay}
+                  onReorder={reorderPage}
+                  onRemovePage={deletePage}
+                  onRemoveStop={deleteStop}
+                  onApplyPage={applyPageEdit}
+                  onApplyStop={applyStopEdit}
+                  onApplyPageDisplay={applyPageDisplay}
+                  onApplyDefaults={applyDefaults}
+                  onAddPage={addPage}
+                  onAddStop={addStop}
+                  onAddStops={openWizard}
+                />
+              </div>
+
+              <div class="modal-footer">
+                <div class="modal-footer-actions">
+                  <button
+                    class="button button-primary"
+                    onclick={closeConfigurator}
+                  >
+                    Done
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        {/if}
-      </div>
-      {/if}
-    </div>
-    <div class="modal-footer">
-      <div class="modal-footer-actions">
-        {#if confirmCancel}
-          <span class="discard-question">Discard the changes?</span>
-          <button class="button button-secondary" onclick={() => (confirmCancel = false)}>
-            Keep editing
-          </button>
-          <button class="button button-danger" onclick={onCancel}>
-            Discard changes
-          </button>
         {:else}
-          <button 
-            class="button button-example" 
-            onclick={() => loadExampleConfig()} 
-            disabled={isSaving || isLoadingExample}
-            title="Load example configuration"
-          >
-            {isLoadingExample ? "Loading..." : "Example"}
-          </button>
-          <button class="button button-secondary" onclick={requestCancel} disabled={isSaving || isLoadingExample}>Cancel</button>
-          <button class="button button-primary" onclick={handleSave} disabled={!configText.trim() || isSaving || isLoadingExample}>
-            {isSaving ? "Saving..." : "Save"}
-          </button>
+          <div class="textarea-container">
+            <div class="textarea-toolbar">
+              <button
+                class="icon-button"
+                onclick={handleCopy}
+                title={copySuccess
+                  ? "Copied!"
+                  : "Copy configuration to clipboard"}
+                disabled={!configText.trim() || isSaving || isLoadingExample}
+                aria-label="Copy configuration"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 115.77 122.88"
+                  class="icon"
+                >
+                  <path
+                    d="M89.62,13.96v7.73h12.19h0.01v0.02c3.85,0.01,7.34,1.57,9.86,4.1c2.5,2.51,4.06,5.98,4.07,9.82h0.02v0.02 v73.27v0.01h-0.02c-0.01,3.84-1.57,7.33-4.1,9.86c-2.51,2.5-5.98,4.06-9.82,4.07v0.02h-0.02h-61.7H40.1v-0.02 c-3.84-0.01-7.34-1.57-9.86-4.1c-2.5-2.51-4.06-5.98-4.07-9.82h-0.02v-0.02V92.51H13.96h-0.01v-0.02c-3.84-0.01-7.34-1.57-9.86-4.1 c-2.5-2.51-4.06-5.98-4.07-9.82H0v-0.02V13.96v-0.01h0.02c0.01-3.85,1.58-7.34,4.1-9.86c2.51-2.5,5.98-4.06,9.82-4.07V0h0.02h61.7 h0.01v0.02c3.85,0.01,7.34,1.57,9.86,4.1c2.5,2.51,4.06,5.98,4.07,9.82h0.02V13.96L89.62,13.96z M79.04,21.69v-7.73v-0.02h0.02 c0-0.91-0.39-1.75-1.01-2.37c-0.61-0.61-1.46-1-2.37-1v0.02h-0.01h-61.7h-0.02v-0.02c-0.91,0-1.75,0.39-2.37,1.01 c-0.61,0.61-1,1.46-1,2.37h0.02v0.01v64.59v0.02h-0.02c0,0.91,0.39,1.75,1.01,2.37c0.61,0.61,1.46,1,2.37,1v-0.02h0.01h12.19V35.65 v-0.01h0.02c0.01-3.85,1.58-7.34,4.1-9.86c2.51-2.5,5.98-4.06,9.82-4.07v-0.02h0.02H79.04L79.04,21.69z M105.18,108.92V35.65v-0.02 h0.02c0-0.91-0.39-1.75-1.01-2.37c-0.61-0.61-1.46-1-2.37-1v0.02h-0.01h-61.7h-0.02v-0.02c-0.91,0-1.75,0.39-2.37,1.01 c-0.61,0.61-1,1.46-1,2.37h0.02v0.01v73.27v0.02h-0.02c0,0.91,0.39,1.75,1.01,2.37c0.61,0.61,1.46,1,2.37,1v-0.02h0.01h61.7h0.02 v0.02c0.91,0,1.75-0.39,2.37-1.01c0.61-0.61,1-1.46,1-2.37h-0.02V108.92L105.18,108.92z"
+                  />
+                </svg>
+                {#if copySuccess}
+                  <span class="success-indicator">✓</span>
+                {/if}
+              </button>
+              <button
+                class="icon-button"
+                onclick={handlePaste}
+                title={pasteSuccess
+                  ? "Pasted!"
+                  : "Paste configuration from clipboard"}
+                disabled={isSaving || isLoadingExample}
+                aria-label="Paste configuration"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 399 512.02"
+                  class="icon"
+                >
+                  <path
+                    d="M96.59 35.73h34.9C133.94 15.58 150.2 0 169.92 0c19.6 0 35.77 15.37 38.39 35.31l35.47.42c2.37 0 4.26 1.89 4.26 4.26V87c0 2.36-1.89 4.26-4.26 4.26H96.63c-2.31 0-4.26-1.9-4.26-4.26V39.99c-.04-2.37 1.86-4.26 4.22-4.26zm108.07 301.63c-5.44 0-9.86-4.42-9.86-9.87 0-5.44 4.42-9.86 9.86-9.86h124.93c5.45 0 9.86 4.42 9.86 9.86 0 5.45-4.41 9.87-9.86 9.87H204.66zm103.16-170.67h.88c3.12 0 5.9 1.44 7.7 3.7l80.02 87.86a9.845 9.845 0 0 1 2.56 6.62l.02 2.66v223.28c0 5.81-2.41 11.13-6.25 14.97s-9.15 6.24-14.96 6.24H156.47c-5.77 0-11.08-2.39-14.94-6.24l-.04-.04c-3.84-3.87-6.23-9.14-6.23-14.93V187.7c0-5.83 2.38-11.14 6.22-14.98s9.15-6.23 14.99-6.23h149.37c.68 0 1.34.07 1.98.2zm71.46 110.8c-43.74-1.7-65.42-3.27-77.68-16.13-12.27-12.88-11.51-32.56-10.03-70.26l.19-4.88H156.47c-.41 0-.78.17-1.05.44-.27.26-.44.64-.44 1.04v303.11c0 .41.16.78.41 1.03l.04.04c.26.26.63.42 1.04.42h221.32c.37 0 .74-.18 1.02-.46s.47-.65.47-1.03V277.49zm-68.25-80.91c-1.13 29.16-1.41 44.68 4.82 51.22 6.15 6.45 21.33 8.17 50.65 9.5l-55.47-60.72zM204.66 447.87c-5.44 0-9.86-4.41-9.86-9.86 0-5.44 4.42-9.86 9.86-9.86h124.93c5.45 0 9.86 4.42 9.86 9.86 0 5.45-4.41 9.86-9.86 9.86H204.66zm0-55.26c-5.44 0-9.86-4.41-9.86-9.86 0-5.44 4.42-9.86 9.86-9.86h124.93c5.45 0 9.86 4.42 9.86 9.86 0 5.45-4.41 9.86-9.86 9.86H204.66zm-104.29 7.49c6.93 0 12.55 5.62 12.55 12.55 0 6.92-5.62 12.55-12.55 12.55H39.33c-10.72 0-20.58-4.45-27.75-11.61C4.45 406.51 0 396.69 0 385.86V91.56C0 80.73 4.42 70.9 11.54 63.78l.84-.77c7.05-6.66 16.55-10.77 26.95-10.77h32.46v25.11H39.33c-3.68 0-7.05 1.4-9.57 3.69l-.47.49c-2.58 2.58-4.19 6.14-4.19 10.03v294.3c0 3.87 1.63 7.42 4.21 10.01v.05c2.58 2.58 6.14 4.18 10.02 4.18h61.04zM268.61 52.24h32.44c10.79 0 20.6 4.45 27.72 11.56 7.17 7.16 11.62 17.02 11.62 27.76v29.91c0 6.93-5.62 12.55-12.55 12.55-6.93 0-12.55-5.62-12.55-12.55V91.56c0-3.88-1.6-7.44-4.17-10.01-2.58-2.58-6.15-4.2-10.07-4.2h-32.44V52.24zm-99.13-33.96c11.15 0 20.18 9.03 20.18 20.18s-9.03 20.19-20.18 20.19-20.19-9.04-20.19-20.19c0-11.15 9.04-20.18 20.19-20.18z"
+                  />
+                </svg>
+                {#if pasteSuccess}
+                  <span class="success-indicator">✓</span>
+                {:else if pasteError}
+                  <span class="error-indicator">✗</span>
+                {/if}
+              </button>
+              <button
+                class="icon-button"
+                onclick={openTweak}
+                disabled={!configText.trim() || isSaving || isLoadingExample}
+                title="Tweak numeric and display values"
+                aria-label="Tweak display values"
+              >
+                <img src="assets/settings-line-icon.svg" alt="" class="icon" />
+              </button>
+              <button
+                class="icon-button"
+                onclick={() => (showFullscreenEditor = true)}
+                title="Expand editor for mobile editing"
+                aria-label="Expand editor"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  class="icon"
+                  ><path
+                    d="M4 4h7V2H2v9h2V4zm16 0v7h2V2h-9v2h7zm0 16h-7v2h9v-9h-2v7zM4 20v-7H2v9h9v-2H4z"
+                  /></svg
+                >
+              </button>
+            </div>
+            <!-- The highlighter escapes the text it wraps, so this layer is our
+                 own TOML and not user HTML. It must stay on one line: whitespace
+                 inside <pre> would shift the colours away from the textarea
+                 they sit behind. -->
+            <!-- eslint-disable svelte/no-at-html-tags -->
+            <div class="editor-stack">
+              <!-- prettier-ignore -->
+              <pre class="editor-highlight" aria-hidden="true" bind:this={highlightLayer}><code>{@html highlightedToml}</code></pre>
+              <textarea
+                bind:value={configText}
+                class="config-textarea"
+                class:error={!!errorMessage}
+                placeholder="Paste TOML config here..."
+                readonly={showFullscreenEditor}
+                onscroll={syncEditorScroll}></textarea>
+            </div>
+            <!-- eslint-enable svelte/no-at-html-tags -->
+            {#if showFullscreenEditor}
+              <div
+                class="fullscreen-editor-overlay"
+                role="dialog"
+                aria-modal="true"
+                tabindex="-1"
+                onkeydown={(e) => {
+                  if (e.key === "Escape") showFullscreenEditor = false;
+                }}
+              >
+                <div class="fullscreen-editor-content">
+                  <button
+                    class="button button-primary fullscreen-close"
+                    onclick={() => (showFullscreenEditor = false)}
+                  >
+                    Done
+                  </button>
+                  <textarea
+                    bind:value={configText}
+                    class="fullscreen-textarea"
+                    spellcheck="false"></textarea>
+                </div>
+              </div>
+            {/if}
+            {#if showTweakOverlay}
+              <div
+                class="tweak-overlay"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Tweak display values"
+                tabindex="-1"
+                onkeydown={(e) => {
+                  if (e.key === "Escape") closeTweakAndApply();
+                  else if (e.key === "Enter") {
+                    e.preventDefault();
+                    closeTweakAndApply();
+                  }
+                }}
+              >
+                <div class="tweak-overlay-content">
+                  <div class="tweak-close-bar">
+                    <div class="tweak-filter-wrap">
+                      <input
+                        type="text"
+                        class="tweak-filter-input"
+                        placeholder="Filter (space-separated, all must match)"
+                        bind:value={tweakFilterQuery}
+                        bind:this={tweakFilterInputEl}
+                        aria-label="Filter entries"
+                      />
+                      {#if tweakFilterQuery.trim()}
+                        <button
+                          type="button"
+                          class="tweak-filter-clear"
+                          onmousedown={(e) => e.preventDefault()}
+                          onclick={clearTweakFilter}
+                          aria-label="Clear filter"
+                          title="Clear filter"
+                        >
+                          ×
+                        </button>
+                      {/if}
+                    </div>
+                    <button
+                      class="button button-primary tweak-close"
+                      onclick={closeTweakAndApply}
+                    >
+                      Ok
+                    </button>
+                  </div>
+                  <div class="tweak-list">
+                    {#if tweakSections.length === 0}
+                      <p class="tweak-empty">
+                        No sections found. Add at least one TOML section (a line
+                        starting with [).
+                      </p>
+                    {:else}
+                      {#each tweakSections as section, sectionIdx (sectionIdx)}
+                        {@const hasVisible = tweakSectionHasVisibleEntries(
+                          section,
+                          tweakFilterParts,
+                          sectionIdx,
+                        )}
+                        {#if hasVisible}
+                          <section class="tweak-section">
+                            <h3 class="tweak-section-title">
+                              {section.heading}
+                              {#if section.heading === "[[routes.stops]]" || section.heading === "[[stops]]"}
+                                {@const stationNameEntry = section.entries.find(
+                                  (e) => e.key === "station_name",
+                                )}
+                                {#if stationNameEntry?.value}
+                                  <span class="tweak-section-context">
+                                    {stationNameEntry.value}</span
+                                  >
+                                {/if}
+                              {/if}
+                            </h3>
+                            <ul class="tweak-entries">
+                              {#each section.entries as entry (`${sectionIdx}-${entry.lineIndex}`)}
+                                {#if tweakShowEntry(section, entry, tweakFilterParts, sectionIdx)}
+                                  <li class="tweak-entry">
+                                    <label
+                                      class="tweak-key"
+                                      for="tweak-input-{sectionIdx}-{entry.lineIndex}"
+                                    >
+                                      {entry.key}
+                                      {#if tweakDuplicateKeys.has(entry.key)}
+                                        <span class="tweak-key-context">
+                                          [{section.heading}]</span
+                                        >
+                                      {/if}
+                                    </label>
+                                    <input
+                                      id="tweak-input-{sectionIdx}-{entry.lineIndex}"
+                                      type="text"
+                                      class="tweak-value"
+                                      bind:value={entry.value}
+                                      onfocus={(e) => {
+                                        lastTweakValueFocusedEl =
+                                          e.currentTarget;
+                                      }}
+                                      aria-label={tweakDuplicateKeys.has(
+                                        entry.key,
+                                      )
+                                        ? `${entry.key} in ${section.heading}`
+                                        : entry.key}
+                                    />
+                                  </li>
+                                {/if}
+                              {/each}
+                            </ul>
+                          </section>
+                        {/if}
+                      {/each}
+                    {/if}
+                  </div>
+                </div>
+              </div>
+            {/if}
+          </div>
         {/if}
       </div>
+      <div class="modal-footer">
+        <!-- The deployed commit, filled in by the build (`inject-build-sha.sh`, or
+           the Pages workflow): the placeholder is hidden until then. -->
+        <span class="build-sha">__BUILD_SHA__</span>
+        <div class="modal-footer-actions">
+          {#if confirmCancel}
+            <span class="discard-question">Discard the changes?</span>
+            <button
+              class="button button-secondary"
+              onclick={() => (confirmCancel = false)}
+            >
+              Keep editing
+            </button>
+            <button class="button button-danger" onclick={onCancel}>
+              Discard changes
+            </button>
+          {:else}
+            <button
+              class="button button-example"
+              onclick={() => loadExampleConfig()}
+              disabled={isSaving || isLoadingExample}
+              title="Load example configuration"
+            >
+              {isLoadingExample ? "Loading..." : "Example"}
+            </button>
+            <button
+              class="button button-secondary"
+              onclick={requestCancel}
+              disabled={isSaving || isLoadingExample}>Cancel</button
+            >
+            <button
+              class="button button-primary"
+              onclick={handleSave}
+              disabled={!configText.trim() || isSaving || isLoadingExample}
+            >
+              {isSaving ? "Saving..." : "Save"}
+            </button>
+          {/if}
+        </div>
+      </div>
     </div>
-  </div>
   {/if}
 </div>
 
@@ -1920,7 +2161,6 @@
     border-bottom-color: #60a5fa;
   }
 
-
   /* Lock body scroll when fullscreen editor is open (prevents scroll bleed on mobile) - CSS only via :has() */
   :global(body:has(.fullscreen-editor-overlay)) {
     overflow: hidden;
@@ -1933,7 +2173,7 @@
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0,0,0,0.8);
+    background: rgba(0, 0, 0, 0.8);
     z-index: 11000;
     display: flex;
     align-items: stretch;
@@ -1957,7 +2197,7 @@
     display: flex;
     flex-direction: column;
     box-shadow: none;
-    border: 4px solid #087BC4;
+    border: 4px solid #087bc4;
     box-sizing: border-box;
     gap: 8px;
     overflow: hidden;
@@ -2031,7 +2271,7 @@
     padding: 8px;
     box-sizing: border-box;
     gap: 0;
-    border: 4px solid #087BC4;
+    border: 4px solid #087bc4;
     overflow: hidden;
     min-height: 0;
   }
@@ -2284,7 +2524,6 @@
     .modal-footer {
       padding-top: 0.25rem;
     }
-
   }
 
   :global([data-theme="dark"]) .modal-content {
@@ -2340,17 +2579,21 @@
     overflow: hidden; /* Prevent body from scrolling, let textarea handle it */
   }
 
+  /* The configurator takes the screen the way the other screens do. */
+  .configurator-panel {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    min-height: 0;
+    border-radius: 0;
+    padding: 0.75rem;
+  }
+
   .modal-body p {
     margin: 0 0 0.75rem 0;
     flex-shrink: 0; /* Don't shrink the label */
   }
-
-
-
-
-
-
-
 
   .error-message {
     background-color: #fee2e2;
@@ -2418,13 +2661,26 @@
   .page-row {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    flex-wrap: wrap;
+    gap: 0.35rem;
+    flex-wrap: nowrap;
     border: 1px solid #e5e7eb;
     border-radius: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    margin-bottom: 0.75rem;
+    padding: 0.2rem 0.35rem;
+    margin-bottom: 0.35rem;
     background: #f9fafb;
+    /* The same reading width the routes below it keep on a wide screen. */
+    width: 100%;
+    max-width: 44rem;
+    box-sizing: border-box;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .page-row .button {
+    flex: 0 0 auto;
+    min-height: 2.25rem;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.75rem;
   }
 
   :global([data-theme="dark"]) .page-row {
@@ -2434,15 +2690,25 @@
 
   .page-row-text {
     display: flex;
-    flex-direction: column;
-    flex: 1 1 12rem;
+    flex-direction: row;
+    align-items: baseline;
+    gap: 0.35rem;
+    flex: 1 1 auto;
     min-width: 0;
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
+  }
+
+  .page-row-text strong {
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
 
   .page-row-hint {
     color: #6b7280;
-    font-size: 0.8rem;
+    font-size: 0.7rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   :global([data-theme="dark"]) .page-row-hint {
@@ -2533,7 +2799,7 @@
     color: #9ca3af;
   }
 
-  .button-danger {
+  :global(.button-danger) {
     background-color: #dc2626;
     color: white;
   }
@@ -2755,6 +3021,17 @@
     margin-top: auto;
   }
 
+  .build-sha {
+    font-size: 0.75rem;
+    color: #565f89;
+    align-self: center;
+    margin-right: auto;
+    font-family: monospace;
+  }
+
+  :global([data-theme="dark"]) .build-sha {
+    color: #6b7280;
+  }
 
   .modal-footer-actions {
     margin-left: auto;
@@ -2769,12 +3046,16 @@
       gap: 0.5rem;
     }
 
+    /* On a narrow phone the commit gets its own row above the buttons. */
+    .build-sha {
+      margin-right: 0;
+    }
+
     .modal-footer-actions {
       margin-left: 0;
       justify-content: flex-end;
     }
   }
-
 
   .button-example {
     background-color: #f3f4f6;
@@ -2798,7 +3079,9 @@
     border-color: #6b7280;
   }
 
-  .button {
+  /* Global: the configurator is a child component, and it wears the same
+     buttons as every other dialog screen. */
+  :global(.button) {
     padding: 0.5rem 1rem;
     border-radius: 0.375rem;
     font-weight: 500;
@@ -2807,35 +3090,35 @@
     transition: background-color 0.2s;
   }
 
-  .button:disabled {
+  :global(.button:disabled) {
     opacity: 0.5;
     cursor: not-allowed;
   }
 
-  .button-primary {
-    background-color: #087BC4;
+  :global(.button-primary) {
+    background-color: #087bc4;
     color: white;
   }
 
-  .button-primary:hover:not(:disabled) {
+  :global(.button-primary:hover:not(:disabled)) {
     background-color: #0669a3;
   }
 
-  .button-secondary {
+  :global(.button-secondary) {
     background-color: #e5e7eb;
     color: #111827;
   }
 
-  .button-secondary:hover {
+  :global(.button-secondary:hover:not(:disabled)) {
     background-color: #d1d5db;
   }
 
-  :global([data-theme="dark"]) .button-secondary {
+  :global([data-theme="dark"]) :global(.button-secondary) {
     background-color: #374151;
     color: #f9fafb;
   }
 
-  :global([data-theme="dark"]) .button-secondary:hover {
+  :global([data-theme="dark"]) :global(.button-secondary:hover:not(:disabled)) {
     background-color: #4b5563;
   }
 </style>

@@ -30,6 +30,12 @@ export interface ConfigPageStop {
   /** Whether departures that match no direction are shown at all. */
   showUngrouped: boolean;
   directions: ConfigDirectionMapping[];
+  /** `max_departures_per_stop`; absent while the file does not say. */
+  maxDepartures?: number;
+  /** `max_departures_per_route`, the rows one line gets. */
+  perLineDepartures?: number;
+  /** `max_hours_in_advance`; absent while the file does not say. */
+  hoursInAdvance?: number;
 }
 
 export interface ConfigPage {
@@ -42,16 +48,31 @@ export interface ConfigPage {
   stops: ConfigPageStop[];
 }
 
+/** What one stop of a page may change. */
+export interface ConfigPageStopEdit {
+  label: string;
+  showUngrouped: boolean;
+  /** The name the board shows; absent leaves the file's name alone. */
+  name?: string;
+  /** Omitted means: leave the stop's direction headings exactly as they are. */
+  directions?: ConfigDirectionMapping[];
+  /** A number writes the key, `null` removes it, absent leaves it alone. */
+  maxDepartures?: number | null;
+  perLineDepartures?: number | null;
+  hoursInAdvance?: number | null;
+}
+
 /** What a page's form may change. */
 export interface ConfigPageEdit {
   path: string;
   title: string;
-  stops: {
-    label: string;
-    showUngrouped: boolean;
-    /** Omitted means: leave the stop's direction headings exactly as they are. */
-    directions?: ConfigDirectionMapping[];
-  }[];
+  stops: ConfigPageStopEdit[];
+}
+
+/** A stop the configurator adds to a page; everything else takes its default. */
+export interface NewConfigStop {
+  stationId: string;
+  stationName: string;
 }
 
 interface RouteBlock {
@@ -128,6 +149,21 @@ function literalValue(
   return undefined;
 }
 
+/** A numeric key; a value that is not a number reads as absent. */
+function numberValue(
+  lines: string[],
+  table: TomlTable,
+  key: string,
+): number | undefined {
+  const raw = literalValue(lines, table, key);
+  if (raw === undefined) {
+    return undefined;
+  }
+  const value = Number(raw.replace(/[_,]/g, ""));
+
+  return Number.isFinite(value) ? value : undefined;
+}
+
 interface StopSection {
   stop: TomlTable;
   /** `[routes.stops.direction_mappings]`, when the stop has headings. */
@@ -154,6 +190,22 @@ function stopSections(block: RouteBlock): StopSection[] {
   return sections;
 }
 
+/** The stop as the file has it. */
+function readStop(lines: string[], section: StopSection): ConfigPageStop {
+  const { stop, mappings } = section;
+
+  return {
+    stationId: stringValue(lines, stop, "station_id") ?? "",
+    name: stringValue(lines, stop, "station_name") ?? "unnamed stop",
+    label: stringValue(lines, stop, "ungrouped_title") ?? "",
+    showUngrouped: literalValue(lines, stop, "show_ungrouped") === "true",
+    directions: mappings ? readDirections(lines, mappings) : [],
+    maxDepartures: numberValue(lines, stop, "max_departures_per_stop"),
+    perLineDepartures: numberValue(lines, stop, "max_departures_per_route"),
+    hoursInAdvance: numberValue(lines, stop, "max_hours_in_advance"),
+  };
+}
+
 function readPage(lines: string[], block: RouteBlock): ConfigPage {
   const path = stringValue(lines, block.tables[0], "path") ?? "/";
   const display = block.tables.find((table) =>
@@ -161,13 +213,7 @@ function readPage(lines: string[], block: RouteBlock): ConfigPage {
   );
   const title = (display && stringValue(lines, display, "title")) ?? path;
 
-  const stops = stopSections(block).map(({ stop, mappings }) => ({
-    stationId: stringValue(lines, stop, "station_id") ?? "",
-    name: stringValue(lines, stop, "station_name") ?? "unnamed stop",
-    label: stringValue(lines, stop, "ungrouped_title") ?? "",
-    showUngrouped: literalValue(lines, stop, "show_ungrouped") === "true",
-    directions: mappings ? readDirections(lines, mappings) : [],
-  }));
+  const stops = stopSections(block).map((section) => readStop(lines, section));
 
   return { path, title, display: displaySettings(lines, display), stops };
 }
@@ -404,6 +450,7 @@ export function updateConfigPage(
   const current = readPage(lines, block);
   let blockLines = lines.slice(start, block.endLine);
 
+  /** A table's place in the block, as it is after the edits made so far. */
   const rangeOf = (table: TomlTable) => ({
     header: table.headerLine - start,
     end: Math.min(table.endLine - start, blockLines.length),
@@ -413,57 +460,16 @@ export function updateConfigPage(
   const sections = stopSections(block);
   for (let stopIndex = sections.length - 1; stopIndex >= 0; stopIndex -= 1) {
     const wanted = edit.stops[stopIndex];
-    const known = current.stops[stopIndex];
     if (!wanted) {
       continue;
     }
-    const { stop, mappings } = sections[stopIndex];
-    const range = rangeOf(stop);
-
-    if (
-      wanted.directions !== undefined &&
-      !sameDirections(known.directions, wanted.directions)
-    ) {
-      const asked = cleanDirections(wanted.directions);
-      if (mappings) {
-        const mappingRange = rangeOf(mappings);
-        blockLines = replaceRange(
-          blockLines,
-          mappingRange.header,
-          mappingRange.end,
-          asked.length === 0
-            ? []
-            : patchDirectionTable(
-                blockLines.slice(mappingRange.header, mappingRange.end),
-                asked,
-              ),
-        );
-      } else if (asked.length > 0) {
-        const at = tableLinesEnd(lines, stop) - start;
-        blockLines = [
-          ...blockLines.slice(0, at),
-          ...directionTableLines(asked),
-          ...blockLines.slice(at),
-        ];
-      }
-    }
-
-    if (wanted.label.trim() !== known.label) {
-      blockLines = setKey(
-        blockLines,
-        range,
-        "ungrouped_title",
-        wanted.label.trim() === "" ? null : tomlString(wanted.label.trim()),
-      );
-    }
-    if (wanted.showUngrouped !== known.showUngrouped) {
-      blockLines = setKey(
-        blockLines,
-        range,
-        "show_ungrouped",
-        String(wanted.showUngrouped),
-      );
-    }
+    blockLines = applyStopEdit(
+      blockLines,
+      start,
+      sections[stopIndex],
+      current.stops[stopIndex],
+      wanted,
+    );
   }
 
   // A title that only repeats the path is what a page without a title shows, so
@@ -517,13 +523,215 @@ export function updateConfigPage(
   return unchanged ? toml : rerender(lines, start, block.endLine, blockLines);
 }
 
+/** The rows one line of a stop may show, in reading order. */
+const STOP_COUNTS = [
+  {
+    key: "max_departures_per_stop",
+    known: (stop: ConfigPageStop) => stop.maxDepartures,
+    wanted: (edit: ConfigPageStopEdit) => edit.maxDepartures,
+  },
+  {
+    key: "max_departures_per_route",
+    known: (stop: ConfigPageStop) => stop.perLineDepartures,
+    wanted: (edit: ConfigPageStopEdit) => edit.perLineDepartures,
+  },
+  {
+    key: "max_hours_in_advance",
+    known: (stop: ConfigPageStop) => stop.hoursInAdvance,
+    wanted: (edit: ConfigPageStopEdit) => edit.hoursInAdvance,
+  },
+] as const;
+
+/**
+ * One stop of a block with the edit applied. Every range is looked up again
+ * after each write, because a write may add or remove lines above the next one.
+ */
+function applyStopEdit(
+  blockLines: string[],
+  start: number,
+  section: StopSection,
+  known: ConfigPageStop,
+  edit: ConfigPageStopEdit,
+): string[] {
+  let lines = blockLines;
+  const rangeOfStop = () => ({
+    header: section.stop.headerLine - start,
+    end: Math.min(section.stop.endLine - start, lines.length),
+  });
+
+  if (
+    edit.directions !== undefined &&
+    !sameDirections(known.directions, edit.directions)
+  ) {
+    const asked = cleanDirections(edit.directions);
+    const mappings = section.mappings;
+    if (mappings) {
+      const header = mappings.headerLine - start;
+      const end = Math.min(mappings.endLine - start, lines.length);
+      lines = replaceRange(
+        lines,
+        header,
+        end,
+        asked.length === 0
+          ? []
+          : patchDirectionTable(lines.slice(header, end), asked),
+      );
+    } else if (asked.length > 0) {
+      const at = section.stop.endLine - start;
+      lines = [
+        ...lines.slice(0, at),
+        ...directionTableLines(asked),
+        ...lines.slice(at),
+      ];
+    }
+  }
+
+  if (edit.label.trim() !== known.label) {
+    lines = setKey(
+      lines,
+      rangeOfStop(),
+      "ungrouped_title",
+      edit.label.trim() === "" ? null : tomlString(edit.label.trim()),
+    );
+  }
+  if (edit.name !== undefined && edit.name.trim() !== known.name) {
+    // An empty name would read back as "unnamed stop", so it is not written.
+    if (edit.name.trim() !== "") {
+      lines = setKey(
+        lines,
+        rangeOfStop(),
+        "station_name",
+        tomlString(edit.name.trim()),
+      );
+    }
+  }
+  if (edit.showUngrouped !== known.showUngrouped) {
+    lines = setKey(
+      lines,
+      rangeOfStop(),
+      "show_ungrouped",
+      String(edit.showUngrouped),
+    );
+  }
+
+  for (const count of STOP_COUNTS) {
+    const wanted = count.wanted(edit);
+    if (wanted === undefined || wanted === count.known(known)) {
+      continue;
+    }
+    lines = setKey(
+      lines,
+      rangeOfStop(),
+      count.key,
+      wanted === null ? null : String(wanted),
+    );
+  }
+
+  return lines;
+}
+
+/** One stop of a page with the settings from its form. */
+export function updateConfigStop(
+  toml: string,
+  pageIndex: number,
+  stopIndex: number,
+  edit: ConfigPageStopEdit,
+): string {
+  const lines = toml.split("\n");
+  const blocks = routeBlocks(lines);
+  if (!isPageIndex(blocks, pageIndex)) {
+    return toml;
+  }
+
+  const block = blocks[pageIndex];
+  const section = stopSections(block)[stopIndex];
+  if (!section) {
+    return toml;
+  }
+
+  const start = block.startLine;
+  const known = readStop(lines, section);
+  const original = lines.slice(start, block.endLine);
+  const edited = applyStopEdit(original, start, section, known, edit);
+  const unchanged =
+    edited.length === original.length &&
+    edited.every((line, at) => line === original[at]);
+
+  return unchanged ? toml : rerender(lines, start, block.endLine, edited);
+}
+
+/** The page with a stop appended; a stop the page already has adds nothing. */
+export function addConfigStop(
+  toml: string,
+  pageIndex: number,
+  stop: NewConfigStop,
+): string {
+  const lines = toml.split("\n");
+  const blocks = routeBlocks(lines);
+  if (!isPageIndex(blocks, pageIndex)) {
+    return toml;
+  }
+
+  const block = blocks[pageIndex];
+  // The same station may sit on a page twice, under two names - Giesing's
+  // platforms are the example - so only an identical entry counts as present.
+  const known = stopSections(block).map((section) => readStop(lines, section));
+  if (
+    known.some(
+      (existing) =>
+        existing.stationId === stop.stationId &&
+        existing.name === stop.stationName,
+    )
+  ) {
+    return toml;
+  }
+
+  const last = block.tables[block.tables.length - 1];
+  const at = tableLinesEnd(lines, last);
+  return renderToml(
+    lines,
+    new Set(),
+    new Map([
+      [
+        at,
+        [
+          "",
+          "[[routes.stops]]",
+          `station_id = ${tomlString(stop.stationId)}`,
+          `station_name = ${tomlString(stop.stationName)}`,
+        ],
+      ],
+    ]),
+  );
+}
+
 /** A display setting a form may edit, and how the form presents it. */
 export interface DisplayField {
   key: string;
   label: string;
-  kind: "number" | "boolean" | "select";
+  kind: "number" | "boolean" | "select" | "text";
+  /** The section of the form the field belongs to. */
+  group: DisplayGroup;
   options?: readonly string[];
   hint?: string;
+  /** What the app uses while the file does not set the field. */
+  fallback?: string;
+}
+
+/** The sections a display form is read in: what it does, how it looks, its type. */
+export type DisplayGroup = "Timing" | "Look" | "Fonts";
+
+const DISPLAY_GROUPS: readonly DisplayGroup[] = ["Timing", "Look", "Fonts"];
+
+/** The fields of one form, in the sections the dialog shows them in. */
+export function displayFieldGroups(): {
+  name: DisplayGroup;
+  fields: DisplayField[];
+}[] {
+  return DISPLAY_GROUPS.map((name) => ({
+    name,
+    fields: DISPLAY_FIELDS.filter((field) => field.group === name),
+  }));
 }
 
 /** The settings the SPA renders and the dialog offers, in reading order. */
@@ -532,55 +740,149 @@ export const DISPLAY_FIELDS: readonly DisplayField[] = [
     key: "refresh_interval_seconds",
     label: "Refresh every (seconds)",
     kind: "number",
+    group: "Timing",
     hint: "How often the departures are fetched again.",
   },
   {
     key: "time_format_toggle_seconds",
     label: "Relative time switches after (seconds)",
     kind: "number",
+    group: "Timing",
+  },
+  {
+    key: "fetch_retry_attempts",
+    label: "Tries per stop and cycle",
+    kind: "number",
+    group: "Timing",
+  },
+  {
+    key: "fetch_retry_delay_ms",
+    label: "Pause between tries (ms)",
+    kind: "number",
+    group: "Timing",
   },
   {
     key: "theme",
     label: "Theme",
     kind: "select",
+    group: "Look",
     options: ["light", "dark", "auto"],
   },
   {
     key: "fill_vertical_space",
     label: "Fill the screen height",
     kind: "boolean",
+    group: "Look",
   },
   {
     key: "font_scaling_factor_when_filling",
     label: "Font scale when filling",
     kind: "number",
+    group: "Look",
   },
   {
     key: "random_header_colors",
     label: "Random header colours",
     kind: "boolean",
+    group: "Look",
   },
   {
     key: "header_background_brightness",
     label: "Header brightness",
     kind: "number",
+    group: "Look",
   },
   {
-    key: "fetch_retry_attempts",
-    label: "Tries per stop and cycle",
-    kind: "number",
+    key: "split_show_delay",
+    label: "Show the split later",
+    kind: "boolean",
+    group: "Look",
   },
-  {
-    key: "fetch_retry_delay_ms",
-    label: "Pause between tries (ms)",
-    kind: "number",
-  },
-  { key: "split_show_delay", label: "Show the split later", kind: "boolean" },
   {
     key: "route_icon_display",
     label: "Route icon",
     kind: "select",
+    group: "Look",
     options: ["icon_with_text", "badge", "none"],
+  },
+  // The font sizes are strings ("4rem"), so they are typed rather than counted.
+  // The fallback is the size the app's own CSS gives the field.
+  {
+    key: "font_size_route_number",
+    label: "Line",
+    kind: "text",
+    group: "Fonts",
+    fallback: "4rem",
+  },
+  {
+    key: "font_size_destination",
+    label: "Destination",
+    kind: "text",
+    group: "Fonts",
+    fallback: "4rem",
+  },
+  {
+    key: "font_size_platform",
+    label: "Platform",
+    kind: "text",
+    group: "Fonts",
+    fallback: "2.5rem",
+  },
+  {
+    key: "font_size_time",
+    label: "Time",
+    kind: "text",
+    group: "Fonts",
+    fallback: "4rem",
+  },
+  {
+    key: "font_size_stop_header",
+    label: "Stop header",
+    kind: "text",
+    group: "Fonts",
+    fallback: "3rem",
+  },
+  {
+    key: "font_size_direction_header",
+    label: "Direction header",
+    kind: "text",
+    group: "Fonts",
+    fallback: "2.5rem",
+  },
+  {
+    key: "font_size_status_header",
+    label: "Status header",
+    kind: "text",
+    group: "Fonts",
+    fallback: "1.875rem",
+  },
+  {
+    key: "font_size_pagination_indicator",
+    label: "Pages",
+    kind: "text",
+    group: "Fonts",
+    fallback: "2rem",
+  },
+  {
+    key: "font_size_countdown_text",
+    label: "Countdown",
+    kind: "text",
+    group: "Fonts",
+    fallback: "1.8rem",
+  },
+  {
+    key: "font_size_delay_amount",
+    label: "Delay",
+    kind: "text",
+    group: "Fonts",
+    fallback: "2rem",
+  },
+  {
+    key: "font_size_no_departures",
+    label: "No departures",
+    kind: "text",
+    group: "Fonts",
+    fallback: "2.5rem",
   },
 ];
 

@@ -1,10 +1,12 @@
 /**
- * The pages of a config are what the user rearranges, so the dialog shows them
- * as a list: drag a card, or tap the arrows, and save when the order is right.
+ * The configurator shows one context at a time: the routes, one route's stops,
+ * or one stop's directions. Every edit lands in the TOML the dialog saves.
+ *
+ * The dialog's selectors and actions live in `cypress/support/commands.js`.
  */
 const CONFIG_TOML_KEY = "mvg_departures_config_toml";
 
-const TWO_PAGES = `
+const TWO_ROUTES = `
 [display]
 title = "Pages e2e"
 
@@ -32,327 +34,308 @@ station_id = "de:09162:1000"
 station_name = "Hauptbahnhof"
 `;
 
-function openConfigDialog() {
+function visitWithConfig(hash = "/") {
   cy.intercept("**/api/bgw-pt/v3/**", { statusCode: 200, body: [] });
-  cy.visit("/", {
+  cy.visit(hash, {
     onBeforeLoad(win) {
-      win.localStorage.setItem(CONFIG_TOML_KEY, TWO_PAGES);
+      win.localStorage.setItem(CONFIG_TOML_KEY, TWO_ROUTES);
     },
   });
-  cy.get(".config-button").click();
-  cy.get(".config-textarea").should("be.visible");
-  cy.get(".config-method-selector").contains("button", "Configurator").click();
-  cy.get(".page-card, .pages-empty").should("exist");
 }
 
-function pageTitles() {
-  return cy.get(".page-card .page-title strong");
-}
+describe("SPA configurator", () => {
+  it("lists every route as one row, with what it holds", () => {
+    visitWithConfig();
+    cy.openConfigurator();
 
-/** One departure in the shape the MVG API returns. */
-function departure(label, destination, transportType) {
-  const time = Date.now() + 5 * 60 * 1000;
-  return {
-    realtimeDepartureTime: time,
-    plannedDepartureTime: time,
-    delayInMinutes: 0,
-    platform: 1,
-    realtime: true,
-    label,
-    destination,
-    transportType,
-    cancelled: false,
-    messages: [],
-  };
-}
-
-describe("SPA config pages", () => {
-  it("shows every page with its stops", () => {
-    openConfigDialog();
-
-    pageTitles().should("have.length", 2);
-    cy.get(".page-card").first().should("contain", "Giesing");
-    cy.get(".page-card").eq(1).should("contain", "Hauptbahnhof");
+    cy.configRouteNames().should("deep.equal", ["Home", "Work"]);
+    cy.configPanel().should("contain", "1 stop");
   });
 
-  it("moves a page up and keeps the new order on save", () => {
-    openConfigDialog();
+  it("opens one route at a time", () => {
+    visitWithConfig();
+    cy.openConfigurator();
 
-    cy.get('[aria-label="Move Work up"]').click();
+    cy.openConfigRoute("Home");
+    cy.configStopNames().should("deep.equal", ["Giesing"]);
 
-    pageTitles().then(($titles) => {
-      expect([...$titles].map((title) => title.textContent)).to.deep.equal(["Work", "Home"]);
+    cy.openConfigRoute("Work");
+    cy.configStopNames().should("deep.equal", ["Hauptbahnhof"]);
+  });
+
+  it("opens one stop at a time, and shows its name for editing", () => {
+    visitWithConfig();
+    cy.openConfigurator();
+    cy.openConfigRoute("Home");
+
+    cy.openConfigStop("Giesing");
+    cy.configInput("Name of Giesing").should("be.visible").and("have.value", "Giesing");
+  });
+
+  it("opens a route and a stop by tapping the name, not only the triangle", () => {
+    visitWithConfig();
+    cy.openConfigurator();
+
+    cy.tapConfigRouteName("Home");
+    cy.configStopNames().should("deep.equal", ["Giesing"]);
+
+    cy.tapConfigStopName("Giesing");
+    cy.configInput("Name of Giesing").should("be.visible");
+  });
+
+  it("moves a route down, and keeps the new order on save", () => {
+    visitWithConfig();
+    cy.openConfigurator();
+
+    cy.moveConfigRouteWithKeyboard("Home", "down");
+    cy.configRouteNames().should("deep.equal", ["Work", "Home"]);
+    cy.saveConfigDialog();
+
+    cy.storedConfig().should((saved) => {
+      const paths = saved
+        .split("[[routes]]")
+        .slice(1)
+        .map((block) => /path\s*=\s*"([^"]*)"/.exec(block)?.[1]);
+
+      expect(paths).to.deep.equal(["/work", "/"]);
+      expect(saved).to.contain("Hauptbahnhof");
     });
-
-    cy.contains("button", "Save").click();
-
-    cy.window()
-      .its("localStorage")
-      .invoke("getItem", CONFIG_TOML_KEY)
-      .should((saved) => {
-        const paths = saved
-          .split("[[routes]]")
-          .slice(1)
-          .map((block) => /path\s*=\s*"([^"]*)"/.exec(block)?.[1]);
-
-        expect(paths).to.deep.equal(["/work", "/"]);
-        expect(saved).to.contain("Hauptbahnhof");
-      });
   });
 
   it("opens on the TOML editor and keeps the Configurator as the last tab", () => {
-    cy.intercept("**/api/bgw-pt/v3/**", { statusCode: 200, body: [] });
-    cy.visit("/", {
-      onBeforeLoad(win) {
-        win.localStorage.setItem(CONFIG_TOML_KEY, TWO_PAGES);
-      },
-    });
-    cy.get(".config-button").click();
+    visitWithConfig();
 
-    // The previous view is what opens: the editor, with the file in it.
-    cy.get(".config-textarea").should("be.visible").and("contain.value", "[[routes]]");
-    cy.get(".editor-highlight .hljs-section").should("exist");
-
-    cy.get(".config-method-selector .method-button").then(($tabs) => {
+    cy.openConfigButton();
+    cy.tomlEditor().should("contain.value", "[[routes]]");
+    cy.configTabs().then(($tabs) => {
       const labels = [...$tabs].map((tab) => tab.textContent.trim());
 
       expect(labels[labels.length - 1]).to.equal("Configurator");
-      expect(labels.slice(0, -1)).to.deep.equal([
-        "TOML Config",
-        "Wizard (experimental)",
-        "Delete (current route)",
-        "Routes",
-        "Clean up",
-      ]);
     });
-
-    cy.get(".page-card").should("not.exist");
-    cy.get(".config-method-selector").contains("button", "Configurator").click();
-    cy.get(".page-card").should("have.length", 2);
+    cy.configPanel().should("not.exist");
   });
 
-  it("renames a page and says what a stop shows when nothing matches", () => {
-    openConfigDialog();
+  it("renames a route, a stop and what the unmatched departures show under", () => {
+    visitWithConfig();
+    cy.openConfigurator();
 
-    cy.get(".page-card").first().contains("button", "Edit").click();
+    cy.openConfigRoute("Home");
+    cy.openConfigRouteSettings();
+    cy.retypeConfigInput("Route title", "Zuhause");
+    cy.configButton("Apply").click();
+    cy.configRouteNames().should("deep.equal", ["Zuhause", "Work"]);
 
-    cy.get(".page-form input").first().clear().type("Zuhause");
-    cy.get('.page-form input[aria-label="Heading for Giesing"]').type("Andere");
-    cy.get('.page-form input[aria-label="Show unmatched departures of Giesing"]').check();
-    cy.contains("button", "Apply changes").click();
+    cy.openConfigStop("Giesing");
+    cy.retypeConfigInput("Name of Giesing", "Giesing Bf");
+    cy.retypeConfigInput("Heading for Giesing Bf", "Andere");
+    cy.configInput("Show unmatched departures of Giesing Bf").check();
+    cy.saveConfigDialog();
 
-    cy.get(".page-form").should("not.exist");
-    pageTitles().first().should("have.text", "Zuhause");
-    cy.get(".page-card").first().should("contain", "Andere");
-
-    cy.contains("button", "Save").click();
-
-    cy.window().its("localStorage").invoke("getItem", CONFIG_TOML_KEY).should((saved) => {
+    cy.storedConfig().should((saved) => {
       expect(saved).to.contain('title = "Zuhause"');
+      expect(saved).to.contain('station_name = "Giesing Bf"');
       expect(saved).to.contain('ungrouped_title = "Andere"');
       expect(saved).to.contain("show_ungrouped = true");
     });
   });
 
-  it("refuses a path another page already uses", () => {
-    openConfigDialog();
+  it("refuses a path another route already uses", () => {
+    visitWithConfig();
+    cy.openConfigurator();
 
-    cy.get(".page-card").first().contains("button", "Edit").click();
-    cy.contains("label", "Path").find("input").clear().type("/work");
+    cy.openConfigRoute("Home");
+    cy.openConfigRouteSettings();
+    cy.retypeConfigInput("Route path", "/work");
 
-    cy.get(".page-form-problem").should("contain", "already uses this path");
-    cy.contains("button", "Apply changes").should("be.disabled");
+    cy.configProblem().should("contain", "already uses this path");
+    cy.configButton("Apply").should("be.disabled");
 
-    cy.get(".page-form").contains("button", "Cancel").click();
-    cy.get(".page-form").should("not.exist");
-    pageTitles().first().should("have.text", "Home");
+    cy.configButton("Cancel").click();
+    cy.configRouteNames().should("deep.equal", ["Home", "Work"]);
   });
 
-  it("shows a stop's headings and rewrites them", () => {
-    openConfigDialog();
+  it("keeps a direction's matches editable instead of toggling them away", () => {
+    visitWithConfig();
+    cy.openConfigurator();
 
-    cy.get(".page-card").first().should("contain", "1 heading");
-    cy.get(".page-card").first().contains("button", "Edit").click();
+    cy.openConfigRoute("Home");
+    cy.openConfigStop("Giesing");
+    cy.openConfigDirection();
 
-    cy.get('.page-form-direction-name').should("have.value", "->City");
-    cy.get('.page-form-direction textarea')
-      .should("have.value", "U2 Messestadt\n19 Pasing")
-      .clear()
-      .type("U2 Messestadt\nU1 Sendlinger Tor");
+    cy.configMatches().should("have.length", 2).first().should("have.value", "U2 Messestadt");
+    cy.retypeConfigMatch(0, "U1 Sendlinger Tor");
+    cy.removeConfigMatch(1);
+    cy.configMatches().should("have.length", 1).and("have.value", "U1 Sendlinger Tor");
+    cy.saveConfigDialog();
 
-    cy.contains("button", "Apply changes").click();
-    cy.contains("button", "Save").click();
-
-    cy.window().its("localStorage").invoke("getItem", CONFIG_TOML_KEY).should((saved) => {
-      expect(saved).to.contain('[routes.stops.direction_mappings]');
-      expect(saved).to.contain('"->City" = ["U2 Messestadt", "U1 Sendlinger Tor"]');
+    cy.storedConfig().should((saved) => {
+      expect(saved).to.contain('"->City" = ["U1 Sendlinger Tor"]');
       expect(saved).not.to.contain("19 Pasing");
     });
   });
 
-  it("adds a heading to a stop", () => {
-    openConfigDialog();
+  it("adds a match that the stop's departures never named", () => {
+    visitWithConfig();
+    cy.openConfigurator();
 
-    cy.get(".page-card").eq(1).contains("button", "Edit").click();
-    cy.get(".page-card").eq(1).contains("button", "Add heading").click();
+    cy.openConfigRoute("Home");
+    cy.openConfigStop("Giesing");
+    cy.openConfigDirection();
+    cy.configInput("Add a match to direction 1 of Giesing").type("N44{enter}");
 
-    cy.get('.page-form-direction-name').last().type("->Norden");
-    cy.get(".page-form-direction textarea").last().type("U3 Moosach");
-    cy.contains("button", "Apply changes").click();
-    cy.contains("button", "Save").click();
+    cy.configMatches().last().should("have.value", "N44");
+    cy.saveConfigDialog();
 
-    cy.window().its("localStorage").invoke("getItem", CONFIG_TOML_KEY).should((saved) => {
+    cy.storedConfig().should((saved) => {
+      expect(saved).to.contain('"->City" = ["U2 Messestadt", "19 Pasing", "N44"]');
+    });
+  });
+
+  it("adds a direction to a stop", () => {
+    visitWithConfig();
+    cy.openConfigurator();
+
+    cy.openConfigRoute("Work");
+    cy.openConfigStop("Hauptbahnhof");
+    cy.addConfigDirection();
+
+    cy.retypeConfigInput("Name of direction 1 of Hauptbahnhof", "->Norden");
+    cy.configInput("Add a match to direction 1 of Hauptbahnhof").type("U3 Moosach{enter}");
+    cy.saveConfigDialog();
+
+    cy.storedConfig().should((saved) => {
       expect(saved).to.contain('"->Norden" = ["U3 Moosach"]');
     });
   });
-  it("edits the defaults every page inherits", () => {
-    openConfigDialog();
 
-    cy.get(".defaults-card").should("contain", "Nothing set here");
-    cy.get(".defaults-card").contains("button", "Edit defaults").click();
+  it("edits the defaults every route inherits, font sizes included", () => {
+    visitWithConfig();
+    cy.openConfigurator();
 
-    cy.get('.defaults-card input[aria-label="Refresh every (seconds)"]')
-      .clear()
-      .type("30");
-    cy.get('.defaults-card select[aria-label="Theme"]').select("dark");
-    cy.contains("button", "Apply defaults").click();
+    cy.openConfigDefaults();
+    cy.retypeConfigInput("Refresh every (seconds)", "30");
+    cy.configSelect("Theme").select("dark");
+    cy.retypeConfigInput("Line", "3rem");
+    cy.configButton("Apply").click();
+    cy.saveConfigDialog();
 
-    cy.get(".defaults-card").should("contain", "2 settings set here");
-    cy.contains("button", "Save").click();
-
-    cy.window().its("localStorage").invoke("getItem", CONFIG_TOML_KEY).should((saved) => {
+    cy.storedConfig().should((saved) => {
       expect(saved).to.contain("[display]");
       expect(saved).to.contain("refresh_interval_seconds = 30");
       expect(saved).to.contain('theme = "dark"');
+      expect(saved).to.contain('font_size_route_number = "3rem"');
     });
   });
 
-  it("gives one page settings of its own", () => {
-    openConfigDialog();
+  it("gives one route settings of its own", () => {
+    visitWithConfig();
+    cy.openConfigurator();
 
-    cy.get(".page-card").first().contains("button", "Edit").click();
-    cy.get('.page-form input[aria-label="Refresh every (seconds)"]').clear().type("5");
-    cy.contains("button", "Apply changes").click();
-    cy.contains("button", "Save").click();
+    cy.openConfigRoute("Home");
+    cy.openConfigRouteSettings();
+    cy.retypeConfigInput("Refresh every (seconds)", "5");
+    cy.configButton("Apply").click();
+    cy.saveConfigDialog();
 
-    cy.window().its("localStorage").invoke("getItem", CONFIG_TOML_KEY).should((saved) => {
-      const pageTable = saved.slice(saved.indexOf("[routes.display]"));
+    cy.storedConfig().should((saved) => {
+      const routeTable = saved.slice(saved.indexOf("[routes.display]"));
 
-      expect(pageTable).to.contain("refresh_interval_seconds = 5");
+      expect(routeTable).to.contain("refresh_interval_seconds = 5");
       expect(saved).to.contain('title = "Work"');
     });
   });
 
-  it("empties a setting by clearing the field", () => {
-    openConfigDialog();
+  it("keeps the app usable when the route you are on is deleted", () => {
+    visitWithConfig("/#/work");
+    cy.openConfigurator();
 
-    cy.get(".page-card").first().contains("button", "Edit").click();
-    cy.get('.page-form input[aria-label="Refresh every (seconds)"]').clear().type("5");
-    cy.contains("button", "Apply changes").click();
-    cy.get(".page-card").first().contains("button", "Edit").click();
-    cy.get('.page-form input[aria-label="Refresh every (seconds)"]').clear();
-    cy.contains("button", "Apply changes").click();
-    cy.contains("button", "Save").click();
+    cy.openConfigRoute("Work");
+    cy.deleteConfigRoute("Work");
+    cy.confirmConfigRouteDeletion("Work");
+    cy.saveConfigDialog();
 
-    cy.window().its("localStorage").invoke("getItem", CONFIG_TOML_KEY).should((saved) => {
-      expect(saved).not.to.contain("refresh_interval_seconds");
-      expect(saved).to.contain('title = "Home"');
-    });
-  });
-
-  it("keeps the app usable when the page you are on is deleted", () => {
-    cy.intercept("**/api/bgw-pt/v3/**", { statusCode: 200, body: [] });
-    cy.visit("/#/work", {
-      onBeforeLoad(win) {
-        win.localStorage.setItem(CONFIG_TOML_KEY, TWO_PAGES);
-      },
-    });
-
-    cy.get(".config-button").click();
-    cy.get(".config-method-selector").contains("button", "Configurator").click();
-    cy.get(".page-card").eq(1).contains("button", "Delete page").click();
-    cy.get(".page-card").eq(1).contains("button", "Yes, delete").click();
-    cy.contains("button", "Save").click();
-
-    // The route in the address bar is gone: the app falls back to the first page
-    // and takes the address bar with it.
-    cy.get(".modal-content").should("not.exist");
-    cy.get("h1").should("contain", "Home");
+    cy.dialogClosed();
+    cy.mainHeadline().should("contain", "Home");
     cy.location("hash").should("not.contain", "/work");
-    cy.get("body").should("not.contain", "undefined");
+    cy.appBody().should("not.contain", "undefined");
   });
 
-  it("creates a new page and refuses a path that is taken", () => {
-    openConfigDialog();
+  it("creates a new route and refuses a path that is taken", () => {
+    visitWithConfig();
+    cy.openConfigurator();
 
-    cy.get(".pages-actions").contains("button", "New page").click();
-    cy.get('.new-page-form input[aria-label="New page path"]').type("/work");
-    cy.get(".new-page-form .page-form-problem").should("contain", "already uses this path");
-    cy.contains("button", "Create page").should("be.disabled");
+    cy.addConfigRoute();
+    cy.configInput("New route path").type("/work");
+    cy.configProblem().should("contain", "already uses this path");
+    cy.configButton("Create").should("be.disabled");
 
-    cy.get('.new-page-form input[aria-label="New page path"]').clear().type("/office");
-    cy.get('.new-page-form input[aria-label="New page title"]').type("Büro");
-    cy.contains("button", "Create page").click();
+    cy.retypeConfigInput("New route path", "/office");
+    cy.configInput("New route title").type("Büro");
+    cy.configButton("Create").click();
 
-    cy.get(".page-card").should("have.length", 3);
-    pageTitles().eq(2).should("have.text", "Büro");
+    cy.configRouteNames().should("deep.equal", ["Home", "Work", "Büro"]);
+    cy.saveConfigDialog();
 
-    cy.contains("button", "Save").click();
-
-    cy.window().its("localStorage").invoke("getItem", CONFIG_TOML_KEY).should((saved) => {
+    cy.storedConfig().should((saved) => {
       expect(saved).to.contain('path = "/office"');
       expect(saved).to.contain('title = "Büro"');
-      expect(saved.indexOf('path = "/office"')).to.be.greaterThan(
-        saved.indexOf('path = "/work"'),
-      );
+      expect(saved.indexOf('path = "/office"')).to.be.greaterThan(saved.indexOf('path = "/work"'));
     });
   });
 
-  it("restores the Next to me page and edits what it looks for", () => {
-    openConfigDialog();
-
-    cy.get(".page-row").should("contain", "is missing from this config");
-    cy.get(".page-row").contains("button", "Restore").click();
-    cy.get(".page-row").contains("button", "Edit").click();
-
-    cy.get('.on-the-run-field input[aria-label="Radius (metres)"]')
-      .clear()
-      .type("250");
-    cy.get('.on-the-run-field input[aria-label="APIs"]').clear().type("mvg, vbb");
-    cy.get(".page-row-form").contains("button", "Apply").click();
-
-    cy.get(".page-row-form").should("not.exist");
-    cy.contains("button", "Save").click();
-
-    cy.window().its("localStorage").invoke("getItem", CONFIG_TOML_KEY).should((saved) => {
-      expect(saved).to.contain("radius_meters = 250");
-      expect(saved).to.contain('use_adapters = ["mvg", "vbb"]');
-      expect(saved).to.contain("max_departures_per_stop = 8");
-    });
-  });
-
-  it("makes the departures page follow the headings it was given", () => {    openConfigDialog();
-
-    // Registered after `openConfigDialog`, so it wins over that catch-all stub.
-    cy.intercept("**/api/bgw-pt/v3/departures*", {
+  it("adds a stop by searching for its name", () => {
+    cy.intercept("**/api/bgw-pt/v3/locations**", {
       statusCode: 200,
       body: [
-        departure("U2", "Messestadt", "UBAHN"),
-        departure("U6", "Garching-Forschungszentrum", "UBAHN"),
+        {
+          type: "STATION",
+          globalId: "de:09162:1110",
+          name: "Giesing",
+          place: "München",
+          latitude: 48.110861,
+          longitude: 11.595247,
+        },
       ],
     });
+    cy.intercept("**/api/bgw-pt/v3/departures**", { statusCode: 200, body: [] });
+    cy.visit("/", {
+      onBeforeLoad(win) {
+        win.localStorage.setItem(CONFIG_TOML_KEY, TWO_ROUTES);
+      },
+    });
+    cy.openConfigurator();
 
-    cy.get(".page-card").first().contains("button", "Edit").click();
-    cy.get(".page-form-direction textarea").first().clear().type("U6 Garching");
-    cy.contains("button", "Apply changes").click();
-    cy.contains("button", "Save").click();
+    cy.openConfigRoute("Work");
+    cy.addConfigStop();
+    cy.searchConfigStop("Giesing");
+    cy.pickConfigStop("Giesing");
 
-    cy.get('[aria-label="Departures for ->City"]', { timeout: 15000 }).should(
-      "contain",
-      "Garching",
-    );
-    cy.get('[aria-label="Departures for ->City"]').should(
-      "not.contain",
-      "Messestadt",
-    );
-  });});
+    cy.configStopNames().should("deep.equal", ["Hauptbahnhof", "Giesing"]);
+    cy.saveConfigDialog();
+
+    cy.storedConfig().should((saved) => {
+      const work = saved.slice(saved.indexOf('path = "/work"'));
+
+      expect(work).to.contain('station_id = "de:09162:1110"');
+      expect(work).to.contain("Hauptbahnhof");
+    });
+  });
+
+  it("deletes a stop of the route that is open", () => {
+    visitWithConfig();
+    cy.openConfigurator();
+
+    cy.openConfigRoute("Home");
+    cy.openConfigStop("Giesing");
+    cy.deleteConfigStop("Giesing");
+    cy.confirmConfigStopDeletion("Giesing");
+
+    cy.configStopNames().should("deep.equal", []);
+    cy.saveConfigDialog();
+
+    cy.storedConfig().should((saved) => {
+      expect(saved).not.to.contain("de:09162:1110");
+      expect(saved).to.contain("Hauptbahnhof");
+    });
+  });
+});

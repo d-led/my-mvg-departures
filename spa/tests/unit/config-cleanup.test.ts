@@ -132,6 +132,25 @@ theme = "dark"
     expect(result.toml).toContain('theme = "dark"');
   });
 
+  it("keeps the comments and the layout of the lines it does not touch", () => {
+    const toml = `# The board, as it was written
+[display]
+title   = "Home"     # lined up by hand
+banner_color = "#087BC4"
+
+# Read by the server only
+[api]
+sleep_ms_between_calls = 500
+`;
+
+    const result = cleanUpConfigToml(toml);
+
+    expect(result.toml).toContain("# The board, as it was written");
+    expect(result.toml).toContain('title   = "Home"     # lined up by hand');
+    expect(result.toml).not.toContain("banner_color");
+    expect(result.toml).not.toContain("# Read by the server only");
+  });
+
   it("leaves a config that is already in SPA form untouched", () => {
     const toml = `[display]
 title = "Home"
@@ -193,7 +212,13 @@ station_name = "Giesing"
         "/work",
         "on-the-run",
       ]);
-      expect(config.routes[0].stops).toHaveLength(2);
+      expect(config.routes[0].stops.map((stop) => stop.stationName)).toEqual([
+        "Giesing",
+        "Giesing S5",
+        "Giesing S3",
+        "Tegernseer Str.",
+        "Balanstr.",
+      ]);
       expect(config.routes[0].display?.title).toBe("Giesing Departures");
       expect(config.routes[1].display?.title).toBe("Work");
       expect(config.onTheRun?.radiusMeters).toBe(100);

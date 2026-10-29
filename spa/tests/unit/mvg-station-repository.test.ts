@@ -106,3 +106,60 @@ describe("MvgStationRepository coordinates", () => {
     ).resolves.toBeNull();
   });
 });
+
+describe("MvgStationRepository search", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("offers every station a name matches, with its place", async () => {
+    const fetchMock = vi.fn<(url: string) => Promise<Response>>(async () =>
+      jsonResponse([
+        { ...station, type: "STATION" },
+        {
+          globalId: "de:09162:1110",
+          name: "Giesing",
+          place: "München",
+          latitude: 48.110_861,
+          longitude: 11.595_247,
+        },
+        { name: "Chiemgau Apotheke", type: "POI" },
+      ]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const stations = await new MvgStationRepository().searchStations(
+      "Chiemgau",
+    );
+
+    expect(stations).toEqual([
+      {
+        id: "de:09162:1108",
+        name: "Chiemgaustraße",
+        place: "München",
+        latitude: 48.106_716,
+        longitude: 11.596_325,
+      },
+      {
+        id: "de:09162:1110",
+        name: "Giesing",
+        place: "München",
+        latitude: 48.110_861,
+        longitude: 11.595_247,
+      },
+    ]);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "https://www.mvg.de/api/bgw-pt/v3/locations?query=Chiemgau&locationTypes=STATION",
+    );
+  });
+
+  it("asks the API nothing for an empty name", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse([]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      new MvgStationRepository().searchStations("   "),
+    ).resolves.toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

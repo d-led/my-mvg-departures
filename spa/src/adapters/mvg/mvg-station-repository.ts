@@ -91,6 +91,28 @@ export class MvgStationRepository implements NearbyStationRepository {
     return this.searchStationByName(query, matchStationId);
   }
 
+  /**
+   * The stations a name matches, in the order the API ranks them - what the
+   * configurator offers when a page is given a stop it does not have yet.
+   */
+  async searchStations(query: string): Promise<StationLocation[]> {
+    const trimmed = query.trim();
+    if (trimmed === "") {
+      return [];
+    }
+
+    const data = await this.fetchJson(
+      `${this.locationsUrl}?query=${encodeURIComponent(trimmed)}&locationTypes=STATION`,
+    );
+    if (!Array.isArray(data)) {
+      return [];
+    }
+
+    return data
+      .filter(hasCoordinates)
+      .map((station) => this.toStationLocation(station));
+  }
+
   /** Sub-stations share the parent's coordinates. */
   private async getStationById(id: string): Promise<StationLocation | null> {
     const station = await this.fetchJson(

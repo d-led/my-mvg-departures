@@ -265,7 +265,10 @@
         </div>
       {:else}
       <ul role="list" aria-label={rowListLabel(group)}>
-        {#each group.departures as departure (departure.line + departure.destination + departure.time.getTime())}
+        <!-- Keyed by position: the API lists one train twice (Giesing's S-Bahn
+             entries come as a cancelled twin at the same line, destination and
+             minute), so nothing a departure carries is unique. -->
+        {#each group.departures as departure, rowIndex (rowIndex)}
           <li
             class="departure-row {departure.isCancelled ? 'cancelled' : ''} {showsStaleTimes(group) ? 'stale' : ''}"
             role="listitem"
