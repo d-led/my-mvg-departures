@@ -46,6 +46,13 @@ export interface ConfigPage {
   /** The display settings this page sets for itself. */
   display: DisplaySettings;
   stops: ConfigPageStop[];
+  /**
+   * True while the file keeps its stops outside any route, the way the server
+   * version wants them. The app reads them as the route at "/"; they are listed
+   * here but not edited, because changing one means turning them into a route
+   * first - the dialog's clean-up does that, and only when it is asked to.
+   */
+  legacy: boolean;
 }
 
 /** What one stop of a page may change. */
@@ -61,6 +68,9 @@ export interface ConfigPageStopEdit {
   perLineDepartures?: number | null;
   hoursInAdvance?: number | null;
 }
+
+/** The path a config is shown at when nothing else says where it belongs. */
+const DEFAULT_PAGE_PATH = "/";
 
 /** What a page's form may change. */
 export interface ConfigPageEdit {
@@ -207,7 +217,7 @@ function readStop(lines: string[], section: StopSection): ConfigPageStop {
 }
 
 function readPage(lines: string[], block: RouteBlock): ConfigPage {
-  const path = stringValue(lines, block.tables[0], "path") ?? "/";
+  const path = stringValue(lines, block.tables[0], "path") ?? DEFAULT_PAGE_PATH;
   const display = block.tables.find((table) =>
     belongsTo(table.name, "routes.display"),
   );
@@ -215,7 +225,13 @@ function readPage(lines: string[], block: RouteBlock): ConfigPage {
 
   const stops = stopSections(block).map((section) => readStop(lines, section));
 
-  return { path, title, display: displaySettings(lines, display), stops };
+  return {
+    path,
+    title,
+    display: displaySettings(lines, display),
+    stops,
+    legacy: false,
+  };
 }
 
 /** The display settings a table sets, without touching anything else. */
@@ -345,7 +361,49 @@ export function readConfigPages(toml: string): ConfigPage[] {
   }
 
   const lines = toml.split("\n");
-  return routeBlocks(lines).map((block) => readPage(lines, block));
+  const routes = routeBlocks(lines).map((block) => readPage(lines, block));
+
+  // Top-level stops keep working for the board, so they are never hidden here.
+  return [...routes, ...legacyPages(lines)];
+}
+
+/**
+ * A config written for the server keeps its stops at the top level; the board
+ * shows them as the route at "/", leading it when a route at "/" exists too.
+ * They are listed as one page that says where they come from.
+ */
+function legacyPages(lines: string[]): ConfigPage[] {
+  const sections = legacyStopSections(lines);
+  if (sections.length === 0) {
+    return [];
+  }
+
+  return [
+    {
+      path: DEFAULT_PAGE_PATH,
+      title: DEFAULT_PAGE_PATH,
+      display: {},
+      stops: sections.map((section) => readStop(lines, section)),
+      legacy: true,
+    },
+  ];
+}
+
+/** The top-level `[[stops]]` tables and the `[stops.*]` tables under them. */
+function legacyStopSections(lines: string[]): StopSection[] {
+  const sections: StopSection[] = [];
+
+  for (const table of readTomlTables(lines)) {
+    if (table.name === "stops") {
+      sections.push({ stop: table });
+      continue;
+    }
+    if (table.name === "stops.direction_mappings" && sections.length > 0) {
+      sections[sections.length - 1].mappings = table;
+    }
+  }
+
+  return sections;
 }
 
 /**

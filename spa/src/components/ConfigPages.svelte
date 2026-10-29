@@ -41,6 +41,7 @@
     onAddPage,
     onAddStop,
     onAddStops,
+    onConvert,
   }: {
     pages: ConfigPage[];
     /** The file's own display settings, which every page inherits. */
@@ -59,6 +60,8 @@
     onAddPage: (page: NewConfigPage) => void;
     onAddStop: (pageIndex: number, stop: NewConfigStop) => void;
     onAddStops: () => void;
+    /** Turns a server-format file's stops into routes, as a reviewable edit. */
+    onConvert: () => void;
   } = $props();
 
   /**
@@ -685,543 +688,587 @@
   <ul class="rows">
     {#each pages as page, pageIndex (pageIndex)}
       <li>
-        <div
-          class="page-row"
-          class:dragging={dragFrom === pageIndex}
-          class:drop-target={dragOver === pageIndex &&
-            dragFrom !== null &&
-            dragFrom !== pageIndex}
-        >
-          <span
-            class="grip"
-            role="button"
-            tabindex="0"
-            aria-label={`Reorder ${page.title}`}
-            onpointerdown={(event) => startDrag(event, pageIndex)}
-            onkeydown={(event) => {
-              if (!event.altKey) {
-                return;
-              }
-              const to =
-                event.key === "ArrowUp" ? pageIndex - 1 : pageIndex + 1;
-              if (
-                (event.key === "ArrowUp" || event.key === "ArrowDown") &&
-                to >= 0 &&
-                to < pages.length
-              ) {
-                event.preventDefault();
-                onReorder(pageIndex, to);
-              }
-            }}>⠿</span
-          >
-          <button
-            class="row-open"
-            data-role="page"
-            data-index={pageIndex}
-            aria-expanded={openPage === pageIndex}
-            onclick={() => togglePage(pageIndex)}
-          >
-            <span class="row-text">
-              <span class="name">{page.title}</span>
-              <span class="meta">{pageSummary(page)}</span>
-            </span>
-            {@render chevron(openPage === pageIndex)}
-          </button>
-        </div>
-
-        {#if openPage === pageIndex}
+        {#if page.legacy}
+          <!-- The board reads the top-level stops as the route at "/", so they
+               are listed here - read only, because editing one means turning it
+               into a route first, and that is a conversion, not a keystroke. -->
+          <div class="page-row">
+            <div class="row-open is-static">
+              <span class="row-text">
+                <span class="name">{page.title}</span>
+                <span class="meta">{pageSummary(page)} · server format</span>
+              </span>
+            </div>
+          </div>
           <div class="children">
-            {#if openForm === "page" && pageDraft}
-              <div class="form">
-                <label class="field">
-                  <span>Title</span>
-                  <input
-                    bind:value={pageDraft.title}
-                    placeholder={page.path}
-                    aria-label="Route title"
-                  />
-                </label>
-                <label class="field">
-                  <span>Path</span>
-                  <input
-                    bind:value={pageDraft.path}
-                    aria-label="Route path"
-                    aria-invalid={pathProblem !== ""}
-                  />
-                </label>
-                {#if pathProblem}
-                  <p class="problem" role="alert">{pathProblem}</p>
-                {/if}
-                <DisplayFields draft={pageDraft.settings} />
-                <div class="actions">
-                  <button
-                    class="button button-secondary"
-                    onclick={() => toggleForm("page")}>Cancel</button
-                  >
-                  <button
-                    class="button button-primary"
-                    disabled={pathProblem !== ""}
-                    onclick={() => applyPageDraft(pageIndex)}
-                  >
-                    Apply
-                  </button>
-                </div>
-              </div>
-            {/if}
-
+            <p class="note">
+              Stops outside any route, the way the server version wants them.
+              The board shows them as “/”. Converting rewrites them as
+              [[routes]], and you see the result before anything changes.
+            </p>
             {#each page.stops as stop, stopIndex (stopIndex)}
               <div class="row sub">
-                <button
-                  class="row-open"
-                  data-role="stop"
-                  aria-expanded={openStop === stopIndex}
-                  onclick={() => toggleStop(stopIndex, stop)}
-                >
+                <div class="row-open is-static">
                   <span class="row-text">
                     <span class="name">{stop.name}</span>
                     <span class="meta">{stopSummary(stop)}</span>
                   </span>
-                  {@render chevron(openStop === stopIndex)}
-                </button>
+                </div>
               </div>
+            {/each}
+            <div class="actions">
+              <button
+                class="button button-secondary"
+                data-role="convert"
+                onclick={onConvert}
+              >
+                Convert to routes…
+              </button>
+            </div>
+          </div>
+        {:else}
+          <div
+            class="page-row"
+            class:dragging={dragFrom === pageIndex}
+            class:drop-target={dragOver === pageIndex &&
+              dragFrom !== null &&
+              dragFrom !== pageIndex}
+          >
+            <span
+              class="grip"
+              role="button"
+              tabindex="0"
+              aria-label={`Reorder ${page.title}`}
+              onpointerdown={(event) => startDrag(event, pageIndex)}
+              onkeydown={(event) => {
+                if (!event.altKey) {
+                  return;
+                }
+                const to =
+                  event.key === "ArrowUp" ? pageIndex - 1 : pageIndex + 1;
+                if (
+                  (event.key === "ArrowUp" || event.key === "ArrowDown") &&
+                  to >= 0 &&
+                  to < pages.length
+                ) {
+                  event.preventDefault();
+                  onReorder(pageIndex, to);
+                }
+              }}>⠿</span
+            >
+            <button
+              class="row-open"
+              data-role="page"
+              data-index={pageIndex}
+              aria-expanded={openPage === pageIndex}
+              onclick={() => togglePage(pageIndex)}
+            >
+              <span class="row-text">
+                <span class="name">{page.title}</span>
+                <span class="meta">{pageSummary(page)}</span>
+              </span>
+              {@render chevron(openPage === pageIndex)}
+            </button>
+          </div>
 
-              {#if openStop === stopIndex}
-                <div class="children">
+          {#if openPage === pageIndex}
+            <div class="children">
+              {#if openForm === "page" && pageDraft}
+                <div class="form">
                   <label class="field">
-                    <span>Name</span>
+                    <span>Title</span>
                     <input
-                      value={stop.name}
-                      aria-label={`Name of ${stop.name}`}
-                      onchange={(event) =>
-                        applyStop(pageIndex, stopIndex, stop, {
-                          name: event.currentTarget.value,
-                        })}
+                      bind:value={pageDraft.title}
+                      placeholder={page.path}
+                      aria-label="Route title"
                     />
                   </label>
                   <label class="field">
-                    <span>Unmatched show under</span>
+                    <span>Path</span>
                     <input
-                      value={stop.label}
-                      placeholder="Other"
-                      aria-label={`Heading for ${stop.name}`}
-                      onchange={(event) =>
-                        applyStop(pageIndex, stopIndex, stop, {
-                          label: event.currentTarget.value,
-                        })}
+                      bind:value={pageDraft.path}
+                      aria-label="Route path"
+                      aria-invalid={pathProblem !== ""}
                     />
                   </label>
-                  <label class="check">
-                    <input
-                      type="checkbox"
-                      checked={stop.showUngrouped}
-                      aria-label={`Show unmatched departures of ${stop.name}`}
-                      onchange={(event) =>
-                        applyStop(pageIndex, stopIndex, stop, {
-                          showUngrouped: event.currentTarget.checked,
-                        })}
-                    />
-                    <span>Show what matches no direction</span>
-                  </label>
-                  <div class="grid">
-                    <label class="field">
-                      <span>Rows / stop</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={stop.maxDepartures ?? ""}
-                        placeholder={String(stopDefaults.maxDeparturesPerStop)}
-                        aria-label={`Rows per stop at ${stop.name}`}
-                        onchange={(event) =>
-                          applyCount(
-                            pageIndex,
-                            stopIndex,
-                            stop,
-                            "maxDepartures",
-                            event.currentTarget,
-                          )}
-                      />
-                    </label>
-                    <label class="field">
-                      <span>Rows / line</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={stop.perLineDepartures ?? ""}
-                        placeholder={String(stopDefaults.maxDeparturesPerRoute)}
-                        aria-label={`Rows per line at ${stop.name}`}
-                        onchange={(event) =>
-                          applyCount(
-                            pageIndex,
-                            stopIndex,
-                            stop,
-                            "perLineDepartures",
-                            event.currentTarget,
-                          )}
-                      />
-                    </label>
-                    <label class="field">
-                      <span>Hours ahead</span>
-                      <input
-                        type="number"
-                        min="0"
-                        value={stop.hoursInAdvance ?? ""}
-                        placeholder="all"
-                        aria-label={`Hours ahead at ${stop.name}`}
-                        onchange={(event) =>
-                          applyCount(
-                            pageIndex,
-                            stopIndex,
-                            stop,
-                            "hoursInAdvance",
-                            event.currentTarget,
-                          )}
-                      />
-                    </label>
+                  {#if pathProblem}
+                    <p class="problem" role="alert">{pathProblem}</p>
+                  {/if}
+                  <DisplayFields draft={pageDraft.settings} />
+                  <div class="actions">
+                    <button
+                      class="button button-secondary"
+                      onclick={() => toggleForm("page")}>Cancel</button
+                    >
+                    <button
+                      class="button button-primary"
+                      disabled={pathProblem !== ""}
+                      onclick={() => applyPageDraft(pageIndex)}
+                    >
+                      Apply
+                    </button>
                   </div>
+                </div>
+              {/if}
 
-                  {#each stop.directions as heading, headingIndex (headingIndex)}
-                    <div class="row sub2">
-                      <button
-                        class="row-open"
-                        data-role="direction"
-                        aria-expanded={openHeading === headingIndex}
-                        onclick={() => toggleHeading(headingIndex)}
-                      >
-                        <span class="row-text">
-                          <span class="name">{headingTitle(heading)}</span>
-                          <span class="meta">{headingSummary(heading)}</span>
-                        </span>
-                        {@render chevron(openHeading === headingIndex)}
-                      </button>
+              {#each page.stops as stop, stopIndex (stopIndex)}
+                <div class="row sub">
+                  <button
+                    class="row-open"
+                    data-role="stop"
+                    aria-expanded={openStop === stopIndex}
+                    onclick={() => toggleStop(stopIndex, stop)}
+                  >
+                    <span class="row-text">
+                      <span class="name">{stop.name}</span>
+                      <span class="meta">{stopSummary(stop)}</span>
+                    </span>
+                    {@render chevron(openStop === stopIndex)}
+                  </button>
+                </div>
+
+                {#if openStop === stopIndex}
+                  <div class="children">
+                    <label class="field">
+                      <span>Name</span>
+                      <input
+                        value={stop.name}
+                        aria-label={`Name of ${stop.name}`}
+                        onchange={(event) =>
+                          applyStop(pageIndex, stopIndex, stop, {
+                            name: event.currentTarget.value,
+                          })}
+                      />
+                    </label>
+                    <label class="field">
+                      <span>Unmatched show under</span>
+                      <input
+                        value={stop.label}
+                        placeholder="Other"
+                        aria-label={`Heading for ${stop.name}`}
+                        onchange={(event) =>
+                          applyStop(pageIndex, stopIndex, stop, {
+                            label: event.currentTarget.value,
+                          })}
+                      />
+                    </label>
+                    <label class="check">
+                      <input
+                        type="checkbox"
+                        checked={stop.showUngrouped}
+                        aria-label={`Show unmatched departures of ${stop.name}`}
+                        onchange={(event) =>
+                          applyStop(pageIndex, stopIndex, stop, {
+                            showUngrouped: event.currentTarget.checked,
+                          })}
+                      />
+                      <span>Show what matches no direction</span>
+                    </label>
+                    <div class="grid">
+                      <label class="field">
+                        <span>Rows / stop</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={stop.maxDepartures ?? ""}
+                          placeholder={String(
+                            stopDefaults.maxDeparturesPerStop,
+                          )}
+                          aria-label={`Rows per stop at ${stop.name}`}
+                          onchange={(event) =>
+                            applyCount(
+                              pageIndex,
+                              stopIndex,
+                              stop,
+                              "maxDepartures",
+                              event.currentTarget,
+                            )}
+                        />
+                      </label>
+                      <label class="field">
+                        <span>Rows / line</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={stop.perLineDepartures ?? ""}
+                          placeholder={String(
+                            stopDefaults.maxDeparturesPerRoute,
+                          )}
+                          aria-label={`Rows per line at ${stop.name}`}
+                          onchange={(event) =>
+                            applyCount(
+                              pageIndex,
+                              stopIndex,
+                              stop,
+                              "perLineDepartures",
+                              event.currentTarget,
+                            )}
+                        />
+                      </label>
+                      <label class="field">
+                        <span>Hours ahead</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={stop.hoursInAdvance ?? ""}
+                          placeholder="all"
+                          aria-label={`Hours ahead at ${stop.name}`}
+                          onchange={(event) =>
+                            applyCount(
+                              pageIndex,
+                              stopIndex,
+                              stop,
+                              "hoursInAdvance",
+                              event.currentTarget,
+                            )}
+                        />
+                      </label>
                     </div>
 
-                    {#if openHeading === headingIndex}
-                      <div class="children">
-                        <label class="field">
-                          <span>Name</span>
-                          <input
-                            value={heading.direction}
-                            placeholder="->City"
-                            aria-label={`Name of direction ${headingIndex + 1} of ${stop.name}`}
-                            onchange={(event) =>
-                              renameHeading(
-                                pageIndex,
-                                stopIndex,
-                                stop,
-                                headingIndex,
-                                event.currentTarget.value,
-                              )}
-                          />
-                        </label>
+                    {#each stop.directions as heading, headingIndex (headingIndex)}
+                      <div class="row sub2">
+                        <button
+                          class="row-open"
+                          data-role="direction"
+                          aria-expanded={openHeading === headingIndex}
+                          onclick={() => toggleHeading(headingIndex)}
+                        >
+                          <span class="row-text">
+                            <span class="name">{headingTitle(heading)}</span>
+                            <span class="meta">{headingSummary(heading)}</span>
+                          </span>
+                          {@render chevron(openHeading === headingIndex)}
+                        </button>
+                      </div>
 
-                        <!-- A direction is a filter: every match is kept as
+                      {#if openHeading === headingIndex}
+                        <div class="children">
+                          <label class="field">
+                            <span>Name</span>
+                            <input
+                              value={heading.direction}
+                              placeholder="->City"
+                              aria-label={`Name of direction ${headingIndex + 1} of ${stop.name}`}
+                              onchange={(event) =>
+                                renameHeading(
+                                  pageIndex,
+                                  stopIndex,
+                                  stop,
+                                  headingIndex,
+                                  event.currentTarget.value,
+                                )}
+                            />
+                          </label>
+
+                          <!-- A direction is a filter: every match is kept as
                              text, so "18 Stachus", "18" and "Stachus" all work
                              and stay editable instead of being toggled away. -->
-                        <div class="matches" data-role="matches">
-                          {#if heading.patterns.length === 0}
-                            <p class="note">
-                              No match yet - this direction filters nothing.
-                            </p>
-                          {/if}
-                          {#each heading.patterns as pattern, patternIndex (patternIndex)}
-                            <div class="match" data-role="match">
-                              <input
-                                value={pattern}
-                                aria-label={`Match ${patternIndex + 1} of ${headingTitle(heading)}`}
-                                onchange={(event) =>
-                                  setMatch(
-                                    pageIndex,
-                                    stopIndex,
-                                    stop,
-                                    headingIndex,
-                                    patternIndex,
-                                    event.currentTarget.value,
-                                  )}
-                              />
-                              <button
-                                class="icon-button"
-                                aria-label={`Remove the match ${pattern || patternIndex + 1} from ${headingTitle(heading)}`}
-                                onclick={() =>
-                                  removeMatch(
-                                    pageIndex,
-                                    stopIndex,
-                                    stop,
-                                    headingIndex,
-                                    patternIndex,
-                                  )}
-                              >
-                                ×
-                              </button>
-                            </div>
-                          {/each}
-                        </div>
-
-                        <label class="field">
-                          <span>Add a match</span>
-                          <input
-                            placeholder="18 Stachus, 18, or Stachus"
-                            aria-label={`Add a match to direction ${headingIndex + 1} of ${stop.name}`}
-                            onchange={(event) =>
-                              addTypedMatch(
-                                pageIndex,
-                                stopIndex,
-                                stop,
-                                headingIndex,
-                                event.currentTarget,
-                              )}
-                          />
-                        </label>
-
-                        {#if linesLoading.get(stop.stationId)}
-                          <p class="note">Loading the stop's lines…</p>
-                        {:else if linesProblem.get(stop.stationId)}
-                          <p class="problem" role="alert">
-                            The lines could not be loaded: {linesProblem.get(
-                              stop.stationId,
-                            )}
-                          </p>
-                        {:else if linesByStop.has(stop.stationId)}
-                          {#if linesShownFor(stop).length === 0}
-                            <p class="note">The departures named no line.</p>
-                          {:else}
-                            {#if linesShownFor(stop).length > 6}
-                              <label class="field">
-                                <span>Filter the lines</span>
-                                <input
-                                  value={lineFilter}
-                                  placeholder="18, S3, Stachus…"
-                                  aria-label={`Filter the lines of ${stop.name}`}
-                                  oninput={(event) =>
-                                    (lineFilter = event.currentTarget.value)}
-                                />
-                              </label>
+                          <div class="matches" data-role="matches">
+                            {#if heading.patterns.length === 0}
+                              <p class="note">
+                                No match yet - this direction filters nothing.
+                              </p>
                             {/if}
-                            {#each shownLines(stop) as line (line.line)}
-                              <div class="line-row">
-                                <button
-                                  class="chip line"
-                                  class:is-on={heading.patterns.includes(
-                                    line.line,
-                                  )}
-                                  aria-pressed={heading.patterns.includes(
-                                    line.line,
-                                  )}
-                                  aria-label={`Add every ${line.line} of ${stop.name}`}
-                                  onclick={() =>
-                                    addMatch(
+                            {#each heading.patterns as pattern, patternIndex (patternIndex)}
+                              <div class="match" data-role="match">
+                                <input
+                                  value={pattern}
+                                  aria-label={`Match ${patternIndex + 1} of ${headingTitle(heading)}`}
+                                  onchange={(event) =>
+                                    setMatch(
                                       pageIndex,
                                       stopIndex,
                                       stop,
                                       headingIndex,
-                                      linePattern(line.line),
+                                      patternIndex,
+                                      event.currentTarget.value,
+                                    )}
+                                />
+                                <button
+                                  class="icon-button"
+                                  aria-label={`Remove the match ${pattern || patternIndex + 1} from ${headingTitle(heading)}`}
+                                  onclick={() =>
+                                    removeMatch(
+                                      pageIndex,
+                                      stopIndex,
+                                      stop,
+                                      headingIndex,
+                                      patternIndex,
                                     )}
                                 >
-                                  {line.line}
+                                  ×
                                 </button>
-                                <button
-                                  class="chip"
-                                  aria-expanded={openLine === line.line}
-                                  aria-label={`Show the destinations of ${line.line}`}
-                                  onclick={() =>
-                                    (openLine =
-                                      openLine === line.line
-                                        ? null
-                                        : line.line)}
-                                >
-                                  {line.destinations.length} ▾
-                                </button>
-                                {#if openLine === line.line}
-                                  {#each line.destinations as destination (destination)}
-                                    <button
-                                      class="chip"
-                                      class:is-on={heading.patterns.includes(
-                                        destinationPattern(
-                                          line.line,
-                                          destination,
-                                        ),
+                              </div>
+                            {/each}
+                          </div>
+
+                          <label class="field">
+                            <span>Add a match</span>
+                            <input
+                              placeholder="18 Stachus, 18, or Stachus"
+                              aria-label={`Add a match to direction ${headingIndex + 1} of ${stop.name}`}
+                              onchange={(event) =>
+                                addTypedMatch(
+                                  pageIndex,
+                                  stopIndex,
+                                  stop,
+                                  headingIndex,
+                                  event.currentTarget,
+                                )}
+                            />
+                          </label>
+
+                          {#if linesLoading.get(stop.stationId)}
+                            <p class="note">Loading the stop's lines…</p>
+                          {:else if linesProblem.get(stop.stationId)}
+                            <p class="problem" role="alert">
+                              The lines could not be loaded: {linesProblem.get(
+                                stop.stationId,
+                              )}
+                            </p>
+                          {:else if linesByStop.has(stop.stationId)}
+                            {#if linesShownFor(stop).length === 0}
+                              <p class="note">The departures named no line.</p>
+                            {:else}
+                              {#if linesShownFor(stop).length > 6}
+                                <label class="field">
+                                  <span>Filter the lines</span>
+                                  <input
+                                    value={lineFilter}
+                                    placeholder="18, S3, Stachus…"
+                                    aria-label={`Filter the lines of ${stop.name}`}
+                                    oninput={(event) =>
+                                      (lineFilter = event.currentTarget.value)}
+                                  />
+                                </label>
+                              {/if}
+                              {#each shownLines(stop) as line (line.line)}
+                                <div class="line-row">
+                                  <button
+                                    class="chip line"
+                                    class:is-on={heading.patterns.includes(
+                                      line.line,
+                                    )}
+                                    aria-pressed={heading.patterns.includes(
+                                      line.line,
+                                    )}
+                                    aria-label={`Add every ${line.line} of ${stop.name}`}
+                                    onclick={() =>
+                                      addMatch(
+                                        pageIndex,
+                                        stopIndex,
+                                        stop,
+                                        headingIndex,
+                                        linePattern(line.line),
                                       )}
-                                      aria-pressed={heading.patterns.includes(
-                                        destinationPattern(
-                                          line.line,
-                                          destination,
-                                        ),
-                                      )}
-                                      aria-label={`Add ${line.line} ${destination}`}
-                                      onclick={() =>
-                                        addMatch(
-                                          pageIndex,
-                                          stopIndex,
-                                          stop,
-                                          headingIndex,
+                                  >
+                                    {line.line}
+                                  </button>
+                                  <button
+                                    class="chip"
+                                    aria-expanded={openLine === line.line}
+                                    aria-label={`Show the destinations of ${line.line}`}
+                                    onclick={() =>
+                                      (openLine =
+                                        openLine === line.line
+                                          ? null
+                                          : line.line)}
+                                  >
+                                    {line.destinations.length} ▾
+                                  </button>
+                                  {#if openLine === line.line}
+                                    {#each line.destinations as destination (destination)}
+                                      <button
+                                        class="chip"
+                                        class:is-on={heading.patterns.includes(
                                           destinationPattern(
                                             line.line,
                                             destination,
                                           ),
                                         )}
-                                    >
-                                      {destination}
-                                    </button>
-                                  {/each}
-                                {/if}
-                              </div>
-                            {/each}
+                                        aria-pressed={heading.patterns.includes(
+                                          destinationPattern(
+                                            line.line,
+                                            destination,
+                                          ),
+                                        )}
+                                        aria-label={`Add ${line.line} ${destination}`}
+                                        onclick={() =>
+                                          addMatch(
+                                            pageIndex,
+                                            stopIndex,
+                                            stop,
+                                            headingIndex,
+                                            destinationPattern(
+                                              line.line,
+                                              destination,
+                                            ),
+                                          )}
+                                      >
+                                        {destination}
+                                      </button>
+                                    {/each}
+                                  {/if}
+                                </div>
+                              {/each}
+                            {/if}
+                          {:else}
+                            <button
+                              class="button button-secondary"
+                              onclick={() => loadLines(stop)}
+                            >
+                              Load the stop's lines
+                            </button>
                           {/if}
-                        {:else}
-                          <button
-                            class="button button-secondary"
-                            onclick={() => loadLines(stop)}
-                          >
-                            Load the stop's lines
-                          </button>
-                        {/if}
 
+                          <button
+                            class="button button-secondary delete"
+                            onclick={() =>
+                              removeHeading(
+                                pageIndex,
+                                stopIndex,
+                                stop,
+                                headingIndex,
+                              )}
+                          >
+                            ⨯ Direction
+                          </button>
+                        </div>
+                      {/if}
+                    {/each}
+
+                    <button
+                      class="row add"
+                      data-role="add-direction"
+                      onclick={() => addHeading(pageIndex, stopIndex, stop)}
+                    >
+                      {@render plus()}
+                      <span class="name">Direction</span>
+                    </button>
+
+                    {#if confirming === `stop:${pageIndex}:${stopIndex}`}
+                      <div class="actions">
+                        <button
+                          class="button button-secondary"
+                          onclick={() => (confirming = null)}>Keep</button
+                        >
                         <button
                           class="button button-secondary delete"
-                          onclick={() =>
-                            removeHeading(
-                              pageIndex,
-                              stopIndex,
-                              stop,
-                              headingIndex,
-                            )}
+                          onclick={() => {
+                            confirming = null;
+                            openStop = null;
+                            openHeading = null;
+                            onRemoveStop(pageIndex, stopIndex);
+                          }}
                         >
-                          ⨯ Direction
+                          ⨯ {stop.name}
+                        </button>
+                      </div>
+                    {:else}
+                      <div class="actions">
+                        <button
+                          class="button button-secondary delete"
+                          aria-label={`Delete ${stop.name}`}
+                          onclick={() =>
+                            (confirming = `stop:${pageIndex}:${stopIndex}`)}
+                        >
+                          ⨯ Stop
                         </button>
                       </div>
                     {/if}
-                  {/each}
-
-                  <button
-                    class="row add"
-                    data-role="add-direction"
-                    onclick={() => addHeading(pageIndex, stopIndex, stop)}
-                  >
-                    {@render plus()}
-                    <span class="name">Direction</span>
-                  </button>
-
-                  {#if confirming === `stop:${pageIndex}:${stopIndex}`}
-                    <div class="actions">
-                      <button
-                        class="button button-secondary"
-                        onclick={() => (confirming = null)}>Keep</button
-                      >
-                      <button
-                        class="button button-secondary delete"
-                        onclick={() => {
-                          confirming = null;
-                          openStop = null;
-                          openHeading = null;
-                          onRemoveStop(pageIndex, stopIndex);
-                        }}
-                      >
-                        ⨯ {stop.name}
-                      </button>
-                    </div>
-                  {:else}
-                    <div class="actions">
-                      <button
-                        class="button button-secondary delete"
-                        aria-label={`Delete ${stop.name}`}
-                        onclick={() =>
-                          (confirming = `stop:${pageIndex}:${stopIndex}`)}
-                      >
-                        ⨯ Stop
-                      </button>
-                    </div>
-                  {/if}
-                </div>
-              {/if}
-            {/each}
-
-            {#if openForm === "add-stop"}
-              <div class="form">
-                <label class="field">
-                  <span>Find a stop</span>
-                  <input
-                    bind:value={stopQuery}
-                    placeholder="e.g. Giesing"
-                    aria-label="Search a stop to add"
-                    onkeydown={(event) => {
-                      if (event.key === "Enter") {
-                        void searchStops();
-                      }
-                    }}
-                  />
-                </label>
-                <div class="actions">
-                  <button
-                    class="button button-secondary"
-                    onclick={() => toggleForm("add-stop")}>Cancel</button
-                  >
-                  <button
-                    class="button button-primary"
-                    disabled={isSearchingStops || stopQuery.trim() === ""}
-                    onclick={searchStops}
-                  >
-                    {isSearchingStops ? "Searching…" : "Search"}
-                  </button>
-                </div>
-                {#if stopSearchProblem}
-                  <p class="problem" role="alert">{stopSearchProblem}</p>
+                  </div>
                 {/if}
-                {#each stopMatches as match (match.stationId)}
-                  <button
-                    class="row sub"
-                    onclick={() => addStop(pageIndex, match)}
-                  >
-                    <span class="name">{match.stationName}</span>
-                    <span class="meta">{match.stationId}</span>
-                    {@render plus()}
-                  </button>
-                {/each}
-              </div>
-            {:else}
-              <button
-                class="row add"
-                data-role="add-stop"
-                onclick={openStopSearch}
-              >
-                {@render plus()}
-                <span class="name">Stop</span>
-              </button>
-            {/if}
+              {/each}
 
-            <div class="actions">
-              <button
-                class="button button-secondary"
-                data-role="page-settings"
-                aria-expanded={openForm === "page"}
-                onclick={() => openPageForm(page)}
-              >
-                ⚙ Settings
-              </button>
-              {#if confirming === `page:${pageIndex}`}
-                <button
-                  class="button button-secondary"
-                  onclick={() => (confirming = null)}>Keep</button
-                >
-                <button
-                  class="button button-secondary delete"
-                  onclick={() => {
-                    confirming = null;
-                    openPage = null;
-                    onRemovePage(pageIndex);
-                  }}
-                >
-                  ⨯ “{page.title}”
-                </button>
+              {#if openForm === "add-stop"}
+                <div class="form">
+                  <label class="field">
+                    <span>Find a stop</span>
+                    <input
+                      bind:value={stopQuery}
+                      placeholder="e.g. Giesing"
+                      aria-label="Search a stop to add"
+                      onkeydown={(event) => {
+                        if (event.key === "Enter") {
+                          void searchStops();
+                        }
+                      }}
+                    />
+                  </label>
+                  <div class="actions">
+                    <button
+                      class="button button-secondary"
+                      onclick={() => toggleForm("add-stop")}>Cancel</button
+                    >
+                    <button
+                      class="button button-primary"
+                      disabled={isSearchingStops || stopQuery.trim() === ""}
+                      onclick={searchStops}
+                    >
+                      {isSearchingStops ? "Searching…" : "Search"}
+                    </button>
+                  </div>
+                  {#if stopSearchProblem}
+                    <p class="problem" role="alert">{stopSearchProblem}</p>
+                  {/if}
+                  {#each stopMatches as match (match.stationId)}
+                    <button
+                      class="row sub"
+                      onclick={() => addStop(pageIndex, match)}
+                    >
+                      <span class="name">{match.stationName}</span>
+                      <span class="meta">{match.stationId}</span>
+                      {@render plus()}
+                    </button>
+                  {/each}
+                </div>
               {:else}
                 <button
-                  class="button button-secondary delete"
-                  aria-label={`Delete the route ${page.title}`}
-                  onclick={() => (confirming = `page:${pageIndex}`)}
+                  class="row add"
+                  data-role="add-stop"
+                  onclick={openStopSearch}
                 >
-                  ⨯ Route
+                  {@render plus()}
+                  <span class="name">Stop</span>
                 </button>
               {/if}
+
+              <div class="actions">
+                <button
+                  class="button button-secondary"
+                  data-role="page-settings"
+                  aria-expanded={openForm === "page"}
+                  onclick={() => openPageForm(page)}
+                >
+                  ⚙ Settings
+                </button>
+                {#if confirming === `page:${pageIndex}`}
+                  <button
+                    class="button button-secondary"
+                    onclick={() => (confirming = null)}>Keep</button
+                  >
+                  <button
+                    class="button button-secondary delete"
+                    onclick={() => {
+                      confirming = null;
+                      openPage = null;
+                      onRemovePage(pageIndex);
+                    }}
+                  >
+                    ⨯ “{page.title}”
+                  </button>
+                {:else}
+                  <button
+                    class="button button-secondary delete"
+                    aria-label={`Delete the route ${page.title}`}
+                    onclick={() => (confirming = `page:${pageIndex}`)}
+                  >
+                    ⨯ Route
+                  </button>
+                {/if}
+              </div>
             </div>
-          </div>
+          {/if}
         {/if}
       </li>
     {/each}
@@ -1229,11 +1276,10 @@
 
   {#if pages.length === 0}
     <p class="note">
-      No pages yet. A config written for the server version has its stops
-      outside the pages - switch to TOML and press Clean up to convert it.
+      This file has no stops and no routes yet. Add a route, or paste a config
+      in the TOML tab.
     </p>
   {/if}
-
   {#if openForm === "new-page" && newPageDraft}
     <div class="form">
       <label class="field">
@@ -1386,6 +1432,15 @@
 
   .row-open:active {
     background: #e5e7eb;
+  }
+
+  /* A row the file decides, not the finger: no tap, no hover. */
+  .row-open.is-static {
+    cursor: default;
+  }
+
+  .row-open.is-static:active {
+    background: transparent;
   }
 
   :global([data-theme="dark"]) .row-open:active {

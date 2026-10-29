@@ -1670,6 +1670,7 @@
                   onAddPage={addPage}
                   onAddStop={addStop}
                   onAddStops={openWizard}
+                  onConvert={startCleanup}
                 />
               </div>
 

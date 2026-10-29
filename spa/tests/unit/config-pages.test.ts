@@ -47,6 +47,29 @@ station_name = "Hauptbahnhof"
 radius_meters = 500
 `;
 
+/** A config written for the server: stops at the top level, no routes. */
+const SERVER_FORMAT = `[display]
+title = "St.-Ingbert Departures"
+
+[[stops]]
+station_id = "de:09162:1044:1:1"
+station_name = "Ungsteiner Str."
+max_departures_per_stop = 4
+max_departures_per_route = 3
+max_hours_in_advance = 3
+show_ungrouped = true
+ungrouped_title = "Giesing"
+
+[stops.direction_mappings]
+"->Ostbahnhof" = ["54 Münchner Freiheit"]
+
+[[stops]]
+station_id = "de:09162:1107:2:2"
+station_name = "Werinherstraße"
+show_ungrouped = true
+ungrouped_title = "Stachus"
+`;
+
 describe("readConfigPages", () => {
   it("names every page with its title and its stops", () => {
     expect(readConfigPages(TWO_PAGES)).toEqual([
@@ -54,6 +77,7 @@ describe("readConfigPages", () => {
         path: "/",
         title: "Home",
         display: {},
+        legacy: false,
         stops: [
           {
             stationId: "de:09162:1110",
@@ -75,6 +99,7 @@ describe("readConfigPages", () => {
         path: "/work",
         title: "Work",
         display: {},
+        legacy: false,
         stops: [
           {
             stationId: "de:09162:1000",
@@ -88,8 +113,44 @@ describe("readConfigPages", () => {
     ]);
   });
 
+  it("shows a server config's stops as the route at / that the board shows", () => {
+    const pages = readConfigPages(SERVER_FORMAT);
+
+    expect(pages).toHaveLength(1);
+    expect(pages[0].path).toBe("/");
+    expect(pages[0].legacy).toBe(true);
+    expect(pages[0].stops.map((stop) => stop.name)).toEqual([
+      "Ungsteiner Str.",
+      "Werinherstraße",
+    ]);
+    expect(pages[0].stops[0]).toMatchObject({
+      label: "Giesing",
+      showUngrouped: true,
+      maxDepartures: 4,
+      perLineDepartures: 3,
+      hoursInAdvance: 3,
+      directions: [
+        { direction: "->Ostbahnhof", patterns: ["54 Münchner Freiheit"] },
+      ],
+    });
+  });
+
+  it("lists the server stops of a file that has routes as well", () => {
+    const pages = readConfigPages(`${TWO_PAGES}\n${SERVER_FORMAT}`);
+
+    expect(pages.map((page) => page.legacy)).toEqual([false, false, true]);
+    expect(pages[2].stops.map((stop) => stop.name)).toEqual([
+      "Ungsteiner Str.",
+      "Werinherstraße",
+    ]);
+  });
+
   it("finds no page in an empty config", () => {
     expect(readConfigPages("")).toEqual([]);
+  });
+
+  it("finds no page in a config that only sets display values", () => {
+    expect(readConfigPages(`[display]\ntitle = "Home"\n`)).toEqual([]);
   });
 
   it("falls back to the path when a page has no title", () => {

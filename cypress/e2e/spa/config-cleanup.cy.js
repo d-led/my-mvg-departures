@@ -37,6 +37,31 @@ station_id = "de:09162:1110"
 station_name = "Giesing"
 `;
 
+/** A whole config written for the server: stops at the top level, no routes. */
+const SERVER_FORMAT = `[display]
+title = "St.-Ingbert Departures"
+fill_vertical_space = true
+
+[[stops]]
+station_id = "de:09162:1044:1:1"
+station_name = "Ungsteiner Str."
+max_departures_per_stop = 4
+max_departures_per_route = 3
+max_hours_in_advance = 3
+show_ungrouped = true
+ungrouped_title = "Giesing"
+
+[stops.direction_mappings]
+"->Ostbahnhof" = ["54 Münchner Freiheit"]
+
+[[stops]]
+station_id = "de:09162:1107:2:2"
+station_name = "Werinherstraße"
+max_departures_per_stop = 4
+show_ungrouped = true
+ungrouped_title = "Stachus"
+`;
+
 describe("SPA config clean-up", () => {
   it("rewrites a server config into the SPA's shape and saves it on request", () => {
     cy.openConfigDialog(LEGACY_CONFIG);
@@ -102,6 +127,34 @@ describe("SPA config clean-up", () => {
     cy.cleanUpReview().should("not.exist");
     cy.tomlEditor().should("contain.value", "[api]");
     cy.tomlEditor().should("not.contain.value", "[[routes]]");
+  });
+
+  it("shows a server config's stops instead of pretending there are none", () => {
+    cy.openConfigDialog(SERVER_FORMAT);
+    cy.openConfigurator();
+
+    // The board reads the top level stops as the route at "/", and so does this.
+    cy.configRouteNames().should("deep.equal", ["/"]);
+    cy.configPanel().should("contain", "server format");
+    cy.configPanel().should("contain", "Ungsteiner Str.");
+    cy.configPanel().should("contain", "Werinherstraße");
+    cy.configPanel().should("contain", "1 direction");
+
+    cy.convertConfigToRoutes();
+
+    // The conversion is a proposal, shown in the file it would rewrite.
+    cy.cleanUpReview().should("contain", 'moved 2 stops into the route at "/"');
+    cy.applyCleanUp();
+    cy.tomlEditor().should("contain.value", "[[routes.stops]]");
+
+    cy.openConfigurator();
+    cy.configRouteNames().should("deep.equal", ["/"]);
+    cy.configPanel().should("not.contain", "server format");
+    cy.openConfigRoute("/");
+    cy.configStopNames().should("deep.equal", [
+      "Ungsteiner Str.",
+      "Werinherstraße",
+    ]);
   });
 
   it("says so when there is nothing to clean up", () => {

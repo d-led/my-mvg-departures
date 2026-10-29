@@ -428,6 +428,11 @@ Cypress.Commands.add("cleanUpConfig", () => {
   cy.get(".config-method-selector").contains("button", "Clean up").click();
 });
 
+/** The configurator's own offer to turn a server-format file into routes. */
+Cypress.Commands.add("convertConfigToRoutes", () => {
+  cy.get('.cfg [data-role="convert"]').click();
+});
+
 Cypress.Commands.add("cleanUpReview", () => cy.get(".cleanup-review"));
 
 Cypress.Commands.add("applyCleanUp", () => cy.get(".cleanup-review").contains("button", "Apply clean-up").click());
