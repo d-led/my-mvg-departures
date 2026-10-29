@@ -79,7 +79,9 @@ jobs:
         with:
           path: |
             ~/.npm
-            ~/.cache/Cypress
+            # The image sets CYPRESS_CACHE_FOLDER=/root/.cache/Cypress while HOME
+            # is /github/home, so "~" pointed at a folder Cypress never reads.
+            /root/.cache/Cypress
             node_modules
             spa/node_modules
           key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json', 'spa/package-lock.json') }}
@@ -92,6 +94,12 @@ jobs:
       - name: Install SPA dependencies
         working-directory: spa
         run: npm install --prefer-offline --no-audit --progress=false
+
+      # A restored node_modules makes npm print "up to date" without running
+      # cypress's postinstall, and the binary it looked for was not cached.
+      - name: Make sure the Cypress binary is there
+        working-directory: spa
+        run: npx cypress install
 
       - name: Start the SPA
         working-directory: spa
